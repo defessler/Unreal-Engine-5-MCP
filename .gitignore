@@ -1,0 +1,38 @@
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+
+# UE build outputs
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+Build/
+*.target
+*.modules
+
+# Source-built engine sibling — not committed to this repo
+UnrealEngine/
+
+# MCP server build outputs (Phase 0 — placeholder for later)
+mcp-server/build/
+mcp-server/out/
+mcp-server/cmake-build-*/
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Claude Code session/agent state
+.claude/
