@@ -16,15 +16,9 @@ public class BlueprintReaderEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"UnrealEd",
-			"EditorSubsystem",
 			"BlueprintGraph",
-			"Kismet",
-			"KismetCompiler",
-			"AssetRegistry",
-			"AssetTools",
 			"Json",
-			"JsonUtilities",
-			"ToolMenus"
+			"JsonUtilities"
 		});
 	}
 }
