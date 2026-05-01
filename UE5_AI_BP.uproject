@@ -1,16 +1,16 @@
 {
-	"FileVersion": 3,
-	"EngineAssociation": "",
-	"Category": "",
-	"Description": "",
-	"Modules": [
-		{
-			"Name": "UE5_AI_BP",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"AdditionalDependencies": [
-				"Engine"
-			]
-		}
-	]
+  "FileVersion": 3,
+  "EngineAssociation": "UE5_AI_BP_Source",
+  "Category": "",
+  "Description": "",
+  "Modules": [
+    {
+      "Name": "UE5_AI_BP",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "AdditionalDependencies": [
+        "Engine"
+      ]
+    }
+  ]
 }

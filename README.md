@@ -48,6 +48,49 @@ After the GUID is bound, generate project files for *this* project:
 That produces `UE5_AI_BP.sln` next to the `.uproject`. Build the
 `UE5_AI_BPEditor` target to verify the scaffold compiles.
 
+## Engine source patches required for project-target builds
+
+The 5.7.4 GitHub source has three modules whose `Build.cs` declares
+`PrivateIncludePaths` as paths relative to `Engine/Source/`. UBT resolves these
+correctly when building `UnrealEditor` itself (engine is the search root) but
+fails when building a project's editor target (project is the search root).
+The result is `fatal error C1083` on otherwise-present headers.
+
+Patch each to use a `ModuleDirectory`-relative path:
+
+- `Engine/Source/Developer/Windows/LiveCoding/LiveCoding.Build.cs`
+- `Engine/Source/Developer/IOS/TVOSTargetPlatformSettings/TVOSTargetPlatformSettings.Build.cs`
+- `Engine/Platforms/VisionOS/Source/Developer/VisionOSTargetPlatformSettings/VisionOSTargetPlatformSettings.Build.cs`
+
+(Each gains `using System.IO;` and replaces the relative `PrivateIncludePaths`
+entry with `Path.Combine(ModuleDirectory, ...)`.)
+
+These live inside `UnrealEngine/` which is gitignored — re-apply after a fresh
+engine clone.
+
+## Build flags
+
+Project-target builds need:
+- `UE5_AI_BPEditor.Target.cs` → `DefaultBuildSettings = BuildSettingsVersion.V6`
+  and `BuildEnvironment = TargetBuildEnvironment.Shared`
+- `Build.bat ... -MaxParallelActions=4 -NoUba` if the system page file is small
+  (Unreal Build Accelerator allocates large VAS chunks per worker; the default
+  parallelism + UBA can saturate a 20 GB page file even on 64 GB RAM machines)
+
+## Running automation tests
+
+```bat
+"UnrealEngine\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+  "UE5_AI_BP.uproject" ^
+  -ExecCmds="Automation RunTests BlueprintReader.Editor; Quit" ^
+  -TestExit="Automation Test Queue Empty" ^
+  -ReportExportPath="Saved\Automation" ^
+  -log -unattended -nopause -nullrhi -nosplash
+```
+
+Report lands at `Saved/Automation/index.json` (`succeeded` / `failed` counts)
+plus `index.html`.
+
 ## Layout
 
 See [PLAN.md](PLAN.md).
