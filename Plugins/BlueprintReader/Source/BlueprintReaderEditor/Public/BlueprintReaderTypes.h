@@ -22,25 +22,6 @@ struct FBPPinInfo
 	TArray<FBPPinLinkInfo> LinkedTo;
 };
 
-struct FBPNodeInfo
-{
-	FString Guid;
-	FString ClassName;
-	FString Title;
-	FString Comment;
-	int32 PosX = 0;
-	int32 PosY = 0;
-	bool bEnabled = true;
-	TArray<FBPPinInfo> Pins;
-};
-
-struct FBPGraphInfo
-{
-	FString Name;
-	FString SchemaPath;
-	TArray<FBPNodeInfo> Nodes;
-};
-
 struct FBPVariableInfo
 {
 	FString Name;
@@ -53,6 +34,27 @@ struct FBPVariableInfo
 	bool bIsEditable = false;
 	bool bIsBlueprintReadOnly = false;
 	bool bIsExposeOnSpawn = false;
+};
+
+struct FBPNodeInfo
+{
+	FString Guid;
+	FString ClassName;
+	FString Title;
+	FString Comment;
+	int32 PosX = 0;
+	int32 PosY = 0;
+	bool bEnabled = true;
+	TArray<FBPPinInfo> Pins;
+	TMap<FString, FString> Extras;
+};
+
+struct FBPGraphInfo
+{
+	FString Name;
+	FString SchemaPath;
+	TArray<FBPNodeInfo> Nodes;
+	TArray<FBPVariableInfo> LocalVariables;
 };
 
 struct FBPComponentInfo

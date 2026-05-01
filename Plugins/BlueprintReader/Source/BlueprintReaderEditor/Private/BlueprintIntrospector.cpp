@@ -12,18 +12,20 @@
 #include "UObject/Class.h"
 #include "UObject/ObjectMacros.h"
 
+#include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_Event.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_Variable.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_VariableSet.h"
+
 namespace
 {
-	FString ContainerTypeToString(EPinContainerType Type)
-	{
-		switch (Type)
-		{
-		case EPinContainerType::Array: return TEXT("Array");
-		case EPinContainerType::Set:   return TEXT("Set");
-		case EPinContainerType::Map:   return TEXT("Map");
-		default:                       return FString();
-		}
-	}
+	FString BoolToString(bool b) { return b ? TEXT("true") : TEXT("false"); }
 
 	FString TerminalToString(const FName& Category, const FName& SubCategory, const TWeakObjectPtr<UObject>& SubObject)
 	{
@@ -37,6 +39,104 @@ namespace
 			Out += TEXT("(") + Resolved->GetPathName() + TEXT(")");
 		}
 		return Out;
+	}
+
+	FBPVariableInfo VariableDescToInfo(const FBPVariableDescription& Var)
+	{
+		FBPVariableInfo V;
+		V.Name = Var.VarName.ToString();
+		V.FriendlyName = Var.FriendlyName;
+		V.Category = Var.Category.ToString();
+		V.Type = FBlueprintIntrospector::FormatPinType(Var.VarType);
+		V.DefaultValue = Var.DefaultValue;
+		V.bIsReplicated        = (Var.PropertyFlags & CPF_Net) != 0;
+		V.bIsTransient         = (Var.PropertyFlags & CPF_Transient) != 0;
+		V.bIsEditable          = (Var.PropertyFlags & CPF_Edit) != 0;
+		V.bIsBlueprintReadOnly = (Var.PropertyFlags & CPF_BlueprintReadOnly) != 0;
+		V.bIsExposeOnSpawn     = Var.HasMetaData(TEXT("ExposeOnSpawn"));
+		return V;
+	}
+
+	void ExtractK2Extras(UEdGraphNode* Node, TMap<FString, FString>& Extras)
+	{
+		if (UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("CallFunction"));
+			Extras.Add(TEXT("targetFunction"), Call->FunctionReference.GetMemberName().ToString());
+			if (UClass* C = Call->FunctionReference.GetMemberParentClass())
+			{
+				Extras.Add(TEXT("targetClass"), C->GetPathName());
+			}
+			Extras.Add(TEXT("isSelfContext"), BoolToString(Call->FunctionReference.IsSelfContext()));
+			return;
+		}
+		if (UK2Node_VariableSet* VarSet = Cast<UK2Node_VariableSet>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("VariableSet"));
+			Extras.Add(TEXT("variableName"), VarSet->VariableReference.GetMemberName().ToString());
+			if (UClass* C = VarSet->VariableReference.GetMemberParentClass())
+			{
+				Extras.Add(TEXT("variableClass"), C->GetPathName());
+			}
+			return;
+		}
+		if (UK2Node_VariableGet* VarGet = Cast<UK2Node_VariableGet>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("VariableGet"));
+			Extras.Add(TEXT("variableName"), VarGet->VariableReference.GetMemberName().ToString());
+			if (UClass* C = VarGet->VariableReference.GetMemberParentClass())
+			{
+				Extras.Add(TEXT("variableClass"), C->GetPathName());
+			}
+			return;
+		}
+		if (UK2Node_CustomEvent* CustomEvt = Cast<UK2Node_CustomEvent>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("CustomEvent"));
+			Extras.Add(TEXT("eventName"), CustomEvt->CustomFunctionName.ToString());
+			return;
+		}
+		if (UK2Node_Event* Evt = Cast<UK2Node_Event>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("Event"));
+			Extras.Add(TEXT("eventName"), Evt->EventReference.GetMemberName().ToString());
+			if (UClass* C = Evt->EventReference.GetMemberParentClass())
+			{
+				Extras.Add(TEXT("eventClass"), C->GetPathName());
+			}
+			Extras.Add(TEXT("isOverride"), BoolToString(Evt->bOverrideFunction));
+			return;
+		}
+		if (UK2Node_DynamicCast* CastNode = Cast<UK2Node_DynamicCast>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("DynamicCast"));
+			if (UClass* T = CastNode->TargetType)
+			{
+				Extras.Add(TEXT("targetClass"), T->GetPathName());
+			}
+			Extras.Add(TEXT("isPureCast"), BoolToString(CastNode->bIsPureCast));
+			return;
+		}
+		if (UK2Node_MacroInstance* Macro = Cast<UK2Node_MacroInstance>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("MacroInstance"));
+			if (UEdGraph* G = Macro->GetMacroGraph())
+			{
+				Extras.Add(TEXT("macroGraph"), G->GetPathName());
+				Extras.Add(TEXT("macroName"), G->GetFName().ToString());
+			}
+			return;
+		}
+		if (Node->IsA<UK2Node_FunctionEntry>())
+		{
+			Extras.Add(TEXT("kind"), TEXT("FunctionEntry"));
+			return;
+		}
+		if (Node->IsA<UK2Node_FunctionResult>())
+		{
+			Extras.Add(TEXT("kind"), TEXT("FunctionResult"));
+			return;
+		}
 	}
 }
 
@@ -88,7 +188,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 	{
 		Info.BlueprintType = TypeEnum->GetNameStringByValue(static_cast<int64>(Blueprint->BlueprintType));
 	}
-	Info.ParentClassPath = Blueprint->ParentClass ? Blueprint->ParentClass->GetPathName() : FString();
+	Info.ParentClassPath    = Blueprint->ParentClass    ? Blueprint->ParentClass->GetPathName()    : FString();
 	Info.GeneratedClassPath = Blueprint->GeneratedClass ? Blueprint->GeneratedClass->GetPathName() : FString();
 
 	for (const FBPInterfaceDescription& Iface : Blueprint->ImplementedInterfaces)
@@ -100,18 +200,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 
 	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
 	{
-		FBPVariableInfo V;
-		V.Name = Var.VarName.ToString();
-		V.FriendlyName = Var.FriendlyName;
-		V.Category = Var.Category.ToString();
-		V.Type = FormatPinType(Var.VarType);
-		V.DefaultValue = Var.DefaultValue;
-		V.bIsReplicated      = (Var.PropertyFlags & CPF_Net) != 0;
-		V.bIsTransient       = (Var.PropertyFlags & CPF_Transient) != 0;
-		V.bIsEditable        = (Var.PropertyFlags & CPF_Edit) != 0;
-		V.bIsBlueprintReadOnly = (Var.PropertyFlags & CPF_BlueprintReadOnly) != 0;
-		V.bIsExposeOnSpawn   = Var.HasMetaData(TEXT("ExposeOnSpawn"));
-		Info.Variables.Add(MoveTemp(V));
+		Info.Variables.Add(VariableDescToInfo(Var));
 	}
 
 	if (USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript)
@@ -132,22 +221,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		}
 	}
 
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph) Info.FunctionGraphs.Add(ReadGraph(Graph));
-	}
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph) Info.EventGraphs.Add(ReadGraph(Graph));
-	}
-	for (UEdGraph* Graph : Blueprint->MacroGraphs)
-	{
-		if (Graph) Info.MacroGraphs.Add(ReadGraph(Graph));
-	}
-	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
-	{
-		if (Graph) Info.DelegateSignatureGraphs.Add(ReadGraph(Graph));
-	}
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)         { if (Graph) Info.FunctionGraphs.Add(ReadGraph(Graph)); }
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)         { if (Graph) Info.EventGraphs.Add(ReadGraph(Graph)); }
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)            { if (Graph) Info.MacroGraphs.Add(ReadGraph(Graph)); }
+	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs){ if (Graph) Info.DelegateSignatureGraphs.Add(ReadGraph(Graph)); }
 
 	return Info;
 }
@@ -170,6 +247,8 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 		N.PosX = Node->NodePosX;
 		N.PosY = Node->NodePosY;
 		N.bEnabled = Node->IsNodeEnabled();
+
+		ExtractK2Extras(Node, N.Extras);
 
 		for (UEdGraphPin* Pin : Node->Pins)
 		{
@@ -199,6 +278,14 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 			}
 
 			N.Pins.Add(MoveTemp(P));
+		}
+
+		if (UK2Node_FunctionEntry* FE = Cast<UK2Node_FunctionEntry>(Node))
+		{
+			for (const FBPVariableDescription& Local : FE->LocalVariables)
+			{
+				G.LocalVariables.Add(VariableDescToInfo(Local));
+			}
 		}
 
 		G.Nodes.Add(MoveTemp(N));
