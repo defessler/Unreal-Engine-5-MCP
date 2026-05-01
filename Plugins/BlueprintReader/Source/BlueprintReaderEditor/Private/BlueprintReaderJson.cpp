@@ -56,8 +56,17 @@ namespace
 			Pins.Add(MakeShared<FJsonValueObject>(ToJson(P)));
 		}
 		Obj->SetArrayField(TEXT("pins"), Pins);
+
+		auto Extras = MakeShared<FJsonObject>();
+		for (const TPair<FString, FString>& KV : Node.Extras)
+		{
+			Extras->SetStringField(KV.Key, KV.Value);
+		}
+		Obj->SetObjectField(TEXT("extras"), Extras);
 		return Obj;
 	}
+
+	TSharedRef<FJsonObject> ToJson(const FBPVariableInfo& Var);
 
 	TSharedRef<FJsonObject> ToJson(const FBPGraphInfo& Graph)
 	{
@@ -72,6 +81,14 @@ namespace
 			Nodes.Add(MakeShared<FJsonValueObject>(ToJson(N)));
 		}
 		Obj->SetArrayField(TEXT("nodes"), Nodes);
+
+		TArray<TSharedPtr<FJsonValue>> Locals;
+		Locals.Reserve(Graph.LocalVariables.Num());
+		for (const FBPVariableInfo& V : Graph.LocalVariables)
+		{
+			Locals.Add(MakeShared<FJsonValueObject>(ToJson(V)));
+		}
+		Obj->SetArrayField(TEXT("localVariables"), Locals);
 		return Obj;
 	}
 

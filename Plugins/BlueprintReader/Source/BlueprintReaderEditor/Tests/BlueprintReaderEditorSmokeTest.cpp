@@ -49,6 +49,10 @@ namespace
 		Node.Title = TEXT("Event BeginPlay");
 		Node.PosX = 100;
 		Node.PosY = 200;
+		Node.Extras.Add(TEXT("kind"), TEXT("Event"));
+		Node.Extras.Add(TEXT("eventName"), TEXT("ReceiveBeginPlay"));
+		Node.Extras.Add(TEXT("eventClass"), TEXT("/Script/Engine.Actor"));
+		Node.Extras.Add(TEXT("isOverride"), TEXT("true"));
 
 		FBPPinInfo Pin;
 		Pin.Name = TEXT("then");
@@ -57,6 +61,13 @@ namespace
 		Node.Pins.Add(Pin);
 
 		Graph.Nodes.Add(Node);
+
+		FBPVariableInfo Local;
+		Local.Name = TEXT("Counter");
+		Local.Type = TEXT("int");
+		Local.DefaultValue = TEXT("0");
+		Graph.LocalVariables.Add(Local);
+
 		Info.EventGraphs.Add(Graph);
 		return Info;
 	}
@@ -92,9 +103,26 @@ bool FBlueprintReaderJsonRoundTripTest::RunTest(const FString& /*Parameters*/)
 	{
 		const TSharedPtr<FJsonObject>& Graph = (*EventGraphs)[0]->AsObject();
 		TestEqual(TEXT("graph name"), Graph->GetStringField(TEXT("name")), TEXT("EventGraph"));
+
 		const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
 		TestTrue(TEXT("nodes array"), Graph->TryGetArrayField(TEXT("nodes"), Nodes));
 		TestEqual(TEXT("nodes count"), Nodes ? Nodes->Num() : 0, 1);
+
+		if (Nodes && Nodes->Num() == 1)
+		{
+			const TSharedPtr<FJsonObject>& Node = (*Nodes)[0]->AsObject();
+			const TSharedPtr<FJsonObject>* Extras = nullptr;
+			TestTrue(TEXT("extras object present"), Node->TryGetObjectField(TEXT("extras"), Extras));
+			if (Extras && Extras->IsValid())
+			{
+				TestEqual(TEXT("extras.kind"), (*Extras)->GetStringField(TEXT("kind")), TEXT("Event"));
+				TestEqual(TEXT("extras.eventName"), (*Extras)->GetStringField(TEXT("eventName")), TEXT("ReceiveBeginPlay"));
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Locals = nullptr;
+		TestTrue(TEXT("localVariables array"), Graph->TryGetArrayField(TEXT("localVariables"), Locals));
+		TestEqual(TEXT("locals count"), Locals ? Locals->Num() : 0, 1);
 	}
 	else
 	{
