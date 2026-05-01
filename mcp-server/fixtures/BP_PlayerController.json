@@ -1,0 +1,388 @@
+{
+    "summary": {
+        "asset_path": "/Game/Player/BP_PlayerController",
+        "name": "BP_PlayerController",
+        "parent_class": "APlayerController",
+        "modified_iso": "2026-04-28T11:42:09Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Player/BP_PlayerController",
+        "name": "BP_PlayerController",
+        "parent_class": "APlayerController",
+        "interfaces": [],
+        "variables": [
+            {
+                "name": "Score",
+                "type": {
+                    "category": "int",
+                    "sub_category": null,
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "0",
+                "category": "Stats",
+                "is_replicated": true,
+                "is_editable": false
+            },
+            {
+                "name": "PlayerName",
+                "type": {
+                    "category": "string",
+                    "sub_category": null,
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "Player",
+                "category": "Identity",
+                "is_replicated": true,
+                "is_editable": true
+            },
+            {
+                "name": "Inventory",
+                "type": {
+                    "category": "object",
+                    "sub_category": null,
+                    "sub_category_object": "Item",
+                    "is_array": true,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": null,
+                "category": "Inventory",
+                "is_replicated": false,
+                "is_editable": false
+            }
+        ],
+        "functions": [
+            { "name": "AddScore" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [
+                {
+                    "id": "AAAA0001-1111-2222-3333-444455556666",
+                    "class": "K2Node_Event",
+                    "title": "Event ReceiveBeginPlay",
+                    "position": { "x": -480, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "AAAA0001-1111-2222-3333-444455556601",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "event_name": "ReceiveBeginPlay" }
+                },
+                {
+                    "id": "AAAA0002-1111-2222-3333-444455556666",
+                    "class": "K2Node_CallFunction",
+                    "title": "AddScore",
+                    "position": { "x": -160, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "AAAA0002-1111-2222-3333-444455556602",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "AAAA0002-1111-2222-3333-444455556603",
+                            "name": "Delta",
+                            "direction": "Input",
+                            "type": {
+                                "category": "int",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "10"
+                        },
+                        {
+                            "id": "AAAA0002-1111-2222-3333-444455556604",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "AddScore",
+                        "function_owner": "BP_PlayerController"
+                    }
+                }
+            ],
+            "connections": [
+                {
+                    "from_node": "AAAA0001-1111-2222-3333-444455556666",
+                    "from_pin": "AAAA0001-1111-2222-3333-444455556601",
+                    "to_node": "AAAA0002-1111-2222-3333-444455556666",
+                    "to_pin": "AAAA0002-1111-2222-3333-444455556602"
+                }
+            ]
+        }
+    ],
+    "functions": [
+        {
+            "name": "AddScore",
+            "inputs": [
+                {
+                    "name": "Delta",
+                    "type": {
+                        "category": "int",
+                        "sub_category": null,
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "NewScore",
+                    "type": {
+                        "category": "int",
+                        "sub_category": null,
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "locals": [
+                {
+                    "name": "ClampedDelta",
+                    "type": {
+                        "category": "int",
+                        "sub_category": null,
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                },
+                {
+                    "name": "Bonus",
+                    "type": {
+                        "category": "int",
+                        "sub_category": null,
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "graph": {
+                "name": "AddScore",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "BBBB0001-2222-3333-4444-555566667777",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "AddScore",
+                        "position": { "x": -240, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "BBBB0001-2222-3333-4444-555566667701",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "BBBB0001-2222-3333-4444-555566667702",
+                                "name": "Delta",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "int",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "BBBB0002-2222-3333-4444-555566667777",
+                        "class": "K2Node_VariableSet",
+                        "title": "Set Score",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "BBBB0002-2222-3333-4444-555566667711",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "BBBB0002-2222-3333-4444-555566667712",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "BBBB0002-2222-3333-4444-555566667713",
+                                "name": "Score",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "int",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "0"
+                            }
+                        ],
+                        "meta": { "variable_reference": "Score" }
+                    },
+                    {
+                        "id": "BBBB0003-2222-3333-4444-555566667777",
+                        "class": "K2Node_FunctionResult",
+                        "title": "Return Node",
+                        "position": { "x": 320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "BBBB0003-2222-3333-4444-555566667721",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "BBBB0003-2222-3333-4444-555566667722",
+                                "name": "NewScore",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "int",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "0"
+                            }
+                        ],
+                        "meta": {}
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "BBBB0001-2222-3333-4444-555566667777",
+                        "from_pin": "BBBB0001-2222-3333-4444-555566667701",
+                        "to_node": "BBBB0002-2222-3333-4444-555566667777",
+                        "to_pin": "BBBB0002-2222-3333-4444-555566667711"
+                    },
+                    {
+                        "from_node": "BBBB0001-2222-3333-4444-555566667777",
+                        "from_pin": "BBBB0001-2222-3333-4444-555566667702",
+                        "to_node": "BBBB0002-2222-3333-4444-555566667777",
+                        "to_pin": "BBBB0002-2222-3333-4444-555566667713"
+                    },
+                    {
+                        "from_node": "BBBB0002-2222-3333-4444-555566667777",
+                        "from_pin": "BBBB0002-2222-3333-4444-555566667712",
+                        "to_node": "BBBB0003-2222-3333-4444-555566667777",
+                        "to_pin": "BBBB0003-2222-3333-4444-555566667721"
+                    }
+                ]
+            }
+        }
+    ]
+}
