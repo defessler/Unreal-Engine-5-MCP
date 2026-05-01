@@ -114,7 +114,7 @@ namespace
 			{
 				Extras.Add(TEXT("targetClass"), T->GetPathName());
 			}
-			Extras.Add(TEXT("isPureCast"), BoolToString(CastNode->bIsPureCast));
+			Extras.Add(TEXT("isPureCast"), BoolToString(CastNode->IsNodePure()));
 			return;
 		}
 		if (UK2Node_MacroInstance* Macro = Cast<UK2Node_MacroInstance>(Node))
