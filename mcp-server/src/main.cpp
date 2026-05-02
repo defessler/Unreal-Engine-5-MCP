@@ -66,8 +66,9 @@ int main() {
     auto cfg = backends::ConfigFromEnv(exeDir);
 
     std::cerr << fmt::format(
-        "[bp-reader-mcp] starting; backend={} fixtures={}\n",
-        cfg.backend, cfg.fixturesDir.string());
+        "[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} timeout={}s\n",
+        cfg.backend, cfg.fixturesDir.string(),
+        cfg.engineDir.string(), cfg.uproject.string(), cfg.timeoutSeconds);
 
     std::unique_ptr<backends::IBlueprintReader> reader;
     try {

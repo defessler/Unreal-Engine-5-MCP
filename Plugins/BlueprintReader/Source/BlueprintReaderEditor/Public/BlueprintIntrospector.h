@@ -14,6 +14,7 @@ public:
 	static TOptional<FBlueprintInfo> Read(UBlueprint* Blueprint);
 
 	static FString FormatPinType(const FEdGraphPinType& Type);
+	static FBPStructuredPinType MakeStructuredPinType(const FEdGraphPinType& Type);
 
 private:
 	static FBPGraphInfo ReadGraph(UEdGraph* Graph);

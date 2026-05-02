@@ -28,6 +28,7 @@ UnrealEngine/
 mcp-server/build/
 mcp-server/out/
 mcp-server/cmake-build-*/
+mcp-server/scripts/*-output.txt
 
 # OS junk
 Thumbs.db

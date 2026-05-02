@@ -2,17 +2,34 @@
 
 #include "CoreMinimal.h"
 
+// Structured terminal pin type. Mirrors the wire format's BPPinType
+// (Shared/BlueprintReaderTypes.h) so the wire serializer can emit it without
+// having to parse FBPPinInfo::Type back into its components. Populated from
+// FEdGraphPinType alongside the formatted-string representation.
+struct FBPStructuredPinType
+{
+	FString Category;             // exec | bool | int | real | string | object | class | struct | enum | ...
+	FString SubCategory;          // float / double for real, etc.
+	FString SubCategoryObject;    // path name when applicable
+	bool bIsArray = false;
+	bool bIsSet = false;
+	bool bIsMap = false;
+};
+
 struct FBPPinLinkInfo
 {
 	FString NodeGuid;
 	FString PinName;
+	FString PinId;                // GUID of the linked pin — used by wire format
 };
 
 struct FBPPinInfo
 {
 	FString Name;
+	FString PinId;                // GUID — added for wire-format `id` field
 	FString Direction;
-	FString Type;
+	FString Type;                 // human-readable formatted type
+	FBPStructuredPinType StructuredType;
 	FString DefaultValue;
 	FString DefaultObjectPath;
 	FString DefaultText;
@@ -28,6 +45,7 @@ struct FBPVariableInfo
 	FString FriendlyName;
 	FString Category;
 	FString Type;
+	FBPStructuredPinType StructuredType;
 	FString DefaultValue;
 	bool bIsReplicated = false;
 	bool bIsTransient = false;
@@ -53,6 +71,7 @@ struct FBPGraphInfo
 {
 	FString Name;
 	FString SchemaPath;
+	FString WireType;             // "EventGraph" | "Function" | "Macro" | "Construction" | "DelegateSignature"
 	TArray<FBPNodeInfo> Nodes;
 	TArray<FBPVariableInfo> LocalVariables;
 };
