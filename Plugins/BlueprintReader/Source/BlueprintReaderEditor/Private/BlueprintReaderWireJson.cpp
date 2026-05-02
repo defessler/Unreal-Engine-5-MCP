@@ -2,9 +2,12 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "UObject/Class.h"
 
 namespace
 {
@@ -400,6 +403,59 @@ FString FBlueprintReaderWireJson::WriteString(const TSharedRef<FJsonObject>& Obj
 		FJsonSerializer::Serialize(Object, Writer);
 	}
 	return Out;
+}
+
+bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& Json, FEdGraphPinType& OutType)
+{
+	if (!Json.IsValid()) return false;
+
+	FString Category;
+	if (!Json->TryGetStringField(TEXT("category"), Category) || Category.IsEmpty())
+	{
+		return false;
+	}
+	OutType.PinCategory = FName(*Category);
+
+	FString SubCategory;
+	if (Json->TryGetStringField(TEXT("sub_category"), SubCategory) && !SubCategory.IsEmpty())
+	{
+		OutType.PinSubCategory = FName(*SubCategory);
+	}
+
+	FString SubObjectPath;
+	if (Json->TryGetStringField(TEXT("sub_category_object"), SubObjectPath) && !SubObjectPath.IsEmpty())
+	{
+		// Try to resolve the path as a UClass first (most common for object/class pins).
+		// Fall back to UScriptStruct / UEnum for struct/enum pins.
+		UObject* Resolved = StaticLoadObject(UClass::StaticClass(), nullptr, *SubObjectPath);
+		if (!Resolved)
+		{
+			Resolved = StaticLoadObject(UScriptStruct::StaticClass(), nullptr, *SubObjectPath);
+		}
+		if (!Resolved)
+		{
+			Resolved = StaticLoadObject(UEnum::StaticClass(), nullptr, *SubObjectPath);
+		}
+		if (!Resolved)
+		{
+			Resolved = StaticLoadObject(UObject::StaticClass(), nullptr, *SubObjectPath);
+		}
+		if (Resolved)
+		{
+			OutType.PinSubCategoryObject = Resolved;
+		}
+	}
+
+	bool bArr = false, bSet = false, bMap = false;
+	Json->TryGetBoolField(TEXT("is_array"), bArr);
+	Json->TryGetBoolField(TEXT("is_set"),   bSet);
+	Json->TryGetBoolField(TEXT("is_map"),   bMap);
+	if (bArr)      OutType.ContainerType = EPinContainerType::Array;
+	else if (bSet) OutType.ContainerType = EPinContainerType::Set;
+	else if (bMap) OutType.ContainerType = EPinContainerType::Map;
+	else           OutType.ContainerType = EPinContainerType::None;
+
+	return true;
 }
 
 FString FBlueprintReaderWireJson::WriteArrayString(const TArray<TSharedPtr<FJsonValue>>& Array, bool bPretty)

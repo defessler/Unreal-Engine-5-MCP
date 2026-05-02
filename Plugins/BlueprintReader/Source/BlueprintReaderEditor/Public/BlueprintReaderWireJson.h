@@ -44,4 +44,8 @@ public:
 
 	static FString WriteString(const TSharedRef<FJsonObject>& Object, bool bPretty);
 	static FString WriteArrayString(const TArray<TSharedPtr<FJsonValue>>& Array, bool bPretty);
+
+	// Parse a wire-format BPPinType JSON object back into an FEdGraphPinType.
+	// Used by the write-tool ops (e.g. add_variable). Returns true on success.
+	static bool ParseWirePinType(const TSharedPtr<FJsonObject>& Json, struct FEdGraphPinType& OutType);
 };
