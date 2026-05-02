@@ -410,6 +410,131 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             return nlohmann::json{{"ok", true}};
         });
     }
+
+    // ===== Discoverability =================================================
+    // These two tools return static metadata about the writable surface so a
+    // model can ask "what are the valid `kind` values for add_node?" or
+    // "what does a BPPinType for a struct ref look like?" without scanning
+    // documentation. The lists are baked in to match the plugin's actual
+    // dispatch — keep them in sync with BlueprintReaderCommandlet.cpp's
+    // RunAddNodeOp + BlueprintReaderWireJson::ParseWirePinType.
+
+    // ----- list_node_kinds -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "list_node_kinds";
+        d.description =
+            "List the `kind` values that `add_node` accepts, with required "
+            "extras for each. Pure metadata — no backend call.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [](const nlohmann::json&) {
+            return nlohmann::json::array({
+                nlohmann::json{
+                    {"kind", "Branch"},
+                    {"class", "K2Node_IfThenElse"},
+                    {"description", "Two-way exec branch on a bool condition pin."},
+                    {"extras", nlohmann::json::array()},
+                },
+                nlohmann::json{
+                    {"kind", "Sequence"},
+                    {"class", "K2Node_ExecutionSequence"},
+                    {"description", "Fires Then 0..N in order. Add more outputs by hand in the editor."},
+                    {"extras", nlohmann::json::array()},
+                },
+                nlohmann::json{
+                    {"kind", "VariableGet"},
+                    {"class", "K2Node_VariableGet"},
+                    {"description", "Read a member variable on Self."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","variable"}, {"required",true},
+                                       {"description","Member variable name."}}
+                    })},
+                },
+                nlohmann::json{
+                    {"kind", "VariableSet"},
+                    {"class", "K2Node_VariableSet"},
+                    {"description", "Write a member variable on Self."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","variable"}, {"required",true},
+                                       {"description","Member variable name."}}
+                    })},
+                },
+                nlohmann::json{
+                    {"kind", "CallFunction"},
+                    {"class", "K2Node_CallFunction"},
+                    {"description", "Call a UFUNCTION on a class."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","function"}, {"required",true},
+                                       {"description","Function name as declared on the owning class."}},
+                        nlohmann::json{{"name","function_owner"}, {"required",true},
+                                       {"description","UClass path (`/Script/Engine.KismetSystemLibrary`) or short name (`KismetSystemLibrary`)."}}
+                    })},
+                },
+                nlohmann::json{
+                    {"kind", "CustomEvent"},
+                    {"class", "K2Node_CustomEvent"},
+                    {"description", "Defines a custom event entry point."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","event_name"}, {"required",true},
+                                       {"description","FName for the new event."}}
+                    })},
+                },
+            });
+        });
+    }
+
+    // ----- list_pin_categories ---------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "list_pin_categories";
+        d.description =
+            "List the canonical BPPinType.category values + container modifiers. "
+            "Useful when constructing the `type` argument for add_variable. "
+            "Pure metadata — no backend call.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [](const nlohmann::json&) {
+            auto cat = [](const char* c, const char* desc, std::vector<std::string> subs = {},
+                          const char* objHint = nullptr) {
+                nlohmann::json j = {
+                    {"category", c},
+                    {"description", desc},
+                    {"sub_categories", subs},
+                };
+                if (objHint) j["sub_category_object_hint"] = objHint;
+                return j;
+            };
+            return nlohmann::json{
+                {"categories", nlohmann::json::array({
+                    cat("exec",      "Execution flow (white wires)."),
+                    cat("bool",      "Boolean."),
+                    cat("byte",      "8-bit unsigned integer (also used for enums).",
+                        {}, "Optional UEnum path if the byte is an enum."),
+                    cat("int",       "32-bit signed integer."),
+                    cat("int64",     "64-bit signed integer."),
+                    cat("real",      "Floating point. `sub_category` selects precision.",
+                        {"float","double"}),
+                    cat("string",    "FString."),
+                    cat("name",      "FName."),
+                    cat("text",      "FText."),
+                    cat("object",    "UObject reference. `sub_category_object` = the UClass path.",
+                        {}, "UClass path, e.g. /Script/Engine.Actor"),
+                    cat("class",     "UClass reference. `sub_category_object` = the meta-class.",
+                        {}, "UClass path"),
+                    cat("interface", "Interface reference.",
+                        {}, "UClass path of the interface"),
+                    cat("struct",    "USTRUCT.",
+                        {}, "UScriptStruct path, e.g. /Script/CoreUObject.Vector"),
+                    cat("delegate",  "Single-cast delegate."),
+                    cat("wildcard",  "Pin matches any type until connected (used in macros)."),
+                })},
+                {"containers", nlohmann::json::array({
+                    nlohmann::json{{"flag","is_array"}, {"description","TArray<T>"}},
+                    nlohmann::json{{"flag","is_set"},   {"description","TSet<T>"}},
+                    nlohmann::json{{"flag","is_map"},   {"description","TMap<K,V> — note: only the key type is exposed via BPPinType today."}},
+                })},
+            };
+        });
+    }
 }
 
 } // namespace bpr::tools

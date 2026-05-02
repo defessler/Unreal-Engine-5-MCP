@@ -78,6 +78,11 @@ D:\Projects\UE5_AI_BP\
     - Connections: `wire_pins` (schema-validated, accepts pin GUIDs
       or names).
     Mock backend throws (read-only by design).
+  - **Discoverability tools** — `list_node_kinds` and
+    `list_pin_categories`. Pure metadata, no backend call. Self-describing
+    surface so a model can ask "what's a valid `kind` for `add_node`?"
+    or "what does a struct-ref BPPinType look like?" without scanning
+    docs.
   - **README + Claude integration snippet** so the project is actually
     usable: drop-in JSON for Claude Code / Claude Desktop.
   - **Richer seed BP** — `BP_TestEnemy` event graph now has
