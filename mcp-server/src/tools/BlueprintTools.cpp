@@ -154,7 +154,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "find_node";
         d.description =
-            "Search nodes within a blueprint by class or title (case-insensitive substring).";
+            "Search nodes within a blueprint by class or title (case-insensitive substring). "
+            "Optional `kind` further filters by the K2 extras kind, e.g. CallFunction, "
+            "VariableGet, Event, CustomEvent, DynamicCast, MacroInstance, "
+            "FunctionEntry, FunctionResult.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
@@ -164,7 +167,12 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                 }},
                 {"query", {
                     {"type", "string"},
-                    {"description", "Substring matched against node class or title."},
+                    {"description", "Substring matched against node class or title. "
+                                    "Pass an empty string to match any node when filtering by `kind` only."},
+                }},
+                {"kind", {
+                    {"type", "string"},
+                    {"description", "Optional. K2 extras `kind` to match exactly (case-insensitive)."},
                 }},
             }},
             {"required", nlohmann::json::array({"asset_path", "query"})},
@@ -172,7 +180,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
             const std::string& asset = RequireString(args, "asset_path");
             const std::string& q = RequireString(args, "query");
-            return nlohmann::json(reader.FindNode(asset, q));
+            std::string kind = OptString(args, "kind", "");
+            return nlohmann::json(reader.FindNode(asset, q, kind));
         });
     }
 }

@@ -415,12 +415,23 @@ std::vector<BPVariable> CommandletBlueprintReader::ListVariables(std::string_vie
     return j.get<std::vector<BPVariable>>();
 }
 
-std::vector<BPNode> CommandletBlueprintReader::FindNode(std::string_view assetPath, std::string_view query) {
-    auto j = RunOp({
-        L"-Op=Find",
-        L"-Asset=" + Widen(assetPath),
-        L"-Query=" + Widen(query),
-    });
+std::vector<BPNode> CommandletBlueprintReader::FindNode(std::string_view assetPath,
+                                                        std::string_view query,
+                                                        std::string_view kind) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=Find");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    // Only pass -Query/-Kind when non-empty. UE's FParse::Value treats a
+    // bare -Query= as an empty-string value; combined with another flag
+    // following it (e.g. -Kind=...), the parser can swallow the wrong
+    // token. Keeping the args list tight side-steps that.
+    if (!query.empty()) {
+        args.push_back(L"-Query=" + Widen(query));
+    }
+    if (!kind.empty()) {
+        args.push_back(L"-Kind=" + Widen(kind));
+    }
+    auto j = RunOp(args);
     return j.get<std::vector<BPNode>>();
 }
 

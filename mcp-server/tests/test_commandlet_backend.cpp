@@ -107,3 +107,29 @@ TEST_CASE("CommandletBlueprintReader: AssetNotFound on bogus path"
     CHECK_THROWS_AS(reader->ReadBlueprint("/Game/Nope/Definitely_Does_Not_Exist"),
                     bpr::backends::BlueprintReaderError);
 }
+
+TEST_CASE("CommandletBlueprintReader: FindNode kind filter narrows by K2 extras"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader();
+
+    // Empty query + kind="VariableGet" should match the bIsAlive Get node.
+    auto vars = reader->FindNode("/Game/AI/BP_TestEnemy", "", "VariableGet");
+    REQUIRE_GE(vars.size(), 1);
+    bool sawIsAlive = false;
+    for (const auto& n : vars) {
+        if (n.Class == "K2Node_VariableGet") sawIsAlive = true;
+    }
+    CHECK(sawIsAlive);
+
+    // Empty query + kind="CallFunction" should match the PrintString node.
+    auto calls = reader->FindNode("/Game/AI/BP_TestEnemy", "", "CallFunction");
+    REQUIRE_GE(calls.size(), 1);
+
+    // kind="Event" should match the auto-generated BeginPlay/Tick events.
+    auto events = reader->FindNode("/Game/AI/BP_TestEnemy", "", "Event");
+    CHECK_GE(events.size(), 1);
+
+    // Query + kind together should AND.
+    auto noMatch = reader->FindNode("/Game/AI/BP_TestEnemy", "DoesNotExist", "Event");
+    CHECK(noMatch.empty());
+}

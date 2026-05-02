@@ -31,7 +31,9 @@ public:
 	static TSharedPtr<FJsonObject> GraphToJson(const FBlueprintInfo& Info, const FString& GraphName);
 	static TSharedPtr<FJsonObject> FunctionToJson(const FBlueprintInfo& Info, const FString& FunctionName);
 	static TArray<TSharedPtr<FJsonValue>> VariablesToJson(const FBlueprintInfo& Info);
-	static TArray<TSharedPtr<FJsonValue>> FindNodesAsJson(const FBlueprintInfo& Info, const FString& Query);
+	static TArray<TSharedPtr<FJsonValue>> FindNodesAsJson(const FBlueprintInfo& Info,
+	                                                      const FString& Query,
+	                                                      const FString& Kind = FString());
 
 	// Helpers exposed for the commandlet's List op. Builds a summary object
 	// from raw asset registry fields without needing a full FBlueprintInfo.

@@ -157,10 +157,21 @@ std::vector<BPVariable> MockBlueprintReader::ListVariables(std::string_view asse
 }
 
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
-                                                  std::string_view query) {
+                                                  std::string_view query,
+                                                  std::string_view kind) {
     const auto& entry = Require(assetPath);
     std::vector<BPNode> out;
+    const std::string kindLower = kind.empty() ? std::string{} : LowerAscii(kind);
+    auto matchKind = [&](const BPNode& n) -> bool {
+        if (kindLower.empty()) return true;
+        if (!n.Meta.is_object()) return false;
+        auto it = n.Meta.find("kind");
+        if (it == n.Meta.end() || !it->is_string()) return false;
+        return LowerAscii(it->get<std::string>()) == kindLower;
+    };
     auto match = [&](const BPNode& n) {
+        if (!matchKind(n)) return false;
+        if (query.empty()) return true;
         return ContainsCI(n.Class, query) || ContainsCI(n.Title, query);
     };
     for (const auto& g : entry.graphs) {
