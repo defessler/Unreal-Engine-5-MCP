@@ -61,13 +61,22 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir) {
     }
     cfg.timeoutSeconds = IntFromEnvOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
 
+    // Daemon defaults to ON for the commandlet backend — the speedup is
+    // ~200x and the fallback to one-shot is automatic on transport failure.
+    // Set BP_READER_DAEMON=0|false|no|off to opt out.
+    cfg.useDaemon = true;
     auto daemon = EnvOrDefault("BP_READER_DAEMON", "");
     if (!daemon.empty()) {
-        // Accept 1 / true / yes / on (case-insensitive).
         std::string d;
         d.reserve(daemon.size());
         for (char c : daemon) d.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        cfg.useDaemon = (d == "1" || d == "true" || d == "yes" || d == "on");
+        if (d == "0" || d == "false" || d == "no" || d == "off") {
+            cfg.useDaemon = false;
+        } else if (d == "1" || d == "true" || d == "yes" || d == "on") {
+            cfg.useDaemon = true;
+        }
+        // Otherwise: leave the default. (Better than silently swapping the
+        // mode on a typo.)
     }
     return cfg;
 }
