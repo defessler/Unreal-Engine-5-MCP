@@ -37,11 +37,12 @@ bool LiveBackendAvailable() {
            !GetEnv("BP_READER_PROJECT").empty();
 }
 
-std::unique_ptr<bpr::backends::CommandletBlueprintReader> MakeLiveReader() {
+std::unique_ptr<bpr::backends::CommandletBlueprintReader> MakeLiveReader(bool useDaemon = false) {
     bpr::backends::CommandletBlueprintReader::Config cfg;
     cfg.engineDir = std::filesystem::path(GetEnv("BP_READER_ENGINE_DIR"));
     cfg.uproject  = std::filesystem::path(GetEnv("BP_READER_PROJECT"));
     cfg.timeout   = std::chrono::seconds(180);
+    cfg.useDaemon = useDaemon;
     return std::make_unique<bpr::backends::CommandletBlueprintReader>(std::move(cfg));
 }
 
@@ -106,6 +107,40 @@ TEST_CASE("CommandletBlueprintReader: AssetNotFound on bogus path"
     auto reader = MakeLiveReader();
     CHECK_THROWS_AS(reader->ReadBlueprint("/Game/Nope/Definitely_Does_Not_Exist"),
                     bpr::backends::BlueprintReaderError);
+}
+
+TEST_CASE("CommandletBlueprintReader: daemon mode reuses one editor process across calls"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader(/*useDaemon=*/true);
+
+    // First call pays the editor cold-start (~5s); subsequent calls should be
+    // sub-second since the editor stays alive.
+    auto t0 = std::chrono::steady_clock::now();
+    auto first = reader->ListBlueprints("/Game/AI");
+    auto firstMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    REQUIRE_GE(first.size(), 2);
+
+    auto t1 = std::chrono::steady_clock::now();
+    auto md = reader->ReadBlueprint("/Game/AI/BP_TestEnemy");
+    auto vars = reader->ListVariables("/Game/AI/BP_TestEnemy");
+    auto fn = reader->GetFunction("/Game/AI/BP_TestEnemy", "TakeDamage");
+    auto found = reader->FindNode("/Game/AI/BP_TestEnemy", "", "VariableGet");
+    auto subsequentMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t1).count();
+
+    CHECK(md.Name == "BP_TestEnemy");
+    CHECK_GE(vars.size(), 4);
+    CHECK(fn.Name == "TakeDamage");
+    CHECK_GE(found.size(), 1);
+
+    // Soft check: 4 follow-up calls together should be much cheaper than the
+    // first call (which paid the cold-start). On the dev box this is typically
+    // ~0.5–1.5 s for the four calls vs ~5–7 s for the first.
+    INFO("First call (cold start) took " << firstMs << "ms; "
+         "next 4 calls together took " << subsequentMs << "ms");
+    CHECK(subsequentMs < firstMs * 4);
 }
 
 TEST_CASE("CommandletBlueprintReader: FindNode kind filter narrows by K2 extras"

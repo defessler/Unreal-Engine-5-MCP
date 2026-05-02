@@ -1,22 +1,37 @@
 // CommandletBlueprintReader — drives the BlueprintReader plugin's UE
-// commandlet over a one-shot subprocess for each tool call. Cold start is
-// 10–30s; that's acceptable for Phase 1 (a daemon mode is a future phase).
+// commandlet to read blueprint data.
 //
-// The reader spawns `UnrealEditor-Cmd.exe <uproject> -run=BlueprintReader
-// -Op=<...> ... -Out=<temp.json> -nullrhi -nosplash -unattended -nopause
-// -stdout`, waits for it to exit, then reads the temp file and parses the
-// canonical wire-format JSON into the Shared types.
+// Two modes:
+//   * One-shot (default): spawn `UnrealEditor-Cmd.exe -run=BlueprintReader
+//     -Op=<...>` per tool call. Each call pays the editor cold-start cost
+//     (~5–7 s on a Dev box).
+//   * Daemon (`Config::useDaemon = true`): spawn the editor once with
+//     `-run=BlueprintReader -Daemon` and reuse the same process across all
+//     calls. The plugin's daemon loop reads commandlet-arg lines from stdin,
+//     prints `__BPR_READY__` once at startup and `__BPR_DONE <code>__` after
+//     each command. Subsequent calls cost only the per-call work (~1 s).
 //
-// Configuration (env, with sensible defaults set by ConfigFromEnv):
-//   * BP_READER_ENGINE_DIR      — path to the source-built engine
+// Both modes write JSON payloads to a temp file under %TEMP% so noisy
+// editor log output on stdout doesn't pollute it.
+//
+// Configuration (env, defaults set by ConfigFromEnv):
+//   * BP_READER_ENGINE_DIR       — path to the source-built engine
 //   * BP_READER_PROJECT          — path to the .uproject
-//   * BP_READER_TIMEOUT_SECONDS — per-call timeout (default 120)
+//   * BP_READER_TIMEOUT_SECONDS  — per-call timeout (default 120)
+//   * BP_READER_DAEMON           — set to 1/true/yes to enable daemon mode
 #pragma once
 
 #include "backends/IBlueprintReader.h"
 
 #include <chrono>
 #include <filesystem>
+#include <mutex>
+#include <string>
+
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#endif
 
 namespace bpr::backends {
 
@@ -26,9 +41,14 @@ public:
         std::filesystem::path engineDir;
         std::filesystem::path uproject;
         std::chrono::seconds timeout{120};
+        bool useDaemon = false;
     };
 
     explicit CommandletBlueprintReader(Config cfg);
+    ~CommandletBlueprintReader() override;
+
+    CommandletBlueprintReader(const CommandletBlueprintReader&) = delete;
+    CommandletBlueprintReader& operator=(const CommandletBlueprintReader&) = delete;
 
     std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;
     BPMetadata                  ReadBlueprint(std::string_view assetPath) override;
@@ -36,13 +56,31 @@ public:
     BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
     std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
     std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
-                                          std::string_view kind = {}) override;
+                                         std::string_view kind = {}) override;
 
 private:
-    // Run a single `-run=BlueprintReader` invocation with the given argv. Writes
-    // its JSON payload into a temp file and returns the parsed JSON.
+    // Dispatches to RunOpOneShot or RunOpDaemon. Always writes its JSON
+    // payload to a temp file under %TEMP% and returns the parsed JSON.
     nlohmann::json RunOp(const std::vector<std::wstring>& opArgs);
 
+    nlohmann::json RunOpOneShot(const std::vector<std::wstring>& opArgs);
+    nlohmann::json RunOpDaemon(const std::vector<std::wstring>& opArgs);
+
+#if defined(_WIN32)
+    void EnsureDaemon();
+    void TerminateDaemon();
+    // Drain daemonStdout_ into accumulator_ until `marker` appears (or the
+    // deadline hits). On success, consumes everything up to and including
+    // the marker. Returns the bytes consumed (excluding the marker).
+    std::string ReadUntilMarker(const std::string& marker);
+
+    HANDLE daemonProcess_ = nullptr;
+    HANDLE daemonStdin_   = nullptr;
+    HANDLE daemonStdout_  = nullptr;
+    std::string accumulator_;
+#endif
+
+    std::mutex daemonMutex_;  // serializes RunOpDaemon (one in-flight call max)
     Config cfg_;
     std::filesystem::path editorCmdExe_;
 };

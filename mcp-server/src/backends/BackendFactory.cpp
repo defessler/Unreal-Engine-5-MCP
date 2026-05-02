@@ -2,6 +2,7 @@
 #include "backends/CommandletBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 
+#include <cctype>
 #include <cstdlib>
 
 #include <fmt/core.h>
@@ -59,6 +60,15 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir) {
         cfg.uproject = std::filesystem::path(uproj);
     }
     cfg.timeoutSeconds = IntFromEnvOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
+
+    auto daemon = EnvOrDefault("BP_READER_DAEMON", "");
+    if (!daemon.empty()) {
+        // Accept 1 / true / yes / on (case-insensitive).
+        std::string d;
+        d.reserve(daemon.size());
+        for (char c : daemon) d.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        cfg.useDaemon = (d == "1" || d == "true" || d == "yes" || d == "on");
+    }
     return cfg;
 }
 
@@ -71,6 +81,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
         cc.engineDir = cfg.engineDir;
         cc.uproject  = cfg.uproject;
         cc.timeout   = std::chrono::seconds(cfg.timeoutSeconds);
+        cc.useDaemon = cfg.useDaemon;
         return std::make_unique<CommandletBlueprintReader>(std::move(cc));
     }
     if (cfg.backend == "live") {
