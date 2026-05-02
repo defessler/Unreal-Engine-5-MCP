@@ -14,6 +14,9 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <windows.h>
+#include "Windows/HideWindowsPlatformTypes.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReader, Log, All);
 
@@ -154,7 +157,31 @@ namespace
 	}
 }
 
+namespace
+{
+	// Shared dispatch — used by both the one-shot Main path and the daemon
+	// loop. Treats `Params` as a commandlet-arg-style string and runs a
+	// single op against it.
+	int32 RunOneOp(const FString& Params);
+
+	// Daemon mode: read newline-terminated commandlet-arg strings from stdin,
+	// run each through RunOneOp, print a sentinel after each so the MCP
+	// backend knows the result file is ready.
+	int32 RunDaemon();
+}
+
 int32 UBlueprintReaderCommandlet::Main(const FString& Params)
+{
+	if (FParse::Param(*Params, TEXT("Daemon")))
+	{
+		return RunDaemon();
+	}
+	return RunOneOp(Params);
+}
+
+namespace
+{
+int32 RunOneOp(const FString& Params)
 {
 	EOp Op;
 	if (!ParseOp(Params, Op)) return 1;
@@ -260,3 +287,73 @@ int32 UBlueprintReaderCommandlet::Main(const FString& Params)
 		return 1;
 	}
 }
+
+int32 RunDaemon()
+{
+	UE_LOG(LogBlueprintReader, Display,
+		TEXT("BlueprintReader daemon started; awaiting commandlet-arg lines on stdin"));
+
+	// Use Windows API directly for stdio so UE's runtime redirection (which
+	// can route C stdio through its log/output system) doesn't intercept the
+	// stream. We need raw bytes hitting the pipe in both directions.
+	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	HANDLE hIn  = GetStdHandle(STD_INPUT_HANDLE);
+
+	auto WriteAll = [hOut](const char* s, DWORD n)
+	{
+		while (n > 0)
+		{
+			DWORD wrote = 0;
+			if (!WriteFile(hOut, s, n, &wrote, nullptr) || wrote == 0) return false;
+			s += wrote;
+			n -= wrote;
+		}
+		return true;
+	};
+
+	const char ready[] = "__BPR_READY__\n";
+	WriteAll(ready, (DWORD)(sizeof(ready) - 1));
+
+	// Read a single line (terminated by '\n') from hIn into Out. Returns
+	// false on EOF / error.
+	auto ReadLine = [hIn](FString& Out) -> bool
+	{
+		Out.Reset();
+		char ch;
+		while (true)
+		{
+			DWORD got = 0;
+			if (!ReadFile(hIn, &ch, 1, &got, nullptr) || got == 0)
+			{
+				return !Out.IsEmpty();  // EOF: return what we have if any
+			}
+			if (ch == '\r') continue;
+			if (ch == '\n') return true;
+			Out.AppendChar(static_cast<TCHAR>(ch));
+		}
+	};
+
+	while (true)
+	{
+		FString Line;
+		if (!ReadLine(Line))
+		{
+			UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: stdin closed; exiting"));
+			return 0;
+		}
+		Line.TrimStartAndEndInline();
+		if (Line.IsEmpty()) continue;
+		if (Line.Equals(TEXT("QUIT"), ESearchCase::IgnoreCase))
+		{
+			UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: QUIT received"));
+			return 0;
+		}
+
+		UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: received line: %s"), *Line);
+		const int32 Code = RunOneOp(Line);
+		const FString DoneStr = FString::Printf(TEXT("__BPR_DONE %d__\n"), Code);
+		const auto DoneAnsi = StringCast<ANSICHAR>(*DoneStr);
+		WriteAll(DoneAnsi.Get(), (DWORD)FCStringAnsi::Strlen(DoneAnsi.Get()));
+	}
+}
+} // namespace
