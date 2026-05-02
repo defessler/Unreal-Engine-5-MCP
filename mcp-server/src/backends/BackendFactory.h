@@ -18,7 +18,7 @@ struct BackendConfig {
     std::filesystem::path engineDir;
     std::filesystem::path uproject;
     int timeoutSeconds = 120;
-    bool useDaemon = false;
+    bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
 };
 
 // Read BP_READER_BACKEND and BP_READER_FIXTURES_DIR from the environment.

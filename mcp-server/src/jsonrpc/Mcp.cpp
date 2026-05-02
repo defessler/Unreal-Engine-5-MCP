@@ -1,5 +1,6 @@
 #include "jsonrpc/Mcp.h"
 
+#include <chrono>
 #include <stdexcept>
 
 #include <fmt/core.h>
@@ -10,8 +11,9 @@ namespace jr = bpr::jsonrpc;
 
 namespace {
 
-nlohmann::json MakeToolTextContent(const std::string& text, bool isError) {
-    return nlohmann::json{
+nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
+                                   nlohmann::json meta = nlohmann::json::object()) {
+    nlohmann::json env = {
         {"content", nlohmann::json::array({
             nlohmann::json{
                 {"type", "text"},
@@ -20,6 +22,13 @@ nlohmann::json MakeToolTextContent(const std::string& text, bool isError) {
         })},
         {"isError", isError},
     };
+    if (!meta.empty()) {
+        // MCP 2024-11-05 reserves `_meta` as the extension field on tool
+        // result envelopes; clients that surface it see telemetry, others
+        // ignore it.
+        env["_meta"] = std::move(meta);
+    }
+    return env;
 }
 
 } // namespace
@@ -90,16 +99,30 @@ void RegisterHandlers(jr::Server& server,
                 fmt::format("unknown tool: {}", name), /*isError=*/true));
         }
 
+        const auto t0 = std::chrono::steady_clock::now();
+        auto elapsedMs = [&]() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+        };
+
         try {
             nlohmann::json toolResult = (*fn)(arguments);
             // Convention: tools return canonical JSON. We dump it as text
             // content so MCP clients (which expect a content array) can
             // surface it; the underlying JSON shape is what Claude consumes.
+            nlohmann::json meta = {
+                {"elapsed_ms", elapsedMs()},
+                {"tool", name},
+            };
             return jr::Response::Ok(MakeToolTextContent(toolResult.dump(2),
-                /*isError=*/false));
+                /*isError=*/false, std::move(meta)));
         } catch (const std::exception& e) {
+            nlohmann::json meta = {
+                {"elapsed_ms", elapsedMs()},
+                {"tool", name},
+            };
             return jr::Response::Ok(MakeToolTextContent(
-                fmt::format("tool error: {}", e.what()), /*isError=*/true));
+                fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
         }
     });
 }
