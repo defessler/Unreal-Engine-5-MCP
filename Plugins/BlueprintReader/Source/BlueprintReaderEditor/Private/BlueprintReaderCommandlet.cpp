@@ -18,11 +18,17 @@
 #include "HAL/PlatformMisc.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_Knot.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_Self.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -60,6 +66,7 @@ namespace
 		Graph,
 		Function,
 		Variables,
+		Components,
 		Find,
 		// Write ops (Phase 1.5):
 		AddVariable,
@@ -89,6 +96,7 @@ namespace
 		if (OpStr.Equals(TEXT("Graph"), ESearchCase::IgnoreCase))            { OutOp = EOp::Graph; return true; }
 		if (OpStr.Equals(TEXT("Function"), ESearchCase::IgnoreCase))         { OutOp = EOp::Function; return true; }
 		if (OpStr.Equals(TEXT("Variables"), ESearchCase::IgnoreCase))        { OutOp = EOp::Variables; return true; }
+		if (OpStr.Equals(TEXT("Components"), ESearchCase::IgnoreCase))       { OutOp = EOp::Components; return true; }
 		if (OpStr.Equals(TEXT("Find"), ESearchCase::IgnoreCase))             { OutOp = EOp::Find; return true; }
 		if (OpStr.Equals(TEXT("AddVariable"), ESearchCase::IgnoreCase))      { OutOp = EOp::AddVariable; return true; }
 		if (OpStr.Equals(TEXT("SetNodePosition"), ESearchCase::IgnoreCase))  { OutOp = EOp::SetNodePosition; return true; }
@@ -520,10 +528,78 @@ namespace
 			Evt->AllocateDefaultPins();
 			Spawned = Evt;
 		}
+		else if (Kind.Equals(TEXT("Cast"), ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("DynamicCast"), ESearchCase::IgnoreCase))
+		{
+			FString TargetClass;
+			FParse::Value(*Params, TEXT("TargetClass="), TargetClass);
+			if (TargetClass.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode Cast requires -TargetClass=<UClass path or short name>"));
+				return 1;
+			}
+			UClass* Tgt = ResolveClass(TargetClass);
+			if (!Tgt)
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode Cast: class %s not found"), *TargetClass);
+				return 1;
+			}
+			UK2Node_DynamicCast* Cast = NewObject<UK2Node_DynamicCast>(Graph);
+			Cast->TargetType = Tgt;
+			Cast->CreateNewGuid();
+			Cast->NodePosX = X; Cast->NodePosY = Y;
+			Graph->AddNode(Cast, false, false);
+			Cast->PostPlacedNewNode();
+			Cast->AllocateDefaultPins();
+			Spawned = Cast;
+		}
+		else if (Kind.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_Self>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("MakeArray"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_MakeArray>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("MakeStruct"), ESearchCase::IgnoreCase))
+		{
+			FString StructPath;
+			FParse::Value(*Params, TEXT("StructType="), StructPath);
+			if (StructPath.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode MakeStruct requires -StructType=<UScriptStruct path, e.g. /Script/CoreUObject.Vector>"));
+				return 1;
+			}
+			UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *StructPath);
+			if (!Struct)
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode MakeStruct: struct %s not found"), *StructPath);
+				return 1;
+			}
+			UK2Node_MakeStruct* Make = NewObject<UK2Node_MakeStruct>(Graph);
+			Make->StructType = Struct;
+			Make->CreateNewGuid();
+			Make->NodePosX = X; Make->NodePosY = Y;
+			Graph->AddNode(Make, false, false);
+			Make->PostPlacedNewNode();
+			Make->AllocateDefaultPins();
+			Spawned = Make;
+		}
+		else if (Kind.Equals(TEXT("FormatText"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_FormatText>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("Knot"), ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("Reroute"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_Knot>(Graph, X, Y);
+		}
 		else
 		{
 			UE_LOG(LogBlueprintReader, Error,
-				TEXT("AddNode: unrecognised -Kind=%s; expected Branch | Sequence | VariableGet | VariableSet | CallFunction | CustomEvent"),
+				TEXT("AddNode: unrecognised -Kind=%s; see list_node_kinds for valid values"),
 				*Kind);
 			return 1;
 		}
@@ -1073,6 +1149,11 @@ int32 RunOneOp(const FString& Params)
 	{
 		auto Vars = FBlueprintReaderWireJson::VariablesToJson(*Info);
 		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Vars, bPretty), OutputPath);
+	}
+	case EOp::Components:
+	{
+		auto Comps = FBlueprintReaderWireJson::ComponentsToJson(*Info);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Comps, bPretty), OutputPath);
 	}
 	case EOp::Find:
 	{
