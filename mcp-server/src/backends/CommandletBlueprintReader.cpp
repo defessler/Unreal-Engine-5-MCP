@@ -295,7 +295,33 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
     }
 }
 
+CommandletBlueprintReader::~CommandletBlueprintReader() {
+#if defined(_WIN32)
+    TerminateDaemon();
+#endif
+}
+
 nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>& opArgs) {
+    if (cfg_.useDaemon) {
+        try {
+            return RunOpDaemon(opArgs);
+        } catch (const AssetNotFound&) {
+            throw;  // user-level error; propagate as-is
+        } catch (const std::exception& e) {
+            // Daemon transport failure — log and fall through to one-shot.
+            std::fprintf(stderr,
+                "[bp-reader-mcp][commandlet][daemon] transport error, falling back to one-shot: %s\n",
+                e.what());
+#if defined(_WIN32)
+            TerminateDaemon();
+#endif
+            return RunOpOneShot(opArgs);
+        }
+    }
+    return RunOpOneShot(opArgs);
+}
+
+nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::wstring>& opArgs) {
     auto outFile = TempJsonPath();
 
     std::vector<std::wstring> args;
@@ -318,7 +344,6 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
     const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
 
-    // Best-effort log to stderr.
     std::fprintf(stderr,
                  "[bp-reader-mcp][commandlet] op-args=%zu exit=%lu timed_out=%d duration=%lldms\n",
                  opArgs.size(), static_cast<unsigned long>(r.exitCode),
@@ -341,8 +366,6 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
             cfg_.timeout.count(), TrimLines(r.stderrTail, 50)));
     }
     if (r.exitCode != 0) {
-        // Exit code 4 from our commandlet means "asset/graph/function not found";
-        // surface that as AssetNotFound for the MCP layer.
         std::string tail = TrimLines(r.stderrTail.empty() ? r.stdoutTail : r.stderrTail, 50);
         cleanup();
         if (r.exitCode == 4) {
@@ -370,6 +393,268 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
     cleanup();
     return parsed;
 }
+
+#if defined(_WIN32)
+
+void CommandletBlueprintReader::TerminateDaemon() {
+    if (daemonProcess_ != nullptr) {
+        // Best-effort clean shutdown: send QUIT, then close stdin to signal EOF.
+        if (daemonStdin_ != nullptr) {
+            const char* quit = "QUIT\n";
+            DWORD written = 0;
+            WriteFile(daemonStdin_, quit, 5, &written, nullptr);
+            CloseHandle(daemonStdin_);
+            daemonStdin_ = nullptr;
+        }
+        // Wait briefly; if it doesn't exit, terminate.
+        if (WaitForSingleObject(daemonProcess_, 2000) != WAIT_OBJECT_0) {
+            TerminateProcess(daemonProcess_, 0);
+            WaitForSingleObject(daemonProcess_, 1000);
+        }
+        CloseHandle(daemonProcess_);
+        daemonProcess_ = nullptr;
+    }
+    if (daemonStdin_ != nullptr) {
+        CloseHandle(daemonStdin_);
+        daemonStdin_ = nullptr;
+    }
+    if (daemonStdout_ != nullptr) {
+        CloseHandle(daemonStdout_);
+        daemonStdout_ = nullptr;
+    }
+    accumulator_.clear();
+}
+
+void CommandletBlueprintReader::EnsureDaemon() {
+    if (daemonProcess_ != nullptr) {
+        // Sanity: if the child died unexpectedly, recycle.
+        DWORD code = STILL_ACTIVE;
+        if (GetExitCodeProcess(daemonProcess_, &code) && code != STILL_ACTIVE) {
+            std::fprintf(stderr,
+                "[bp-reader-mcp][commandlet][daemon] child exited with code %lu; respawning\n",
+                static_cast<unsigned long>(code));
+            TerminateDaemon();
+        } else {
+            return;
+        }
+    }
+
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    HANDLE childInR = nullptr, childInW = nullptr;
+    HANDLE childOutR = nullptr, childOutW = nullptr;
+    if (!CreatePipe(&childInR, &childInW, &sa, 0)) {
+        throw BlueprintReaderError("CreatePipe(stdin) failed");
+    }
+    if (!CreatePipe(&childOutR, &childOutW, &sa, 0)) {
+        CloseHandle(childInR); CloseHandle(childInW);
+        throw BlueprintReaderError("CreatePipe(stdout) failed");
+    }
+    SetHandleInformation(childInW,  HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(childOutR, HANDLE_FLAG_INHERIT, 0);
+
+    std::vector<std::wstring> args;
+    args.push_back(cfg_.uproject.wstring());
+    args.push_back(L"-run=BlueprintReader");
+    args.push_back(L"-Daemon");
+    args.push_back(L"-nullrhi");
+    args.push_back(L"-nosplash");
+    args.push_back(L"-unattended");
+    args.push_back(L"-nopause");
+    args.push_back(L"-stdout");
+    std::wstring cmd = BuildCommandLine(editorCmdExe_.wstring(), args);
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput  = childInR;
+    si.hStdOutput = childOutW;
+    si.hStdError  = childOutW;  // merge stderr into stdout
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(
+        editorCmdExe_.wstring().c_str(),
+        cmd.data(),
+        nullptr, nullptr,
+        TRUE,
+        CREATE_NO_WINDOW,
+        nullptr, nullptr,
+        &si, &pi);
+    CloseHandle(childInR);
+    CloseHandle(childOutW);
+    if (!ok) {
+        DWORD err = GetLastError();
+        CloseHandle(childInW);
+        CloseHandle(childOutR);
+        throw BlueprintReaderError(fmt::format(
+            "CreateProcessW(daemon) failed (err={})", err));
+    }
+    CloseHandle(pi.hThread);
+
+    daemonProcess_ = pi.hProcess;
+    daemonStdin_   = childInW;
+    daemonStdout_  = childOutR;
+
+    // Wait for the daemon's READY sentinel before declaring it usable.
+    const auto t0 = std::chrono::steady_clock::now();
+    try {
+        ReadUntilMarker("__BPR_READY__\n");
+    } catch (const std::exception& e) {
+        TerminateDaemon();
+        throw BlueprintReaderError(fmt::format(
+            "daemon failed to reach READY: {}", e.what()));
+    }
+    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    std::fprintf(stderr,
+        "[bp-reader-mcp][commandlet][daemon] READY after %lldms\n",
+        static_cast<long long>(dt));
+}
+
+std::string CommandletBlueprintReader::ReadUntilMarker(const std::string& marker) {
+    const auto deadline = std::chrono::steady_clock::now() + cfg_.timeout;
+    char buf[4096];
+    for (;;) {
+        auto pos = accumulator_.find(marker);
+        if (pos != std::string::npos) {
+            std::string consumed = accumulator_.substr(0, pos);
+            accumulator_.erase(0, pos + marker.size());
+            return consumed;
+        }
+
+        // Check if child died.
+        DWORD code = STILL_ACTIVE;
+        if (GetExitCodeProcess(daemonProcess_, &code) && code != STILL_ACTIVE) {
+            throw BlueprintReaderError(fmt::format(
+                "daemon process exited (code={}); tail:\n{}", code, TrimLines(accumulator_, 50)));
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            throw BlueprintReaderError(fmt::format(
+                "daemon read timeout after {}s waiting for marker; tail:\n{}",
+                cfg_.timeout.count(), TrimLines(accumulator_, 50)));
+        }
+
+        DWORD avail = 0;
+        if (!PeekNamedPipe(daemonStdout_, nullptr, 0, nullptr, &avail, nullptr)) {
+            throw BlueprintReaderError("daemon stdout pipe error");
+        }
+        if (avail == 0) {
+            // Yield for a moment to avoid spinning.
+            Sleep(15);
+            continue;
+        }
+        DWORD toRead = avail < sizeof(buf) ? avail : (DWORD)sizeof(buf);
+        DWORD got = 0;
+        if (!ReadFile(daemonStdout_, buf, toRead, &got, nullptr) || got == 0) {
+            throw BlueprintReaderError("daemon stdout closed");
+        }
+        accumulator_.append(buf, got);
+    }
+}
+
+nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>& opArgs) {
+    std::lock_guard<std::mutex> lock(daemonMutex_);
+    EnsureDaemon();
+
+    auto outFile = TempJsonPath();
+
+    // Compose a single commandlet-arg line. Each arg is space-quoted as needed.
+    std::wstring line;
+    for (const auto& a : opArgs) {
+        if (!line.empty()) line.push_back(L' ');
+        line.append(QuoteArg(a));
+    }
+    line.append(L" -Out=" + QuoteArg(outFile.wstring()));
+    line.append(L" -Compact\n");
+
+    auto cleanup = [&]() {
+        std::error_code ec;
+        std::filesystem::remove(outFile, ec);
+    };
+
+    std::string lineUtf8 = Narrow(line);
+
+    const auto t0 = std::chrono::steady_clock::now();
+
+    DWORD written = 0;
+    if (!WriteFile(daemonStdin_, lineUtf8.data(),
+                   static_cast<DWORD>(lineUtf8.size()), &written, nullptr) ||
+        written != lineUtf8.size()) {
+        cleanup();
+        throw BlueprintReaderError("daemon stdin write failed");
+    }
+
+    // Wait for the per-call sentinel `__BPR_DONE <code>__\n`. The plugin
+    // emits this after every command. We discard everything else (engine
+    // log lines on the merged stdout/stderr stream).
+    int32_t exitCode = 0;
+    {
+        // Drain everything up to + including the leading marker.
+        ReadUntilMarker("__BPR_DONE ");
+        // The next bytes are decimal digits, then `__\n`. Read up to + including
+        // the `__\n` terminator; the digits sit in `digits`.
+        std::string digits = ReadUntilMarker("__\n");
+        try {
+            exitCode = std::stoi(digits);
+        } catch (...) {
+            cleanup();
+            throw BlueprintReaderError(fmt::format(
+                "daemon emitted malformed sentinel: code='{}'", digits));
+        }
+    }
+
+    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    std::fprintf(stderr,
+                 "[bp-reader-mcp][commandlet][daemon] op-args=%zu exit=%d duration=%lldms\n",
+                 opArgs.size(), exitCode, static_cast<long long>(dt));
+
+    if (exitCode != 0) {
+        std::string tail = TrimLines(accumulator_, 50);
+        cleanup();
+        if (exitCode == 4) {
+            throw AssetNotFound(fmt::format(
+                "daemon op exit=4 (missing target); tail:\n{}", tail));
+        }
+        throw BlueprintReaderError(fmt::format(
+            "daemon op exit={}; tail:\n{}", exitCode, tail));
+    }
+
+    if (!std::filesystem::exists(outFile)) {
+        throw BlueprintReaderError(fmt::format(
+            "daemon op exited 0 but produced no output file at {}", outFile.string()));
+    }
+
+    nlohmann::json parsed;
+    try {
+        std::ifstream in(outFile);
+        in >> parsed;
+    } catch (const std::exception& e) {
+        cleanup();
+        throw BlueprintReaderError(fmt::format(
+            "failed to parse daemon JSON ({}): {}", outFile.string(), e.what()));
+    }
+    cleanup();
+    return parsed;
+}
+
+#else // !_WIN32
+
+void CommandletBlueprintReader::TerminateDaemon() {}
+void CommandletBlueprintReader::EnsureDaemon() {
+    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+}
+std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&) {
+    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+}
+nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>&) {
+    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+}
+
+#endif
 
 std::vector<BPAssetSummary> CommandletBlueprintReader::ListBlueprints(std::string_view path) {
     std::vector<std::wstring> args;
