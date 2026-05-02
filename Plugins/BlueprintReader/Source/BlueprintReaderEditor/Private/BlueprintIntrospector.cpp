@@ -48,6 +48,7 @@ namespace
 		V.FriendlyName = Var.FriendlyName;
 		V.Category = Var.Category.ToString();
 		V.Type = FBlueprintIntrospector::FormatPinType(Var.VarType);
+		V.StructuredType = FBlueprintIntrospector::MakeStructuredPinType(Var.VarType);
 		V.DefaultValue = Var.DefaultValue;
 		V.bIsReplicated        = (Var.PropertyFlags & CPF_Net) != 0;
 		V.bIsTransient         = (Var.PropertyFlags & CPF_Transient) != 0;
@@ -163,9 +164,38 @@ FString FBlueprintIntrospector::FormatPinType(const FEdGraphPinType& T)
 	}
 }
 
+FBPStructuredPinType FBlueprintIntrospector::MakeStructuredPinType(const FEdGraphPinType& T)
+{
+	FBPStructuredPinType Out;
+	Out.Category = T.PinCategory.ToString();
+	if (!T.PinSubCategory.IsNone())
+	{
+		Out.SubCategory = T.PinSubCategory.ToString();
+	}
+	if (UObject* Resolved = T.PinSubCategoryObject.Get())
+	{
+		Out.SubCategoryObject = Resolved->GetPathName();
+	}
+	Out.bIsArray = (T.ContainerType == EPinContainerType::Array);
+	Out.bIsSet   = (T.ContainerType == EPinContainerType::Set);
+	Out.bIsMap   = (T.ContainerType == EPinContainerType::Map);
+	return Out;
+}
+
 TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(const FString& AssetPath)
 {
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
+	// Accept both `/Game/AI/BP_Enemy` (package path) and
+	// `/Game/AI/BP_Enemy.BP_Enemy` (object path).
+	FString Resolved = AssetPath;
+	if (!Resolved.Contains(TEXT(".")))
+	{
+		FString Leaf;
+		if (Resolved.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+		{
+			Resolved = Resolved + TEXT(".") + Leaf;
+		}
+	}
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Resolved);
 	if (!Blueprint)
 	{
 		return TOptional<FBlueprintInfo>();
@@ -221,10 +251,37 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		}
 	}
 
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)         { if (Graph) Info.FunctionGraphs.Add(ReadGraph(Graph)); }
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)         { if (Graph) Info.EventGraphs.Add(ReadGraph(Graph)); }
-	for (UEdGraph* Graph : Blueprint->MacroGraphs)            { if (Graph) Info.MacroGraphs.Add(ReadGraph(Graph)); }
-	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs){ if (Graph) Info.DelegateSignatureGraphs.Add(ReadGraph(Graph)); }
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+	{
+		if (!Graph) continue;
+		FBPGraphInfo G = ReadGraph(Graph);
+		const bool bIsConstruction =
+			G.Name.Equals(TEXT("ConstructionScript"), ESearchCase::IgnoreCase) ||
+			G.Name.Equals(TEXT("UserConstructionScript"), ESearchCase::IgnoreCase);
+		G.WireType = bIsConstruction ? TEXT("Construction") : TEXT("Function");
+		Info.FunctionGraphs.Add(MoveTemp(G));
+	}
+	for (UEdGraph* Graph : Blueprint->UbergraphPages)
+	{
+		if (!Graph) continue;
+		FBPGraphInfo G = ReadGraph(Graph);
+		G.WireType = TEXT("EventGraph");
+		Info.EventGraphs.Add(MoveTemp(G));
+	}
+	for (UEdGraph* Graph : Blueprint->MacroGraphs)
+	{
+		if (!Graph) continue;
+		FBPGraphInfo G = ReadGraph(Graph);
+		G.WireType = TEXT("Macro");
+		Info.MacroGraphs.Add(MoveTemp(G));
+	}
+	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
+	{
+		if (!Graph) continue;
+		FBPGraphInfo G = ReadGraph(Graph);
+		G.WireType = TEXT("DelegateSignature");
+		Info.DelegateSignatureGraphs.Add(MoveTemp(G));
+	}
 
 	return Info;
 }
@@ -256,8 +313,10 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 
 			FBPPinInfo P;
 			P.Name = Pin->GetFName().ToString();
+			P.PinId = Pin->PinId.ToString(EGuidFormats::DigitsWithHyphens);
 			P.Direction = (Pin->Direction == EGPD_Input) ? TEXT("Input") : TEXT("Output");
 			P.Type = FormatPinType(Pin->PinType);
+			P.StructuredType = MakeStructuredPinType(Pin->PinType);
 			P.DefaultValue = Pin->DefaultValue;
 			P.DefaultObjectPath = Pin->DefaultObject ? Pin->DefaultObject->GetPathName() : FString();
 			P.DefaultText = Pin->DefaultTextValue.ToString();
@@ -273,6 +332,7 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 					FBPPinLinkInfo L;
 					L.NodeGuid = OwningNode->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
 					L.PinName = Linked->GetFName().ToString();
+					L.PinId = Linked->PinId.ToString(EGuidFormats::DigitsWithHyphens);
 					P.LinkedTo.Add(MoveTemp(L));
 				}
 			}
