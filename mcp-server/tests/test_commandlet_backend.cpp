@@ -109,6 +109,51 @@ TEST_CASE("CommandletBlueprintReader: AssetNotFound on bogus path"
                     bpr::backends::BlueprintReaderError);
 }
 
+TEST_CASE("CommandletBlueprintReader: function composition — add_function + add_function_input/output + set_variable_default + delete_function"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader(/*useDaemon=*/true);
+    const std::string asset = "/Game/AI/BP_TestEnemy";
+    const std::string fn    = "BPR_LiveCompose";
+
+    // Clean any leftover from a prior run. Ignore "not found".
+    try { reader->DeleteFunction(asset, fn); } catch (...) {}
+
+    // 1. Compose the function: name + input + output.
+    std::string echoed = reader->AddFunction(asset, fn);
+    CHECK(echoed == fn);
+
+    BPPinType floatType;  floatType.Category = "real"; floatType.SubCategory = "float";
+    BPPinType boolType;   boolType.Category  = "bool";
+    reader->AddFunctionInput(asset, fn, "Damage", floatType);
+    reader->AddFunctionOutput(asset, fn, "Killed", boolType);
+
+    // 2. Read it back and assert the signature.
+    auto fnSpec = reader->GetFunction(asset, fn);
+    CHECK(fnSpec.Name == fn);
+    REQUIRE_GE(fnSpec.Inputs.size(),  1);
+    REQUIRE_GE(fnSpec.Outputs.size(), 1);
+    bool sawInput = false, sawOutput = false;
+    for (const auto& v : fnSpec.Inputs)  if (v.Name == "Damage")  sawInput  = true;
+    for (const auto& v : fnSpec.Outputs) if (v.Name == "Killed") sawOutput = true;
+    CHECK(sawInput);
+    CHECK(sawOutput);
+
+    // 3. set_variable_default round-trip on an existing seeded variable.
+    reader->SetVariableDefault(asset, "MaxHealth", "250.0");
+    // ListVariables doesn't currently surface DefaultValue verbatim from the BP
+    // serialization (it depends on whether the BP is compiled with the value
+    // at the time of read), so we only assert that the call succeeded —
+    // i.e., didn't throw. The save was committed because compile+save runs
+    // inside SetVariableDefault.
+
+    // 4. Tear down: delete the function.
+    reader->DeleteFunction(asset, fn);
+    auto md = reader->ReadBlueprint(asset);
+    bool stillThere = false;
+    for (const auto& f : md.Functions) if (f.Name == fn) stillThere = true;
+    CHECK_FALSE(stillThere);
+}
+
 TEST_CASE("CommandletBlueprintReader: extended write tools — add_node + wire_pins + delete_variable + rename_variable"
           * doctest::skip(!LiveBackendAvailable())) {
     auto reader = MakeLiveReader(/*useDaemon=*/true);

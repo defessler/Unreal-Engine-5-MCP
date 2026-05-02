@@ -411,6 +411,151 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- add_function ----------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_function";
+        d.description =
+            "Create a new BP function graph with the given name. Returns "
+            "{ok, function_name}. Use add_function_input / add_function_output "
+            "to declare its signature.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& name  = RequireString(args, "name");
+            std::string echoed = reader.AddFunction(asset, name);
+            return nlohmann::json{{"ok", true}, {"function_name", echoed}};
+        });
+    }
+
+    auto buildBPPinType = [](const nlohmann::json& obj) -> BPPinType {
+        BPPinType type;
+        type.Category = RequireString(obj, "category");
+        if (auto it = obj.find("sub_category"); it != obj.end() && it->is_string()) {
+            type.SubCategory = it->get<std::string>();
+        }
+        if (auto it = obj.find("sub_category_object"); it != obj.end() && it->is_string()) {
+            type.SubCategoryObject = it->get<std::string>();
+        }
+        type.IsArray = obj.value("is_array", false);
+        type.IsSet   = obj.value("is_set",   false);
+        type.IsMap   = obj.value("is_map",   false);
+        return type;
+    };
+
+    // ----- add_function_input ----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_function_input";
+        d.description =
+            "Add an input parameter to an existing function. `type` is a BPPinType.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"function_name", {{"type","string"}}},
+                {"param_name",    {{"type","string"}}},
+                {"type",          {{"type","object"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","function_name","param_name","type"})},
+        };
+        registry.Add(std::move(d), [&reader, buildBPPinType](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& fn    = RequireString(args, "function_name");
+            const std::string& param = RequireString(args, "param_name");
+            auto typeIt = args.find("type");
+            if (typeIt == args.end() || !typeIt->is_object()) {
+                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            }
+            reader.AddFunctionInput(asset, fn, param, buildBPPinType(*typeIt));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- add_function_output ---------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_function_output";
+        d.description =
+            "Add an output parameter to an existing function. Spawns a "
+            "FunctionResult node if there isn't one yet.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"function_name", {{"type","string"}}},
+                {"param_name",    {{"type","string"}}},
+                {"type",          {{"type","object"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","function_name","param_name","type"})},
+        };
+        registry.Add(std::move(d), [&reader, buildBPPinType](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& fn    = RequireString(args, "function_name");
+            const std::string& param = RequireString(args, "param_name");
+            auto typeIt = args.find("type");
+            if (typeIt == args.end() || !typeIt->is_object()) {
+                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            }
+            reader.AddFunctionOutput(asset, fn, param, buildBPPinType(*typeIt));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- delete_function -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "delete_function";
+        d.description = "Delete a function graph by name.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.DeleteFunction(
+                RequireString(args, "asset_path"),
+                RequireString(args, "name"));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- set_variable_default --------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_variable_default";
+        d.description =
+            "Change a member variable's default value (string form, as displayed "
+            "in the Details panel — e.g. \"100.0\" for a float, \"true\"/\"false\" "
+            "for a bool). Pass empty string to clear.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"name",          {{"type","string"}}},
+                {"default_value", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name","default_value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.SetVariableDefault(
+                RequireString(args, "asset_path"),
+                RequireString(args, "name"),
+                args.value("default_value", ""));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
     // ===== Discoverability =================================================
     // These two tools return static metadata about the writable surface so a
     // model can ask "what are the valid `kind` values for add_node?" or

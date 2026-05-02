@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 15 tools (6 read + 7 write + 2 meta) with input schemas") {
+TEST_CASE("ToolRegistry exposes 20 tools (6 read + 12 write + 2 meta) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 15);
+    CHECK(spec.size() == 20);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }

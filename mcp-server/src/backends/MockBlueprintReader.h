@@ -41,6 +41,14 @@ public:
     void DeleteVariable(std::string_view assetPath, std::string_view name) override;
     void RenameVariable(std::string_view assetPath, std::string_view oldName,
                         std::string_view newName) override;
+    std::string AddFunction(std::string_view assetPath, std::string_view name) override;
+    void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
+                          std::string_view paramName, const BPPinType& type) override;
+    void AddFunctionOutput(std::string_view assetPath, std::string_view functionName,
+                           std::string_view paramName, const BPPinType& type) override;
+    void DeleteFunction(std::string_view assetPath, std::string_view name) override;
+    void SetVariableDefault(std::string_view assetPath, std::string_view name,
+                            std::string_view newDefault) override;
 
     // Number of loaded fixtures — for diagnostics + tests.
     std::size_t FixtureCount() const { return assets_.size(); }
