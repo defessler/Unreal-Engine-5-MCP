@@ -21,14 +21,21 @@ Two backends:
 
 ## Tools
 
-| Tool             | Description                                                                |
-|------------------|----------------------------------------------------------------------------|
-| `list_blueprints`| List all blueprint assets under a content path. Defaults to `/Game`.       |
-| `read_blueprint` | Top-level metadata: parent class, interfaces, variables, graph summaries.  |
-| `get_graph`      | Full node + connection graph by name. Defaults to `EventGraph`.            |
-| `get_function`   | A function's signature (inputs/outputs/locals) + body graph.               |
-| `list_variables` | Member variables with type, default, category, replication state.         |
-| `find_node`      | Substring search by class/title; optional `kind` filter on K2 extras.     |
+| Tool                | Direction | Description                                                                |
+|---------------------|-----------|----------------------------------------------------------------------------|
+| `list_blueprints`   | read      | List all blueprint assets under a content path. Defaults to `/Game`.       |
+| `read_blueprint`    | read      | Top-level metadata: parent class, interfaces, variables, graph summaries.  |
+| `get_graph`         | read      | Full node + connection graph by name. Defaults to `EventGraph`.            |
+| `get_function`      | read      | A function's signature (inputs/outputs/locals) + body graph.               |
+| `list_variables`    | read      | Member variables with type, default, category, replication state.          |
+| `find_node`         | read      | Substring search by class/title; optional `kind` filter on K2 extras.      |
+| `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
+| `delete_variable`   | **write** | Remove a member variable by name.                                          |
+| `rename_variable`   | **write** | Rename a member variable; updates references in graphs.                    |
+| `add_node`          | **write** | Spawn a Branch / Sequence / VariableGet/Set / CallFunction / CustomEvent. Returns new node GUID. |
+| `set_node_position` | **write** | Move a node by GUID inside a graph.                                        |
+| `delete_node`       | **write** | Remove a node by GUID; breaks links into/out of it.                        |
+| `wire_pins`         | **write** | Connect two pins by GUID (preferred) or name; schema-validated.            |
 
 Wire shapes are pinned in `Shared/BlueprintReaderTypes.h`. Snake_case keys,
 nullable string fields emit `null`, `BPNode.meta` is a real nested object.

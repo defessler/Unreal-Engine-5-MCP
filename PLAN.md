@@ -70,10 +70,14 @@ D:\Projects\UE5_AI_BP\
   - **AssetRegistry-backed `list_blueprints`** — replaces the previous
     disk walk; faster on large Content trees, gets `parent_class` from
     asset tags without loading every BP.
-  - **Write tools (v0)** — `add_variable`, `set_node_position`,
-    `delete_node`. Each modifies the BP via `FBlueprintEditorUtils`,
-    recompiles, and saves the `.uasset`. Mock backend throws
-    (read-only by design).
+  - **Write tools (v1)** — seven tools modifying BPs via
+    `FBlueprintEditorUtils`, recompiling, and saving the `.uasset`:
+    - Variables: `add_variable`, `delete_variable`, `rename_variable`.
+    - Nodes: `add_node` (Branch / Sequence / VariableGet/Set /
+      CallFunction / CustomEvent), `set_node_position`, `delete_node`.
+    - Connections: `wire_pins` (schema-validated, accepts pin GUIDs
+      or names).
+    Mock backend throws (read-only by design).
   - **README + Claude integration snippet** so the project is actually
     usable: drop-in JSON for Claude Code / Claude Desktop.
   - **Richer seed BP** — `BP_TestEnemy` event graph now has

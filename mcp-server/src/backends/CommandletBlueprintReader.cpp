@@ -778,4 +778,64 @@ void CommandletBlueprintReader::DeleteNode(std::string_view assetPath,
     (void)RunOp(args);
 }
 
+std::string CommandletBlueprintReader::AddNode(std::string_view assetPath,
+                                               std::string_view graphName,
+                                               std::string_view kind,
+                                               int x, int y,
+                                               const std::map<std::string, std::string, std::less<>>& extras) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddNode");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Graph=" + Widen(graphName));
+    args.push_back(L"-Kind="  + Widen(kind));
+    args.push_back(L"-X=" + std::to_wstring(x));
+    args.push_back(L"-Y=" + std::to_wstring(y));
+    for (const auto& [k, v] : extras) {
+        if (v.empty()) continue;
+        args.push_back(L"-" + Widen(k) + L"=" + Widen(v));
+    }
+    auto j = RunOp(args);
+    if (!j.is_object() || !j.contains("node_id") || !j["node_id"].is_string()) {
+        throw BlueprintReaderError("AddNode: response missing node_id");
+    }
+    return j["node_id"].get<std::string>();
+}
+
+void CommandletBlueprintReader::WirePins(std::string_view assetPath,
+                                         std::string_view graphName,
+                                         std::string_view fromNodeId,
+                                         std::string_view fromPinSpec,
+                                         std::string_view toNodeId,
+                                         std::string_view toPinSpec) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=WirePins");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Graph=" + Widen(graphName));
+    args.push_back(L"-FromNode=" + Widen(fromNodeId));
+    args.push_back(L"-FromPin="  + Widen(fromPinSpec));
+    args.push_back(L"-ToNode="   + Widen(toNodeId));
+    args.push_back(L"-ToPin="    + Widen(toPinSpec));
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::DeleteVariable(std::string_view assetPath,
+                                               std::string_view name) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=DeleteVariable");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::RenameVariable(std::string_view assetPath,
+                                               std::string_view oldName,
+                                               std::string_view newName) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=RenameVariable");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-OldName=" + Widen(oldName));
+    args.push_back(L"-NewName=" + Widen(newName));
+    (void)RunOp(args);
+}
+
 } // namespace bpr::backends

@@ -4,6 +4,7 @@
 // shapes from Shared/BlueprintReaderTypes.h.
 #pragma once
 
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -59,6 +60,27 @@ public:
     // Delete a node by its GUID. Breaks any incoming/outgoing links first.
     virtual void DeleteNode(std::string_view assetPath, std::string_view graphName,
                             std::string_view nodeId) = 0;
+
+    // Spawn a new node in `graphName` at (x, y). `kind` is one of:
+    //   "Branch", "Sequence", "VariableGet", "VariableSet", "CallFunction",
+    //   "CustomEvent". Kind-specific extras passed through the `extras` map
+    //   (e.g. "Variable", "Function", "FunctionOwner", "EventName").
+    // Returns the new node's GUID so the caller can wire pins to it.
+    virtual std::string AddNode(std::string_view assetPath, std::string_view graphName,
+                                std::string_view kind, int x, int y,
+                                const std::map<std::string, std::string, std::less<>>& extras) = 0;
+
+    // Connect two pins by node GUID + pin spec (GUID or name).
+    virtual void WirePins(std::string_view assetPath, std::string_view graphName,
+                          std::string_view fromNodeId, std::string_view fromPinSpec,
+                          std::string_view toNodeId,   std::string_view toPinSpec) = 0;
+
+    // Remove a member variable. Throws AssetNotFound if missing.
+    virtual void DeleteVariable(std::string_view assetPath, std::string_view name) = 0;
+
+    // Rename a member variable. Updates references in graphs.
+    virtual void RenameVariable(std::string_view assetPath, std::string_view oldName,
+                                std::string_view newName) = 0;
 };
 
 } // namespace bpr::backends

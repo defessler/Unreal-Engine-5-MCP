@@ -286,6 +286,130 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             return nlohmann::json{{"ok", true}};
         });
     }
+
+    // ----- add_node --------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_node";
+        d.description =
+            "Spawn a new K2 node in a graph. `kind` is one of: "
+            "Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent. "
+            "Kind-specific args: VariableGet/VariableSet -> `variable`; "
+            "CallFunction -> `function` + `function_owner` (UClass path or short name); "
+            "CustomEvent -> `event_name`. Returns {ok, node_id}.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path",     {{"type","string"}}},
+                {"graph_name",     {{"type","string"}}},
+                {"kind",           {{"type","string"}}},
+                {"x",              {{"type","integer"}}},
+                {"y",              {{"type","integer"}}},
+                {"variable",       {{"type","string"}}},
+                {"function",       {{"type","string"}}},
+                {"function_owner", {{"type","string"}}},
+                {"event_name",     {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name","kind","x","y"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& graph = RequireString(args, "graph_name");
+            const std::string& kind  = RequireString(args, "kind");
+            int x = args.at("x").get<int>();
+            int y = args.at("y").get<int>();
+            std::map<std::string, std::string, std::less<>> extras;
+            // Map MCP-side names → plugin commandlet flag names.
+            auto put = [&](const char* mcpKey, const char* flagKey) {
+                std::string v = OptString(args, mcpKey, "");
+                if (!v.empty()) extras.emplace(flagKey, std::move(v));
+            };
+            put("variable",       "Variable");
+            put("function",       "Function");
+            put("function_owner", "FunctionOwner");
+            put("event_name",     "EventName");
+            std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
+            return nlohmann::json{{"ok", true}, {"node_id", newId}};
+        });
+    }
+
+    // ----- wire_pins -------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "wire_pins";
+        d.description =
+            "Connect two pins. `from_pin` and `to_pin` accept either a pin GUID "
+            "(preferred — see get_graph) or a pin name. The schema's pin "
+            "compatibility rules are enforced.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",  {{"type","string"}}},
+                {"graph_name",  {{"type","string"}}},
+                {"from_node",   {{"type","string"}}},
+                {"from_pin",    {{"type","string"}}},
+                {"to_node",     {{"type","string"}}},
+                {"to_pin",      {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name","from_node","from_pin","to_node","to_pin"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.WirePins(
+                RequireString(args, "asset_path"),
+                RequireString(args, "graph_name"),
+                RequireString(args, "from_node"),
+                RequireString(args, "from_pin"),
+                RequireString(args, "to_node"),
+                RequireString(args, "to_pin"));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- delete_variable -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "delete_variable";
+        d.description = "Remove a member variable by name. Recompiles + saves.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.DeleteVariable(
+                RequireString(args, "asset_path"),
+                RequireString(args, "name"));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- rename_variable -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "rename_variable";
+        d.description =
+            "Rename a member variable. Updates references in graphs. "
+            "Recompiles + saves.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"old_name",   {{"type","string"}}},
+                {"new_name",   {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","old_name","new_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.RenameVariable(
+                RequireString(args, "asset_path"),
+                RequireString(args, "old_name"),
+                RequireString(args, "new_name"));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
 }
 
 } // namespace bpr::tools

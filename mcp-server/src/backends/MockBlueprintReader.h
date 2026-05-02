@@ -32,6 +32,15 @@ public:
                          std::string_view nodeId, int x, int y) override;
     void DeleteNode(std::string_view assetPath, std::string_view graphName,
                     std::string_view nodeId) override;
+    std::string AddNode(std::string_view assetPath, std::string_view graphName,
+                        std::string_view kind, int x, int y,
+                        const std::map<std::string, std::string, std::less<>>& extras) override;
+    void WirePins(std::string_view assetPath, std::string_view graphName,
+                  std::string_view fromNodeId, std::string_view fromPinSpec,
+                  std::string_view toNodeId,   std::string_view toPinSpec) override;
+    void DeleteVariable(std::string_view assetPath, std::string_view name) override;
+    void RenameVariable(std::string_view assetPath, std::string_view oldName,
+                        std::string_view newName) override;
 
     // Number of loaded fixtures — for diagnostics + tests.
     std::size_t FixtureCount() const { return assets_.size(); }
