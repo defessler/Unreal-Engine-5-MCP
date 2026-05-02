@@ -13,12 +13,26 @@
 #include "UObject/ObjectMacros.h"
 
 #include "K2Node_CallFunction.h"
+#include "K2Node_CallParentFunction.h"
+#include "K2Node_Composite.h"
+#include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_IfThenElse.h"
+#include "K2Node_Knot.h"
+#include "K2Node_Literal.h"
 #include "K2Node_MacroInstance.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_Self.h"
+#include "K2Node_Switch.h"
+#include "K2Node_Timeline.h"
+#include "K2Node_Tunnel.h"
 #include "K2Node_Variable.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -60,6 +74,17 @@ namespace
 
 	void ExtractK2Extras(UEdGraphNode* Node, TMap<FString, FString>& Extras)
 	{
+		// CallParentFunction must come before CallFunction since it's a subclass.
+		if (UK2Node_CallParentFunction* CallParent = Cast<UK2Node_CallParentFunction>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("CallParentFunction"));
+			Extras.Add(TEXT("targetFunction"), CallParent->FunctionReference.GetMemberName().ToString());
+			if (UClass* C = CallParent->FunctionReference.GetMemberParentClass())
+			{
+				Extras.Add(TEXT("targetClass"), C->GetPathName());
+			}
+			return;
+		}
 		if (UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Node))
 		{
 			Extras.Add(TEXT("kind"), TEXT("CallFunction"));
@@ -126,6 +151,101 @@ namespace
 				Extras.Add(TEXT("macroGraph"), G->GetPathName());
 				Extras.Add(TEXT("macroName"), G->GetFName().ToString());
 			}
+			return;
+		}
+		if (UK2Node_IfThenElse* Branch = Cast<UK2Node_IfThenElse>(Node))
+		{
+			(void)Branch;
+			Extras.Add(TEXT("kind"), TEXT("Branch"));
+			return;
+		}
+		if (UK2Node_ExecutionSequence* Seq = Cast<UK2Node_ExecutionSequence>(Node))
+		{
+			// Count output pins of category "exec" — those are the "Then 0/1/..."
+			// outputs. UE doesn't expose a public GetNumOutputPins() on this class.
+			int32 NumOutputs = 0;
+			for (UEdGraphPin* P : Seq->Pins)
+			{
+				if (P && P->Direction == EGPD_Output && P->PinType.PinCategory == TEXT("exec"))
+				{
+					++NumOutputs;
+				}
+			}
+			Extras.Add(TEXT("kind"), TEXT("Sequence"));
+			Extras.Add(TEXT("numOutputs"), FString::FromInt(NumOutputs));
+			return;
+		}
+		if (Node->IsA<UK2Node_Knot>())
+		{
+			Extras.Add(TEXT("kind"), TEXT("Knot"));
+			return;
+		}
+		if (Node->IsA<UK2Node_Self>())
+		{
+			Extras.Add(TEXT("kind"), TEXT("Self"));
+			return;
+		}
+		if (UK2Node_FormatText* Fmt = Cast<UK2Node_FormatText>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("FormatText"));
+			Extras.Add(TEXT("numArgs"), FString::FromInt(Fmt->GetArgumentCount()));
+			return;
+		}
+		if (UK2Node_MakeArray* MakeArr = Cast<UK2Node_MakeArray>(Node))
+		{
+			(void)MakeArr;
+			Extras.Add(TEXT("kind"), TEXT("MakeArray"));
+			return;
+		}
+		if (UK2Node_MakeStruct* MakeStruct = Cast<UK2Node_MakeStruct>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("MakeStruct"));
+			if (UScriptStruct* SS = MakeStruct->StructType)
+			{
+				Extras.Add(TEXT("structType"), SS->GetPathName());
+			}
+			return;
+		}
+		if (UK2Node_Composite* Composite = Cast<UK2Node_Composite>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("Composite"));
+			if (UEdGraph* G = Composite->BoundGraph)
+			{
+				Extras.Add(TEXT("subgraphName"), G->GetFName().ToString());
+			}
+			return;
+		}
+		if (Node->IsA<UK2Node_Tunnel>())
+		{
+			Extras.Add(TEXT("kind"), TEXT("Tunnel"));
+			return;
+		}
+		if (UK2Node_Timeline* Timeline = Cast<UK2Node_Timeline>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("Timeline"));
+			Extras.Add(TEXT("timelineName"), Timeline->TimelineName.ToString());
+			return;
+		}
+		if (UK2Node_Switch* Switch = Cast<UK2Node_Switch>(Node))
+		{
+			(void)Switch;
+			Extras.Add(TEXT("kind"), TEXT("Switch"));
+			Extras.Add(TEXT("switchClass"), Node->GetClass()->GetName());
+			return;
+		}
+		if (UK2Node_Literal* Lit = Cast<UK2Node_Literal>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("Literal"));
+			if (UObject* Src = Lit->GetObjectRef())
+			{
+				Extras.Add(TEXT("literalObject"), Src->GetPathName());
+			}
+			return;
+		}
+		if (UK2Node_CreateDelegate* MakeDel = Cast<UK2Node_CreateDelegate>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("CreateDelegate"));
+			Extras.Add(TEXT("delegateName"), MakeDel->GetFunctionName().ToString());
 			return;
 		}
 		if (Node->IsA<UK2Node_FunctionEntry>())
