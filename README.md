@@ -36,6 +36,8 @@ Two backends:
 | `set_node_position` | **write** | Move a node by GUID inside a graph.                                        |
 | `delete_node`       | **write** | Remove a node by GUID; breaks links into/out of it.                        |
 | `wire_pins`         | **write** | Connect two pins by GUID (preferred) or name; schema-validated.            |
+| `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
+| `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
 
 Wire shapes are pinned in `Shared/BlueprintReaderTypes.h`. Snake_case keys,
 nullable string fields emit `null`, `BPNode.meta` is a real nested object.
