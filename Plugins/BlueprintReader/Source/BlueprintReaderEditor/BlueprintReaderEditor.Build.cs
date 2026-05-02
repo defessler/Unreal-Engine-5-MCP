@@ -18,7 +18,8 @@ public class BlueprintReaderEditor : ModuleRules
 			"UnrealEd",
 			"BlueprintGraph",
 			"Json",
-			"JsonUtilities"
+			"JsonUtilities",
+			"AssetRegistry"
 		});
 	}
 }
