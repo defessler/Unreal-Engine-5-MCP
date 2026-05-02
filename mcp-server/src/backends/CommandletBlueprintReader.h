@@ -55,6 +55,7 @@ public:
     BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) override;
     BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
     std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
+    std::vector<BPComponent>    GetComponents(std::string_view assetPath) override;
     std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
                                          std::string_view kind = {}) override;
 

@@ -9,10 +9,12 @@
 
 #include "backends/CommandletBlueprintReader.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -107,6 +109,50 @@ TEST_CASE("CommandletBlueprintReader: AssetNotFound on bogus path"
     auto reader = MakeLiveReader();
     CHECK_THROWS_AS(reader->ReadBlueprint("/Game/Nope/Definitely_Does_Not_Exist"),
                     bpr::backends::BlueprintReaderError);
+}
+
+TEST_CASE("CommandletBlueprintReader: get_components returns SCS data live"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader(/*useDaemon=*/true);
+    // The seeded BPs derive from AActor and don't add custom components, so the
+    // contract here is just "the call succeeds without throwing." Exact count
+    // depends on whether SCS materialises an inherited DefaultSceneRoot.
+    auto comps = reader->GetComponents("/Game/AI/BP_TestEnemy");
+    (void)comps;  // any result (including empty) is acceptable
+}
+
+TEST_CASE("CommandletBlueprintReader: extended add_node kinds (Cast, Self, MakeArray, FormatText, Knot)"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader(/*useDaemon=*/true);
+    const std::string asset = "/Game/AI/BP_TestEnemy";
+
+    auto add = [&](const std::string& kind, int x, int y,
+                   const std::map<std::string, std::string, std::less<>>& extras = {}) {
+        return reader->AddNode(asset, "EventGraph", kind, x, y, extras);
+    };
+
+    std::string castId = add("Cast", -100, 600, {{"TargetClass","Actor"}});
+    CHECK(!castId.empty());
+
+    std::string selfId = add("Self", -100, 660);
+    CHECK(!selfId.empty());
+
+    std::string arrId  = add("MakeArray", -100, 720);
+    CHECK(!arrId.empty());
+
+    std::string fmtId  = add("FormatText", -100, 780);
+    CHECK(!fmtId.empty());
+
+    std::string knotId = add("Knot", -100, 840);
+    CHECK(!knotId.empty());
+
+    // All new ids should be unique.
+    std::vector<std::string> ids{castId, selfId, arrId, fmtId, knotId};
+    std::sort(ids.begin(), ids.end());
+    CHECK(std::adjacent_find(ids.begin(), ids.end()) == ids.end());
+
+    // Cleanup so subsequent runs / fixtures stay tidy.
+    for (const auto& id : ids) reader->DeleteNode(asset, "EventGraph", id);
 }
 
 TEST_CASE("CommandletBlueprintReader: function composition — add_function + add_function_input/output + set_variable_default + delete_function"

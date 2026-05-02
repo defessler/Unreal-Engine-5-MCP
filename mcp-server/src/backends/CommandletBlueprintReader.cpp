@@ -700,6 +700,14 @@ std::vector<BPVariable> CommandletBlueprintReader::ListVariables(std::string_vie
     return j.get<std::vector<BPVariable>>();
 }
 
+std::vector<BPComponent> CommandletBlueprintReader::GetComponents(std::string_view assetPath) {
+    auto j = RunOp({
+        L"-Op=Components",
+        L"-Asset=" + Widen(assetPath),
+    });
+    return j.get<std::vector<BPComponent>>();
+}
+
 std::vector<BPNode> CommandletBlueprintReader::FindNode(std::string_view assetPath,
                                                         std::string_view query,
                                                         std::string_view kind) {

@@ -288,6 +288,29 @@ struct BPAssetSummary
 };
 #endif
 
+// ----- BPComponent ----------------------------------------------------------
+// Returned by `get_components`. Mirrors the SCS hierarchy.
+
+#ifdef WITH_UE
+USTRUCT()
+struct FBPComponentWire
+{
+    GENERATED_BODY()
+    UPROPERTY() FString Name;
+    UPROPERTY() FString Class;
+    UPROPERTY() FString Parent;
+    UPROPERTY() bool    bIsRoot = false;
+};
+#else
+struct BPComponent
+{
+    BPRString Name;
+    BPRString Class;
+    BPROptionalString Parent;
+    bool IsRoot = false;
+};
+#endif
+
 // ----- BPMetadata -----------------------------------------------------------
 
 #ifdef WITH_UE
@@ -550,5 +573,22 @@ inline void from_json(const nlohmann::json& j, BPMetadata& v)
     j.at("functions").get_to(v.Functions);
     j.at("macros").get_to(v.Macros);
     j.at("graphs").get_to(v.Graphs);
+}
+
+inline void to_json(nlohmann::json& j, const BPComponent& v)
+{
+    j = nlohmann::json{
+        {"name",    v.Name},
+        {"class",   v.Class},
+        {"parent",  v.Parent},
+        {"is_root", v.IsRoot},
+    };
+}
+inline void from_json(const nlohmann::json& j, BPComponent& v)
+{
+    j.at("name").get_to(v.Name);
+    j.at("class").get_to(v.Class);
+    j.at("parent").get_to(v.Parent);
+    j.at("is_root").get_to(v.IsRoot);
 }
 #endif // !WITH_UE
