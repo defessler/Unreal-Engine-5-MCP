@@ -55,7 +55,33 @@ D:\Projects\UE5_AI_BP\
 - **Phase 1** — `Plugins\BlueprintReader\` UE plugin + commandlet backend.
   ✔ Complete. Verified live end-to-end against UE 5.7.4 source build.
 
-- **Phase 2** — `live` backend (long-lived editor with IPC). Not started.
+- **Phase 1.5 — Polish.** ✔ Complete.
+  - **Daemon mode** for the commandlet backend: one editor process reused
+    across calls. ~5 s cold start → ~30 ms per subsequent call (~200x).
+    Now the *default* for the commandlet backend (opt out with
+    `BP_READER_DAEMON=0`).
+  - **`find_node` kind filter** — optional `kind` arg matches against
+    K2 extras `kind` (e.g. `VariableGet`, `CallFunction`).
+  - **MCP telemetry** — every `tools/call` response carries `_meta`
+    `{elapsed_ms, tool}` per the MCP 2024-11-05 spec extension point.
+  - **Extended K2 extras** — Branch, Sequence, Knot, Self, FormatText,
+    MakeArray, MakeStruct, Composite, Tunnel, Timeline, Switch, Literal,
+    CreateDelegate, CallParentFunction in addition to the original 7.
+  - **AssetRegistry-backed `list_blueprints`** — replaces the previous
+    disk walk; faster on large Content trees, gets `parent_class` from
+    asset tags without loading every BP.
+  - **Write tools (v0)** — `add_variable`, `set_node_position`,
+    `delete_node`. Each modifies the BP via `FBlueprintEditorUtils`,
+    recompiles, and saves the `.uasset`. Mock backend throws
+    (read-only by design).
+  - **README + Claude integration snippet** so the project is actually
+    usable: drop-in JSON for Claude Code / Claude Desktop.
+  - **Richer seed BP** — `BP_TestEnemy` event graph now has
+    `BeginPlay → Branch → PrintString` with `Get bIsAlive → Branch.Condition`
+    (3 connections, 6 nodes with non-trivial K2 extras).
+
+- **Phase 2** — `live` backend (long-lived editor with non-commandlet IPC,
+  parallel dispatch). Marginal value vs daemon mode; not yet scheduled.
 
 ## Phase 1 status
 

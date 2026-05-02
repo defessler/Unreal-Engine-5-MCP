@@ -24,6 +24,15 @@ public:
     std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
                                           std::string_view kind = {}) override;
 
+    // Write tools — mock fixtures are read-only; these throw.
+    void AddVariable(std::string_view assetPath, std::string_view name,
+                     const BPPinType& type, std::string_view defaultValue,
+                     std::string_view category, bool replicated, bool editable) override;
+    void SetNodePosition(std::string_view assetPath, std::string_view graphName,
+                         std::string_view nodeId, int x, int y) override;
+    void DeleteNode(std::string_view assetPath, std::string_view graphName,
+                    std::string_view nodeId) override;
+
     // Number of loaded fixtures — for diagnostics + tests.
     std::size_t FixtureCount() const { return assets_.size(); }
 

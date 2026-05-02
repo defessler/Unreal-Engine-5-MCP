@@ -720,4 +720,62 @@ std::vector<BPNode> CommandletBlueprintReader::FindNode(std::string_view assetPa
     return j.get<std::vector<BPNode>>();
 }
 
+void CommandletBlueprintReader::AddVariable(std::string_view assetPath,
+                                            std::string_view name,
+                                            const BPPinType& type,
+                                            std::string_view defaultValue,
+                                            std::string_view category,
+                                            bool replicated, bool editable) {
+    // Pass the BPPinType as individual flags instead of a JSON blob — FParse's
+    // quote handling can't survive a value that itself contains double quotes.
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddVariable");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name=" + Widen(name));
+    args.push_back(L"-TypeCategory=" + Widen(type.Category));
+    if (type.SubCategory.has_value() && !type.SubCategory->empty()) {
+        args.push_back(L"-TypeSubCategory=" + Widen(*type.SubCategory));
+    }
+    if (type.SubCategoryObject.has_value() && !type.SubCategoryObject->empty()) {
+        args.push_back(L"-TypeSubCategoryObject=" + Widen(*type.SubCategoryObject));
+    }
+    if (type.IsArray) args.push_back(L"-TypeIsArray");
+    if (type.IsSet)   args.push_back(L"-TypeIsSet");
+    if (type.IsMap)   args.push_back(L"-TypeIsMap");
+    if (!defaultValue.empty()) {
+        args.push_back(L"-Default=" + Widen(defaultValue));
+    }
+    if (!category.empty()) {
+        args.push_back(L"-Category=" + Widen(category));
+    }
+    if (replicated) args.push_back(L"-Replicated");
+    if (editable)   args.push_back(L"-Editable");
+    (void)RunOp(args);  // ack JSON `{"ok":true}` — we don't surface it
+}
+
+void CommandletBlueprintReader::SetNodePosition(std::string_view assetPath,
+                                                std::string_view graphName,
+                                                std::string_view nodeId,
+                                                int x, int y) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=SetNodePosition");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Graph=" + Widen(graphName));
+    args.push_back(L"-Node="  + Widen(nodeId));
+    args.push_back(L"-X=" + std::to_wstring(x));
+    args.push_back(L"-Y=" + std::to_wstring(y));
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::DeleteNode(std::string_view assetPath,
+                                           std::string_view graphName,
+                                           std::string_view nodeId) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=DeleteNode");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Graph=" + Widen(graphName));
+    args.push_back(L"-Node="  + Widen(nodeId));
+    (void)RunOp(args);
+}
+
 } // namespace bpr::backends
