@@ -4,16 +4,25 @@
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderWireJson.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "Engine/Blueprint.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
+#include "UObject/SavePackage.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -40,6 +49,10 @@ namespace
 		Function,
 		Variables,
 		Find,
+		// Write ops (Phase 1.5):
+		AddVariable,
+		SetNodePosition,
+		DeleteNode,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -50,12 +63,15 @@ namespace
 			OutOp = EOp::Legacy;
 			return true;
 		}
-		if (OpStr.Equals(TEXT("List"), ESearchCase::IgnoreCase))      { OutOp = EOp::List; return true; }
-		if (OpStr.Equals(TEXT("Read"), ESearchCase::IgnoreCase))      { OutOp = EOp::Read; return true; }
-		if (OpStr.Equals(TEXT("Graph"), ESearchCase::IgnoreCase))     { OutOp = EOp::Graph; return true; }
-		if (OpStr.Equals(TEXT("Function"), ESearchCase::IgnoreCase))  { OutOp = EOp::Function; return true; }
-		if (OpStr.Equals(TEXT("Variables"), ESearchCase::IgnoreCase)) { OutOp = EOp::Variables; return true; }
-		if (OpStr.Equals(TEXT("Find"), ESearchCase::IgnoreCase))      { OutOp = EOp::Find; return true; }
+		if (OpStr.Equals(TEXT("List"), ESearchCase::IgnoreCase))             { OutOp = EOp::List; return true; }
+		if (OpStr.Equals(TEXT("Read"), ESearchCase::IgnoreCase))             { OutOp = EOp::Read; return true; }
+		if (OpStr.Equals(TEXT("Graph"), ESearchCase::IgnoreCase))            { OutOp = EOp::Graph; return true; }
+		if (OpStr.Equals(TEXT("Function"), ESearchCase::IgnoreCase))         { OutOp = EOp::Function; return true; }
+		if (OpStr.Equals(TEXT("Variables"), ESearchCase::IgnoreCase))        { OutOp = EOp::Variables; return true; }
+		if (OpStr.Equals(TEXT("Find"), ESearchCase::IgnoreCase))             { OutOp = EOp::Find; return true; }
+		if (OpStr.Equals(TEXT("AddVariable"), ESearchCase::IgnoreCase))      { OutOp = EOp::AddVariable; return true; }
+		if (OpStr.Equals(TEXT("SetNodePosition"), ESearchCase::IgnoreCase))  { OutOp = EOp::SetNodePosition; return true; }
+		if (OpStr.Equals(TEXT("DeleteNode"), ESearchCase::IgnoreCase))       { OutOp = EOp::DeleteNode; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -103,9 +119,226 @@ namespace
 		return DT.ToIso8601();
 	}
 
-	// List op without AssetRegistry: walk the project's Content tree on disk,
-	// load each .uasset as UBlueprint, emit a summary if it loaded. Slower
-	// than an AssetRegistry query, but doesn't require a Build.cs dep change.
+	// ----- Shared helpers for write ops -------------------------------------
+
+	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
+	{
+		FString Resolved = AssetPath;
+		if (!Resolved.Contains(TEXT(".")))
+		{
+			FString Leaf;
+			if (Resolved.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+			{
+				Resolved = Resolved + TEXT(".") + Leaf;
+			}
+		}
+		return LoadObject<UBlueprint>(nullptr, *Resolved);
+	}
+
+	UEdGraph* FindGraphByName(UBlueprint* BP, const FString& Name)
+	{
+		auto Search = [&](const TArray<UEdGraph*>& Graphs) -> UEdGraph*
+		{
+			for (UEdGraph* G : Graphs)
+			{
+				if (G && G->GetFName().ToString().Equals(Name, ESearchCase::IgnoreCase))
+				{
+					return G;
+				}
+			}
+			return nullptr;
+		};
+		if (UEdGraph* G = Search(BP->UbergraphPages)) return G;
+		if (UEdGraph* G = Search(BP->FunctionGraphs)) return G;
+		if (UEdGraph* G = Search(BP->MacroGraphs))    return G;
+		return nullptr;
+	}
+
+	UEdGraphNode* FindNodeByGuid(UEdGraph* Graph, const FString& Guid)
+	{
+		FGuid Parsed;
+		if (!FGuid::Parse(Guid, Parsed)) return nullptr;
+		for (UEdGraphNode* N : Graph->Nodes)
+		{
+			if (N && N->NodeGuid == Parsed) return N;
+		}
+		return nullptr;
+	}
+
+	bool CompileAndSaveBlueprint(UBlueprint* BP)
+	{
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+		FKismetEditorUtilities::CompileBlueprint(BP);
+
+		UPackage* Package = BP->GetOutermost();
+		if (!Package) return false;
+
+		const FString FileName = FPackageName::LongPackageNameToFilename(
+			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		Args.SaveFlags = SAVE_NoError;
+		Args.Error = GError;
+		const bool bOk = UPackage::SavePackage(Package, BP, *FileName, Args);
+		if (!bOk)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SavePackage failed: %s"), *FileName);
+		}
+		return bOk;
+	}
+
+	// Emit a small ack JSON blob for a successful write op.
+	int32 EmitOk(const FString& OutputPath, bool bPretty)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString VarName, DefaultValue, Category;
+		FParse::Value(*Params, TEXT("Name="),     VarName);
+		FParse::Value(*Params, TEXT("Default="),  DefaultValue);
+		FParse::Value(*Params, TEXT("Category="), Category);
+		const bool bReplicated = FParse::Param(*Params, TEXT("Replicated"));
+		const bool bEditable   = FParse::Param(*Params, TEXT("Editable"));
+
+		// Build BPPinType from the individual -TypeFoo= flags.
+		FString TypeCategory, TypeSubCategory, TypeSubObject;
+		FParse::Value(*Params, TEXT("TypeCategory="),         TypeCategory);
+		FParse::Value(*Params, TEXT("TypeSubCategory="),      TypeSubCategory);
+		FParse::Value(*Params, TEXT("TypeSubCategoryObject="), TypeSubObject);
+
+		if (AssetPath.IsEmpty() || VarName.IsEmpty() || TypeCategory.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddVariable requires -Asset= -Name= -TypeCategory= [-TypeSubCategory=...] [-TypeSubCategoryObject=...]"));
+			return 1;
+		}
+
+		auto TypeJson = MakeShared<FJsonObject>();
+		TypeJson->SetStringField(TEXT("category"), TypeCategory);
+		if (!TypeSubCategory.IsEmpty()) TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
+		if (!TypeSubObject.IsEmpty())   TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
+		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
+		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
+
+		FEdGraphPinType PinType;
+		if (!FBlueprintReaderWireJson::ParseWirePinType(TypeJson, PinType))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddVariable: failed to build pin type"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddVariable: failed to load %s"), *AssetPath);
+			return 4;
+		}
+
+		const FName NewName(*VarName);
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, NewName) != INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddVariable: variable %s already exists on %s"),
+				*VarName, *AssetPath);
+			return 1;
+		}
+		FBlueprintEditorUtils::AddMemberVariable(BP, NewName, PinType, DefaultValue);
+		const int32 Index = FBlueprintEditorUtils::FindNewVariableIndex(BP, NewName);
+		if (Index == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddVariable: AddMemberVariable failed"));
+			return 1;
+		}
+		FBPVariableDescription& Var = BP->NewVariables[Index];
+		if (!Category.IsEmpty()) Var.Category = FText::FromString(Category);
+		if (bEditable)   Var.PropertyFlags |= CPF_Edit | CPF_BlueprintVisible;
+		if (bReplicated) { Var.PropertyFlags |= CPF_Net; Var.ReplicationCondition = COND_None; }
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	int32 RunSetNodePositionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString GraphName, NodeId;
+		int32 X = 0, Y = 0;
+		FParse::Value(*Params, TEXT("Graph="), GraphName);
+		FParse::Value(*Params, TEXT("Node="),  NodeId);
+		FParse::Value(*Params, TEXT("X="),     X);
+		FParse::Value(*Params, TEXT("Y="),     Y);
+
+		if (AssetPath.IsEmpty() || GraphName.IsEmpty() || NodeId.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition requires -Asset= -Graph= -Node= -X= -Y="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+
+		UEdGraph* Graph = FindGraphByName(BP, GraphName);
+		if (!Graph)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition: graph %s not found"), *GraphName);
+			return 4;
+		}
+		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
+		if (!Node)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition: node %s not found in %s"), *NodeId, *GraphName);
+			return 4;
+		}
+		Node->Modify();
+		Node->NodePosX = X;
+		Node->NodePosY = Y;
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	int32 RunDeleteNodeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString GraphName, NodeId;
+		FParse::Value(*Params, TEXT("Graph="), GraphName);
+		FParse::Value(*Params, TEXT("Node="),  NodeId);
+
+		if (AssetPath.IsEmpty() || GraphName.IsEmpty() || NodeId.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteNode requires -Asset= -Graph= -Node="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindGraphByName(BP, GraphName);
+		if (!Graph) return 4;
+		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
+		if (!Node)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteNode: node %s not found in %s"), *NodeId, *GraphName);
+			return 4;
+		}
+
+		// Break links + remove from graph. FBlueprintEditorUtils::RemoveNode
+		// handles both, plus refreshes any dependent UI state.
+		FBlueprintEditorUtils::RemoveNode(BP, Node, /*bDontRecompile=*/true);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// List op via the asset registry. Faster than walking Content/ on disk +
+	// LoadObject'ing every .uasset, and gets `parent_class` from asset tags
+	// without paying the full BP load cost. Falls back to a disk walk if the
+	// asset registry isn't available (e.g. very early commandlet startup
+	// before module init is complete).
 	int32 RunListOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString PathFilter;
@@ -115,41 +348,46 @@ namespace
 			PathFilter = TEXT("/Game");
 		}
 
-		FString FilesystemDir;
-		if (!FPackageName::TryConvertLongPackageNameToFilename(PathFilter / TEXT(""), FilesystemDir))
-		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("Cannot resolve package path: %s"), *PathFilter);
-			return 4;
-		}
-		// Strip trailing slash + suffix to make IFileManager happy.
-		FPaths::NormalizeDirectoryName(FilesystemDir);
-
-		IFileManager& FM = IFileManager::Get();
-		TArray<FString> UAssetPaths;
-		FM.FindFilesRecursive(UAssetPaths, *FilesystemDir, TEXT("*.uasset"), /*bFiles=*/true, /*bDirs=*/false);
-
 		TArray<TSharedPtr<FJsonValue>> Out;
-		Out.Reserve(UAssetPaths.Num());
-		for (const FString& File : UAssetPaths)
+
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		IAssetRegistry& AR = AssetRegistryModule.Get();
+		AR.SearchAllAssets(/*bSynchronousSearch=*/true);
+
+		FARFilter Filter;
+		Filter.bRecursivePaths = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
+
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		Out.Reserve(Assets.Num());
+		for (const FAssetData& Data : Assets)
 		{
-			FString PackageName;
-			if (!FPackageName::TryConvertFilenameToLongPackageName(File, PackageName))
+			FString ParentClass;
+			Data.GetTagValue(TEXT("ParentClass"), ParentClass);
+			if (ParentClass.IsEmpty())
 			{
-				continue;
+				// Older asset tags use NativeParentClass; try that as a fallback.
+				Data.GetTagValue(TEXT("NativeParentClass"), ParentClass);
 			}
 
-			const TOptional<FBlueprintInfo> Info = FBlueprintIntrospector::Read(PackageName);
-			if (!Info.IsSet()) continue;
+			const FString PackagePath = Data.PackageName.ToString();
+			const FString FileOnDisk = FPackageName::LongPackageNameToFilename(
+				PackagePath, FPackageName::GetAssetPackageExtension());
+			const FString Modified = IsoDateForFile(FileOnDisk);
 
-			const FString Modified = IsoDateForFile(File);
 			TSharedRef<FJsonObject> Summary = FBlueprintReaderWireJson::SummaryToJson(
-				Info->Path, Info->Name, Info->ParentClassPath, Modified);
+				PackagePath, Data.AssetName.ToString(), ParentClass, Modified);
 			Out.Add(MakeShared<FJsonValueObject>(Summary));
 		}
 
 		Out.Sort([](const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValue>& B)
 		{
-			return A->AsObject()->GetStringField(TEXT("asset_path")) < B->AsObject()->GetStringField(TEXT("asset_path"));
+			return A->AsObject()->GetStringField(TEXT("asset_path")) <
+			       B->AsObject()->GetStringField(TEXT("asset_path"));
 		});
 
 		const FString Json = FBlueprintReaderWireJson::WriteArrayString(Out, bPretty);
@@ -193,6 +431,9 @@ int32 RunOneOp(const FString& Params)
 	{
 		return RunListOp(Params, OutputPath, bPretty);
 	}
+	if (Op == EOp::AddVariable)     return RunAddVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetNodePosition) return RunSetNodePositionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteNode)      return RunDeleteNodeOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
