@@ -35,5 +35,4 @@ jobs:
         run: cmake --build mcp-server/build --config Release --parallel
 
       - name: Run tests (mock-only — live commandlet tests skip without env)
-        run: mcp-server/build/tests/Release/bp-reader-tests.exe --reporters=console
-        shell: cmd
+        run: ./mcp-server/build/tests/Release/bp-reader-tests.exe --reporters=console
