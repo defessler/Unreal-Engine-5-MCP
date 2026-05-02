@@ -1,0 +1,39 @@
+name: mcp-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-server/**'
+      - 'Shared/**'
+      - '.github/workflows/mcp-server.yml'
+  pull_request:
+    paths:
+      - 'mcp-server/**'
+      - 'Shared/**'
+      - '.github/workflows/mcp-server.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache FetchContent (nlohmann_json / fmt / doctest)
+        uses: actions/cache@v4
+        with:
+          path: mcp-server/build/_deps
+          key: mcp-server-deps-${{ hashFiles('mcp-server/CMakeLists.txt') }}
+          restore-keys: mcp-server-deps-
+
+      - name: Configure
+        run: cmake -S mcp-server -B mcp-server/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build mcp-server/build --config Release --parallel
+
+      - name: Run tests (mock-only — live commandlet tests skip without env)
+        run: mcp-server/build/tests/Release/bp-reader-tests.exe --reporters=console
+        shell: cmd
