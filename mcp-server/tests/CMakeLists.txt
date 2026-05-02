@@ -8,6 +8,7 @@ add_executable(bp-reader-tests
     test_mcp.cpp
     test_mock_backend.cpp
     test_tools.cpp
+    test_commandlet_backend.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE

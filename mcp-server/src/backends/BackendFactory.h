@@ -14,6 +14,10 @@ namespace bpr::backends {
 struct BackendConfig {
     std::string backend = "mock";    // mock | commandlet | live
     std::filesystem::path fixturesDir;
+    // commandlet-only:
+    std::filesystem::path engineDir;
+    std::filesystem::path uproject;
+    int timeoutSeconds = 120;
 };
 
 // Read BP_READER_BACKEND and BP_READER_FIXTURES_DIR from the environment.

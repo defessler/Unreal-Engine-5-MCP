@@ -74,6 +74,7 @@ add_library(bp-reader-core STATIC
     src/tools/ToolRegistry.cpp
     src/tools/BlueprintTools.cpp
     src/backends/MockBlueprintReader.cpp
+    src/backends/CommandletBlueprintReader.cpp
     src/backends/BackendFactory.cpp
 )
 target_include_directories(bp-reader-core PUBLIC
