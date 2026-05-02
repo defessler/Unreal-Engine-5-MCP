@@ -244,12 +244,15 @@ int32 UBlueprintReaderCommandlet::Main(const FString& Params)
 	{
 		FString Query;
 		FParse::Value(*Params, TEXT("Query="), Query);
-		if (Query.IsEmpty())
+		FString Kind;
+		FParse::Value(*Params, TEXT("Kind="), Kind);
+		// Permit empty Query when Kind is set (kind-only filter).
+		if (Query.IsEmpty() && Kind.IsEmpty())
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("Missing required argument: -Query=<substring>"));
+			UE_LOG(LogBlueprintReader, Error, TEXT("find_node requires -Query=<substring> and/or -Kind=<extra>"));
 			return 1;
 		}
-		auto Nodes = FBlueprintReaderWireJson::FindNodesAsJson(*Info, Query);
+		auto Nodes = FBlueprintReaderWireJson::FindNodesAsJson(*Info, Query, Kind);
 		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Nodes, bPretty), OutputPath);
 	}
 	default:

@@ -214,18 +214,29 @@ namespace
 		}
 	}
 
+	bool NodeKindMatches(const FBPNodeInfo& N, const FString& LowerKind)
+	{
+		if (LowerKind.IsEmpty()) return true;
+		const FString* Kind = N.Extras.Find(TEXT("kind"));
+		if (!Kind) return false;
+		return Kind->ToLower() == LowerKind;
+	}
+
 	void GatherNodesMatching(const FBPGraphInfo& Graph,
 	                         const FString& LowerQuery,
+	                         const FString& LowerKind,
 	                         TArray<TSharedPtr<FJsonValue>>& Out)
 	{
 		for (const FBPNodeInfo& N : Graph.Nodes)
 		{
-			const bool bClassMatch = N.ClassName.ToLower().Contains(LowerQuery);
-			const bool bTitleMatch = N.Title.ToLower().Contains(LowerQuery);
-			if (bClassMatch || bTitleMatch)
+			if (!NodeKindMatches(N, LowerKind)) continue;
+			if (!LowerQuery.IsEmpty())
 			{
-				Out.Add(MakeShared<FJsonValueObject>(NodeToJson(N)));
+				const bool bClassMatch = N.ClassName.ToLower().Contains(LowerQuery);
+				const bool bTitleMatch = N.Title.ToLower().Contains(LowerQuery);
+				if (!bClassMatch && !bTitleMatch) continue;
 			}
+			Out.Add(MakeShared<FJsonValueObject>(NodeToJson(N)));
 		}
 	}
 }
@@ -342,14 +353,17 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::VariablesToJson(const F
 	return Out;
 }
 
-TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::FindNodesAsJson(const FBlueprintInfo& Info, const FString& Query)
+TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::FindNodesAsJson(const FBlueprintInfo& Info,
+                                                                         const FString& Query,
+                                                                         const FString& Kind)
 {
-	const FString Lower = Query.ToLower();
+	const FString LowerQuery = Query.ToLower();
+	const FString LowerKind  = Kind.ToLower();
 	TArray<TSharedPtr<FJsonValue>> Out;
-	for (const FBPGraphInfo& G : Info.EventGraphs)             GatherNodesMatching(G, Lower, Out);
-	for (const FBPGraphInfo& G : Info.FunctionGraphs)          GatherNodesMatching(G, Lower, Out);
-	for (const FBPGraphInfo& G : Info.MacroGraphs)             GatherNodesMatching(G, Lower, Out);
-	for (const FBPGraphInfo& G : Info.DelegateSignatureGraphs) GatherNodesMatching(G, Lower, Out);
+	for (const FBPGraphInfo& G : Info.EventGraphs)             GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	for (const FBPGraphInfo& G : Info.FunctionGraphs)          GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	for (const FBPGraphInfo& G : Info.MacroGraphs)             GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	for (const FBPGraphInfo& G : Info.DelegateSignatureGraphs) GatherNodesMatching(G, LowerQuery, LowerKind, Out);
 	return Out;
 }
 
