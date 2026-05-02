@@ -29,13 +29,30 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 6 tools with input schemas") {
+TEST_CASE("ToolRegistry exposes 9 tools (6 read + 3 write) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 6);
+    CHECK(spec.size() == 9);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
+}
+
+TEST_CASE("Write tools throw on the mock backend (read-only by design)") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("add_variable", json{
+        {"asset_path", "/Game/AI/BP_Enemy"},
+        {"name", "NewVar"},
+        {"type", json{{"category","bool"}}}
+    }), bpr::backends::BlueprintReaderError);
+    CHECK_THROWS_AS(f.Call("set_node_position", json{
+        {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+        {"node_id","00000000-0000-0000-0000-000000000000"}, {"x",0}, {"y",0}
+    }), bpr::backends::BlueprintReaderError);
+    CHECK_THROWS_AS(f.Call("delete_node", json{
+        {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+        {"node_id","00000000-0000-0000-0000-000000000000"}
+    }), bpr::backends::BlueprintReaderError);
 }
 
 TEST_CASE("list_blueprints returns canonical BPAssetSummary array") {

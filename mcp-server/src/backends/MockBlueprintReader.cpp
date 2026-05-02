@@ -156,6 +156,25 @@ std::vector<BPVariable> MockBlueprintReader::ListVariables(std::string_view asse
     return Require(assetPath).metadata.Variables;
 }
 
+void MockBlueprintReader::AddVariable(std::string_view, std::string_view,
+                                      const BPPinType&, std::string_view,
+                                      std::string_view, bool, bool) {
+    throw BlueprintReaderError(
+        "AddVariable: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::SetNodePosition(std::string_view, std::string_view,
+                                          std::string_view, int, int) {
+    throw BlueprintReaderError(
+        "SetNodePosition: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::DeleteNode(std::string_view, std::string_view,
+                                     std::string_view) {
+    throw BlueprintReaderError(
+        "DeleteNode: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
                                                   std::string_view query,
                                                   std::string_view kind) {

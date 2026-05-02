@@ -184,6 +184,108 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             return nlohmann::json(reader.FindNode(asset, q, kind));
         });
     }
+
+    // ===== Write tools (Phase 1.5) =========================================
+
+    // ----- add_variable ----------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_variable";
+        d.description =
+            "Add a member variable to a blueprint. `type` is a BPPinType: "
+            "{category, sub_category, sub_category_object, is_array, is_set, is_map}.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"name",          {{"type","string"}}},
+                {"type",          {{"type","object"},
+                                   {"description","BPPinType wire shape, e.g. {\"category\":\"real\",\"sub_category\":\"float\"}"}}},
+                {"default_value", {{"type","string"}}},
+                {"category",      {{"type","string"}}},
+                {"replicated",    {{"type","boolean"}}},
+                {"editable",      {{"type","boolean"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name","type"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& name  = RequireString(args, "name");
+            auto typeIt = args.find("type");
+            if (typeIt == args.end() || !typeIt->is_object()) {
+                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            }
+            // Build BPPinType tolerantly: only `category` is required.
+            BPPinType type;
+            type.Category = RequireString(*typeIt, "category");
+            if (auto it = typeIt->find("sub_category"); it != typeIt->end() && it->is_string()) {
+                type.SubCategory = it->get<std::string>();
+            }
+            if (auto it = typeIt->find("sub_category_object"); it != typeIt->end() && it->is_string()) {
+                type.SubCategoryObject = it->get<std::string>();
+            }
+            type.IsArray = typeIt->value("is_array", false);
+            type.IsSet   = typeIt->value("is_set",   false);
+            type.IsMap   = typeIt->value("is_map",   false);
+
+            std::string defaultValue = OptString(args, "default_value", "");
+            std::string category     = OptString(args, "category",      "");
+            bool replicated = args.value("replicated", false);
+            bool editable   = args.value("editable",   false);
+            reader.AddVariable(asset, name, type, defaultValue, category, replicated, editable);
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- set_node_position -----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_node_position";
+        d.description = "Move a node (by GUID) to (x, y) inside a graph. Recompiles + saves the BP.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"graph_name", {{"type","string"}}},
+                {"node_id",    {{"type","string"}, {"description","Node GUID"}}},
+                {"x",          {{"type","integer"}}},
+                {"y",          {{"type","integer"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name","node_id","x","y"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& graph = RequireString(args, "graph_name");
+            const std::string& node  = RequireString(args, "node_id");
+            int x = args.at("x").get<int>();
+            int y = args.at("y").get<int>();
+            reader.SetNodePosition(asset, graph, node, x, y);
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- delete_node -----------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "delete_node";
+        d.description = "Delete a node by GUID. Breaks any links into/out of it. Recompiles + saves.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"graph_name", {{"type","string"}}},
+                {"node_id",    {{"type","string"}, {"description","Node GUID"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name","node_id"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& graph = RequireString(args, "graph_name");
+            const std::string& node  = RequireString(args, "node_id");
+            reader.DeleteNode(asset, graph, node);
+            return nlohmann::json{{"ok", true}};
+        });
+    }
 }
 
 } // namespace bpr::tools

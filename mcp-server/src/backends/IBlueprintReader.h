@@ -42,6 +42,23 @@ public:
     // exact match (case-insensitive) against meta["kind"].
     virtual std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
                                                  std::string_view kind = {}) = 0;
+
+    // Write tools (Phase 1.5). Backends that don't support mutation throw
+    // BlueprintReaderError. Each call should leave the .uasset compilable.
+
+    // Add a member variable to a blueprint. `type` is the wire BPPinType.
+    // `defaultValue`, `category` may be empty.
+    virtual void AddVariable(std::string_view assetPath, std::string_view name,
+                             const BPPinType& type, std::string_view defaultValue,
+                             std::string_view category, bool replicated, bool editable) = 0;
+
+    // Reposition a node by its GUID inside `graphName`.
+    virtual void SetNodePosition(std::string_view assetPath, std::string_view graphName,
+                                 std::string_view nodeId, int x, int y) = 0;
+
+    // Delete a node by its GUID. Breaks any incoming/outgoing links first.
+    virtual void DeleteNode(std::string_view assetPath, std::string_view graphName,
+                            std::string_view nodeId) = 0;
 };
 
 } // namespace bpr::backends
