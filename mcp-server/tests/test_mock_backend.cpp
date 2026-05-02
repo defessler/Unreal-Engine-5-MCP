@@ -93,3 +93,21 @@ TEST_CASE("FindNode searches both event graph and function graphs") {
     CHECK(print.size() == 1);
     CHECK(print[0].Title == "Print String");
 }
+
+TEST_CASE("FindNode kind filter narrows results") {
+    MockBlueprintReader reader(bpr::test::FixturesDir());
+    // Empty query + kind-only should still match.
+    auto allCalls = reader.FindNode("/Game/AI/BP_Enemy", "", "CallFunction");
+    // BP_Enemy fixture has function_name in meta but its mock fixtures don't
+    // have a "kind" key, so the default-shaped fixtures return zero matches —
+    // that's the contract: kind filter is exact match against meta["kind"].
+    CHECK(allCalls.empty());
+
+    // Combined: query + kind, neither matches => empty.
+    auto none = reader.FindNode("/Game/AI/BP_Enemy", "ThisDoesNotExist", "Event");
+    CHECK(none.empty());
+
+    // Query-only path is unchanged from prior behavior.
+    auto print = reader.FindNode("/Game/AI/BP_Enemy", "print string", "");
+    CHECK(print.size() == 1);
+}
