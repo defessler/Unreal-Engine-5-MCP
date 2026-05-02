@@ -29,13 +29,45 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 13 tools (6 read + 7 write) with input schemas") {
+TEST_CASE("ToolRegistry exposes 15 tools (6 read + 7 write + 2 meta) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 13);
+    CHECK(spec.size() == 15);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
+}
+
+TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
+    Fixture f;
+    auto out = f.Call("list_node_kinds", json::object());
+    REQUIRE(out.is_array());
+    CHECK(out.size() == 6);
+    std::vector<std::string> kinds;
+    for (auto& k : out) kinds.push_back(k["kind"].get<std::string>());
+    auto has = [&](const std::string& s) {
+        return std::find(kinds.begin(), kinds.end(), s) != kinds.end();
+    };
+    for (const char* k : {"Branch","Sequence","VariableGet","VariableSet","CallFunction","CustomEvent"}) {
+        CHECK(has(k));
+    }
+    // CallFunction declares its required extras.
+    for (auto& k : out) {
+        if (k["kind"] == "CallFunction") {
+            REQUIRE(k["extras"].is_array());
+            CHECK(k["extras"].size() == 2);
+        }
+    }
+}
+
+TEST_CASE("Discoverability: list_pin_categories returns categories + containers") {
+    Fixture f;
+    auto out = f.Call("list_pin_categories", json::object());
+    REQUIRE(out.contains("categories"));
+    REQUIRE(out["categories"].is_array());
+    CHECK(out["categories"].size() >= 14);
+    REQUIRE(out.contains("containers"));
+    CHECK(out["containers"].size() == 3);
 }
 
 TEST_CASE("Write tools throw on the mock backend (read-only by design)") {

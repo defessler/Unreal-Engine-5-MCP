@@ -87,7 +87,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
     CHECK(frames[1]["id"] == 2);
     auto& list = frames[1]["result"]["tools"];
     REQUIRE(list.is_array());
-    CHECK(list.size() == 13);
+    CHECK(list.size() == 15);
     std::vector<std::string> names;
     for (auto& t : list) names.push_back(t["name"].get<std::string>());
     auto has = [&](const std::string& n) {
@@ -96,7 +96,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
     for (const char* n : {"list_blueprints","read_blueprint","get_graph","get_function",
                           "list_variables","find_node","add_variable","set_node_position",
                           "delete_node","add_node","wire_pins","delete_variable",
-                          "rename_variable"}) {
+                          "rename_variable","list_node_kinds","list_pin_categories"}) {
         CHECK(has(n));
     }
 
