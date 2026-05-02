@@ -37,6 +37,7 @@ public:
     virtual BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) = 0;
     virtual BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) = 0;
     virtual std::vector<BPVariable>     ListVariables(std::string_view assetPath) = 0;
+    virtual std::vector<BPComponent>    GetComponents(std::string_view assetPath) = 0;
     // `kind`, when non-empty, additionally filters matches by their K2 extras
     // "kind" entry (e.g. "CallFunction", "VariableGet", "Event"). The text
     // `query` matches case-insensitively against class or title; `kind` is an

@@ -31,6 +31,7 @@ public:
 	static TSharedPtr<FJsonObject> GraphToJson(const FBlueprintInfo& Info, const FString& GraphName);
 	static TSharedPtr<FJsonObject> FunctionToJson(const FBlueprintInfo& Info, const FString& FunctionName);
 	static TArray<TSharedPtr<FJsonValue>> VariablesToJson(const FBlueprintInfo& Info);
+	static TArray<TSharedPtr<FJsonValue>> ComponentsToJson(const FBlueprintInfo& Info);
 	static TArray<TSharedPtr<FJsonValue>> FindNodesAsJson(const FBlueprintInfo& Info,
 	                                                      const FString& Query,
 	                                                      const FString& Kind = FString());

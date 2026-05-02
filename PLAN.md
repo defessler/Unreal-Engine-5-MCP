@@ -77,7 +77,8 @@ D:\Projects\UE5_AI_BP\
     - Functions: `add_function`, `delete_function`,
       `add_function_input`, `add_function_output`.
     - Nodes: `add_node` (Branch / Sequence / VariableGet/Set /
-      CallFunction / CustomEvent), `set_node_position`, `delete_node`.
+      CallFunction / CustomEvent / Cast / Self / MakeArray / MakeStruct /
+      FormatText / Knot — 12 kinds), `set_node_position`, `delete_node`.
     - Connections: `wire_pins` (schema-validated, accepts pin GUIDs
       or names).
     Mock backend throws (read-only by design).

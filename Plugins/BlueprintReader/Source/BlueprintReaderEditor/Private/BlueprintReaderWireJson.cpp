@@ -356,6 +356,22 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::VariablesToJson(const F
 	return Out;
 }
 
+TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::ComponentsToJson(const FBlueprintInfo& Info)
+{
+	TArray<TSharedPtr<FJsonValue>> Out;
+	Out.Reserve(Info.Components.Num());
+	for (const FBPComponentInfo& C : Info.Components)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetStringField(TEXT("name"), C.Name);
+		Obj->SetStringField(TEXT("class"), C.ClassPath);
+		SetStringOrNull(Obj, TEXT("parent"), C.ParentName);
+		Obj->SetBoolField(TEXT("is_root"), C.bIsRoot);
+		Out.Add(MakeShared<FJsonValueObject>(Obj));
+	}
+	return Out;
+}
+
 TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::FindNodesAsJson(const FBlueprintInfo& Info,
                                                                          const FString& Query,
                                                                          const FString& Kind)

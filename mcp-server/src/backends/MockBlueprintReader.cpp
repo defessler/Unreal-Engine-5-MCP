@@ -87,6 +87,9 @@ void MockBlueprintReader::LoadFile(const std::filesystem::path& file) {
         if (auto fnIt = j.find("functions"); fnIt != j.end()) {
             entry.functions = fnIt->get<std::vector<BPFunction>>();
         }
+        if (auto compIt = j.find("components"); compIt != j.end()) {
+            entry.components = compIt->get<std::vector<BPComponent>>();
+        }
     } catch (const std::exception& e) {
         throw BlueprintReaderError(
             fmt::format("malformed fixture {}: {}", file.string(), e.what()));
@@ -154,6 +157,10 @@ BPFunction MockBlueprintReader::GetFunction(std::string_view assetPath,
 
 std::vector<BPVariable> MockBlueprintReader::ListVariables(std::string_view assetPath) {
     return Require(assetPath).metadata.Variables;
+}
+
+std::vector<BPComponent> MockBlueprintReader::GetComponents(std::string_view assetPath) {
+    return Require(assetPath).components;
 }
 
 void MockBlueprintReader::AddVariable(std::string_view, std::string_view,

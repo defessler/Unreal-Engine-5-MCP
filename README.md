@@ -28,6 +28,7 @@ Two backends:
 | `get_graph`         | read      | Full node + connection graph by name. Defaults to `EventGraph`.            |
 | `get_function`      | read      | A function's signature (inputs/outputs/locals) + body graph.               |
 | `list_variables`    | read      | Member variables with type, default, category, replication state.          |
+| `get_components`    | read      | SCS components — name, class, parent, root flag.                           |
 | `find_node`         | read      | Substring search by class/title; optional `kind` filter on K2 extras.      |
 | `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
 | `delete_variable`   | **write** | Remove a member variable by name.                                          |

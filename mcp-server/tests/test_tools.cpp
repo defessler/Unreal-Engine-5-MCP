@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 20 tools (6 read + 12 write + 2 meta) with input schemas") {
+TEST_CASE("ToolRegistry exposes 21 tools (7 read + 12 write + 2 meta) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 20);
+    CHECK(spec.size() == 21);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
@@ -42,13 +42,15 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
     Fixture f;
     auto out = f.Call("list_node_kinds", json::object());
     REQUIRE(out.is_array());
-    CHECK(out.size() == 6);
+    CHECK(out.size() == 12);
     std::vector<std::string> kinds;
     for (auto& k : out) kinds.push_back(k["kind"].get<std::string>());
     auto has = [&](const std::string& s) {
         return std::find(kinds.begin(), kinds.end(), s) != kinds.end();
     };
-    for (const char* k : {"Branch","Sequence","VariableGet","VariableSet","CallFunction","CustomEvent"}) {
+    for (const char* k : {"Branch","Sequence","VariableGet","VariableSet","CallFunction",
+                          "CustomEvent","Cast","Self","MakeArray","MakeStruct",
+                          "FormatText","Knot"}) {
         CHECK(has(k));
     }
     // CallFunction declares its required extras.

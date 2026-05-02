@@ -66,6 +66,33 @@ TEST_CASE("GetFunction returns the function with locals + signature") {
     CHECK(fn.Graph.Type == "Function");
 }
 
+TEST_CASE("GetComponents returns SCS hierarchy from fixture") {
+    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto comps = reader.GetComponents("/Game/Items/BP_Pickup");
+    REQUIRE(comps.size() == 3);
+    bool sawRoot = false, sawMesh = false, sawHalo = false;
+    for (const auto& c : comps) {
+        if (c.Name == "DefaultSceneRoot") { sawRoot = true; CHECK(c.IsRoot); }
+        if (c.Name == "PickupMesh") {
+            sawMesh = true;
+            REQUIRE(c.Parent.has_value());
+            CHECK(*c.Parent == "DefaultSceneRoot");
+        }
+        if (c.Name == "Halo") {
+            sawHalo = true;
+            REQUIRE(c.Parent.has_value());
+            CHECK(*c.Parent == "PickupMesh");
+        }
+    }
+    CHECK(sawRoot); CHECK(sawMesh); CHECK(sawHalo);
+}
+
+TEST_CASE("GetComponents returns empty array for fixtures with no components") {
+    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto comps = reader.GetComponents("/Game/AI/BP_Enemy");
+    CHECK(comps.empty());
+}
+
 TEST_CASE("ListVariables matches metadata.Variables") {
     MockBlueprintReader reader(bpr::test::FixturesDir());
     auto vars = reader.ListVariables("/Game/AI/BP_Enemy");

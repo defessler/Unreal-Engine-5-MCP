@@ -321,5 +321,13 @@
                 ]
             }
         }
+    ],
+    "components": [
+        {"name": "DefaultSceneRoot", "class": "/Script/Engine.SceneComponent",
+         "parent": null,                "is_root": true},
+        {"name": "PickupMesh",       "class": "/Script/Engine.StaticMeshComponent",
+         "parent": "DefaultSceneRoot", "is_root": false},
+        {"name": "Halo",             "class": "/Script/Engine.PointLightComponent",
+         "parent": "PickupMesh",        "is_root": false}
     ]
 }

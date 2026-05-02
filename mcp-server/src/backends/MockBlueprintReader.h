@@ -21,6 +21,7 @@ public:
     BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) override;
     BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
     std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
+    std::vector<BPComponent>    GetComponents(std::string_view assetPath) override;
     std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
                                           std::string_view kind = {}) override;
 
@@ -59,6 +60,7 @@ private:
         BPMetadata metadata;
         std::vector<BPGraph> graphs;
         std::vector<BPFunction> functions;
+        std::vector<BPComponent> components;  // optional `components` array in fixture JSON
     };
 
     void LoadDir(const std::filesystem::path& dir);

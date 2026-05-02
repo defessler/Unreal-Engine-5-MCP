@@ -135,6 +135,21 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- get_components --------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "get_components";
+        d.description =
+            "List the SCS components (StaticMeshComponent, LightComponent, "
+            "child actors, etc.) attached to a blueprint, with parent/child "
+            "hierarchy. Each entry: {name, class, parent, is_root}.";
+        d.input_schema = AssetPathSchema();
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            return nlohmann::json(reader.GetComponents(asset));
+        });
+    }
+
     // ----- list_variables --------------------------------------------------
     {
         ToolDescriptor d;
@@ -309,6 +324,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                 {"function",       {{"type","string"}}},
                 {"function_owner", {{"type","string"}}},
                 {"event_name",     {{"type","string"}}},
+                {"target_class",   {{"type","string"}}},
+                {"struct_type",    {{"type","string"}}},
             }},
             {"required", nlohmann::json::array({"asset_path","graph_name","kind","x","y"})},
         };
@@ -328,6 +345,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             put("function",       "Function");
             put("function_owner", "FunctionOwner");
             put("event_name",     "EventName");
+            put("target_class",   "TargetClass");
+            put("struct_type",    "StructType");
             std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
             return nlohmann::json{{"ok", true}, {"node_id", newId}};
         });
@@ -623,6 +642,48 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                         nlohmann::json{{"name","event_name"}, {"required",true},
                                        {"description","FName for the new event."}}
                     })},
+                },
+                nlohmann::json{
+                    {"kind", "Cast"},
+                    {"class", "K2Node_DynamicCast"},
+                    {"description", "Cast an object to a target class. Provides Cast Failed and As<TargetClass> output pins."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","target_class"}, {"required",true},
+                                       {"description","UClass path or short name to cast to."}}
+                    })},
+                },
+                nlohmann::json{
+                    {"kind", "Self"},
+                    {"class", "K2Node_Self"},
+                    {"description", "Reference to Self (the owning blueprint instance)."},
+                    {"extras", nlohmann::json::array()},
+                },
+                nlohmann::json{
+                    {"kind", "MakeArray"},
+                    {"class", "K2Node_MakeArray"},
+                    {"description", "Build a TArray literal. Element type is wildcard until connected."},
+                    {"extras", nlohmann::json::array()},
+                },
+                nlohmann::json{
+                    {"kind", "MakeStruct"},
+                    {"class", "K2Node_MakeStruct"},
+                    {"description", "Build a USTRUCT literal. Each member becomes an input pin."},
+                    {"extras", nlohmann::json::array({
+                        nlohmann::json{{"name","struct_type"}, {"required",true},
+                                       {"description","UScriptStruct path, e.g. /Script/CoreUObject.Vector."}}
+                    })},
+                },
+                nlohmann::json{
+                    {"kind", "FormatText"},
+                    {"class", "K2Node_FormatText"},
+                    {"description", "Format an FText with named arguments. Add args by editing the Format string."},
+                    {"extras", nlohmann::json::array()},
+                },
+                nlohmann::json{
+                    {"kind", "Knot"},
+                    {"class", "K2Node_Knot"},
+                    {"description", "Reroute node — pure visual, useful for cleaning up wire crossings."},
+                    {"extras", nlohmann::json::array()},
                 },
             });
         });
