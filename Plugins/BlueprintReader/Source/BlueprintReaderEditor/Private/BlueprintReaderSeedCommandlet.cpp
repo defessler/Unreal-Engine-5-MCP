@@ -7,10 +7,13 @@
 #include "Engine/Blueprint.h"
 #include "Factories/BlueprintFactory.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_CallFunction.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_VariableGet.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/Package.h"
@@ -152,12 +155,12 @@ namespace
 		}
 	}
 
-	void AddBranchToEventGraph(UBlueprint* BP)
+	void BuildEventGraph(UBlueprint* BP)
 	{
 		UEdGraph* Graph = FBlueprintEditorUtils::FindEventGraph(BP);
 		if (!Graph) return;
 
-		// Try to find an existing BeginPlay event node; if absent, create one.
+		// BeginPlay event (existing or new).
 		UK2Node_Event* BeginPlay = nullptr;
 		for (UEdGraphNode* Node : Graph->Nodes)
 		{
@@ -183,22 +186,48 @@ namespace
 			BeginPlay->AllocateDefaultPins();
 		}
 
-		// Branch node.
+		// Get bIsAlive (VariableGet).
+		UK2Node_VariableGet* GetIsAlive = NewObject<UK2Node_VariableGet>(Graph);
+		GetIsAlive->VariableReference.SetSelfMember(TEXT("bIsAlive"));
+		GetIsAlive->CreateNewGuid();
+		GetIsAlive->NodePosX = -16;
+		GetIsAlive->NodePosY = 160;
+		Graph->AddNode(GetIsAlive, false, false);
+		GetIsAlive->PostPlacedNewNode();
+		GetIsAlive->AllocateDefaultPins();
+
+		// Branch.
 		UK2Node_IfThenElse* Branch = NewObject<UK2Node_IfThenElse>(Graph);
 		Branch->CreateNewGuid();
-		Branch->NodePosX = 200;
+		Branch->NodePosX = 240;
 		Branch->NodePosY = 0;
 		Graph->AddNode(Branch, false, false);
 		Branch->PostPlacedNewNode();
 		Branch->AllocateDefaultPins();
 
-		// Wire BeginPlay -> Branch (exec).
-		UEdGraphPin* ThenPin = BeginPlay->FindPin(UEdGraphSchema_K2::PN_Then);
-		UEdGraphPin* ExecIn = Branch->GetExecPin();
-		if (ThenPin && ExecIn)
-		{
-			ThenPin->MakeLinkTo(ExecIn);
-		}
+		// PrintString call (KismetSystemLibrary::PrintString).
+		UK2Node_CallFunction* PrintNode = NewObject<UK2Node_CallFunction>(Graph);
+		PrintNode->FunctionReference.SetExternalMember(
+			GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, PrintString),
+			UKismetSystemLibrary::StaticClass());
+		PrintNode->CreateNewGuid();
+		PrintNode->NodePosX = 480;
+		PrintNode->NodePosY = 0;
+		Graph->AddNode(PrintNode, false, false);
+		PrintNode->PostPlacedNewNode();
+		PrintNode->AllocateDefaultPins();
+
+		// Wire it up.
+		UEdGraphPin* PlayThen      = BeginPlay->FindPin(UEdGraphSchema_K2::PN_Then);
+		UEdGraphPin* BranchExec    = Branch->GetExecPin();
+		UEdGraphPin* IsAliveOut    = GetIsAlive->FindPin(TEXT("bIsAlive"));
+		UEdGraphPin* BranchCond    = Branch->GetConditionPin();
+		UEdGraphPin* BranchThen    = Branch->GetThenPin();
+		UEdGraphPin* PrintExecIn   = PrintNode->GetExecPin();
+
+		if (PlayThen    && BranchExec)  PlayThen->MakeLinkTo(BranchExec);
+		if (IsAliveOut  && BranchCond)  IsAliveOut->MakeLinkTo(BranchCond);
+		if (BranchThen  && PrintExecIn) BranchThen->MakeLinkTo(PrintExecIn);
 	}
 
 	bool SavePackageToDisk(UPackage* Package, UBlueprint* Asset, const FString& PackageName)
@@ -250,6 +279,7 @@ namespace
 		AddVariable(BP, TEXT("Health"),       FloatType,    TEXT("100.0"), TEXT("Combat"), /*replicated=*/true,  /*editable=*/true);
 		AddVariable(BP, TEXT("MaxHealth"),    FloatType,    TEXT("100.0"), TEXT("Combat"), false, true);
 		AddVariable(BP, TEXT("AggroTarget"),  ActorObjType, FString(),     TEXT("AI"),     true,  false);
+		AddVariable(BP, TEXT("bIsAlive"),     BoolType,     TEXT("true"),  TEXT("Combat"), false, true);
 
 		// Custom function: TakeDamage(Damage:float) -> Killed:bool, with local NewHealth.
 		UEdGraph* TakeDamage = AddBlueprintFunction(BP, TEXT("TakeDamage"));
@@ -260,8 +290,8 @@ namespace
 		// Custom function: OnDeath() with no params.
 		AddBlueprintFunction(BP, TEXT("OnDeath"));
 
-		// Event graph: minimal BeginPlay -> Branch.
-		AddBranchToEventGraph(BP);
+		// Event graph: BeginPlay -> Branch (Get bIsAlive condition) -> PrintString.
+		BuildEventGraph(BP);
 
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 		FKismetEditorUtilities::CompileBlueprint(BP);
