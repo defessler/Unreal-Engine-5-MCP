@@ -109,6 +109,64 @@ TEST_CASE("CommandletBlueprintReader: AssetNotFound on bogus path"
                     bpr::backends::BlueprintReaderError);
 }
 
+TEST_CASE("CommandletBlueprintReader: extended write tools — add_node + wire_pins + delete_variable + rename_variable"
+          * doctest::skip(!LiveBackendAvailable())) {
+    auto reader = MakeLiveReader(/*useDaemon=*/true);
+    const std::string asset = "/Game/AI/BP_TestEnemy";
+
+    // 1. Add a fresh CustomEvent node to the EventGraph. Returns a GUID.
+    std::map<std::string, std::string, std::less<>> evtArgs{
+        {"EventName", "BPR_TestEvent"}};
+    std::string customEventId = reader->AddNode(
+        asset, "EventGraph", "CustomEvent", -300, 320, evtArgs);
+    CHECK(!customEventId.empty());
+
+    // 2. Add a Branch node next to it.
+    std::string branchId = reader->AddNode(
+        asset, "EventGraph", "Branch", -50, 320, {});
+    CHECK(!branchId.empty());
+
+    // 3. Wire the CustomEvent's `then` output to the Branch's exec input.
+    //    Pin GUIDs aren't easy to predict here, so use names — wire_pins
+    //    accepts both.
+    reader->WirePins(asset, "EventGraph", customEventId, "then", branchId, "execute");
+
+    // 4. Read back the graph and assert the new connection exists.
+    auto graph = reader->GetGraph(asset, "EventGraph");
+    bool found = false;
+    for (const auto& c : graph.Connections) {
+        if (c.FromNode == customEventId && c.ToNode == branchId) { found = true; break; }
+    }
+    CHECK(found);
+
+    // 5. Delete the Branch we just added (cleanup partial — keep the
+    //    CustomEvent since UE's serialization may keep an event call somewhere).
+    reader->DeleteNode(asset, "EventGraph", branchId);
+
+    // 6. Rename a member variable then rename it back.
+    reader->RenameVariable(asset, "MaxHealth", "MaxHP");
+    auto vars1 = reader->ListVariables(asset);
+    bool sawNew = false;
+    for (const auto& v : vars1) if (v.Name == "MaxHP") sawNew = true;
+    CHECK(sawNew);
+    reader->RenameVariable(asset, "MaxHP", "MaxHealth");
+
+    // 7. Delete the variable we'll re-add. Ignore "not found" errors
+    //    (e.g. if a previous test run already left it removed).
+    try { reader->DeleteVariable(asset, "AggroTarget"); } catch (...) {}
+    auto vars2 = reader->ListVariables(asset);
+    bool sawAggro = false;
+    for (const auto& v : vars2) if (v.Name == "AggroTarget") sawAggro = true;
+    CHECK_FALSE(sawAggro);
+
+    // 8. Re-add it via add_variable so reseed isn't strictly necessary
+    //    for any subsequent test runs in this session.
+    BPPinType actorType;
+    actorType.Category = "object";
+    actorType.SubCategoryObject = "/Script/Engine.Actor";
+    reader->AddVariable(asset, "AggroTarget", actorType, "", "AI", true, false);
+}
+
 TEST_CASE("CommandletBlueprintReader: write tools (AddVariable round-trip)"
           * doctest::skip(!LiveBackendAvailable())) {
     auto reader = MakeLiveReader(/*useDaemon=*/true);

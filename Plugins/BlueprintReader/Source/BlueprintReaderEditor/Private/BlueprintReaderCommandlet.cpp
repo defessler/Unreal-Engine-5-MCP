@@ -10,9 +10,19 @@
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Event.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_IfThenElse.h"
+#include "K2Node_VariableGet.h"
+#include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/FileHelper.h"
@@ -53,6 +63,10 @@ namespace
 		AddVariable,
 		SetNodePosition,
 		DeleteNode,
+		AddNode,
+		WirePins,
+		DeleteVariable,
+		RenameVariable,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -72,6 +86,10 @@ namespace
 		if (OpStr.Equals(TEXT("AddVariable"), ESearchCase::IgnoreCase))      { OutOp = EOp::AddVariable; return true; }
 		if (OpStr.Equals(TEXT("SetNodePosition"), ESearchCase::IgnoreCase))  { OutOp = EOp::SetNodePosition; return true; }
 		if (OpStr.Equals(TEXT("DeleteNode"), ESearchCase::IgnoreCase))       { OutOp = EOp::DeleteNode; return true; }
+		if (OpStr.Equals(TEXT("AddNode"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddNode; return true; }
+		if (OpStr.Equals(TEXT("WirePins"), ESearchCase::IgnoreCase))         { OutOp = EOp::WirePins; return true; }
+		if (OpStr.Equals(TEXT("DeleteVariable"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeleteVariable; return true; }
+		if (OpStr.Equals(TEXT("RenameVariable"), ESearchCase::IgnoreCase))   { OutOp = EOp::RenameVariable; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -334,6 +352,320 @@ namespace
 		return EmitOk(OutputPath, bPretty);
 	}
 
+	// ----- AddNode ----------------------------------------------------------
+	// Resolve a UClass path passed via -ClassPath= or short name (e.g.
+	// "Actor" or "/Script/Engine.Actor").
+	UClass* ResolveClass(const FString& Spec)
+	{
+		if (Spec.IsEmpty()) return nullptr;
+		// Try as full path first.
+		if (UObject* Resolved = StaticLoadObject(UClass::StaticClass(), nullptr, *Spec))
+		{
+			return Cast<UClass>(Resolved);
+		}
+		// Try as a short name under /Script/Engine.
+		const FString Engine = FString::Printf(TEXT("/Script/Engine.%s"), *Spec);
+		return Cast<UClass>(StaticLoadObject(UClass::StaticClass(), nullptr, *Engine));
+	}
+
+	// Spawn + register a node in `Graph`. Caller is responsible for any
+	// node-specific state (variable/function refs, output pins, etc.).
+	template <typename TNode>
+	TNode* AddNodeToGraph(UEdGraph* Graph, int32 X, int32 Y)
+	{
+		TNode* Node = NewObject<TNode>(Graph);
+		Node->CreateNewGuid();
+		Node->NodePosX = X;
+		Node->NodePosY = Y;
+		Graph->AddNode(Node, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+		Node->PostPlacedNewNode();
+		Node->AllocateDefaultPins();
+		return Node;
+	}
+
+	int32 RunAddNodeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString GraphName, Kind;
+		int32 X = 0, Y = 0;
+		FParse::Value(*Params, TEXT("Graph="), GraphName);
+		FParse::Value(*Params, TEXT("Kind="),  Kind);
+		FParse::Value(*Params, TEXT("X="),     X);
+		FParse::Value(*Params, TEXT("Y="),     Y);
+
+		if (AssetPath.IsEmpty() || GraphName.IsEmpty() || Kind.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddNode requires -Asset= -Graph= -Kind="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindGraphByName(BP, GraphName);
+		if (!Graph)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddNode: graph %s not found"), *GraphName);
+			return 4;
+		}
+
+		UEdGraphNode* Spawned = nullptr;
+
+		if (Kind.Equals(TEXT("Branch"), ESearchCase::IgnoreCase) ||
+		    Kind.Equals(TEXT("IfThenElse"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_IfThenElse>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("Sequence"), ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("ExecutionSequence"), ESearchCase::IgnoreCase))
+		{
+			Spawned = AddNodeToGraph<UK2Node_ExecutionSequence>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase))
+		{
+			FString VarName;
+			FParse::Value(*Params, TEXT("Variable="), VarName);
+			if (VarName.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableGet requires -Variable="));
+				return 1;
+			}
+			UK2Node_VariableGet* Get = NewObject<UK2Node_VariableGet>(Graph);
+			Get->VariableReference.SetSelfMember(*VarName);
+			Get->CreateNewGuid();
+			Get->NodePosX = X; Get->NodePosY = Y;
+			Graph->AddNode(Get, false, false);
+			Get->PostPlacedNewNode();
+			Get->AllocateDefaultPins();
+			Spawned = Get;
+		}
+		else if (Kind.Equals(TEXT("VariableSet"), ESearchCase::IgnoreCase))
+		{
+			FString VarName;
+			FParse::Value(*Params, TEXT("Variable="), VarName);
+			if (VarName.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableSet requires -Variable="));
+				return 1;
+			}
+			UK2Node_VariableSet* Set = NewObject<UK2Node_VariableSet>(Graph);
+			Set->VariableReference.SetSelfMember(*VarName);
+			Set->CreateNewGuid();
+			Set->NodePosX = X; Set->NodePosY = Y;
+			Graph->AddNode(Set, false, false);
+			Set->PostPlacedNewNode();
+			Set->AllocateDefaultPins();
+			Spawned = Set;
+		}
+		else if (Kind.Equals(TEXT("CallFunction"), ESearchCase::IgnoreCase))
+		{
+			FString FunctionName, FunctionOwner;
+			FParse::Value(*Params, TEXT("Function="),      FunctionName);
+			FParse::Value(*Params, TEXT("FunctionOwner="), FunctionOwner);
+			if (FunctionName.IsEmpty() || FunctionOwner.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode CallFunction requires -Function=<name> -FunctionOwner=<class path>"));
+				return 1;
+			}
+			UClass* OwnerClass = ResolveClass(FunctionOwner);
+			if (!OwnerClass)
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode CallFunction: class %s not found"), *FunctionOwner);
+				return 1;
+			}
+			UFunction* Fn = OwnerClass->FindFunctionByName(*FunctionName);
+			if (!Fn)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode CallFunction: function %s not found on %s"),
+					*FunctionName, *OwnerClass->GetPathName());
+				return 1;
+			}
+			UK2Node_CallFunction* Call = NewObject<UK2Node_CallFunction>(Graph);
+			Call->SetFromFunction(Fn);
+			Call->CreateNewGuid();
+			Call->NodePosX = X; Call->NodePosY = Y;
+			Graph->AddNode(Call, false, false);
+			Call->PostPlacedNewNode();
+			Call->AllocateDefaultPins();
+			Spawned = Call;
+		}
+		else if (Kind.Equals(TEXT("CustomEvent"), ESearchCase::IgnoreCase))
+		{
+			FString EventName;
+			FParse::Value(*Params, TEXT("EventName="), EventName);
+			if (EventName.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode CustomEvent requires -EventName="));
+				return 1;
+			}
+			UK2Node_CustomEvent* Evt = NewObject<UK2Node_CustomEvent>(Graph);
+			Evt->CustomFunctionName = FName(*EventName);
+			Evt->CreateNewGuid();
+			Evt->NodePosX = X; Evt->NodePosY = Y;
+			Graph->AddNode(Evt, false, false);
+			Evt->PostPlacedNewNode();
+			Evt->AllocateDefaultPins();
+			Spawned = Evt;
+		}
+		else
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddNode: unrecognised -Kind=%s; expected Branch | Sequence | VariableGet | VariableSet | CallFunction | CustomEvent"),
+				*Kind);
+			return 1;
+		}
+
+		if (!Spawned) return 5;
+		const FString NewId = Spawned->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("node_id"), NewId);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- WirePins ---------------------------------------------------------
+	UEdGraphPin* FindPinByIdOrName(UEdGraphNode* Node, const FString& Spec)
+	{
+		// Try GUID first.
+		FGuid AsGuid;
+		if (FGuid::Parse(Spec, AsGuid))
+		{
+			for (UEdGraphPin* P : Node->Pins)
+			{
+				if (P && P->PinId == AsGuid) return P;
+			}
+		}
+		// Fall back to name match.
+		for (UEdGraphPin* P : Node->Pins)
+		{
+			if (P && P->GetFName().ToString().Equals(Spec, ESearchCase::IgnoreCase))
+			{
+				return P;
+			}
+		}
+		return nullptr;
+	}
+
+	int32 RunWirePinsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString GraphName, FromNodeId, FromPinSpec, ToNodeId, ToPinSpec;
+		FParse::Value(*Params, TEXT("Graph="),    GraphName);
+		FParse::Value(*Params, TEXT("FromNode="), FromNodeId);
+		FParse::Value(*Params, TEXT("FromPin="),  FromPinSpec);
+		FParse::Value(*Params, TEXT("ToNode="),   ToNodeId);
+		FParse::Value(*Params, TEXT("ToPin="),    ToPinSpec);
+
+		if (AssetPath.IsEmpty() || GraphName.IsEmpty() ||
+		    FromNodeId.IsEmpty() || FromPinSpec.IsEmpty() ||
+		    ToNodeId.IsEmpty()   || ToPinSpec.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WirePins requires -Asset= -Graph= -FromNode= -FromPin= -ToNode= -ToPin="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindGraphByName(BP, GraphName);
+		if (!Graph) return 4;
+
+		UEdGraphNode* FromNode = FindNodeByGuid(Graph, FromNodeId);
+		UEdGraphNode* ToNode   = FindNodeByGuid(Graph, ToNodeId);
+		if (!FromNode || !ToNode)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: from/to node not found"));
+			return 4;
+		}
+		UEdGraphPin* FromPin = FindPinByIdOrName(FromNode, FromPinSpec);
+		UEdGraphPin* ToPin   = FindPinByIdOrName(ToNode,   ToPinSpec);
+		if (!FromPin || !ToPin)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: from/to pin not found"));
+			return 4;
+		}
+
+		const UEdGraphSchema* Schema = Graph->GetSchema();
+		if (Schema)
+		{
+			const FPinConnectionResponse Resp = Schema->CanCreateConnection(FromPin, ToPin);
+			if (Resp.Response == CONNECT_RESPONSE_DISALLOW)
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: schema rejected: %s"),
+					*Resp.Message.ToString());
+				return 1;
+			}
+		}
+		FromPin->MakeLinkTo(ToPin);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- DeleteVariable ---------------------------------------------------
+	int32 RunDeleteVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString VarName;
+		FParse::Value(*Params, TEXT("Name="), VarName);
+
+		if (AssetPath.IsEmpty() || VarName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteVariable requires -Asset= -Name="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		const FName Var(*VarName);
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, Var) == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteVariable: %s not found on %s"), *VarName, *AssetPath);
+			return 4;
+		}
+		FBlueprintEditorUtils::RemoveMemberVariable(BP, Var);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- RenameVariable ---------------------------------------------------
+	int32 RunRenameVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString OldName, NewName;
+		FParse::Value(*Params, TEXT("OldName="), OldName);
+		FParse::Value(*Params, TEXT("NewName="), NewName);
+
+		if (AssetPath.IsEmpty() || OldName.IsEmpty() || NewName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("RenameVariable requires -Asset= -OldName= -NewName="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		const FName Old(*OldName), New(*NewName);
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, Old) == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("RenameVariable: %s not found"), *OldName);
+			return 4;
+		}
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, New) != INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("RenameVariable: %s already exists"), *NewName);
+			return 1;
+		}
+		FBlueprintEditorUtils::RenameMemberVariable(BP, Old, New);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
 	// List op via the asset registry. Faster than walking Content/ on disk +
 	// LoadObject'ing every .uasset, and gets `parent_class` from asset tags
 	// without paying the full BP load cost. Falls back to a disk walk if the
@@ -434,6 +766,10 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::AddVariable)     return RunAddVariableOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetNodePosition) return RunSetNodePositionOp(Params, OutputPath, bPretty);
 	if (Op == EOp::DeleteNode)      return RunDeleteNodeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddNode)         return RunAddNodeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::WirePins)        return RunWirePinsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteVariable)  return RunDeleteVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::RenameVariable)  return RunRenameVariableOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
