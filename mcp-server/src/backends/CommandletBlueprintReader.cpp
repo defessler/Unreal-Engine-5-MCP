@@ -838,4 +838,81 @@ void CommandletBlueprintReader::RenameVariable(std::string_view assetPath,
     (void)RunOp(args);
 }
 
+namespace {
+// Append pin-type flags (-TypeCategory, -TypeSubCategory, etc.) for a BPPinType.
+void AppendPinTypeFlags(std::vector<std::wstring>& args, const BPPinType& type) {
+    args.push_back(L"-TypeCategory=" + Widen(type.Category));
+    if (type.SubCategory.has_value() && !type.SubCategory->empty()) {
+        args.push_back(L"-TypeSubCategory=" + Widen(*type.SubCategory));
+    }
+    if (type.SubCategoryObject.has_value() && !type.SubCategoryObject->empty()) {
+        args.push_back(L"-TypeSubCategoryObject=" + Widen(*type.SubCategoryObject));
+    }
+    if (type.IsArray) args.push_back(L"-TypeIsArray");
+    if (type.IsSet)   args.push_back(L"-TypeIsSet");
+    if (type.IsMap)   args.push_back(L"-TypeIsMap");
+}
+} // namespace
+
+std::string CommandletBlueprintReader::AddFunction(std::string_view assetPath,
+                                                   std::string_view name) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddFunction");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    auto j = RunOp(args);
+    if (j.is_object() && j.contains("function_name") && j["function_name"].is_string()) {
+        return j["function_name"].get<std::string>();
+    }
+    return std::string(name);  // commandlet acked but didn't echo — caller passed in
+}
+
+void CommandletBlueprintReader::AddFunctionInput(std::string_view assetPath,
+                                                 std::string_view functionName,
+                                                 std::string_view paramName,
+                                                 const BPPinType& type) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddFunctionInput");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Function=" + Widen(functionName));
+    args.push_back(L"-Param=" + Widen(paramName));
+    AppendPinTypeFlags(args, type);
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::AddFunctionOutput(std::string_view assetPath,
+                                                  std::string_view functionName,
+                                                  std::string_view paramName,
+                                                  const BPPinType& type) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddFunctionOutput");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Function=" + Widen(functionName));
+    args.push_back(L"-Param=" + Widen(paramName));
+    AppendPinTypeFlags(args, type);
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::DeleteFunction(std::string_view assetPath,
+                                               std::string_view name) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=DeleteFunction");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::SetVariableDefault(std::string_view assetPath,
+                                                   std::string_view name,
+                                                   std::string_view newDefault) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=SetVariableDefault");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    if (!newDefault.empty()) {
+        args.push_back(L"-Default=" + Widen(newDefault));
+    }
+    (void)RunOp(args);
+}
+
 } // namespace bpr::backends

@@ -70,9 +70,12 @@ D:\Projects\UE5_AI_BP\
   - **AssetRegistry-backed `list_blueprints`** — replaces the previous
     disk walk; faster on large Content trees, gets `parent_class` from
     asset tags without loading every BP.
-  - **Write tools (v1)** — seven tools modifying BPs via
+  - **Write tools (v2)** — twelve tools modifying BPs via
     `FBlueprintEditorUtils`, recompiling, and saving the `.uasset`:
-    - Variables: `add_variable`, `delete_variable`, `rename_variable`.
+    - Variables: `add_variable`, `delete_variable`, `rename_variable`,
+      `set_variable_default`.
+    - Functions: `add_function`, `delete_function`,
+      `add_function_input`, `add_function_output`.
     - Nodes: `add_node` (Branch / Sequence / VariableGet/Set /
       CallFunction / CustomEvent), `set_node_position`, `delete_node`.
     - Connections: `wire_pins` (schema-validated, accepts pin GUIDs

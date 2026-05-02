@@ -20,6 +20,8 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -67,6 +69,11 @@ namespace
 		WirePins,
 		DeleteVariable,
 		RenameVariable,
+		AddFunction,
+		AddFunctionInput,
+		AddFunctionOutput,
+		DeleteFunction,
+		SetVariableDefault,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -88,8 +95,13 @@ namespace
 		if (OpStr.Equals(TEXT("DeleteNode"), ESearchCase::IgnoreCase))       { OutOp = EOp::DeleteNode; return true; }
 		if (OpStr.Equals(TEXT("AddNode"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddNode; return true; }
 		if (OpStr.Equals(TEXT("WirePins"), ESearchCase::IgnoreCase))         { OutOp = EOp::WirePins; return true; }
-		if (OpStr.Equals(TEXT("DeleteVariable"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeleteVariable; return true; }
-		if (OpStr.Equals(TEXT("RenameVariable"), ESearchCase::IgnoreCase))   { OutOp = EOp::RenameVariable; return true; }
+		if (OpStr.Equals(TEXT("DeleteVariable"), ESearchCase::IgnoreCase))     { OutOp = EOp::DeleteVariable; return true; }
+		if (OpStr.Equals(TEXT("RenameVariable"), ESearchCase::IgnoreCase))     { OutOp = EOp::RenameVariable; return true; }
+		if (OpStr.Equals(TEXT("AddFunction"), ESearchCase::IgnoreCase))        { OutOp = EOp::AddFunction; return true; }
+		if (OpStr.Equals(TEXT("AddFunctionInput"), ESearchCase::IgnoreCase))   { OutOp = EOp::AddFunctionInput; return true; }
+		if (OpStr.Equals(TEXT("AddFunctionOutput"), ESearchCase::IgnoreCase))  { OutOp = EOp::AddFunctionOutput; return true; }
+		if (OpStr.Equals(TEXT("DeleteFunction"), ESearchCase::IgnoreCase))     { OutOp = EOp::DeleteFunction; return true; }
+		if (OpStr.Equals(TEXT("SetVariableDefault"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetVariableDefault; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -633,6 +645,219 @@ namespace
 		return EmitOk(OutputPath, bPretty);
 	}
 
+	// ----- Function helpers (shared by add_function_input/output) -----------
+	bool BuildPinTypeFromFlags(const FString& Params, FEdGraphPinType& Out)
+	{
+		FString TypeCategory, TypeSubCategory, TypeSubObject;
+		FParse::Value(*Params, TEXT("TypeCategory="),         TypeCategory);
+		FParse::Value(*Params, TEXT("TypeSubCategory="),      TypeSubCategory);
+		FParse::Value(*Params, TEXT("TypeSubCategoryObject="), TypeSubObject);
+		if (TypeCategory.IsEmpty()) return false;
+
+		auto TypeJson = MakeShared<FJsonObject>();
+		TypeJson->SetStringField(TEXT("category"), TypeCategory);
+		if (!TypeSubCategory.IsEmpty()) TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
+		if (!TypeSubObject.IsEmpty())   TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
+		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
+		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
+		return FBlueprintReaderWireJson::ParseWirePinType(TypeJson, Out);
+	}
+
+	UEdGraph* FindFunctionGraph(UBlueprint* BP, const FString& FunctionName)
+	{
+		for (UEdGraph* G : BP->FunctionGraphs)
+		{
+			if (G && G->GetFName().ToString().Equals(FunctionName, ESearchCase::IgnoreCase))
+			{
+				return G;
+			}
+		}
+		return nullptr;
+	}
+
+	UK2Node_FunctionEntry* FindFunctionEntry(UEdGraph* Graph)
+	{
+		for (UEdGraphNode* N : Graph->Nodes)
+		{
+			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(N)) return Entry;
+		}
+		return nullptr;
+	}
+
+	UK2Node_FunctionResult* FindOrCreateFunctionResult(UEdGraph* Graph)
+	{
+		for (UEdGraphNode* N : Graph->Nodes)
+		{
+			if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N)) return R;
+		}
+		UK2Node_FunctionResult* Result = NewObject<UK2Node_FunctionResult>(Graph);
+		Result->CreateNewGuid();
+		Result->NodePosX = 240;
+		Result->NodePosY = 0;
+		Graph->AddNode(Result, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+		Result->PostPlacedNewNode();
+		Result->AllocateDefaultPins();
+		return Result;
+	}
+
+	// ----- AddFunction ------------------------------------------------------
+	int32 RunAddFunctionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString FunctionName;
+		FParse::Value(*Params, TEXT("Name="), FunctionName);
+
+		if (AssetPath.IsEmpty() || FunctionName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunction requires -Asset= -Name="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		if (FindFunctionGraph(BP, FunctionName))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunction: function %s already exists"), *FunctionName);
+			return 1;
+		}
+
+		UEdGraph* NewGraph = FBlueprintEditorUtils::CreateNewGraph(
+			BP, FName(*FunctionName), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+		FBlueprintEditorUtils::AddFunctionGraph<UClass>(BP, NewGraph, /*bIsUserCreated=*/true, nullptr);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("function_name"), FunctionName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- AddFunctionInput / AddFunctionOutput -----------------------------
+	int32 RunAddFunctionInputOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString FunctionName, ParamName;
+		FParse::Value(*Params, TEXT("Function="), FunctionName);
+		FParse::Value(*Params, TEXT("Param="),    ParamName);
+
+		FEdGraphPinType PinType;
+		if (AssetPath.IsEmpty() || FunctionName.IsEmpty() || ParamName.IsEmpty() ||
+		    !BuildPinTypeFromFlags(Params, PinType))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddFunctionInput requires -Asset= -Function= -Param= -TypeCategory= [...]"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
+		if (!Graph)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionInput: function %s not found"), *FunctionName);
+			return 4;
+		}
+		UK2Node_FunctionEntry* Entry = FindFunctionEntry(Graph);
+		if (!Entry)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionInput: no FunctionEntry node"));
+			return 5;
+		}
+		Entry->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output, /*bUseUniqueName=*/false);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	int32 RunAddFunctionOutputOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString FunctionName, ParamName;
+		FParse::Value(*Params, TEXT("Function="), FunctionName);
+		FParse::Value(*Params, TEXT("Param="),    ParamName);
+
+		FEdGraphPinType PinType;
+		if (AssetPath.IsEmpty() || FunctionName.IsEmpty() || ParamName.IsEmpty() ||
+		    !BuildPinTypeFromFlags(Params, PinType))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddFunctionOutput requires -Asset= -Function= -Param= -TypeCategory= [...]"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
+		if (!Graph)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionOutput: function %s not found"), *FunctionName);
+			return 4;
+		}
+		UK2Node_FunctionResult* Result = FindOrCreateFunctionResult(Graph);
+		Result->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Input, /*bUseUniqueName=*/false);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- DeleteFunction ---------------------------------------------------
+	int32 RunDeleteFunctionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString FunctionName;
+		FParse::Value(*Params, TEXT("Name="), FunctionName);
+
+		if (AssetPath.IsEmpty() || FunctionName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteFunction requires -Asset= -Name="));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
+		if (!Graph)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteFunction: %s not found"), *FunctionName);
+			return 4;
+		}
+		// EFlags=None purges the graph + any UFUNCTION the compiler emitted.
+		FBlueprintEditorUtils::RemoveGraph(BP, Graph, EGraphRemoveFlags::None);
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- SetVariableDefault -----------------------------------------------
+	int32 RunSetVariableDefaultOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString VarName, NewDefault;
+		FParse::Value(*Params, TEXT("Name="),    VarName);
+		FParse::Value(*Params, TEXT("Default="), NewDefault);
+
+		if (AssetPath.IsEmpty() || VarName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SetVariableDefault requires -Asset= -Name= [-Default=...]"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		const FName Var(*VarName);
+		const int32 Index = FBlueprintEditorUtils::FindNewVariableIndex(BP, Var);
+		if (Index == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SetVariableDefault: %s not found"), *VarName);
+			return 4;
+		}
+		BP->NewVariables[Index].DefaultValue = NewDefault;
+
+		if (!CompileAndSaveBlueprint(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
 	// ----- RenameVariable ---------------------------------------------------
 	int32 RunRenameVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
@@ -768,8 +993,13 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::DeleteNode)      return RunDeleteNodeOp(Params, OutputPath, bPretty);
 	if (Op == EOp::AddNode)         return RunAddNodeOp(Params, OutputPath, bPretty);
 	if (Op == EOp::WirePins)        return RunWirePinsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteVariable)  return RunDeleteVariableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::RenameVariable)  return RunRenameVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteVariable)     return RunDeleteVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::RenameVariable)     return RunRenameVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddFunction)        return RunAddFunctionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddFunctionInput)   return RunAddFunctionInputOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddFunctionOutput)  return RunAddFunctionOutputOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteFunction)     return RunDeleteFunctionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetVariableDefault) return RunSetVariableDefaultOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

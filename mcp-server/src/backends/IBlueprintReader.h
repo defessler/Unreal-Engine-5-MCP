@@ -81,6 +81,25 @@ public:
     // Rename a member variable. Updates references in graphs.
     virtual void RenameVariable(std::string_view assetPath, std::string_view oldName,
                                 std::string_view newName) = 0;
+
+    // Add a new BP function graph. Returns the function name (echoed back).
+    virtual std::string AddFunction(std::string_view assetPath, std::string_view name) = 0;
+
+    // Add an input parameter to an existing function. `type` is a wire BPPinType.
+    virtual void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
+                                  std::string_view paramName, const BPPinType& type) = 0;
+
+    // Add an output parameter to an existing function. Spawns a FunctionResult
+    // node if there isn't one yet.
+    virtual void AddFunctionOutput(std::string_view assetPath, std::string_view functionName,
+                                   std::string_view paramName, const BPPinType& type) = 0;
+
+    // Delete a function and its graph.
+    virtual void DeleteFunction(std::string_view assetPath, std::string_view name) = 0;
+
+    // Change a variable's default value (string form, as displayed in the Details panel).
+    virtual void SetVariableDefault(std::string_view assetPath, std::string_view name,
+                                    std::string_view newDefault) = 0;
 };
 
 } // namespace bpr::backends

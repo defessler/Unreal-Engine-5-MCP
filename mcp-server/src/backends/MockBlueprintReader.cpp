@@ -199,6 +199,33 @@ void MockBlueprintReader::RenameVariable(std::string_view, std::string_view, std
         "RenameVariable: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
+std::string MockBlueprintReader::AddFunction(std::string_view, std::string_view) {
+    throw BlueprintReaderError(
+        "AddFunction: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::AddFunctionInput(std::string_view, std::string_view,
+                                           std::string_view, const BPPinType&) {
+    throw BlueprintReaderError(
+        "AddFunctionInput: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::AddFunctionOutput(std::string_view, std::string_view,
+                                            std::string_view, const BPPinType&) {
+    throw BlueprintReaderError(
+        "AddFunctionOutput: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::DeleteFunction(std::string_view, std::string_view) {
+    throw BlueprintReaderError(
+        "DeleteFunction: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::SetVariableDefault(std::string_view, std::string_view, std::string_view) {
+    throw BlueprintReaderError(
+        "SetVariableDefault: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
                                                   std::string_view query,
                                                   std::string_view kind) {

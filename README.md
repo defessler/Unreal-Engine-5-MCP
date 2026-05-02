@@ -36,6 +36,11 @@ Two backends:
 | `set_node_position` | **write** | Move a node by GUID inside a graph.                                        |
 | `delete_node`       | **write** | Remove a node by GUID; breaks links into/out of it.                        |
 | `wire_pins`         | **write** | Connect two pins by GUID (preferred) or name; schema-validated.            |
+| `add_function`      | **write** | Create a new BP function graph; returns the echoed name.                   |
+| `delete_function`   | **write** | Delete a function graph by name.                                           |
+| `add_function_input`  | **write** | Add an input parameter to an existing function (BPPinType).             |
+| `add_function_output` | **write** | Add an output parameter; spawns a FunctionResult node if missing.       |
+| `set_variable_default` | **write** | Change a member variable's default value (string form).                |
 | `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
 | `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
 
