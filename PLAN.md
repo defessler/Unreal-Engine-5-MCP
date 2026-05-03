@@ -1,47 +1,52 @@
-# UE5_AI_BP — Plan
+# UE5_MCP — Plan
 
 ## Repo layout (current)
 
+The project and the engine are siblings under `D:\Projects\`. The
+engine source is *not* tracked by this repo.
+
 ```
-D:\Projects\UE5_AI_BP\
-├── UE5_AI_BP.uproject
-├── Source\                              (project runtime module)
-├── Config\
-├── Plugins\
-│   └── BlueprintReader\                 (Phase 1 plugin)
-│       └── Source\BlueprintReaderEditor\
-│           ├── Public\
-│           │   ├── BlueprintReaderTypes.h
-│           │   ├── BlueprintIntrospector.h
-│           │   ├── BlueprintReaderJson.h          (rich/legacy plugin shape)
-│           │   ├── BlueprintReaderWireJson.h      (canonical MCP wire shape)
-│           │   ├── BlueprintReaderCommandlet.h
-│           │   └── BlueprintReaderSeedCommandlet.h
-│           └── Private\ (parallel layout)
-├── Shared\
-│   └── BlueprintReaderTypes.h           (POD/USTRUCT dual-mode types)
-├── mcp-server\                          (Phase 0 MCP server, Phase 1 commandlet backend)
-│   ├── src\
-│   │   ├── backends\
-│   │   │   ├── IBlueprintReader.h
-│   │   │   ├── MockBlueprintReader.{h,cpp}
-│   │   │   ├── CommandletBlueprintReader.{h,cpp}    ★ Phase 1
-│   │   │   └── BackendFactory.{h,cpp}
-│   │   ├── jsonrpc\ (Server, Mcp)
-│   │   ├── tools\ (BlueprintTools, ToolRegistry)
-│   │   └── main.cpp
-│   ├── tests\
-│   │   ├── test_*.cpp
-│   │   └── test_commandlet_backend.cpp              ★ Phase 1 (live, gated by env)
-│   ├── scripts\
-│   │   └── roundtrip.ps1                            ★ Phase 1 helper
-│   ├── fixtures\
-│   ├── CMakeLists.txt
-│   └── vcpkg.json
-├── UnrealEngine\                        (source-built engine, .gitignored)
-├── PLAN.md
-├── README.md
-└── .gitignore
+D:\Projects\
+├── Unreal Engine 5\                     source-built UE 5.7.4 (outside this repo)
+└── UE5_MCP\                             ← project root (this repo)
+    ├── UE5_MCP.uproject
+    ├── Source\                          project runtime module (UE5_MCP)
+    ├── Config\
+    ├── Plugins\
+    │   └── BlueprintReader\             editor-only plugin
+    │       └── Source\BlueprintReaderEditor\
+    │           ├── Public\
+    │           │   ├── BlueprintReaderTypes.h
+    │           │   ├── BlueprintIntrospector.h
+    │           │   ├── BlueprintReaderJson.h          (rich/legacy plugin shape)
+    │           │   ├── BlueprintReaderWireJson.h      (canonical MCP wire shape)
+    │           │   ├── BlueprintReaderCommandlet.h
+    │           │   └── BlueprintReaderSeedCommandlet.h
+    │           └── Private\ (parallel layout)
+    ├── Content\AI\                      seeded test BPs (regenerable)
+    ├── Shared\
+    │   └── BlueprintReaderTypes.h       POD/USTRUCT dual-mode wire types
+    ├── mcp-server\                      standalone C++20 MCP server
+    │   ├── src\
+    │   │   ├── backends\
+    │   │   │   ├── IBlueprintReader.h
+    │   │   │   ├── MockBlueprintReader.{h,cpp}
+    │   │   │   ├── CommandletBlueprintReader.{h,cpp}
+    │   │   │   └── BackendFactory.{h,cpp}
+    │   │   ├── jsonrpc\ (Server, Mcp)
+    │   │   ├── tools\ (BlueprintTools, ToolRegistry)
+    │   │   └── main.cpp
+    │   ├── tests\
+    │   │   ├── test_*.cpp
+    │   │   └── test_commandlet_backend.cpp           (live, gated by env)
+    │   ├── scripts\roundtrip.ps1                      JSON-RPC smoke harness
+    │   ├── fixtures\
+    │   ├── CMakeLists.txt
+    │   └── vcpkg.json
+    ├── CLAUDE.md
+    ├── PLAN.md
+    ├── README.md
+    └── .gitignore
 ```
 
 ## Phases

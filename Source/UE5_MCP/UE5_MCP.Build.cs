@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class UE5_AI_BP : ModuleRules
+public class UE5_MCP : ModuleRules
 {
-	public UE5_AI_BP(ReadOnlyTargetRules Target) : base(Target)
+	public UE5_MCP(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 

@@ -1,4 +1,4 @@
-# Claude project guidance — UE5_AI_BP
+# Claude project guidance — UE5_MCP
 
 This repo is a UE 5.7.4 project plus a standalone MCP server that lets
 Claude read and edit Blueprint assets through 21 tools. Two halves:
@@ -27,8 +27,8 @@ testing, and maintaining the project itself.
 ## Repo layout
 
 ```
-UE5_AI_BP/                                      ← project root (this dir)
-├── UE5_AI_BP.uproject
+UE5_MCP/                                      ← project root (this dir)
+├── UE5_MCP.uproject
 ├── Source/                                     project runtime module
 ├── Plugins/BlueprintReader/Source/BlueprintReaderEditor/
 │   ├── Public/                                 BlueprintReaderTypes, Introspector,
@@ -52,8 +52,12 @@ UE5_AI_BP/                                      ← project root (this dir)
 └── .github/workflows/mcp-server.yml            CI (mock-only on windows-2022)
 ```
 
-The source-built engine lives at `../` (one level up — `D:\Projects\UE5_AI_BP\`)
-and is gitignored.
+The source-built engine is a sibling of this project at
+`D:\Projects\Unreal Engine 5\` — outside this repo by design. That
+path holds `Engine\`, `UE5.sln`, `Setup.bat`, etc. None of it is
+tracked here. The 3 engine `.Build.cs` patches we depend on (see
+README.md) stay as documented patches to re-apply, not committed
+engine files.
 
 ## Two-mode backend, env-var contract
 
@@ -63,7 +67,7 @@ The MCP server picks a backend at startup from env:
 |-------------------------------|------------------------------------|---------|
 | `BP_READER_BACKEND`           | `mock`                             | `mock` \| `commandlet` (use `commandlet` for real BPs) |
 | `BP_READER_FIXTURES_DIR`      | `<exe>/fixtures`                   | Mock backend's fixture dir |
-| `BP_READER_ENGINE_DIR`        | (unset → fail-fast for commandlet) | Path to source-built engine (`...\UnrealEngine`) |
+| `BP_READER_ENGINE_DIR`        | (unset → fail-fast for commandlet) | Path to source-built engine root (the dir holding `Engine\Binaries\Win64\UnrealEditor-Cmd.exe`) |
 | `BP_READER_PROJECT`           | (unset → fail-fast for commandlet) | Path to the `.uproject` |
 | `BP_READER_TIMEOUT_SECONDS`   | `120`                              | Per-call subprocess timeout |
 | `BP_READER_DAEMON`            | `1` (on)                           | Set `0`/`false`/`no`/`off` to opt out |
@@ -87,9 +91,9 @@ build\tests\Release\bp-reader-tests.exe   # 45 mock cases run; 12 live cases ski
 The engine must already be built. **Build flags this machine needs:**
 
 ```bat
-"D:\Projects\UE5_AI_BP\UnrealEngine\Engine\Build\BatchFiles\Build.bat" ^
-  UE5_AI_BPEditor Win64 Development ^
-  -project="D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject" ^
+"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+  UE5_MCPEditor Win64 Development ^
+  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
@@ -102,14 +106,15 @@ files from the unity cpp and only recompiles what changed.
 
 #### Build invariants
 
-- `Source/UE5_AI_BPEditor.Target.cs` must declare:
+- `Source/UE5_MCPEditor.Target.cs` must declare:
   ```csharp
   DefaultBuildSettings = BuildSettingsVersion.V6;
   BuildEnvironment = TargetBuildEnvironment.Shared;
   ```
 - Three engine `.Build.cs` patches (see README.md) for project-target
   builds to resolve their `PrivateIncludePaths` correctly. These live
-  in the gitignored `UnrealEngine/` and must be re-applied after a
+  in the sibling engine checkout (`D:\Projects\Unreal Engine 5\`),
+  which is not tracked by this repo, and must be re-applied after a
   fresh engine clone.
 - `BlueprintReaderEditor.Build.cs` private deps:
   `UnrealEd, BlueprintGraph, Json, JsonUtilities, AssetRegistry`.
@@ -133,8 +138,8 @@ the workflow file). Workflow at `.github/workflows/mcp-server.yml`.
 
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
-$env:BP_READER_ENGINE_DIR  = "D:\Projects\UE5_AI_BP\UnrealEngine"
-$env:BP_READER_PROJECT     = "D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject"
+$env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 mcp-server\build\tests\Release\bp-reader-tests.exe   # 57 cases, ~80 s
 ```
 
@@ -149,8 +154,8 @@ pwsh -File mcp-server\scripts\roundtrip.ps1 `
 ### Reseed test BPs
 
 ```bat
-"D:\Projects\UE5_AI_BP\UnrealEngine\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  "D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject" ^
+"D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+  "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -run=BlueprintReaderSeed -nullrhi -nosplash -unattended -nopause
 ```
 
