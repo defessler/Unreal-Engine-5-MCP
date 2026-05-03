@@ -1006,6 +1006,19 @@ namespace
 				// Older asset tags use NativeParentClass; try that as a fallback.
 				Data.GetTagValue(TEXT("NativeParentClass"), ParentClass);
 			}
+			// UE 5's asset-registry tag value is a FStringClassReference text
+			// form: `/Script/CoreUObject.Class'/Script/Engine.Actor'`. Strip
+			// the wrapping `Class'...'` so the wire shape matches what
+			// read_blueprint emits via Blueprint->ParentClass->GetPathName().
+			{
+				int32 OpenQuote = INDEX_NONE, CloseQuote = INDEX_NONE;
+				if (ParentClass.FindChar(TEXT('\''), OpenQuote) &&
+				    ParentClass.FindLastChar(TEXT('\''), CloseQuote) &&
+				    CloseQuote > OpenQuote)
+				{
+					ParentClass = ParentClass.Mid(OpenQuote + 1, CloseQuote - OpenQuote - 1);
+				}
+			}
 
 			const FString PackagePath = Data.PackageName.ToString();
 			const FString FileOnDisk = FPackageName::LongPackageNameToFilename(
