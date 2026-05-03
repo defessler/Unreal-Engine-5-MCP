@@ -1,11 +1,11 @@
 {
   "FileVersion": 3,
-  "EngineAssociation": "UE5_AI_BP_Source",
+  "EngineAssociation": "UE5_MCP_Source",
   "Category": "",
   "Description": "",
   "Modules": [
     {
-      "Name": "UE5_AI_BP",
+      "Name": "UE5_MCP",
       "Type": "Runtime",
       "LoadingPhase": "Default",
       "AdditionalDependencies": [

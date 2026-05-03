@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-class FUE5_AI_BPModule : public IModuleInterface
+class FUE5_MCPModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override;

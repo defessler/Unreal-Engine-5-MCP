@@ -4,8 +4,8 @@
 #
 # Usage:
 #   $env:BP_READER_BACKEND = "commandlet"
-#   $env:BP_READER_ENGINE_DIR = "D:\Projects\UE5_AI_BP\UnrealEngine"
-#   $env:BP_READER_PROJECT = "D:\Projects\UE5_AI_BP\UE5_AI_BP.uproject"
+#   $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
+#   $env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 #   pwsh -File scripts\roundtrip.ps1 -Exe build\Release\bp-reader-mcp.exe -Asset /Game/AI/BP_TestEnemy
 
 param(
