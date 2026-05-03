@@ -1,0 +1,265 @@
+# Claude project guidance — UE5_AI_BP
+
+This repo is a UE 5.7.4 project plus a standalone MCP server that lets
+Claude read and edit Blueprint assets through 21 tools. Two halves:
+
+- **`Plugins/BlueprintReader/`** — Editor-only UE plugin with two
+  commandlets:
+  - `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — dispatches
+    `-Op=List|Read|Graph|Function|Variables|Components|Find` and the
+    write ops (`-Op=AddVariable|...`). Also runs in long-lived
+    `-Daemon` mode reading newline-delimited commandlet-arg lines from
+    stdin.
+  - `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
+    synthesizes `Content/AI/BP_TestEnemy.uasset` and `BP_TestPickup.uasset`
+    used by the live integration tests.
+- **`mcp-server/`** — Standalone C++20 MCP server. JSON-RPC 2.0 over
+  stdio. Two backends: `mock` (fixtures only, no UE) and `commandlet`
+  (drives the plugin via `UnrealEditor-Cmd.exe`). **Daemon mode is
+  the default** for the commandlet backend (~30 ms/call after a ~5 s
+  cold start; opt out with `BP_READER_DAEMON=0`).
+
+When you need to **use** the MCP tools to read or modify a blueprint,
+the `bp-reader` skill in `.claude/skills/bp-reader/` covers patterns,
+the wire format, and per-tool guidance. This file covers building,
+testing, and maintaining the project itself.
+
+## Repo layout
+
+```
+UE5_AI_BP/                                      ← project root (this dir)
+├── UE5_AI_BP.uproject
+├── Source/                                     project runtime module
+├── Plugins/BlueprintReader/Source/BlueprintReaderEditor/
+│   ├── Public/                                 BlueprintReaderTypes, Introspector,
+│   │                                           WireJson, *Commandlet.h
+│   └── Private/                                impls
+├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset
+│                                               (regenerable; see "Reseed test BPs" below)
+├── Shared/BlueprintReaderTypes.h               POD/USTRUCT dual-mode wire types
+├── mcp-server/
+│   ├── src/
+│   │   ├── jsonrpc/                            Server, Mcp (handshake + dispatch)
+│   │   ├── tools/                              ToolRegistry, BlueprintTools
+│   │   └── backends/                           IBlueprintReader, MockReader, CommandletReader
+│   ├── tests/                                  doctest cases (mock + live)
+│   ├── scripts/roundtrip.ps1                   JSON-RPC smoke harness
+│   ├── fixtures/                               BP_*.json mock-backend data
+│   ├── CMakeLists.txt
+│   └── vcpkg.json
+├── PLAN.md                                     phase status, decisions
+├── README.md                                   user-facing setup + tool table
+└── .github/workflows/mcp-server.yml            CI (mock-only on windows-2022)
+```
+
+The source-built engine lives at `../` (one level up — `D:\Projects\UE5_AI_BP\`)
+and is gitignored.
+
+## Two-mode backend, env-var contract
+
+The MCP server picks a backend at startup from env:
+
+| Variable                      | Default                            | Purpose |
+|-------------------------------|------------------------------------|---------|
+| `BP_READER_BACKEND`           | `mock`                             | `mock` \| `commandlet` (use `commandlet` for real BPs) |
+| `BP_READER_FIXTURES_DIR`      | `<exe>/fixtures`                   | Mock backend's fixture dir |
+| `BP_READER_ENGINE_DIR`        | (unset → fail-fast for commandlet) | Path to source-built engine (`...\UnrealEngine`) |
+| `BP_READER_PROJECT`           | (unset → fail-fast for commandlet) | Path to the `.uproject` |
+| `BP_READER_TIMEOUT_SECONDS`   | `120`                              | Per-call subprocess timeout |
+| `BP_READER_DAEMON`            | `1` (on)                           | Set `0`/`false`/`no`/`off` to opt out |
+
+For local dev, the mock backend works against a fresh checkout with no
+UE setup — useful for iterating on the MCP server itself.
+
+## Build
+
+### MCP server (mock backend, no UE needed)
+
+```pwsh
+cd mcp-server
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+build\tests\Release\bp-reader-tests.exe   # 45 mock cases run; 12 live cases skip
+```
+
+### UE plugin (needed for the commandlet backend)
+
+The engine must already be built. **Build flags this machine needs:**
+
+```bat
+"D:\Projects\UE5_AI_BP\UnrealEngine\Engine\Build\BatchFiles\Build.bat" ^
+  UE5_AI_BPEditor Win64 Development ^
+  -project="D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject" ^
+  -NoUba -MaxParallelActions=4 -waitmutex
+```
+
+`-NoUba -MaxParallelActions=4` is required to fit the build inside a
+small page file (UBA allocates large VAS chunks per worker).
+
+After the first full build, **incremental rebuilds are fast** (5–10 s
+for plugin-only changes) — UBT's adaptive build excludes the touched
+files from the unity cpp and only recompiles what changed.
+
+#### Build invariants
+
+- `Source/UE5_AI_BPEditor.Target.cs` must declare:
+  ```csharp
+  DefaultBuildSettings = BuildSettingsVersion.V6;
+  BuildEnvironment = TargetBuildEnvironment.Shared;
+  ```
+- Three engine `.Build.cs` patches (see README.md) for project-target
+  builds to resolve their `PrivateIncludePaths` correctly. These live
+  in the gitignored `UnrealEngine/` and must be re-applied after a
+  fresh engine clone.
+- `BlueprintReaderEditor.Build.cs` private deps:
+  `UnrealEd, BlueprintGraph, Json, JsonUtilities, AssetRegistry`.
+  `FBlueprintEditorUtils` and `FKismetEditorUtilities` come from
+  `UnrealEd` — don't add `Kismet` / `KismetCompiler` (they're
+  unrelated modules despite the `Kismet2/` include path).
+
+## Test
+
+### Mock-only (CI-equivalent, fast)
+
+```pwsh
+mcp-server\build\tests\Release\bp-reader-tests.exe
+```
+
+45 cases pass; 12 commandlet-backed cases auto-skip without env vars set.
+CI runs this on every push to `main` (`mcp-server/**`, `Shared/**`, or
+the workflow file). Workflow at `.github/workflows/mcp-server.yml`.
+
+### Live (drives real `UnrealEditor-Cmd.exe`)
+
+```pwsh
+$env:BP_READER_BACKEND     = "commandlet"
+$env:BP_READER_ENGINE_DIR  = "D:\Projects\UE5_AI_BP\UnrealEngine"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject"
+mcp-server\build\tests\Release\bp-reader-tests.exe   # 57 cases, ~80 s
+```
+
+JSON-RPC roundtrip smoke test:
+
+```pwsh
+pwsh -File mcp-server\scripts\roundtrip.ps1 `
+    -Exe mcp-server\build\Release\bp-reader-mcp.exe `
+    -Asset /Game/AI/BP_TestEnemy
+```
+
+### Reseed test BPs
+
+```bat
+"D:\Projects\UE5_AI_BP\UnrealEngine\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+  "D:\Projects\UE5_AI_BP\UE5_AI_BP\UE5_AI_BP.uproject" ^
+  -run=BlueprintReaderSeed -nullrhi -nosplash -unattended -nopause
+```
+
+Recreates `Content/AI/BP_TestEnemy.uasset` (5 vars + 2 functions +
+event-graph topology) and `BP_TestPickup.uasset`. Required for the
+live tests; safe to re-run any time. Commit them after if the seed
+output changed.
+
+## Common gotchas (learned the hard way)
+
+- **`FParse::Value` and JSON values.** Anything passed as `-Foo=<json>`
+  on a UE commandlet command line gets mangled because the inner
+  double-quotes terminate FParse's quoted-string parsing. Pass
+  structured args as individual flags instead (`-TypeCategory=`,
+  `-TypeSubCategory=`, etc.). Same with empty values — bare `-Query=`
+  followed by another `-Flag=value` makes FParse swallow the next token.
+  CommandletBlueprintReader skips `-Query=` and `-Default=` etc. when
+  the value is empty.
+
+- **UE stdio in commandlet mode.** `FPlatformMisc::LocalPrint` and even
+  `fputs(stdout)` can hit UE's redirected log device instead of the
+  real stdout pipe in some configs. The daemon's stdio uses
+  `GetStdHandle(STD_OUTPUT_HANDLE)` + `WriteFile` directly to bypass
+  that. If something writes to the daemon and the MCP-side scanner
+  never sees it, this is probably why.
+
+- **Sentinel format.** The daemon emits `__BPR_DONE <code>__\n` after
+  each command. **Don't put that string in any log message** — the
+  MCP-side marker scanner finds the first occurrence regardless of
+  source, so a help line mentioning `__BPR_DONE <code>__` will be
+  parsed as `<code>__)` and break the next call.
+
+- **Path resolution.** `Blueprint->GetPathName()` returns object path
+  (`/Game/AI/BP_Foo.BP_Foo`). The wire format always uses package paths
+  (`/Game/AI/BP_Foo`). `BlueprintReaderWireJson::ToPackagePath` strips
+  the suffix; honor that consistently if you add new wire shapes.
+
+- **`UserConstructionScript` vs `ConstructionScript`.** UE 5.7's actual
+  graph name for the construction script is `UserConstructionScript`.
+  The introspector classifies both names as `WireType="Construction"`
+  and the metadata serializer surfaces it as a graph entry rather than
+  a function.
+
+- **Function output pins.** `FBlueprintEditorUtils::AddMemberVariable`
+  works for variables, but `AddFunctionOutput` had a silent failure
+  when no `K2Node_FunctionResult` existed yet (functions without
+  outputs don't auto-create one). The plugin spawns one on first
+  `add_function_output` call. Same pattern in the seed commandlet.
+
+- **`AddNode` extras tunneling.** The MCP `add_node` schema names the
+  extras with the JSON convention (`variable`, `function_owner`,
+  `target_class`); the plugin commandlet expects flag-cased names
+  (`Variable`, `FunctionOwner`, `TargetClass`). The mapping happens
+  in `BlueprintTools.cpp`'s `add_node` handler. Add new kinds to
+  both ends.
+
+- **Worktree builds eat hours.** Building the editor target inside a
+  fresh git worktree forces UBT to rebuild ~3000 modules including
+  the engine, because it can't reuse the parent project's
+  intermediates. If you need to test plugin changes from a worktree,
+  copy the changed files into the parent project's `Plugins/` and
+  build there — incremental rebuilds run in seconds.
+
+## Adding a new tool
+
+The pattern is consistent across all 21 existing tools:
+
+1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
+   a `ParseOp` entry, a dispatch line in `RunOneOp`, and a
+   `RunFooOp(Params, OutputPath, bPretty)` implementation. Use the
+   shared helpers (`LoadMutableBlueprint`, `FindGraphByName`,
+   `FindNodeByGuid`, `CompileAndSaveBlueprint`, `EmitOk`).
+2. **MCP interface** (`IBlueprintReader.h`): pure virtual.
+3. **MockBlueprintReader**: throw `BlueprintReaderError("...mock backend
+   is read-only...")` for write tools, or hard-code from fixtures for
+   read tools.
+4. **CommandletBlueprintReader**: serialize args + call `RunOp`.
+   Skip empty optional flags (FParse caveat above).
+5. **`BlueprintTools.cpp`**: register the tool with its input schema
+   and a handler that pulls args from the JSON and calls the
+   `IBlueprintReader` method.
+6. **Tests**: a mock case (asserts shape or throws-as-expected) and
+   a live case if the op needs a real BP. Use the daemon for live
+   tests so they're cheap.
+7. **Tool count assertions** in `test_tools.cpp` and `test_mcp.cpp`
+   need to be bumped (`spec.size() == N`).
+
+If the new tool is a node-spawning op, also add an entry to
+`list_node_kinds` in `BlueprintTools.cpp` — keep the dispatch table and
+the discoverability list in lockstep.
+
+## Decisions worth knowing
+
+- **Wire format:** snake_case JSON keys, `BPNode.meta` is a real nested
+  object (not a string-of-JSON), `null` for empty optional strings.
+  Pinned in `Shared/BlueprintReaderTypes.h`.
+- **Subprocess management:** `CreateProcessW` directly, no
+  `cpp-subprocess` dependency. `cpp-subprocess` is in `vcpkg.json` but
+  not consumed.
+- **List op:** uses asset registry, not a disk walk. Faster + gets
+  `parent_class` from asset tags without loading every BP.
+- **Telemetry:** every `tools/call` envelope carries
+  `_meta: {elapsed_ms, tool}` per the MCP 2024-11-05 spec extension
+  point. Doesn't change content; clients that surface `_meta` see it.
+
+## See also
+
+- [PLAN.md](PLAN.md) — phase history + decisions log.
+- [README.md](README.md) — user-facing tool table + Claude Code/Desktop
+  config snippet.
+- `.claude/skills/bp-reader/SKILL.md` — guidance for *using* the MCP
+  tools (this CLAUDE.md is for *maintaining* them).
