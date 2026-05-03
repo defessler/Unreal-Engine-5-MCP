@@ -1,4 +1,4 @@
-# UE5_AI_BP — Blueprint Reader MCP
+# UE5_MCP — Blueprint Reader MCP
 
 A standalone MCP server that lets Claude (or any MCP client) read Unreal Engine
 5 Blueprint assets — variables, graphs, nodes, connections, K2 metadata — via
@@ -69,11 +69,11 @@ The exe is at `mcp-server/build/Release/bp-reader-mcp.exe`.
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_AI_BP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\Unreal Engine 5\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
         "BP_READER_BACKEND":     "commandlet",
-        "BP_READER_ENGINE_DIR":  "D:\\Projects\\UE5_AI_BP\\UnrealEngine",
-        "BP_READER_PROJECT":     "D:\\Projects\\UE5_AI_BP\\UE5_AI_BP.uproject"
+        "BP_READER_ENGINE_DIR":  "D:\\Projects\\Unreal Engine 5",
+        "BP_READER_PROJECT":     "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject"
       }
     }
   }
@@ -124,8 +124,8 @@ fresh one-shot for that call rather than failing the user-visible op.
 ## Project layout
 
 ```
-UE5_AI_BP\
-├── UE5_AI_BP.uproject
+UE5_MCP\
+├── UE5_MCP.uproject
 ├── Source\                              project runtime module
 ├── Plugins\BlueprintReader\             plugin (Editor-only)
 │   └── Source\BlueprintReaderEditor\
@@ -146,7 +146,8 @@ UE5_AI_BP\
 │   ├── fixtures\                        BP_Enemy / BP_Pickup / BP_PlayerController
 │   ├── CMakeLists.txt
 │   └── vcpkg.json
-├── UnrealEngine\                        source-built engine, .gitignored
+                                         (engine source lives outside this repo
+                                          at D:\Projects\Unreal Engine 5\)
 ├── PLAN.md
 └── README.md
 ```
@@ -157,8 +158,8 @@ If you have the editor built and the test BPs seeded:
 
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
-$env:BP_READER_ENGINE_DIR  = "D:\Projects\UE5_AI_BP\UnrealEngine"
-$env:BP_READER_PROJECT     = "D:\Projects\UE5_AI_BP\UE5_AI_BP.uproject"
+$env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 
 mcp-server\build\tests\Release\bp-reader-tests.exe                       # all 47 cases
 pwsh -File mcp-server\scripts\roundtrip.ps1 `
@@ -169,8 +170,8 @@ pwsh -File mcp-server\scripts\roundtrip.ps1 `
 (Re)seed the test BPs:
 
 ```pwsh
-UnrealEngine\Engine\Binaries\Win64\UnrealEditor-Cmd.exe `
-    UE5_AI_BP.uproject -run=BlueprintReaderSeed `
+& "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
+    UE5_MCP.uproject -run=BlueprintReaderSeed `
     -nullrhi -nosplash -unattended -nopause
 ```
 
@@ -182,43 +183,47 @@ target compiled.
 
 ### Engine build
 
+The engine source is checked out at `D:\Projects\Unreal Engine 5\` —
+a *sibling* of the project, intentionally outside this repo so the
+~100 GB of engine source never lands in the project's git history.
+
 ```bat
-cd UnrealEngine
+cd "D:\Projects\Unreal Engine 5"
 Setup.bat
 GenerateProjectFiles.bat
 ```
 
-Open `UnrealEngine\UE5.sln` in Visual Studio 2022 (Game Development with C++
-workload + Windows 10/11 SDK) and build the **`UnrealEditor`** target in
-*Development Editor / Win64*. First build is 1–3 hours; `Setup.bat` pulls
-~70–80 GB of binary dependencies.
+Open `D:\Projects\Unreal Engine 5\UE5.sln` in Visual Studio 2022
+(Game Development with C++ workload + Windows 10/11 SDK) and build the
+**`UnrealEditor`** target in *Development Editor / Win64*. First build
+is 1–3 hours; `Setup.bat` pulls ~70–80 GB of binary dependencies.
 
 ### Engine association
 
 ```bat
-cd UnrealEngine\Engine\Binaries\Win64
+cd "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64"
 UnrealVersionSelector.exe -register
 ```
 
 Then either:
-- Right-click `UE5_AI_BP.uproject` → **Switch Unreal Engine version…** and pick
+- Right-click `UE5_MCP.uproject` → **Switch Unreal Engine version…** and pick
   the source build, *or*
-- Edit `EngineAssociation` in `UE5_AI_BP.uproject` to that GUID directly.
+- Edit `EngineAssociation` in `UE5_MCP.uproject` to that GUID directly.
 
 Generate project files:
 
 ```bat
-"UnrealEngine\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" ^
-  -projectfiles -project="D:\Projects\UE5_AI_BP\UE5_AI_BP.uproject" ^
+"D:\Projects\Unreal Engine 5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" ^
+  -projectfiles -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -game -rocket -progress
 ```
 
 Build the editor target:
 
 ```bat
-"UnrealEngine\Engine\Build\BatchFiles\Build.bat" ^
-  UE5_AI_BPEditor Win64 Development ^
-  -project="D:\Projects\UE5_AI_BP\UE5_AI_BP.uproject" ^
+"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+  UE5_MCPEditor Win64 Development ^
+  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4
 ```
 
@@ -234,11 +239,12 @@ That breaks project-target builds with `fatal error C1083`. Patch each:
 
 Add `using System.IO;` and replace the relative `PrivateIncludePaths` entry
 with `Path.Combine(ModuleDirectory, ...)`. The patches live inside the
-gitignored `UnrealEngine/` and need re-applying after a fresh engine clone.
+sibling engine checkout at `D:\Projects\Unreal Engine 5\`, which isn't
+tracked by this repo — re-apply them after a fresh engine clone.
 
 ### Required project target settings
 
-`Source/UE5_AI_BPEditor.Target.cs` must declare:
+`Source/UE5_MCPEditor.Target.cs` must declare:
 
 ```csharp
 DefaultBuildSettings = BuildSettingsVersion.V6;
@@ -254,8 +260,8 @@ can saturate a 20 GB page file even on 64 GB RAM machines).
 ## Automation tests (UE side)
 
 ```bat
-UnrealEngine\Engine\Binaries\Win64\UnrealEditor-Cmd.exe ^
-  UE5_AI_BP.uproject ^
+"D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+  UE5_MCP.uproject ^
   -ExecCmds="Automation RunTests BlueprintReader.Editor; Quit" ^
   -TestExit="Automation Test Queue Empty" ^
   -ReportExportPath="Saved\Automation" ^
