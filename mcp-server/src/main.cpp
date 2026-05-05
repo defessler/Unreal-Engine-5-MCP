@@ -66,10 +66,11 @@ int main() {
     auto cfg = backends::ConfigFromEnv(exeDir);
 
     std::cerr << fmt::format(
-        "[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} timeout={}s daemon={}\n",
+        "[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} timeout={}s daemon={} prewarm={}\n",
         cfg.backend, cfg.fixturesDir.string(),
         cfg.engineDir.string(), cfg.uproject.string(), cfg.timeoutSeconds,
-        cfg.useDaemon ? "true" : "false");
+        cfg.useDaemon ? "true" : "false",
+        cfg.prewarm   ? "true" : "false");
 
     std::unique_ptr<backends::IBlueprintReader> reader;
     try {

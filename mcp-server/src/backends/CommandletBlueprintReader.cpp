@@ -296,6 +296,13 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
 }
 
 CommandletBlueprintReader::~CommandletBlueprintReader() {
+    // Join the prewarm thread first if it's still running. EnsureDaemon
+    // holds daemonMutex_, so by the time join() returns the daemon is either
+    // ready or its setup failed and the mutex is released. Either way we're
+    // safe to terminate.
+    if (prewarmThread_.joinable()) {
+        prewarmThread_.join();
+    }
 #if defined(_WIN32)
     TerminateDaemon();
 #endif
@@ -423,6 +430,26 @@ void CommandletBlueprintReader::TerminateDaemon() {
         daemonStdout_ = nullptr;
     }
     accumulator_.clear();
+}
+
+void CommandletBlueprintReader::Prewarm() {
+    if (!cfg_.useDaemon) return;
+    if (prewarmThread_.joinable()) return;  // already prewarming
+    prewarmThread_ = std::thread([this]() {
+        try {
+            std::lock_guard<std::mutex> lock(daemonMutex_);
+            // If a real tool call beat us to it, EnsureDaemon is a no-op.
+            EnsureDaemon();
+            std::fprintf(stderr,
+                "[bp-reader-mcp][commandlet][daemon] prewarm complete\n");
+        } catch (const std::exception& e) {
+            // Swallow: the next real tool call will retry under its own lock.
+            // Logging only — never let the prewarm thread crash main.
+            std::fprintf(stderr,
+                "[bp-reader-mcp][commandlet][daemon] prewarm failed: %s "
+                "(tool calls will retry)\n", e.what());
+        }
+    });
 }
 
 void CommandletBlueprintReader::EnsureDaemon() {
@@ -646,6 +673,9 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
 void CommandletBlueprintReader::TerminateDaemon() {}
 void CommandletBlueprintReader::EnsureDaemon() {
     throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+}
+void CommandletBlueprintReader::Prewarm() {
+    // No-op on non-Windows; daemon mode is unsupported there.
 }
 std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&) {
     throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
