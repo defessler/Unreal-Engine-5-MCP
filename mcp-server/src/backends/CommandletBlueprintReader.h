@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
@@ -84,6 +85,13 @@ public:
     void SetVariableDefault(std::string_view assetPath, std::string_view name,
                             std::string_view newDefault) override;
 
+    // Spin up the editor daemon now in a background thread. Tool calls that
+    // arrive before the daemon is READY block on the same daemonMutex_ used
+    // by RunOpDaemon, so this is racy-safe: a real call either completes the
+    // prewarm work itself (if it lost the race) or finds a hot daemon. No-op
+    // if useDaemon is false or the platform doesn't support daemon mode.
+    void Prewarm();
+
 private:
     // Dispatches to RunOpOneShot or RunOpDaemon. Always writes its JSON
     // payload to a temp file under %TEMP% and returns the parsed JSON.
@@ -107,6 +115,7 @@ private:
 #endif
 
     std::mutex daemonMutex_;  // serializes RunOpDaemon (one in-flight call max)
+    std::thread prewarmThread_;  // joined in destructor; running EnsureDaemon under daemonMutex_
     Config cfg_;
     std::filesystem::path editorCmdExe_;
 };

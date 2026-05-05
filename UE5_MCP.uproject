@@ -1,16 +1,16 @@
 {
-  "FileVersion": 3,
-  "EngineAssociation": "UE5_MCP_Source",
-  "Category": "",
-  "Description": "",
-  "Modules": [
-    {
-      "Name": "UE5_MCP",
-      "Type": "Runtime",
-      "LoadingPhase": "Default",
-      "AdditionalDependencies": [
-        "Engine"
-      ]
-    }
-  ]
+	"FileVersion": 3,
+	"EngineAssociation": "{8C2F4F06-47C3-B6B7-7D7F-5AB83BABA7D3}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "UE5_MCP",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	]
 }

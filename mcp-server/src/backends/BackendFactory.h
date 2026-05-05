@@ -19,6 +19,10 @@ struct BackendConfig {
     std::filesystem::path uproject;
     int timeoutSeconds = 120;
     bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
+    bool prewarm    = false;      // commandlet+daemon-only; opt in via BP_READER_PREWARM=1.
+                                  // Spawns the editor daemon on startup in a background
+                                  // thread so the first tool call doesn't pay the ~5–30 s
+                                  // editor cold-start cost.
 };
 
 // Read BP_READER_BACKEND and BP_READER_FIXTURES_DIR from the environment.

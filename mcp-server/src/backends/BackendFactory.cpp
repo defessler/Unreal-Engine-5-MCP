@@ -78,6 +78,19 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir) {
         // Otherwise: leave the default. (Better than silently swapping the
         // mode on a typo.)
     }
+
+    // Pre-warm: spawn the editor daemon on MCP startup so the first tool call
+    // is already warm. Off by default — costs ~600 MB RAM whether or not you
+    // ever call a BP tool.
+    auto prewarm = EnvOrDefault("BP_READER_PREWARM", "");
+    if (!prewarm.empty()) {
+        std::string p;
+        p.reserve(prewarm.size());
+        for (char c : prewarm) p.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        if (p == "1" || p == "true" || p == "yes" || p == "on") {
+            cfg.prewarm = true;
+        }
+    }
     return cfg;
 }
 
@@ -91,7 +104,11 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
         cc.uproject  = cfg.uproject;
         cc.timeout   = std::chrono::seconds(cfg.timeoutSeconds);
         cc.useDaemon = cfg.useDaemon;
-        return std::make_unique<CommandletBlueprintReader>(std::move(cc));
+        auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
+        if (cfg.prewarm && cfg.useDaemon) {
+            r->Prewarm();
+        }
+        return r;
     }
     if (cfg.backend == "live") {
         throw BlueprintReaderError(fmt::format(
