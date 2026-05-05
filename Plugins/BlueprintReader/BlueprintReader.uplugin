@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "0.1.0",
 	"FriendlyName": "Blueprint Reader",
-	"Description": "Headless blueprint introspection for the UE5_AI_BP MCP server.",
+	"Description": "Headless blueprint introspection for the UE5_MCP server.",
 	"Category": "Editor",
 	"CreatedBy": "",
 	"CreatedByURL": "",
@@ -20,5 +20,10 @@
 			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}
-	]
+	],
+	"PreBuildSteps": {
+		"Win64": [
+			"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(PluginDir)/Scripts/Build-MCPServer.ps1\" -ProjectDir \"$(ProjectDir)\" -PluginDir \"$(PluginDir)\""
+		]
+	}
 }

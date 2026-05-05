@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "bp-reader": {
+      "type": "stdio",
+      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "args": [],
+      "env": {
+        "BP_READER_BACKEND": "commandlet",
+        "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
+        "BP_READER_PROJECT": "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PREWARM": "1"
+      }
+    }
+  }
+}
