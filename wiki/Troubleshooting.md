@@ -131,25 +131,6 @@ daemon restarts.
 restart the MCP server / Claude session). The next call respawns a
 fresh editor with a fresh registry.
 
-## CMake `FetchContent` says "could not find git for clone of nlohmann_json-populate"
-
-Happens when running `cmake -S . -B build ...` from a shell that doesn't
-have `git.exe` on PATH (e.g., a stripped-down Developer Command Prompt or
-a service-account context). CMake 4.x is stricter about inheriting the
-parent shell's PATH for ExternalProject's clone step.
-
-**Fix**: pass `-DGIT_EXECUTABLE` to cmake explicitly:
-
-```powershell
-cmake -S mcp-server -B mcp-server\build -G "Visual Studio 17 2022" -A x64 `
-    "-DGIT_EXECUTABLE=C:\Program Files\Git\cmd\git.exe"
-```
-
-The plugin's `Scripts/Build-MCPServer.ps1` does this automatically — it
-resolves git from PATH or known install locations and passes the path
-through. If you only ever build via the editor target, you'll never hit
-this error.
-
 ## "ImportError: Could not load module" when launching Claude with the server
 
 You're pointing at a `Debug` build of `bp-reader-mcp.exe` from a
