@@ -17,6 +17,14 @@ skip the plugin entirely — useful for smoke-testing the server.
 
 ## 1. Build the MCP server
 
+> **Skipping ahead?** If you'll use the `commandlet` backend, building the
+> editor target in step 3 builds the MCP server too — the `BlueprintReader`
+> plugin wires `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` as a
+> `PreBuildStep`. You can clone, do steps 2 + 3, and the MCP exe lands at
+> `mcp-server/build/Release/bp-reader-mcp.exe` automatically. Use this
+> standalone path when you only want the **mock** backend, or to validate
+> the server before bringing UE into the loop.
+
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
 cd UE5_MCP\mcp-server
@@ -116,6 +124,25 @@ and can saturate small page files even on 64 GB RAM machines.
 After the first full build (10–30 min), incremental rebuilds are 5–10 s
 for plugin-only changes.
 
+### Plugin-driven MCP server build
+
+`BlueprintReader.uplugin` declares a `PreBuildStep` that invokes
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` before the editor
+module compiles. The script:
+
+- **Skips** when `bp-reader-mcp.exe` is newer than every `mcp-server/src/`
+  file + `CMakeLists.txt` (~milliseconds, no rebuild).
+- **Configures** CMake on the first build (or after `mcp-server/build/`
+  is wiped). Passes `-DGIT_EXECUTABLE=<resolved>` so FetchContent's git
+  clone step works regardless of shell PATH state.
+- **Builds** Release config when sources changed.
+- **No-ops cleanly** when used standalone — the plugin can be dropped
+  into any UE project that doesn't ship `mcp-server/`.
+
+So once setup is done, `Build.bat UE5_MCPEditor ...` keeps the MCP exe
+fresh whenever C++ sources change, and incremental builds add only a
+few seconds (~5–15 s) when the MCP server changed.
+
 ### Drop the plugin into your own project
 
 The `BlueprintReader` plugin lives at `Plugins/BlueprintReader/` in this
@@ -126,9 +153,11 @@ cost.
 
 ## 4. Wire it into Claude
 
-### Claude Code
+### Claude Code (project scope — recommended)
 
-Edit `~/.claude/mcp.json` (or per-project `.mcp.json`):
+The repo ships a project-scope **`.mcp.json`** at the root. Cloning +
+launching Claude Code from the project directory wires bp-reader
+automatically — no per-machine setup. The contents:
 
 ```json
 {
@@ -138,17 +167,40 @@ Edit `~/.claude/mcp.json` (or per-project `.mcp.json`):
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject"
+        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PREWARM":    "1"
       }
     }
   }
 }
 ```
 
+If your local layout differs from these paths, edit `.mcp.json` (or use
+`claude mcp add bp-reader --scope project ...` to regenerate it). The
+`BP_READER_PREWARM=1` flag spawns the editor daemon during MCP startup
+in a background thread, so the first BP question lands in ~30 ms instead
+of paying the ~5–30 s editor cold-start.
+
+### Claude Code (user scope)
+
+If you want bp-reader available from any directory (not just the project):
+
+```powershell
+claude mcp add bp-reader --scope user `
+    --env BP_READER_BACKEND=commandlet `
+    --env "BP_READER_ENGINE_DIR=D:\Projects\Unreal Engine 5" `
+    --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    --env BP_READER_PREWARM=1 `
+    -- "D:\Projects\UE5_MCP\mcp-server\build\Release\bp-reader-mcp.exe"
+```
+
+This writes to `~/.claude.json`. Trade-off: bp-reader spawns in **every**
+Claude Code session, idle-cost-free until you trigger a tool call.
+
 ### Claude Desktop
 
-Same shape, in `%APPDATA%\Claude\claude_desktop_config.json` under the
-`mcpServers` key. Restart Claude Desktop after editing.
+Same JSON shape, in `%APPDATA%\Claude\claude_desktop_config.json` under
+the `mcpServers` key. Restart Claude Desktop after editing.
 
 ### Mock backend (no UE)
 

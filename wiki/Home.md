@@ -23,12 +23,18 @@ connections, K2 metadata — through 21 tools.
 
 If you just want Claude to read your Blueprints:
 
-1. [Build the MCP server](Installation#1-build-the-mcp-server) (5 min, no UE
-   needed — the `mock` backend uses bundled fixtures).
-2. [Build the UE plugin](Installation#3-build-the-ue-plugin) into your project
-   (1–3 hours first time — engine source build).
-3. [Add `bp-reader` to your Claude MCP config](Installation#4-wire-it-into-claude).
+1. [Set up + build the engine](Installation#2-build-the-engine) — 1–3 hours
+   first time (UE source build).
+2. [Build the editor target](Installation#3-build-the-ue-plugin) — the
+   plugin's `PreBuildStep` builds the MCP server too, no separate cmake.
+3. Launch Claude Code from the project directory — the shipped
+   [`.mcp.json`](Installation#4-wire-it-into-claude) auto-registers
+   bp-reader with `BP_READER_PREWARM=1` so the editor warms while you type.
 4. Ask Claude: *"What variables are on `/Game/AI/BP_TestEnemy`?"*
+
+Want to skip UE and just kick the tires? [Build the MCP server
+standalone](Installation#1-build-the-mcp-server) and use the mock backend
+(3 fixture BPs, 5 min, no UE needed).
 
 ## Backends
 
@@ -42,11 +48,17 @@ paths to drive a real editor. See [Configuration](Configuration).
 
 ## Performance
 
-| Mode                          | Cold call | Subsequent calls   |
-|-------------------------------|-----------|--------------------|
-| `commandlet` one-shot         | 5–7 s     | 5–7 s each         |
-| `commandlet` daemon (default) | 5 s       | **15–30 ms each**  |
-| `mock`                        | <5 ms     | <5 ms              |
+| Mode                                 | Cold call         | Subsequent calls   |
+|--------------------------------------|-------------------|--------------------|
+| `commandlet` one-shot                | 5–7 s             | 5–7 s each         |
+| `commandlet` daemon (default)        | 5 s               | **15–30 ms each**  |
+| `commandlet` daemon + `PREWARM=1`    | **~30 ms** *      | **15–30 ms each**  |
+| `mock`                               | <5 ms             | <5 ms              |
+
+\* Pre-warm spawns the editor on MCP startup in a background thread. If
+your first tool call lands before the daemon hits READY (~5–30 s
+depending on DDC warmth), it blocks on the same mutex and inherits the
+warm daemon — no double-spawn. See [Configuration](Configuration#pre-warm).
 
 Daemon mode keeps one `UnrealEditor-Cmd.exe` alive across calls and pipes
 commandlet-arg lines to its stdin. Falls back to one-shot automatically if
