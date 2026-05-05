@@ -85,14 +85,27 @@ Claude calls these on its own when it's unsure — you don't need to.
 
 ### Daemon mode
 
-The first call to a real-UE backend takes 5 s (editor cold start). Every
-subsequent call within the same MCP session takes ~30 ms. Background:
-the server keeps one `UnrealEditor-Cmd.exe` alive across calls and pipes
-commandlet-arg lines to its stdin. If the daemon dies (crash, OOM,
-killed), the next call falls back to a one-shot subprocess automatically
-— no error surfaced to you.
+The first call to a real-UE backend takes 5–30 s (editor cold start;
+varies with DDC warmth). Every subsequent call within the same MCP
+session takes ~30 ms. Background: the server keeps one
+`UnrealEditor-Cmd.exe` alive across calls and pipes commandlet-arg
+lines to its stdin. If the daemon dies (crash, OOM, killed), the next
+call falls back to a one-shot subprocess automatically — no error
+surfaced to you.
 
 Disable daemon mode for debugging with `BP_READER_DAEMON=0`.
+
+### Pre-warm (seamless first call)
+
+Set `BP_READER_PREWARM=1` to have the MCP server spawn the editor
+daemon on a background thread the moment it starts. Claude Code spawns
+MCP servers eagerly at session start, so the editor warms while you
+type — by the time you ask Claude about a Blueprint, the daemon is
+ready and your "first" call returns in ~30 ms.
+
+The repo's shipped `.mcp.json` has this on. Costs ~600 MB of RAM for an
+editor process that sits idle even if you never invoke a BP tool that
+session. See [Configuration](Configuration#pre-warm).
 
 ### Hot-reload caveats
 

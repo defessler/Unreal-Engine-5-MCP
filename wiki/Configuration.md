@@ -13,6 +13,32 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_PROJECT`         | (unset → fail-fast for `commandlet`)   | Path to `.uproject`.                                                     |
 | `BP_READER_TIMEOUT_SECONDS` | `120`                                  | Per-call subprocess timeout.                                             |
 | `BP_READER_DAEMON`          | `1` (on)                               | `0`/`false`/`no`/`off` to opt out of daemon mode.                        |
+| `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
+
+## Pre-warm
+
+With `BP_READER_PREWARM=1`, the MCP server spawns the editor daemon on a
+background thread the moment it starts up — *before* the first tool call.
+Claude Code spawns MCP servers eagerly at session start, so the editor
+warms up while you type your first prompt. By the time you ask Claude
+about a Blueprint, the daemon is already READY and the call returns in
+~30 ms instead of paying the ~5–30 s cold start.
+
+Mechanics:
+- Background thread acquires the same `daemonMutex_` that protects real
+  tool calls; `EnsureDaemon()` runs under the lock.
+- Tool calls that arrive mid-prewarm block on the mutex and inherit the
+  now-warm daemon — no double-launch.
+- If prewarm fails (engine not built, project mis-set), the error is
+  logged to stderr and swallowed. The next real tool call retries
+  `EnsureDaemon()` under its own lock and surfaces any error to Claude.
+- The destructor `join()`s the prewarm thread before terminating the
+  daemon, so MCP shutdown is always clean.
+
+Trade-off: the editor sits at ~600 MB RAM for the lifetime of the MCP
+server, even if you never touch a Blueprint tool that session. For dev
+workstations this is negligible; for laptops or shared CI runners,
+leave prewarm off and pay the cold start on first call.
 
 ## Daemon mode (default)
 
@@ -39,10 +65,28 @@ Disable for debugging:
 }
 ```
 
+## Project scope vs user scope
+
+Two ways to register bp-reader with Claude Code:
+
+| Scope            | File                              | Loads when                                |
+|------------------|-----------------------------------|--------------------------------------------|
+| **Project**      | `<project>/.mcp.json`             | Claude Code launched from project dir.    |
+| **User**         | `~/.claude.json`                  | Every Claude Code session, any directory. |
+
+The repo ships a `.mcp.json` at root, so cloning + launching from the
+project dir wires bp-reader automatically. Other devs cloning the repo
+get the config for free (paths still need to match their layout).
+
+User scope is right when you want bp-reader available everywhere, e.g.
+asking Claude about UE5_MCP from a chat happening in another project.
+The cost: the MCP server spawns in every Claude session (lightweight
+process; the editor daemon is still lazy unless `BP_READER_PREWARM=1`).
+
 ## Per-project configuration
 
 To work on multiple UE projects from the same Claude session, register
-each as its own MCP server:
+each as its own MCP server (user scope):
 
 ```json
 {
@@ -52,7 +96,8 @@ each as its own MCP server:
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\Game1\\Game1.uproject"
+        "BP_READER_PROJECT":    "D:\\Projects\\Game1\\Game1.uproject",
+        "BP_READER_PREWARM":    "1"
       }
     },
     "bp-game2": {
@@ -71,6 +116,10 @@ Each server holds its own daemon process and binds to one project. Don't
 share a single MCP server entry across projects — the daemon's editor
 process has the project's modules loaded and switching projects mid-
 flight would require killing it.
+
+(Note: enabling `BP_READER_PREWARM` on multiple registered servers means
+each one warms its own editor on session start — multiplied cost. Pick
+which projects you want pre-warmed and leave the rest lazy.)
 
 ## Timeouts
 
