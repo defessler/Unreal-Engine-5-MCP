@@ -15,6 +15,10 @@ skip the plugin entirely — useful for smoke-testing the server.
 | UE 5.7 source build    | Plugin       | Source build, not the launcher binary build.            |
 | ~120 GB disk           | Plugin       | UE source ~70 GB pulled by `Setup.bat`.                 |
 
+**No network, no git, no vcpkg required for the MCP server.** Third-party
+deps (nlohmann_json, fmt, doctest) are vendored under
+`mcp-server/third_party/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/mcp-server/third_party).
+
 ## 1. Build the MCP server
 
 > **Skipping ahead?** If you'll use the `commandlet` backend, building the
