@@ -56,7 +56,6 @@ add_library(bp-reader-core STATIC
 )
 target_include_directories(bp-reader-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../Shared
 )
 target_link_libraries(bp-reader-core PUBLIC
     nlohmann_json::nlohmann_json

@@ -13,11 +13,15 @@ Claude read and edit Blueprint assets through 21 tools. Two halves:
   - `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
     synthesizes `Content/AI/BP_TestEnemy.uasset` and `BP_TestPickup.uasset`
     used by the live integration tests.
-- **`mcp-server/`** — Standalone C++20 MCP server. JSON-RPC 2.0 over
-  stdio. Two backends: `mock` (fixtures only, no UE) and `commandlet`
-  (drives the plugin via `UnrealEditor-Cmd.exe`). **Daemon mode is
-  the default** for the commandlet backend (~30 ms/call after a ~5 s
-  cold start; opt out with `BP_READER_DAEMON=0`).
+- **`Plugins/BlueprintReader/mcp-server/`** — Standalone C++20 MCP
+  server, vendored inside the plugin so the whole thing ships as one
+  unit. JSON-RPC 2.0 over stdio. Two backends: `mock` (fixtures only,
+  no UE) and `commandlet` (drives the plugin via `UnrealEditor-Cmd.exe`).
+  **Daemon mode is the default** for the commandlet backend (~30 ms/call
+  after a ~5 s cold start; opt out with `BP_READER_DAEMON=0`). Built
+  automatically as a `PreBuildStep` of `BlueprintReader.uplugin` —
+  third-party deps (nlohmann_json, fmt, doctest) are vendored under
+  `mcp-server/third_party/`, no git/network/vcpkg required.
 
 When you need to **use** the MCP tools to read or modify a blueprint,
 the `bp-reader` skill in `.claude/skills/bp-reader/` covers patterns,
@@ -30,23 +34,27 @@ testing, and maintaining the project itself.
 UE5_MCP/                                      ← project root (this dir)
 ├── UE5_MCP.uproject
 ├── Source/                                     project runtime module
-├── Plugins/BlueprintReader/Source/BlueprintReaderEditor/
-│   ├── Public/                                 BlueprintReaderTypes, Introspector,
-│   │                                           WireJson, *Commandlet.h
-│   └── Private/                                impls
+├── Plugins/BlueprintReader/                    plugin ships as one unit
+│   ├── BlueprintReader.uplugin                 PreBuildSteps run Build-MCPServer.ps1
+│   ├── Scripts/Build-MCPServer.ps1             plugin-driven cmake build
+│   ├── Source/BlueprintReaderEditor/
+│   │   ├── Public/                             BlueprintReaderTypes, Introspector,
+│   │   │                                       WireJson, *Commandlet.h
+│   │   └── Private/                            impls
+│   └── mcp-server/                             standalone C++20 MCP server
+│       ├── src/
+│       │   ├── BlueprintReaderTypes.h          POD/USTRUCT dual-mode wire types (canonical)
+│       │   ├── jsonrpc/                        Server, Mcp (handshake + dispatch)
+│       │   ├── tools/                          ToolRegistry, BlueprintTools
+│       │   └── backends/                       IBlueprintReader, MockReader, CommandletReader
+│       ├── tests/                              doctest cases (mock + live)
+│       ├── scripts/roundtrip.ps1               JSON-RPC smoke harness
+│       ├── fixtures/                           BP_*.json mock-backend data
+│       ├── third_party/                        vendored deps (nlohmann_json, fmt, doctest)
+│       ├── CMakeLists.txt
+│       └── vcpkg.json                          declared but not consumed by default
 ├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset
 │                                               (regenerable; see "Reseed test BPs" below)
-├── Shared/BlueprintReaderTypes.h               POD/USTRUCT dual-mode wire types
-├── mcp-server/
-│   ├── src/
-│   │   ├── jsonrpc/                            Server, Mcp (handshake + dispatch)
-│   │   ├── tools/                              ToolRegistry, BlueprintTools
-│   │   └── backends/                           IBlueprintReader, MockReader, CommandletReader
-│   ├── tests/                                  doctest cases (mock + live)
-│   ├── scripts/roundtrip.ps1                   JSON-RPC smoke harness
-│   ├── fixtures/                               BP_*.json mock-backend data
-│   ├── CMakeLists.txt
-│   └── vcpkg.json
 ├── PLAN.md                                     phase status, decisions
 ├── README.md                                   user-facing setup + tool table
 └── .github/workflows/mcp-server.yml            CI (mock-only on windows-2022)
@@ -80,7 +88,7 @@ UE setup — useful for iterating on the MCP server itself.
 ### MCP server (mock backend, no UE needed)
 
 ```pwsh
-cd mcp-server
+cd Plugins/BlueprintReader/mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 build\tests\Release\bp-reader-tests.exe   # 45 mock cases run; 12 live cases skip
@@ -127,12 +135,13 @@ files from the unity cpp and only recompiles what changed.
 ### Mock-only (CI-equivalent, fast)
 
 ```pwsh
-mcp-server\build\tests\Release\bp-reader-tests.exe
+Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
 ```
 
 45 cases pass; 12 commandlet-backed cases auto-skip without env vars set.
-CI runs this on every push to `main` (`mcp-server/**`, `Shared/**`, or
-the workflow file). Workflow at `.github/workflows/mcp-server.yml`.
+CI runs this on every push to `main` that touches
+`Plugins/BlueprintReader/mcp-server/**` or the workflow file.
+Workflow at `.github/workflows/mcp-server.yml`.
 
 ### Live (drives real `UnrealEditor-Cmd.exe`)
 
@@ -140,14 +149,14 @@ the workflow file). Workflow at `.github/workflows/mcp-server.yml`.
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
-mcp-server\build\tests\Release\bp-reader-tests.exe   # 57 cases, ~80 s
+Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe   # 57 cases, ~80 s
 ```
 
 JSON-RPC roundtrip smoke test:
 
 ```pwsh
-pwsh -File mcp-server\scripts\roundtrip.ps1 `
-    -Exe mcp-server\build\Release\bp-reader-mcp.exe `
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
 
@@ -251,7 +260,7 @@ the discoverability list in lockstep.
 
 - **Wire format:** snake_case JSON keys, `BPNode.meta` is a real nested
   object (not a string-of-JSON), `null` for empty optional strings.
-  Pinned in `Shared/BlueprintReaderTypes.h`.
+  Pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 - **Subprocess management:** `CreateProcessW` directly, no
   `cpp-subprocess` dependency. `cpp-subprocess` is in `vcpkg.json` but
   not consumed.

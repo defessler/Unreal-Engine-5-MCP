@@ -92,7 +92,7 @@ each as its own MCP server (user scope):
 {
   "mcpServers": {
     "bp-game1": {
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -101,7 +101,7 @@ each as its own MCP server (user scope):
       }
     },
     "bp-game2": {
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -131,7 +131,7 @@ warm the DDC by opening the project in the full editor once.
 ## Mock backend fixtures
 
 The mock backend reads three handcrafted JSON files from
-`mcp-server/fixtures/`:
+`Plugins/BlueprintReader/mcp-server/fixtures/`:
 
 - `BP_Enemy.json` — Actor parent, 4 vars, EventGraph + Damage function.
 - `BP_Pickup.json` — Actor parent, 2 vars, EventGraph only.
@@ -144,10 +144,11 @@ Edit them to test edge cases. Override the dir with
 ## CI
 
 GitHub Actions workflow at `.github/workflows/mcp-server.yml` builds and
-runs the mock-backend tests on every push that touches `mcp-server/`,
-`Shared/`, or the workflow itself. The 12 commandlet-backed tests skip
-automatically when `BP_READER_ENGINE_DIR` / `BP_READER_PROJECT` aren't
-set, so CI runs in under a minute once the FetchContent cache is warm.
+runs the mock-backend tests on every push that touches
+`Plugins/BlueprintReader/mcp-server/` or the workflow itself. The 12
+commandlet-backed tests skip automatically when `BP_READER_ENGINE_DIR` /
+`BP_READER_PROJECT` aren't set, so CI runs in under a minute against the
+vendored deps.
 
 The workflow runs on `windows-2022`. Linux/macOS are not currently
 supported because the subprocess management is `CreateProcessW`-based.
@@ -161,8 +162,8 @@ captures and surfaces in its tool-call debug panel.
 For raw debugging, drive the server directly with the bundled smoke test:
 
 ```powershell
-pwsh -File mcp-server\scripts\roundtrip.ps1 `
-    -Exe mcp-server\build\Release\bp-reader-mcp.exe `
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
 

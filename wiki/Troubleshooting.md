@@ -137,10 +137,10 @@ You're pointing at a `Debug` build of `bp-reader-mcp.exe` from a
 machine without the Visual C++ debug runtime. Build `Release`:
 
 ```powershell
-cmake --build mcp-server\build --config Release
+cmake --build Plugins\BlueprintReader\mcp-server\build --config Release
 ```
 
-Then point Claude at `mcp-server\build\Release\bp-reader-mcp.exe`.
+Then point Claude at `Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe`.
 
 ## Other issues
 

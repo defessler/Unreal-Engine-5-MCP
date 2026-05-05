@@ -2,7 +2,7 @@
 
 21 tools — 7 read, 12 write, 2 meta. All use snake_case JSON keys; nullable
 string fields emit `null`; `BPNode.meta` is a real nested object (not a
-string-of-JSON). Wire shapes are pinned in `Shared/BlueprintReaderTypes.h`.
+string-of-JSON). Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Read tools
 

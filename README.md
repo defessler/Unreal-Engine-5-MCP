@@ -13,7 +13,7 @@ six tools backed by the bundled `BlueprintReader` UE plugin.
 
 Two backends:
 - **`mock`** — fixture-backed; no UE required. Used for unit tests and
-  bring-up. Three handcrafted JSON fixtures under `mcp-server/fixtures/`.
+  bring-up. Three handcrafted JSON fixtures under `Plugins/BlueprintReader/mcp-server/fixtures/`.
 - **`commandlet`** — drives a real `UnrealEditor-Cmd.exe -run=BlueprintReader`
   to read live `.uasset` files from a UE project. Defaults to **daemon mode**
   (one editor process reused across calls) so per-call cost is ~30 ms after
@@ -45,24 +45,24 @@ Two backends:
 | `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
 | `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
 
-Wire shapes are pinned in `Shared/BlueprintReaderTypes.h`. Snake_case keys,
-nullable string fields emit `null`, `BPNode.meta` is a real nested object.
+Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
+keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
 
 ## Quick start: hooking it up to Claude
 
 ### 1. Build the MCP server (no UE required for the mock backend)
 
 ```pwsh
-cd mcp-server
+cd Plugins\BlueprintReader\mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 build\tests\Release\bp-reader-tests.exe   # 45 mock + 12 live (live skip without UE)
 ```
 
-The exe is at `mcp-server/build/Release/bp-reader-mcp.exe`.
+The exe is at `Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe`.
 
 Third-party deps (nlohmann_json, fmt, doctest) are vendored under
-`mcp-server/third_party/`, so this works **with no network access and no
+`Plugins/BlueprintReader/mcp-server/third_party/`, so this works **with no network access and no
 git** — CMake itself is the only external tool required.
 
 > **If you'll use the `commandlet` backend, you can skip this step** —
@@ -79,7 +79,7 @@ automatically. The contents:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
         "BP_READER_BACKEND":  "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -141,31 +141,38 @@ fresh one-shot for that call rather than failing the user-visible op.
 
 ## Project layout
 
+The plugin is fully self-contained — drop `Plugins\BlueprintReader\` into
+any UE project's `Plugins\` folder and it builds (UE plugin module + MCP
+server) as one unit.
+
 ```
 UE5_MCP\
 ├── UE5_MCP.uproject
-├── Source\                              project runtime module
-├── Plugins\BlueprintReader\             plugin (Editor-only)
-│   └── Source\BlueprintReaderEditor\
-│       ├── BlueprintIntrospector       FBlueprintInfo from FBlueprintGeneratedClass
-│       ├── BlueprintReaderJson         legacy/rich plugin shape (camelCase, K2 extras)
-│       ├── BlueprintReaderWireJson     canonical MCP wire shape (snake_case)
-│       ├── BlueprintReaderCommandlet   -run=BlueprintReader; -Op + -Daemon dispatch
-│       └── BlueprintReaderSeedCmdlet   -run=BlueprintReaderSeed; synthesize test BPs
-├── Content\AI\                          BP_TestEnemy.uasset, BP_TestPickup.uasset
-├── Shared\BlueprintReaderTypes.h        WITH_UE-gated POD/USTRUCT pair
-├── mcp-server\                          standalone C++20 MCP server
-│   ├── src\
-│   │   ├── jsonrpc\                    Server, Mcp (initialize/tools/call/...)
-│   │   ├── tools\                       ToolRegistry, BlueprintTools
-│   │   └── backends\                    IBlueprintReader, MockReader, CommandletReader
-│   ├── tests\                           doctest cases (mock + live commandlet)
-│   ├── scripts\roundtrip.ps1            JSON-RPC smoke test
-│   ├── fixtures\                        BP_Enemy / BP_Pickup / BP_PlayerController
-│   ├── CMakeLists.txt
-│   └── vcpkg.json
-                                         (engine source lives outside this repo
-                                          at D:\Projects\Unreal Engine 5\)
+├── Source\                                project runtime module
+├── Plugins\BlueprintReader\               plugin (everything ships together)
+│   ├── BlueprintReader.uplugin            PreBuildSteps run Build-MCPServer.ps1
+│   ├── Scripts\Build-MCPServer.ps1        plugin-driven cmake build
+│   ├── Source\BlueprintReaderEditor\
+│   │   ├── BlueprintIntrospector         FBlueprintInfo from FBlueprintGeneratedClass
+│   │   ├── BlueprintReaderJson           legacy/rich plugin shape (camelCase, K2 extras)
+│   │   ├── BlueprintReaderWireJson       canonical MCP wire shape (snake_case)
+│   │   ├── BlueprintReaderCommandlet     -run=BlueprintReader; -Op + -Daemon dispatch
+│   │   └── BlueprintReaderSeedCmdlet     -run=BlueprintReaderSeed; synthesize test BPs
+│   └── mcp-server\                        standalone C++20 MCP server
+│       ├── src\
+│       │   ├── BlueprintReaderTypes.h    POD/USTRUCT dual-mode wire types
+│       │   ├── jsonrpc\                  Server, Mcp (initialize/tools/call/...)
+│       │   ├── tools\                     ToolRegistry, BlueprintTools
+│       │   └── backends\                  IBlueprintReader, MockReader, CommandletReader
+│       ├── tests\                         doctest cases (mock + live commandlet)
+│       ├── scripts\roundtrip.ps1          JSON-RPC smoke test
+│       ├── fixtures\                      BP_Enemy / BP_Pickup / BP_PlayerController
+│       ├── third_party\                   vendored deps: nlohmann_json, fmt, doctest
+│       ├── CMakeLists.txt
+│       └── vcpkg.json                     (declared but not consumed by default)
+├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset
+                                           (engine source lives outside this repo
+                                            at D:\Projects\Unreal Engine 5\)
 ├── PLAN.md
 └── README.md
 ```
@@ -179,9 +186,9 @@ $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 
-mcp-server\build\tests\Release\bp-reader-tests.exe                       # all 47 cases
-pwsh -File mcp-server\scripts\roundtrip.ps1 `
-    -Exe mcp-server\build\Release\bp-reader-mcp.exe `
+Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe   # all 57 cases
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
 
@@ -202,9 +209,8 @@ target rebuilds the MCP server automatically:
 UBT
  ├── (PreBuildStep) Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1
  │     ├── skip if bp-reader-mcp.exe is fresher than every src/ file
- │     ├── cmake -S mcp-server -B mcp-server/build -G "VS 17 2022" -A x64
- │     │     -DGIT_EXECUTABLE=<resolved>     # robust to shells without git on PATH
- │     └── cmake --build mcp-server/build --config Release
+ │     ├── cmake -S <plugin>/mcp-server -B <plugin>/mcp-server/build -G "VS 17 2022" -A x64
+ │     └── cmake --build <plugin>/mcp-server/build --config Release
  └── BlueprintReader.uplugin → BlueprintReaderEditor.dll
 ```
 
@@ -322,10 +328,11 @@ plus `index.html`.
 ## CI
 
 GitHub Actions workflow at `.github/workflows/mcp-server.yml` builds + runs
-the mock-backend tests on every push that touches `mcp-server/`, `Shared/`,
-or the workflow itself. The live commandlet tests skip automatically when
-`BP_READER_ENGINE_DIR` / `BP_READER_PROJECT` aren't set, so CI runs in under
-a minute once the FetchContent cache is warm.
+the mock-backend tests on every push that touches
+`Plugins/BlueprintReader/mcp-server/` or the workflow itself. The live
+commandlet tests skip automatically when `BP_READER_ENGINE_DIR` /
+`BP_READER_PROJECT` aren't set, so CI runs in under a minute against the
+vendored deps.
 
 ## Layout / phases
 

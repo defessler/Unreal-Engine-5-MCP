@@ -24,25 +24,26 @@ D:\Projects\
     │           │   └── BlueprintReaderSeedCommandlet.h
     │           └── Private\ (parallel layout)
     ├── Content\AI\                      seeded test BPs (regenerable)
-    ├── Shared\
-    │   └── BlueprintReaderTypes.h       POD/USTRUCT dual-mode wire types
-    ├── mcp-server\                      standalone C++20 MCP server
-    │   ├── src\
-    │   │   ├── backends\
-    │   │   │   ├── IBlueprintReader.h
-    │   │   │   ├── MockBlueprintReader.{h,cpp}
-    │   │   │   ├── CommandletBlueprintReader.{h,cpp}
-    │   │   │   └── BackendFactory.{h,cpp}
-    │   │   ├── jsonrpc\ (Server, Mcp)
-    │   │   ├── tools\ (BlueprintTools, ToolRegistry)
-    │   │   └── main.cpp
-    │   ├── tests\
-    │   │   ├── test_*.cpp
-    │   │   └── test_commandlet_backend.cpp           (live, gated by env)
-    │   ├── scripts\roundtrip.ps1                      JSON-RPC smoke harness
-    │   ├── fixtures\
-    │   ├── CMakeLists.txt
-    │   └── vcpkg.json
+    ├── Plugins\BlueprintReader\
+    │   └── mcp-server\                  standalone C++20 MCP server (lives inside the plugin)
+    │       ├── src\
+    │       │   ├── BlueprintReaderTypes.h           POD/USTRUCT dual-mode wire types
+    │       │   ├── backends\
+    │       │   │   ├── IBlueprintReader.h
+    │       │   │   ├── MockBlueprintReader.{h,cpp}
+    │       │   │   ├── CommandletBlueprintReader.{h,cpp}
+    │       │   │   └── BackendFactory.{h,cpp}
+    │       │   ├── jsonrpc\ (Server, Mcp)
+    │       │   ├── tools\ (BlueprintTools, ToolRegistry)
+    │       │   └── main.cpp
+    │       ├── tests\
+    │       │   ├── test_*.cpp
+    │       │   └── test_commandlet_backend.cpp      (live, gated by env)
+    │       ├── scripts\roundtrip.ps1                 JSON-RPC smoke harness
+    │       ├── fixtures\
+    │       ├── third_party\                          vendored deps (no git/network)
+    │       ├── CMakeLists.txt
+    │       └── vcpkg.json                            declared but not consumed by default
     ├── CLAUDE.md
     ├── PLAN.md
     ├── README.md
@@ -51,7 +52,7 @@ D:\Projects\
 
 ## Phases
 
-- **Phase 0** — Standalone C++ MCP server at `mcp-server\`. ✔ Complete.
+- **Phase 0** — Standalone C++ MCP server at `Plugins\BlueprintReader\mcp-server\`. ✔ Complete.
   - JSON-RPC 2.0 over stdio (LSP-style framing).
   - `IBlueprintReader` backend interface; mock backend with three fixtures.
   - Six MCP tools: `list_blueprints`, `read_blueprint`, `get_graph`,
@@ -144,11 +145,11 @@ D:\Projects\
   `ToPackagePath` helper in the wire serializer strips the `.AssetName`
   suffix from `Blueprint->GetPathName()` so the output matches the
   fixture shape (`/Game/AI/BP_Enemy`, not `/Game/AI/BP_Enemy.BP_Enemy`).
-- **Integration test.** `mcp-server/tests/test_commandlet_backend.cpp` runs
+- **Integration test.** `Plugins/BlueprintReader/mcp-server/tests/test_commandlet_backend.cpp` runs
   the six tools live; `doctest::skip` gates it on the env vars so a fresh
   doctest run on a clean box stays fast (5 tests are skipped without the live
   config).
-- **JSON-RPC verification.** `mcp-server/scripts/roundtrip.ps1` drives a
+- **JSON-RPC verification.** `Plugins/BlueprintReader/mcp-server/scripts/roundtrip.ps1` drives a
   4-step `initialize → notifications/initialized → tools/call list_blueprints
   → tools/call read_blueprint` sequence through `bp-reader-mcp.exe`.
 
@@ -157,7 +158,7 @@ D:\Projects\
 - `bp-reader-tests.exe`: 44/44 cases pass with `BP_READER_BACKEND=commandlet`,
   `BP_READER_ENGINE_DIR`, `BP_READER_PROJECT` set in env (39 mock + 5 live).
   Without env vars: 39 pass, 5 skipped.
-- Live `mcp-server/scripts/roundtrip.ps1` — `initialize → notifications/initialized
+- Live `Plugins/BlueprintReader/mcp-server/scripts/roundtrip.ps1` — `initialize → notifications/initialized
   → list_blueprints (path=/Game/AI) → read_blueprint (asset=/Game/AI/BP_TestEnemy)`:
   total wall-clock **11.6 s**, average **5.5 s per tool call** (cold-start spawn
   of `UnrealEditor-Cmd.exe -run=BlueprintReader` per call). Both responses

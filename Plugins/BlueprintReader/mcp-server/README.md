@@ -16,13 +16,13 @@ list_variables(asset_path)      -> BPVariable[]
 find_node(asset_path, query)    -> BPNode[]
 ```
 
-Canonical JSON shapes are declared in `Shared/BlueprintReaderTypes.h`.
+Canonical JSON shapes are declared in `src/BlueprintReaderTypes.h`.
 
 ## Build
 
-Prereqs: Windows, Visual Studio 2022 (MSVC v143+), CMake 3.23+. No vcpkg
-required — dependencies (nlohmann/json, fmt, doctest) are fetched via
-`FetchContent` if `find_package` doesn't locate them. If you have vcpkg, set
+Prereqs: Windows, Visual Studio 2022 (MSVC v143+), CMake 3.23+. No vcpkg,
+no git, no network — dependencies (nlohmann_json, fmt, doctest) are
+vendored under `third_party/`. If you'd rather pull from vcpkg, set
 `VCPKG_ROOT` and pass `--toolchain "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"`
 to the configure step; `vcpkg.json` declares the same set.
 
