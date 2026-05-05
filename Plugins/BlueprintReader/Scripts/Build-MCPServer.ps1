@@ -76,31 +76,15 @@ if ($null -eq $cmake) {
     exit 1
 }
 
-# Resolve git explicitly so the FetchContent clone step can find it even when
-# UBT's spawned environment has a stripped PATH. CMake 4.x's FetchContent
-# inherits PATH spottily depending on the shell that invoked it; passing
-# -DGIT_EXECUTABLE makes the lookup deterministic.
-$git = Get-Command git -ErrorAction SilentlyContinue
-if ($null -eq $git) {
-    foreach ($candidate in @(
-        "C:\Program Files\Git\cmd\git.exe",
-        "C:\Program Files (x86)\Git\cmd\git.exe",
-        "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe"
-    )) {
-        if (Test-Path $candidate) { $git = Get-Item $candidate; break }
-    }
-}
-if ($null -eq $git) {
-    Write-Error "$tag git.exe not found on PATH or in standard install locations (C:\Program Files\Git\cmd). Install Git for Windows and retry."
-    exit 1
-}
-$gitPath = if ($git -is [System.IO.FileInfo]) { $git.FullName } else { $git.Source }
+# Note: third-party deps (nlohmann_json, fmt, doctest) are vendored under
+# mcp-server/third_party/, so the configure step needs no git, no network,
+# and no vcpkg. CMake itself is the only external tool required.
 
 Write-Host "$tag Building MCP server at $mcpDir ..."
 
 if (-not (Test-Path $buildDir)) {
-    Write-Host "$tag Configuring CMake (first build, will fetch deps via $gitPath)..."
-    & cmake -S $mcpDir -B $buildDir -G $Generator -A x64 "-DGIT_EXECUTABLE=$gitPath"
+    Write-Host "$tag Configuring CMake (first build)..."
+    & cmake -S $mcpDir -B $buildDir -G $Generator -A x64
     if ($LASTEXITCODE -ne 0) {
         Write-Error "$tag cmake configure failed (exit $LASTEXITCODE)."
         exit $LASTEXITCODE

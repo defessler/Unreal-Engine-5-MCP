@@ -15,55 +15,32 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# Dependencies: prefer find_package (vcpkg), fall back to FetchContent.
+# Dependencies: vendored under third_party/. No network, no git, no fetch.
+# Update by replacing the relevant subtree under third_party/ — see
+# third_party/README.md for versions and provenance.
 # ---------------------------------------------------------------------------
-include(FetchContent)
-set(FETCHCONTENT_QUIET FALSE)
 
-# nlohmann/json, fmt, and doctest (release tags below) declare
-# cmake_minimum_required versions that CMake 4 rejects (compat with <3.5 was
-# dropped). Force a modern policy floor for fetched subprojects.
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+# nlohmann_json — header-only. We export the same target name FetchContent
+# produces (nlohmann_json::nlohmann_json) so the link lines below don't care
+# which way the dep is sourced.
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json)
+add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
 
-# nlohmann_json
-find_package(nlohmann_json CONFIG QUIET)
-if(NOT nlohmann_json_FOUND)
-    message(STATUS "nlohmann_json not found via find_package; fetching v3.11.3.")
-    FetchContent_Declare(nlohmann_json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.3
-        GIT_SHALLOW TRUE
-    )
-    set(JSON_BuildTests OFF CACHE INTERNAL "")
-    FetchContent_MakeAvailable(nlohmann_json)
-endif()
+# fmt — vendored as headers only. FMT_HEADER_ONLY makes the templates fully
+# inlinable so we don't need to ship src/format.cc + src/os.cc.
+add_library(fmt INTERFACE)
+target_include_directories(fmt INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt)
+target_compile_definitions(fmt INTERFACE FMT_HEADER_ONLY=1)
+add_library(fmt::fmt ALIAS fmt)
 
-# fmt
-find_package(fmt CONFIG QUIET)
-if(NOT fmt_FOUND)
-    message(STATUS "fmt not found via find_package; fetching 10.2.1.")
-    FetchContent_Declare(fmt
-        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 10.2.1
-        GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(fmt)
-endif()
-
-# doctest (header-only test framework)
-find_package(doctest CONFIG QUIET)
-if(NOT doctest_FOUND)
-    message(STATUS "doctest not found via find_package; fetching v2.4.11.")
-    FetchContent_Declare(doctest
-        GIT_REPOSITORY https://github.com/doctest/doctest.git
-        GIT_TAG v2.4.11
-        GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(doctest)
-endif()
-
-# Note: cpp-subprocess is declared in vcpkg.json but not consumed in Phase 0.
-# Phase 1's CommandletBlueprintReader will need it.
+# doctest — single header.
+add_library(doctest INTERFACE)
+target_include_directories(doctest INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/doctest)
+add_library(doctest::doctest ALIAS doctest)
 
 # ---------------------------------------------------------------------------
 # Library target with the server's guts (linked into both exe and tests).

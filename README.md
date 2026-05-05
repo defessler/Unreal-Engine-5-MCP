@@ -61,6 +61,10 @@ build\tests\Release\bp-reader-tests.exe   # 45 mock + 12 live (live skip without
 
 The exe is at `mcp-server/build/Release/bp-reader-mcp.exe`.
 
+Third-party deps (nlohmann_json, fmt, doctest) are vendored under
+`mcp-server/third_party/`, so this works **with no network access and no
+git** — CMake itself is the only external tool required.
+
 > **If you'll use the `commandlet` backend, you can skip this step** —
 > building the editor target also builds the MCP server via the plugin's
 > `PreBuildSteps`. See [Plugin-driven build](#plugin-driven-build) below.
