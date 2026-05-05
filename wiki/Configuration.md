@@ -153,6 +153,47 @@ vendored deps.
 The workflow runs on `windows-2022`. Linux/macOS are not currently
 supported because the subprocess management is `CreateProcessW`-based.
 
+## Manual launch
+
+When you want to run the server outside Claude — debugging, scripted
+JSON-RPC, smoke-testing a config change before opening a session — use
+the launcher:
+
+```powershell
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
+```
+
+It auto-discovers env from the project's `.mcp.json` so the launch
+matches what Claude Code would use. Override per-call with parameters:
+
+```powershell
+# Force mock backend regardless of .mcp.json
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1 -Backend mock
+
+# Skip pre-warm for faster startup when debugging
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1 -Prewarm 0
+
+# Point at a different uproject + engine
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1 `
+    -EngineDir "D:\OtherEngine" -UProject "D:\Other\Other.uproject"
+```
+
+The server runs in the foreground, writes its banner + tool-call logs
+to stderr, and reads JSON-RPC frames on stdin. Ctrl-C or close stdin
+to stop.
+
+To send a request manually:
+
+```powershell
+$body = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}'
+"Content-Length: $($body.Length)`r`n`r`n$body" |
+    pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
+```
+
+Or use the bundled `roundtrip.ps1` for a full 4-step handshake +
+tool-call sequence (initialize → notifications/initialized →
+list_blueprints → read_blueprint).
+
 ## Logs
 
 The MCP server writes nothing to stdout by design — stdout is the

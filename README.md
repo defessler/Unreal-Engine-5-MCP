@@ -177,6 +177,18 @@ UE5_MCP\
 └── README.md
 ```
 
+## Manual launch
+
+To run the server outside Claude — debugging, scripted JSON-RPC, smoke
+tests — use the bundled launcher. It auto-loads env from `.mcp.json`:
+
+```pwsh
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
+```
+
+Override with `-Backend`, `-Prewarm`, `-EngineDir`, `-UProject`. Server
+runs in foreground, stderr to console, stdin reads JSON-RPC frames.
+
 ## Live verification
 
 If you have the editor built and the test BPs seeded:
