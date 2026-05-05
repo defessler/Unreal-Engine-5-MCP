@@ -56,35 +56,48 @@ nullable string fields emit `null`, `BPNode.meta` is a real nested object.
 cd mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe   # 40+ doctest cases
+build\tests\Release\bp-reader-tests.exe   # 45 mock + 12 live (live skip without UE)
 ```
 
 The exe is at `mcp-server/build/Release/bp-reader-mcp.exe`.
 
+> **If you'll use the `commandlet` backend, you can skip this step** —
+> building the editor target also builds the MCP server via the plugin's
+> `PreBuildSteps`. See [Plugin-driven build](#plugin-driven-build) below.
+
 ### 2. Wire it into your MCP client
 
-**Claude Code** (`~/.claude/mcp.json` or per-project `.mcp.json`):
+The repo ships a project-scope **`.mcp.json`** at the root, so cloning +
+launching Claude Code from the project directory wires bp-reader
+automatically. The contents:
 
 ```json
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\Unreal Engine 5\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
-        "BP_READER_BACKEND":     "commandlet",
-        "BP_READER_ENGINE_DIR":  "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":     "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject"
+        "BP_READER_BACKEND":  "commandlet",
+        "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
+        "BP_READER_PROJECT":  "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PREWARM":  "1"
       }
     }
   }
 }
 ```
 
-**Claude Desktop** — same shape under `claude_desktop_config.json`'s
-`mcpServers` key (typically `%APPDATA%\Claude\claude_desktop_config.json`).
+Adjust paths if your layout differs. With `BP_READER_PREWARM=1` the editor
+daemon spawns in a background thread on MCP startup, so the first BP
+question lands in ~30 ms instead of paying the ~5–30 s editor cold start.
 
-For local experimentation without UE, drop `BP_READER_BACKEND=commandlet` and
-the env block — defaults to the mock backend pointed at the bundled fixtures.
+For other configs:
+- **User-scope** (any directory): `claude mcp add bp-reader --scope user ...`
+  — see Wiki *Configuration*.
+- **Claude Desktop** — same JSON shape under
+  `%APPDATA%\Claude\claude_desktop_config.json`'s `mcpServers`.
+- **Mock-only** (no UE) — drop the entire `env` block; the server defaults
+  to the bundled fixtures and exposes the 7 read tools as a demo.
 
 ### 3. Try it
 
@@ -104,6 +117,7 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_PROJECT`           | (unset → fail-fast for `commandlet`)   | Path to the `.uproject`.                                                 |
 | `BP_READER_TIMEOUT_SECONDS`   | `120`                                  | Per-call timeout for the editor subprocess.                              |
 | `BP_READER_DAEMON`            | `1` (on)                               | `1`/`true`/`yes`/`on` to enable. Set `0` to fall back to one-shot mode.  |
+| `BP_READER_PREWARM`           | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost behind whatever Claude is doing. |
 
 ## Performance
 
@@ -175,6 +189,34 @@ pwsh -File mcp-server\scripts\roundtrip.ps1 `
     -nullrhi -nosplash -unattended -nopause
 ```
 
+## Plugin-driven build
+
+Once the engine and project are set up (next section), building the editor
+target rebuilds the MCP server automatically:
+
+```
+UBT
+ ├── (PreBuildStep) Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1
+ │     ├── skip if bp-reader-mcp.exe is fresher than every src/ file
+ │     ├── cmake -S mcp-server -B mcp-server/build -G "VS 17 2022" -A x64
+ │     │     -DGIT_EXECUTABLE=<resolved>     # robust to shells without git on PATH
+ │     └── cmake --build mcp-server/build --config Release
+ └── BlueprintReader.uplugin → BlueprintReaderEditor.dll
+```
+
+Wired in `BlueprintReader.uplugin`:
+
+```json
+"PreBuildSteps": {
+  "Win64": [
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(PluginDir)/Scripts/Build-MCPServer.ps1\" -ProjectDir \"$(ProjectDir)\" -PluginDir \"$(PluginDir)\""
+  ]
+}
+```
+
+The script no-ops when used standalone (plugin dropped into a project that
+doesn't ship `mcp-server/`), so the plugin remains portable.
+
 ## Engine setup (only needed for the `commandlet` backend)
 
 The mock backend works against a fresh clone with no UE setup. To run the
@@ -200,15 +242,17 @@ is 1–3 hours; `Setup.bat` pulls ~70–80 GB of binary dependencies.
 
 ### Engine association
 
-```bat
-cd "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64"
-UnrealVersionSelector.exe -register
+```pwsh
+& "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
+    /switchversionsilent `
+    "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    "D:\Projects\Unreal Engine 5"
 ```
 
-Then either:
-- Right-click `UE5_MCP.uproject` → **Switch Unreal Engine version…** and pick
-  the source build, *or*
-- Edit `EngineAssociation` in `UE5_MCP.uproject` to that GUID directly.
+This writes a stable GUID-style entry under
+`HKCU\SOFTWARE\Epic Games\Unreal Engine\Builds` and updates the project's
+`EngineAssociation` field to match. Hand-editing the registry is brittle —
+Rider / VS / UBT all want the canonical format.
 
 Generate project files:
 
