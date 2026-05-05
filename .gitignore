@@ -24,11 +24,11 @@ Build/
 # Source-built engine sibling — not committed to this repo
 UnrealEngine/
 
-# MCP server build outputs (Phase 0 — placeholder for later)
-mcp-server/build/
-mcp-server/out/
-mcp-server/cmake-build-*/
-mcp-server/scripts/*-output.txt
+# MCP server build outputs (now lives under the plugin so it ships as one unit)
+Plugins/BlueprintReader/mcp-server/build/
+Plugins/BlueprintReader/mcp-server/out/
+Plugins/BlueprintReader/mcp-server/cmake-build-*/
+Plugins/BlueprintReader/mcp-server/scripts/*-output.txt
 
 # OS junk
 Thumbs.db

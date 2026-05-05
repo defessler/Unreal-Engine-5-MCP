@@ -1,0 +1,12 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "name": "bp-reader-mcp",
+    "version-string": "0.1.0",
+    "description": "Standalone MCP server exposing UE5 BlueprintReader tools over JSON-RPC stdio.",
+    "dependencies": [
+        "nlohmann-json",
+        "fmt",
+        "cpp-subprocess",
+        "doctest"
+    ]
+}

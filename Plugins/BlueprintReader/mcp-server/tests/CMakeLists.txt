@@ -1,0 +1,31 @@
+# Tests use the same library as the executable. doctest provides its own
+# main via DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN in test_main.cpp.
+
+add_executable(bp-reader-tests
+    test_main.cpp
+    test_types.cpp
+    test_jsonrpc.cpp
+    test_mcp.cpp
+    test_mock_backend.cpp
+    test_tools.cpp
+    test_commandlet_backend.cpp
+)
+target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
+target_include_directories(bp-reader-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+
+# doctest target name differs depending on whether find_package or
+# FetchContent supplied it. Both export `doctest::doctest`.
+target_link_libraries(bp-reader-tests PRIVATE doctest::doctest)
+
+# Stage fixtures next to the test exe so the loader can find them with the
+# same relative path convention used by the production exe.
+add_custom_command(TARGET bp-reader-tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures"
+        "$<TARGET_FILE_DIR:bp-reader-tests>/fixtures"
+    COMMENT "Staging fixtures next to bp-reader-tests"
+)
+
+add_test(NAME bp-reader-tests COMMAND bp-reader-tests)

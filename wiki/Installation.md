@@ -17,7 +17,7 @@ skip the plugin entirely — useful for smoke-testing the server.
 
 **No network, no git, no vcpkg required for the MCP server.** Third-party
 deps (nlohmann_json, fmt, doctest) are vendored under
-`mcp-server/third_party/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/mcp-server/third_party).
+`Plugins/BlueprintReader/mcp-server/third_party/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/Plugins/BlueprintReader/mcp-server/third_party).
 
 ## 1. Build the MCP server
 
@@ -25,13 +25,13 @@ deps (nlohmann_json, fmt, doctest) are vendored under
 > editor target in step 3 builds the MCP server too — the `BlueprintReader`
 > plugin wires `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` as a
 > `PreBuildStep`. You can clone, do steps 2 + 3, and the MCP exe lands at
-> `mcp-server/build/Release/bp-reader-mcp.exe` automatically. Use this
+> `Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe` automatically. Use this
 > standalone path when you only want the **mock** backend, or to validate
 > the server before bringing UE into the loop.
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
-cd UE5_MCP\mcp-server
+cd UE5_MCP\Plugins\BlueprintReader\mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 build\tests\Release\bp-reader-tests.exe
@@ -44,7 +44,7 @@ expected.
 The exe you'll point Claude at lives at:
 
 ```
-UE5_MCP\mcp-server\build\Release\bp-reader-mcp.exe
+UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe
 ```
 
 If you only want the mock backend (you don't have a UE project to point at,
@@ -134,14 +134,14 @@ for plugin-only changes.
 `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` before the editor
 module compiles. The script:
 
-- **Skips** when `bp-reader-mcp.exe` is newer than every `mcp-server/src/`
+- **Skips** when `bp-reader-mcp.exe` is newer than every `Plugins/BlueprintReader/mcp-server/src/`
   file + `CMakeLists.txt` (~milliseconds, no rebuild).
-- **Configures** CMake on the first build (or after `mcp-server/build/`
+- **Configures** CMake on the first build (or after `Plugins/BlueprintReader/mcp-server/build/`
   is wiped). Passes `-DGIT_EXECUTABLE=<resolved>` so FetchContent's git
   clone step works regardless of shell PATH state.
 - **Builds** Release config when sources changed.
 - **No-ops cleanly** when used standalone — the plugin can be dropped
-  into any UE project that doesn't ship `mcp-server/`.
+  into any UE project that doesn't include `mcp-server/`.
 
 So once setup is done, `Build.bat UE5_MCPEditor ...` keeps the MCP exe
 fresh whenever C++ sources change, and incremental builds add only a
@@ -167,7 +167,7 @@ automatically — no per-machine setup. The contents:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -195,7 +195,7 @@ claude mcp add bp-reader --scope user `
     --env "BP_READER_ENGINE_DIR=D:\Projects\Unreal Engine 5" `
     --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\UE5_MCP.uproject" `
     --env BP_READER_PREWARM=1 `
-    -- "D:\Projects\UE5_MCP\mcp-server\build\Release\bp-reader-mcp.exe"
+    -- "D:\Projects\UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe"
 ```
 
 This writes to `~/.claude.json`. Trade-off: bp-reader spawns in **every**
@@ -214,7 +214,7 @@ Drop the `env` block entirely:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe"
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe"
     }
   }
 }
@@ -236,8 +236,8 @@ Claude should call `read_blueprint`, get back JSON, and summarize.
 You can also drive the server directly with the bundled smoke test:
 
 ```powershell
-pwsh -File mcp-server\scripts\roundtrip.ps1 `
-    -Exe mcp-server\build\Release\bp-reader-mcp.exe `
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
 

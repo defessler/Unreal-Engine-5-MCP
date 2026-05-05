@@ -1,0 +1,333 @@
+{
+    "summary": {
+        "asset_path": "/Game/Items/BP_Pickup",
+        "name": "BP_Pickup",
+        "parent_class": "AActor",
+        "modified_iso": "2026-04-15T09:30:11Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Items/BP_Pickup",
+        "name": "BP_Pickup",
+        "parent_class": "AActor",
+        "interfaces": ["IInteractable"],
+        "variables": [
+            {
+                "name": "ItemId",
+                "type": {
+                    "category": "name",
+                    "sub_category": null,
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "None",
+                "category": "Item",
+                "is_replicated": false,
+                "is_editable": true
+            },
+            {
+                "name": "RotationSpeed",
+                "type": {
+                    "category": "real",
+                    "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "90.0",
+                "category": "Visuals",
+                "is_replicated": false,
+                "is_editable": true
+            }
+        ],
+        "functions": [
+            { "name": "Interact" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" },
+            { "name": "ConstructionScript", "type": "Construction" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [
+                {
+                    "id": "EEEE0001-3333-4444-5555-666677778888",
+                    "class": "K2Node_Event",
+                    "title": "Event Tick",
+                    "position": { "x": -480, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "EEEE0001-3333-4444-5555-666677778801",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EEEE0001-3333-4444-5555-666677778802",
+                            "name": "DeltaSeconds",
+                            "direction": "Output",
+                            "type": {
+                                "category": "real",
+                                "sub_category": "float",
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "event_name": "ReceiveTick" }
+                },
+                {
+                    "id": "EEEE0002-3333-4444-5555-666677778888",
+                    "class": "K2Node_CallFunction",
+                    "title": "AddActorLocalRotation",
+                    "position": { "x": -160, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "EEEE0002-3333-4444-5555-666677778811",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EEEE0002-3333-4444-5555-666677778812",
+                            "name": "DeltaRotation",
+                            "direction": "Input",
+                            "type": {
+                                "category": "struct",
+                                "sub_category": null,
+                                "sub_category_object": "Rotator",
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "(Pitch=0,Yaw=90,Roll=0)"
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "K2_AddActorLocalRotation",
+                        "function_owner": "Actor"
+                    }
+                }
+            ],
+            "connections": [
+                {
+                    "from_node": "EEEE0001-3333-4444-5555-666677778888",
+                    "from_pin": "EEEE0001-3333-4444-5555-666677778801",
+                    "to_node": "EEEE0002-3333-4444-5555-666677778888",
+                    "to_pin": "EEEE0002-3333-4444-5555-666677778811"
+                }
+            ]
+        },
+        {
+            "name": "ConstructionScript",
+            "type": "Construction",
+            "nodes": [
+                {
+                    "id": "FFFF0001-4444-5555-6666-777788889999",
+                    "class": "K2Node_FunctionEntry",
+                    "title": "Construction Script",
+                    "position": { "x": -240, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "FFFF0001-4444-5555-6666-777788889901",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": {}
+                },
+                {
+                    "id": "FFFF0002-4444-5555-6666-777788889999",
+                    "class": "K2Node_AddComponent",
+                    "title": "Add Static Mesh Component",
+                    "position": { "x": 80, "y": 0 },
+                    "comment": "Spawn the visible mesh for the pickup",
+                    "pins": [
+                        {
+                            "id": "FFFF0002-4444-5555-6666-777788889911",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "FFFF0002-4444-5555-6666-777788889912",
+                            "name": "ReturnValue",
+                            "direction": "Output",
+                            "type": {
+                                "category": "object",
+                                "sub_category": null,
+                                "sub_category_object": "StaticMeshComponent",
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "component_class": "StaticMeshComponent" }
+                }
+            ],
+            "connections": [
+                {
+                    "from_node": "FFFF0001-4444-5555-6666-777788889999",
+                    "from_pin": "FFFF0001-4444-5555-6666-777788889901",
+                    "to_node": "FFFF0002-4444-5555-6666-777788889999",
+                    "to_pin": "FFFF0002-4444-5555-6666-777788889911"
+                }
+            ]
+        }
+    ],
+    "functions": [
+        {
+            "name": "Interact",
+            "inputs": [
+                {
+                    "name": "Instigator",
+                    "type": {
+                        "category": "object",
+                        "sub_category": null,
+                        "sub_category_object": "Actor",
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": null,
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "Interact",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "1A2B0001-5555-6666-7777-888899990000",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "Interact (interface impl)",
+                        "position": { "x": -240, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "1A2B0001-5555-6666-7777-888899990001",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "1A2B0001-5555-6666-7777-888899990002",
+                                "name": "Instigator",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "object",
+                                    "sub_category": null,
+                                    "sub_category_object": "Actor",
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": { "interface": "IInteractable" }
+                    },
+                    {
+                        "id": "1A2B0002-5555-6666-7777-888899990000",
+                        "class": "K2Node_DestroyActor",
+                        "title": "Destroy Actor",
+                        "position": { "x": 80, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "1A2B0002-5555-6666-7777-888899990011",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "1A2B0001-5555-6666-7777-888899990000",
+                        "from_pin": "1A2B0001-5555-6666-7777-888899990001",
+                        "to_node": "1A2B0002-5555-6666-7777-888899990000",
+                        "to_pin": "1A2B0002-5555-6666-7777-888899990011"
+                    }
+                ]
+            }
+        }
+    ],
+    "components": [
+        {"name": "DefaultSceneRoot", "class": "/Script/Engine.SceneComponent",
+         "parent": null,                "is_root": true},
+        {"name": "PickupMesh",       "class": "/Script/Engine.StaticMeshComponent",
+         "parent": "DefaultSceneRoot", "is_root": false},
+        {"name": "Halo",             "class": "/Script/Engine.PointLightComponent",
+         "parent": "PickupMesh",        "is_root": false}
+    ]
+}

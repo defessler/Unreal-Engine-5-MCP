@@ -1,0 +1,644 @@
+{
+    "summary": {
+        "asset_path": "/Game/AI/BP_Enemy",
+        "name": "BP_Enemy",
+        "parent_class": "ACharacter",
+        "modified_iso": "2026-04-22T18:14:03Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/AI/BP_Enemy",
+        "name": "BP_Enemy",
+        "parent_class": "ACharacter",
+        "interfaces": [],
+        "variables": [
+            {
+                "name": "Health",
+                "type": {
+                    "category": "real",
+                    "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "100.0",
+                "category": "Combat",
+                "is_replicated": true,
+                "is_editable": true
+            },
+            {
+                "name": "MaxHealth",
+                "type": {
+                    "category": "real",
+                    "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "100.0",
+                "category": "Combat",
+                "is_replicated": false,
+                "is_editable": true
+            },
+            {
+                "name": "AggroTarget",
+                "type": {
+                    "category": "object",
+                    "sub_category": null,
+                    "sub_category_object": "Actor",
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": null,
+                "category": "AI",
+                "is_replicated": true,
+                "is_editable": false
+            }
+        ],
+        "functions": [
+            { "name": "TakeDamage" },
+            { "name": "OnDeath" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" },
+            { "name": "ConstructionScript", "type": "Construction" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [
+                {
+                    "id": "0F8C3B7A-4E81-4F02-9D11-1A2B3C4D5E6F",
+                    "class": "K2Node_Event",
+                    "title": "Event BeginPlay",
+                    "position": { "x": -480, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555501",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "event_name": "ReceiveBeginPlay" }
+                },
+                {
+                    "id": "1B2A3C4D-5E6F-7081-92A3-B4C5D6E7F809",
+                    "class": "K2Node_VariableGet",
+                    "title": "Get Health",
+                    "position": { "x": -240, "y": 80 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555502",
+                            "name": "Health",
+                            "direction": "Output",
+                            "type": {
+                                "category": "real",
+                                "sub_category": "float",
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "variable_reference": "Health" }
+                },
+                {
+                    "id": "2C3D4E5F-6071-8293-A4B5-C6D7E8F90A1B",
+                    "class": "K2Node_IfThenElse",
+                    "title": "Branch",
+                    "position": { "x": 0, "y": 0 },
+                    "comment": "Bail out if dead",
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555510",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555511",
+                            "name": "Condition",
+                            "direction": "Input",
+                            "type": {
+                                "category": "bool",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "false"
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555512",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555513",
+                            "name": "else",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": {}
+                },
+                {
+                    "id": "3D4E5F60-7182-93A4-B5C6-D7E8F90A1B2C",
+                    "class": "K2Node_Knot",
+                    "title": "Greater (float)",
+                    "position": { "x": -120, "y": 80 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555520",
+                            "name": "A",
+                            "direction": "Input",
+                            "type": {
+                                "category": "real",
+                                "sub_category": "float",
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555521",
+                            "name": "B",
+                            "direction": "Input",
+                            "type": {
+                                "category": "real",
+                                "sub_category": "float",
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "0.0"
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555522",
+                            "name": "ReturnValue",
+                            "direction": "Output",
+                            "type": {
+                                "category": "bool",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "function_name": "Greater_FloatFloat" }
+                },
+                {
+                    "id": "4E5F6071-8293-A4B5-C6D7-E8F90A1B2C3D",
+                    "class": "K2Node_ExecutionSequence",
+                    "title": "Sequence",
+                    "position": { "x": 240, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555530",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555531",
+                            "name": "Then 0",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555532",
+                            "name": "Then 1",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": { "num_outputs": 2 }
+                },
+                {
+                    "id": "5F607182-93A4-B5C6-D7E8-F90A1B2C3D4E",
+                    "class": "K2Node_CallFunction",
+                    "title": "Print String",
+                    "position": { "x": 480, "y": -40 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555540",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555541",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555542",
+                            "name": "InString",
+                            "direction": "Input",
+                            "type": {
+                                "category": "string",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "Enemy spawned"
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "PrintString",
+                        "function_owner": "KismetSystemLibrary"
+                    }
+                },
+                {
+                    "id": "6071-8293-A4B5-C6D7-E8F90A1B2C3D4E5F",
+                    "class": "K2Node_CallFunction",
+                    "title": "TakeDamage (self)",
+                    "position": { "x": 480, "y": 80 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "11111111-2222-3333-4444-555555555550",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "11111111-2222-3333-4444-555555555551",
+                            "name": "Damage",
+                            "direction": "Input",
+                            "type": {
+                                "category": "real",
+                                "sub_category": "float",
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "10.0"
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "TakeDamage",
+                        "function_owner": "BP_Enemy"
+                    }
+                }
+            ],
+            "connections": [
+                {
+                    "from_node": "0F8C3B7A-4E81-4F02-9D11-1A2B3C4D5E6F",
+                    "from_pin": "11111111-2222-3333-4444-555555555501",
+                    "to_node": "2C3D4E5F-6071-8293-A4B5-C6D7E8F90A1B",
+                    "to_pin": "11111111-2222-3333-4444-555555555510"
+                },
+                {
+                    "from_node": "1B2A3C4D-5E6F-7081-92A3-B4C5D6E7F809",
+                    "from_pin": "11111111-2222-3333-4444-555555555502",
+                    "to_node": "3D4E5F60-7182-93A4-B5C6-D7E8F90A1B2C",
+                    "to_pin": "11111111-2222-3333-4444-555555555520"
+                },
+                {
+                    "from_node": "3D4E5F60-7182-93A4-B5C6-D7E8F90A1B2C",
+                    "from_pin": "11111111-2222-3333-4444-555555555522",
+                    "to_node": "2C3D4E5F-6071-8293-A4B5-C6D7E8F90A1B",
+                    "to_pin": "11111111-2222-3333-4444-555555555511"
+                },
+                {
+                    "from_node": "2C3D4E5F-6071-8293-A4B5-C6D7E8F90A1B",
+                    "from_pin": "11111111-2222-3333-4444-555555555512",
+                    "to_node": "4E5F6071-8293-A4B5-C6D7-E8F90A1B2C3D",
+                    "to_pin": "11111111-2222-3333-4444-555555555530"
+                },
+                {
+                    "from_node": "4E5F6071-8293-A4B5-C6D7-E8F90A1B2C3D",
+                    "from_pin": "11111111-2222-3333-4444-555555555531",
+                    "to_node": "5F607182-93A4-B5C6-D7E8-F90A1B2C3D4E",
+                    "to_pin": "11111111-2222-3333-4444-555555555540"
+                },
+                {
+                    "from_node": "4E5F6071-8293-A4B5-C6D7-E8F90A1B2C3D",
+                    "from_pin": "11111111-2222-3333-4444-555555555532",
+                    "to_node": "6071-8293-A4B5-C6D7-E8F90A1B2C3D4E5F",
+                    "to_pin": "11111111-2222-3333-4444-555555555550"
+                }
+            ]
+        },
+        {
+            "name": "ConstructionScript",
+            "type": "Construction",
+            "nodes": [
+                {
+                    "id": "AAAA1111-BBBB-2222-CCCC-3333DDDD4444",
+                    "class": "K2Node_FunctionEntry",
+                    "title": "Construction Script",
+                    "position": { "x": 0, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "AAAA1111-BBBB-2222-CCCC-3333DDDD4445",
+                            "name": "then",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": {}
+                }
+            ],
+            "connections": []
+        }
+    ],
+    "functions": [
+        {
+            "name": "TakeDamage",
+            "inputs": [
+                {
+                    "name": "Damage",
+                    "type": {
+                        "category": "real",
+                        "sub_category": "float",
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0.0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "Killed",
+                    "type": {
+                        "category": "bool",
+                        "sub_category": null,
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "false",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "locals": [
+                {
+                    "name": "NewHealth",
+                    "type": {
+                        "category": "real",
+                        "sub_category": "float",
+                        "sub_category_object": null,
+                        "is_array": false,
+                        "is_set": false,
+                        "is_map": false
+                    },
+                    "default_value": "0.0",
+                    "category": null,
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "graph": {
+                "name": "TakeDamage",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "BBBB2222-CCCC-3333-DDDD-4444EEEE5555",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "TakeDamage",
+                        "position": { "x": -240, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "BBBB2222-CCCC-3333-DDDD-4444EEEE5556",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "BBBB2222-CCCC-3333-DDDD-4444EEEE5557",
+                                "name": "Damage",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "real",
+                                    "sub_category": "float",
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "CCCC3333-DDDD-4444-EEEE-5555FFFF6666",
+                        "class": "K2Node_FunctionResult",
+                        "title": "Return Node",
+                        "position": { "x": 240, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "CCCC3333-DDDD-4444-EEEE-5555FFFF6667",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "CCCC3333-DDDD-4444-EEEE-5555FFFF6668",
+                                "name": "Killed",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "bool",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "false"
+                            }
+                        ],
+                        "meta": {}
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "BBBB2222-CCCC-3333-DDDD-4444EEEE5555",
+                        "from_pin": "BBBB2222-CCCC-3333-DDDD-4444EEEE5556",
+                        "to_node": "CCCC3333-DDDD-4444-EEEE-5555FFFF6666",
+                        "to_pin": "CCCC3333-DDDD-4444-EEEE-5555FFFF6667"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "OnDeath",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "OnDeath",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "DDDD4444-EEEE-5555-FFFF-66667777AAAA",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "OnDeath",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "DDDD4444-EEEE-5555-FFFF-66667777AAAB",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    }
+                ],
+                "connections": []
+            }
+        }
+    ]
+}
