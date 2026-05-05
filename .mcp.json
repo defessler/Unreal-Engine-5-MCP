@@ -2,7 +2,7 @@
   "mcpServers": {
     "bp-reader": {
       "type": "stdio",
-      "command": "D:\\Projects\\UE5_MCP\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
       "args": [],
       "env": {
         "BP_READER_BACKEND": "commandlet",

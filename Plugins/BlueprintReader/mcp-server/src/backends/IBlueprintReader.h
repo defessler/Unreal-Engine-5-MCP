@@ -1,7 +1,7 @@
 // IBlueprintReader — the inner contract between the MCP tool layer and
 // whatever is actually reading blueprint data (mock fixtures, commandlet
 // subprocess, live-editor socket). All backends return the same canonical
-// shapes from Shared/BlueprintReaderTypes.h.
+// shapes from BlueprintReaderTypes.h.
 #pragma once
 
 #include <map>

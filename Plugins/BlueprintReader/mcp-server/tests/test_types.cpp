@@ -1,4 +1,4 @@
-// Round-trip every shape declared in Shared/BlueprintReaderTypes.h.
+// Round-trip every shape declared in BlueprintReaderTypes.h.
 
 #include <doctest/doctest.h>
 
