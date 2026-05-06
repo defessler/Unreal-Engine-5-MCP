@@ -155,91 +155,49 @@ your project's `Plugins/` folder, then regenerate project files. The
 plugin only adds an editor module — no runtime impact, no game-thread
 cost.
 
-## 4. Wire it into Claude
+## 4. Wire it into your AI client
 
-### Claude Code (project scope — recommended)
+Wiring is per-client and lives on its own page. Pick yours:
 
-The repo ships a project-scope **`.mcp.json`** at the root. Cloning +
-launching Claude Code from the project directory wires bp-reader
-automatically — no per-machine setup. The contents:
+- **[Claude Code / Claude Desktop](Clients#claude-code-recommended)** —
+  drop `.mcp.json` (or run `claude mcp add`); auto-loads at session
+  start. Recommended for Blueprint work.
+- **[GitHub Copilot in VS Code](Clients#github-copilot-vs-code)** —
+  workspace `.vscode/mcp.json`; symmetric setup to Claude. Tools only
+  surface in Copilot Chat's **Agent mode**.
+- **[ChatGPT](Clients#chatgpt-requires-a-bridge)** — does **not**
+  support local stdio MCP. Requires bridging the exe to HTTPS via
+  `mcp-remote` + a tunnel, then registering the public URL via
+  Settings → Connectors with Developer mode on.
 
-```json
-{
-  "mcpServers": {
-    "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
-      "env": {
-        "BP_READER_BACKEND":    "commandlet",
-        "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
-        "BP_READER_PREWARM":    "1"
-      }
-    }
-  }
-}
-```
-
-If your local layout differs from these paths, edit `.mcp.json` (or use
-`claude mcp add bp-reader --scope project ...` to regenerate it). The
-`BP_READER_PREWARM=1` flag spawns the editor daemon during MCP startup
-in a background thread, so the first BP question lands in ~30 ms instead
-of paying the ~5–30 s editor cold-start.
-
-### Claude Code (user scope)
-
-If you want bp-reader available from any directory (not just the project):
-
-```powershell
-claude mcp add bp-reader --scope user `
-    --env BP_READER_BACKEND=commandlet `
-    --env "BP_READER_ENGINE_DIR=D:\Projects\Unreal Engine 5" `
-    --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\UE5_MCP.uproject" `
-    --env BP_READER_PREWARM=1 `
-    -- "D:\Projects\UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe"
-```
-
-This writes to `~/.claude.json`. Trade-off: bp-reader spawns in **every**
-Claude Code session, idle-cost-free until you trigger a tool call.
-
-### Claude Desktop
-
-Same JSON shape, in `%APPDATA%\Claude\claude_desktop_config.json` under
-the `mcpServers` key. Restart Claude Desktop after editing.
-
-### Mock backend (no UE)
-
-Drop the `env` block entirely:
-
-```json
-{
-  "mcpServers": {
-    "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe"
-    }
-  }
-}
-```
-
-Claude will see three fixture blueprints (`/Game/AI/BP_Enemy`,
-`/Game/AI/BP_Pickup`, `/Game/Game/BP_PlayerController`) and can exercise
-all 7 read tools against them. Write tools return a "mock backend is
-read-only" error.
+Mock-backend-only setup (no UE, no env vars) is also covered on the
+[Clients](Clients) page.
 
 ## 5. Verify
 
-In Claude, ask:
+In your client, ask:
 
 > What variables are on `/Game/AI/BP_TestEnemy`?
 
-Claude should call `read_blueprint`, get back JSON, and summarize.
+The AI should call `read_blueprint`, get back JSON, and summarize.
 
-You can also drive the server directly with the bundled smoke test:
+You can also drive the server directly with the bundled smoke test
+(no client needed):
 
 ```powershell
 pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
     -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
+
+Or interactively:
+
+```powershell
+pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
+```
+
+See [Clients → Starting the server](Clients#starting-the-server) for
+manual-launch details.
 
 ## Test blueprints
 
