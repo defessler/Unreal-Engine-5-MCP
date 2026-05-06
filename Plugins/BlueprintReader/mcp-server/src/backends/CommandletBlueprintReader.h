@@ -41,7 +41,10 @@ public:
     struct Config {
         std::filesystem::path engineDir;
         std::filesystem::path uproject;
-        std::chrono::seconds timeout{120};
+        std::chrono::seconds timeout{120};         // per-tool-call timeout
+        std::chrono::seconds startupTimeout{600};  // initial daemon READY wait;
+                                                   // big projects need minutes to
+                                                   // load modules + scan asset registry
         bool useDaemon = false;
     };
 
@@ -106,7 +109,9 @@ private:
     // Drain daemonStdout_ into accumulator_ until `marker` appears (or the
     // deadline hits). On success, consumes everything up to and including
     // the marker. Returns the bytes consumed (excluding the marker).
-    std::string ReadUntilMarker(const std::string& marker);
+    // EnsureDaemon passes startupTimeout (longer); RunOpDaemon passes the
+    // per-call timeout.
+    std::string ReadUntilMarker(const std::string& marker, std::chrono::seconds timeout);
 
     HANDLE daemonProcess_ = nullptr;
     HANDLE daemonStdin_   = nullptr;

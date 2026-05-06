@@ -11,7 +11,8 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_FIXTURES_DIR`    | `<exe>/fixtures`                       | Mock backend fixture dir.                                                |
 | `BP_READER_ENGINE_DIR`      | (unset → fail-fast for `commandlet`)   | Source-built engine root (the dir holding `Engine\Binaries\Win64\`).     |
 | `BP_READER_PROJECT`         | (unset → fail-fast for `commandlet`)   | Path to `.uproject`.                                                     |
-| `BP_READER_TIMEOUT_SECONDS` | `120`                                  | Per-call subprocess timeout.                                             |
+| `BP_READER_TIMEOUT_SECONDS` | `120`                                  | Per-tool-call subprocess timeout.                                        |
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                          | How long the server waits for the editor daemon to reach READY on first launch. Bigger UE projects (lots of plugins, large content set, cold DDC) can take 5–10 minutes the first time. |
 | `BP_READER_DAEMON`          | `1` (on)                               | `0`/`false`/`no`/`off` to opt out of daemon mode.                        |
 | `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
 
@@ -123,10 +124,21 @@ which projects you want pre-warmed and leave the rest lazy.)
 
 ## Timeouts
 
-`BP_READER_TIMEOUT_SECONDS` applies per call. Default 120 s is generous
-for everything except the very first cold-start call (which can hit
-shader compile if the DDC is empty). If you regularly hit the timeout,
-warm the DDC by opening the project in the full editor once.
+Two separate timeouts:
+
+| Variable                            | Default | What it covers                                                                                                                                                          |
+|-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | 600 s   | Time the server waits for the editor daemon to print `__BPR_READY__` on its first launch. Big projects (many plugins, large content set, cold DDC) can take 5–10 minutes. |
+| `BP_READER_TIMEOUT_SECONDS`         | 120 s   | Per-tool-call timeout once the daemon is hot. Tool calls return in ~30 ms typically; the timeout only matters for genuinely slow ops (large blueprint compiles).         |
+
+If you hit the **startup** timeout (`daemon failed to reach READY (waited up
+to Ns; bump BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects)`), bump
+that env var. The wait is one-time per MCP server lifetime — once the
+daemon hits READY, subsequent tool calls run under the per-call timeout.
+
+If you hit the **per-call** timeout regularly, warm the DDC by opening the
+project in the full editor once; commandlet-mode shader compiles run
+serially against an empty DDC and dominate cold-start cost.
 
 ## Mock backend fixtures
 

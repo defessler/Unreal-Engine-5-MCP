@@ -17,7 +17,12 @@ struct BackendConfig {
     // commandlet-only:
     std::filesystem::path engineDir;
     std::filesystem::path uproject;
-    int timeoutSeconds = 120;
+    int timeoutSeconds        = 120;   // per-tool-call subprocess timeout
+    int startupTimeoutSeconds = 600;   // daemon's initial READY wait. Big UE projects
+                                       // can take minutes to load modules + scan the
+                                       // asset registry + warm shaders the first time;
+                                       // 120s isn't enough for them. Tune via
+                                       // BP_READER_STARTUP_TIMEOUT_SECONDS.
     bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
     bool prewarm    = false;      // commandlet+daemon-only; opt in via BP_READER_PREWARM=1.
                                   // Spawns the editor daemon on startup in a background
