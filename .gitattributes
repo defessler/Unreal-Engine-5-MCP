@@ -1,0 +1,7 @@
+# Force CRLF on Windows batch files regardless of user's core.autocrlf setting.
+# cmd.exe parses :: comments unreliably with LF-only endings.
+*.bat eol=crlf
+*.cmd eol=crlf
+
+# PowerShell scripts work with either, but Windows tooling defaults to CRLF.
+*.ps1 eol=crlf

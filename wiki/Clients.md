@@ -16,22 +16,46 @@ the child's stdio. Three exceptions where manual launch matters:
    restarting Claude / Copilot.
 3. **Driving from a script** — your own MCP client or a smoke test.
 
-For all three, use the launcher:
+Two equivalent launchers ship under `Plugins\BlueprintReader\Scripts\`:
+
+```
+Start-MCPServer.ps1   ← PowerShell — direct
+Start-MCPServer.bat   ← double-click-friendly wrapper around the .ps1
+```
+
+Both auto-load env from `<ProjectDir>\.mcp.json` so the launch matches
+what Claude Code would spawn (commandlet mode by default for this
+project).
 
 ```powershell
+# PowerShell
 pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
+
+# cmd / Explorer double-click
+Plugins\BlueprintReader\Scripts\Start-MCPServer.bat
 ```
 
-It auto-loads env from `<ProjectDir>\.mcp.json` so the launch matches
-what Claude Code would spawn. Override per-call:
+Override per-call (works with either):
 
-```powershell
-... -Backend mock        # force mock backend
-... -Prewarm 0           # skip editor pre-warm (fast startup)
-... -EngineDir "D:\OtherEngine"
-... -UProject  "D:\Other\Other.uproject"
-... -Exe       "...\Debug\bp-reader-mcp.exe"
 ```
+-Backend mock              force mock backend
+-Prewarm 0                 skip editor pre-warm (fast startup)
+-EngineDir "D:\Other"      different engine
+-UProject  "D:\Foo.uproject"
+-Exe       "...\Debug\bp-reader-mcp.exe"
+```
+
+For building the MCP server outside UBT (e.g. a plain `cmake --build`
+test), there's a parallel pair:
+
+```
+Build-MCPServer.ps1   ← PowerShell
+Build-MCPServer.bat   ← cmd wrapper
+```
+
+These run the same logic UBT invokes as a `PreBuildStep` — smart skip
+when the exe is fresher than every `mcp-server\src\` file, otherwise
+configure (first time) + build.
 
 Server runs in the foreground; stderr goes to the console; stdin reads
 JSON-RPC frames. Ctrl-C or close stdin to stop.

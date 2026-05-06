@@ -119,7 +119,8 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_FIXTURES_DIR`      | `<exe>/fixtures`                       | Mock backend's fixture dir.                                              |
 | `BP_READER_ENGINE_DIR`        | (unset → fail-fast for `commandlet`)   | Path to the source-built engine (`...\UnrealEngine`).                    |
 | `BP_READER_PROJECT`           | (unset → fail-fast for `commandlet`)   | Path to the `.uproject`.                                                 |
-| `BP_READER_TIMEOUT_SECONDS`   | `120`                                  | Per-call timeout for the editor subprocess.                              |
+| `BP_READER_TIMEOUT_SECONDS`   | `120`                                  | Per-tool-call subprocess timeout (once the daemon is hot).               |
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                            | How long to wait for the editor daemon's first READY signal. Big UE projects (lots of plugins, large content, cold DDC) can take 5–10 min the first time — bump this if you see "daemon failed to reach READY". |
 | `BP_READER_DAEMON`            | `1` (on)                               | `1`/`true`/`yes`/`on` to enable. Set `0` to fall back to one-shot mode.  |
 | `BP_READER_PREWARM`           | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost behind whatever Claude is doing. |
 
@@ -186,8 +187,18 @@ tests — use the bundled launcher. It auto-loads env from `.mcp.json`:
 pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
 ```
 
-Override with `-Backend`, `-Prewarm`, `-EngineDir`, `-UProject`. Server
-runs in foreground, stderr to console, stdin reads JSON-RPC frames.
+Or, for a double-click-friendly wrapper:
+
+```
+Plugins\BlueprintReader\Scripts\Start-MCPServer.bat
+```
+
+Both pass through `-Backend`, `-Prewarm`, `-EngineDir`, `-UProject`.
+Server runs in foreground, stderr to console, stdin reads JSON-RPC
+frames.
+
+A parallel pair (`Build-MCPServer.{ps1,bat}`) runs the same logic UBT
+uses as a PreBuildStep — useful for building the server standalone.
 
 ## Live verification
 

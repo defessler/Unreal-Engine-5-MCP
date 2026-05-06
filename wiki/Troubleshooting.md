@@ -131,6 +131,42 @@ daemon restarts.
 restart the MCP server / Claude session). The next call respawns a
 fresh editor with a fresh registry.
 
+## "daemon failed to reach READY" / server times out before starting
+
+Big UE projects can take **minutes** for `UnrealEditor-Cmd.exe` to load
+all editor modules, scan the asset registry, and compile shaders
+against a cold DDC. The server's *startup* timeout is separate from
+the per-call timeout for this reason — but if your project is slower
+than the default, bump it.
+
+```
+[bp-reader-mcp][commandlet][daemon] daemon failed to reach READY
+  (waited up to 600s; bump BP_READER_STARTUP_TIMEOUT_SECONDS for
+  slower projects): daemon read timeout after 600s waiting for marker
+```
+
+**Fix**: increase `BP_READER_STARTUP_TIMEOUT_SECONDS`. In `.mcp.json`:
+
+```json
+"env": {
+  "BP_READER_BACKEND":               "commandlet",
+  "BP_READER_ENGINE_DIR":            "D:\\Projects\\Unreal Engine 5",
+  "BP_READER_PROJECT":               "D:\\Path\\To\\Your.uproject",
+  "BP_READER_PREWARM":               "1",
+  "BP_READER_STARTUP_TIMEOUT_SECONDS": "1800"
+}
+```
+
+1800 s (30 min) is a reasonable upper bound for the worst-case first
+launch (cold DDC + large content set). Once the daemon's READY, the
+per-call `BP_READER_TIMEOUT_SECONDS` (default 120 s) takes over and
+subsequent tool calls return in ~30 ms.
+
+**Also helpful**: warm the DDC by opening the project in the full UE
+editor once before relying on the MCP server. Shader compile is the
+single biggest factor; once compiled into the DDC, commandlet startup
+drops by minutes.
+
 ## "ImportError: Could not load module" when launching Claude with the server
 
 You're pointing at a `Debug` build of `bp-reader-mcp.exe` from a
