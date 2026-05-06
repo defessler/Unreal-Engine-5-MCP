@@ -13,8 +13,11 @@ connections, K2 metadata — through 21 tools.
 
 ## Pages
 
-- **[Installation](Installation)** — clone, build, hook into Claude.
-- **[Usage](Usage)** — what Claude can do once it's wired up.
+- **[Installation](Installation)** — clone, build the engine + plugin.
+- **[Clients](Clients)** — how to start the MCP server and wire it
+  into Claude Code, Claude Desktop, GitHub Copilot (VS Code), and
+  ChatGPT (with the bridge required for ChatGPT).
+- **[Usage](Usage)** — what your AI of choice can do once it's wired up.
 - **[Tool Reference](Tool-Reference)** — every tool, its inputs, what it returns.
 - **[Configuration](Configuration)** — env vars, daemon mode, timeouts.
 - **[Troubleshooting](Troubleshooting)** — common failure modes + fixes.
@@ -27,10 +30,11 @@ If you just want Claude to read your Blueprints:
    first time (UE source build).
 2. [Build the editor target](Installation#3-build-the-ue-plugin) — the
    plugin's `PreBuildStep` builds the MCP server too, no separate cmake.
-3. Launch Claude Code from the project directory — the shipped
-   [`.mcp.json`](Installation#4-wire-it-into-claude) auto-registers
-   bp-reader with `BP_READER_PREWARM=1` so the editor warms while you type.
-4. Ask Claude: *"What variables are on `/Game/AI/BP_TestEnemy`?"*
+3. Launch your client from the project directory — the shipped
+   [`.mcp.json`](Clients#claude-code-recommended) wires Claude Code
+   automatically. For Copilot, drop a `.vscode/mcp.json`. For ChatGPT,
+   bridge via HTTPS — see [Clients](Clients).
+4. Ask the AI: *"What variables are on `/Game/AI/BP_TestEnemy`?"*
 
 Want to skip UE and just kick the tires? [Build the MCP server
 standalone](Installation#1-build-the-mcp-server) and use the mock backend
