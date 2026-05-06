@@ -524,14 +524,18 @@ void CommandletBlueprintReader::EnsureDaemon() {
     daemonStdin_   = childInW;
     daemonStdout_  = childOutR;
 
-    // Wait for the daemon's READY sentinel before declaring it usable.
+    // Wait for the daemon's READY sentinel before declaring it usable. Big UE
+    // projects (lots of plugins, large content set, cold DDC) take much longer
+    // than per-call ops do, so this gets its own bigger timeout.
     const auto t0 = std::chrono::steady_clock::now();
     try {
-        ReadUntilMarker("__BPR_READY__\n");
+        ReadUntilMarker("__BPR_READY__\n", cfg_.startupTimeout);
     } catch (const std::exception& e) {
         TerminateDaemon();
         throw BlueprintReaderError(fmt::format(
-            "daemon failed to reach READY: {}", e.what()));
+            "daemon failed to reach READY (waited up to {}s; bump "
+            "BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects): {}",
+            cfg_.startupTimeout.count(), e.what()));
     }
     const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
@@ -540,8 +544,10 @@ void CommandletBlueprintReader::EnsureDaemon() {
         static_cast<long long>(dt));
 }
 
-std::string CommandletBlueprintReader::ReadUntilMarker(const std::string& marker) {
-    const auto deadline = std::chrono::steady_clock::now() + cfg_.timeout;
+std::string CommandletBlueprintReader::ReadUntilMarker(
+    const std::string& marker, std::chrono::seconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
     char buf[4096];
     for (;;) {
         auto pos = accumulator_.find(marker);
@@ -561,7 +567,7 @@ std::string CommandletBlueprintReader::ReadUntilMarker(const std::string& marker
         if (std::chrono::steady_clock::now() >= deadline) {
             throw BlueprintReaderError(fmt::format(
                 "daemon read timeout after {}s waiting for marker; tail:\n{}",
-                cfg_.timeout.count(), TrimLines(accumulator_, 50)));
+                timeout.count(), TrimLines(accumulator_, 50)));
         }
 
         DWORD avail = 0;
@@ -619,11 +625,12 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
     // log lines on the merged stdout/stderr stream).
     int32_t exitCode = 0;
     {
-        // Drain everything up to + including the leading marker.
-        ReadUntilMarker("__BPR_DONE ");
+        // Drain everything up to + including the leading marker. Per-call
+        // timeout (cfg_.timeout) — the daemon is already warm at this point.
+        ReadUntilMarker("__BPR_DONE ", cfg_.timeout);
         // The next bytes are decimal digits, then `__\n`. Read up to + including
         // the `__\n` terminator; the digits sit in `digits`.
-        std::string digits = ReadUntilMarker("__\n");
+        std::string digits = ReadUntilMarker("__\n", cfg_.timeout);
         try {
             exitCode = std::stoi(digits);
         } catch (...) {
@@ -677,7 +684,7 @@ void CommandletBlueprintReader::EnsureDaemon() {
 void CommandletBlueprintReader::Prewarm() {
     // No-op on non-Windows; daemon mode is unsupported there.
 }
-std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&) {
+std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&, std::chrono::seconds) {
     throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
 }
 nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>&) {
