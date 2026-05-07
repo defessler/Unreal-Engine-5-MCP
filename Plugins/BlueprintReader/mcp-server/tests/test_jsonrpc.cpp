@@ -11,17 +11,31 @@ using nlohmann::json;
 
 namespace {
 
-std::string Frame(const json& body) {
+std::string FrameNL(const json& body) {
     std::ostringstream os;
-    WriteFrame(os, body);
+    WriteFrame(os, body, FrameFormat::NewlineDelimited);
+    return os.str();
+}
+std::string FrameCL(const json& body) {
+    std::ostringstream os;
+    WriteFrame(os, body, FrameFormat::ContentLength);
     return os.str();
 }
 
 } // namespace
 
-TEST_CASE("WriteFrame emits Content-Length header and body") {
+TEST_CASE("WriteFrame newline-delimited emits one line + LF") {
     json body = {{"hello", "world"}};
-    auto out = Frame(body);
+    auto out = FrameNL(body);
+    REQUIRE(!out.empty());
+    REQUIRE(out.back() == '\n');
+    auto parsed = json::parse(out.substr(0, out.size() - 1));
+    CHECK(parsed["hello"] == "world");
+}
+
+TEST_CASE("WriteFrame Content-Length emits header and body") {
+    json body = {{"hello", "world"}};
+    auto out = FrameCL(body);
     auto headerEnd = out.find("\r\n\r\n");
     REQUIRE(headerEnd != std::string::npos);
     auto headers = out.substr(0, headerEnd);
@@ -31,37 +45,68 @@ TEST_CASE("WriteFrame emits Content-Length header and body") {
     CHECK(parsed["hello"] == "world");
 }
 
-TEST_CASE("ReadFrame round-trips with WriteFrame") {
+TEST_CASE("ReadFrame auto-detects newline-delimited and round-trips") {
     json body = {{"jsonrpc", "2.0"}, {"method", "ping"}, {"id", 1}};
-    auto framed = Frame(body);
+    auto framed = FrameNL(body);
     std::istringstream is(framed);
-    auto raw = ReadFrame(is);
+    FrameFormat fmt = FrameFormat::ContentLength;  // wrong default, should get overwritten
+    auto raw = ReadFrame(is, &fmt);
     REQUIRE(raw.has_value());
+    CHECK(fmt == FrameFormat::NewlineDelimited);
     CHECK(json::parse(*raw) == body);
-    // Second read returns nullopt (EOF).
     CHECK_FALSE(ReadFrame(is).has_value());
 }
 
-TEST_CASE("ReadFrame errors on missing Content-Length") {
+TEST_CASE("ReadFrame auto-detects Content-Length and round-trips") {
+    json body = {{"jsonrpc", "2.0"}, {"method", "ping"}, {"id", 1}};
+    auto framed = FrameCL(body);
+    std::istringstream is(framed);
+    FrameFormat fmt = FrameFormat::NewlineDelimited;  // wrong default, should get overwritten
+    auto raw = ReadFrame(is, &fmt);
+    REQUIRE(raw.has_value());
+    CHECK(fmt == FrameFormat::ContentLength);
+    CHECK(json::parse(*raw) == body);
+    CHECK_FALSE(ReadFrame(is).has_value());
+}
+
+TEST_CASE("ReadFrame errors on Content-Length-style frame missing the header") {
+    // Starts with non-JSON, non-Content-Length character → parsed as headers,
+    // hits "missing Content-Length" since "Foo:" isn't recognised.
     std::istringstream is("Foo: bar\r\n\r\nhi");
     CHECK_THROWS_AS(ReadFrame(is), std::runtime_error);
 }
 
-TEST_CASE("Dispatch handles parse error path") {
+TEST_CASE("Dispatch handles parse error path (Content-Length input)") {
     Server s;
-    // Build a syntactically invalid JSON via the public Run() loop is not
-    // possible without IO; we exercise Server::Run via streams instead.
     std::string framed = "Content-Length: 5\r\n\r\n{bad}";
     std::istringstream in(framed);
     std::ostringstream out;
     std::ostringstream log;
     s.Run(in, out, log);
 
-    // Output should contain a single framed error envelope with id = null.
+    // Mirrors client format: input was Content-Length, response is too.
     auto raw = out.str();
     auto split = raw.find("\r\n\r\n");
     REQUIRE(split != std::string::npos);
     auto body = json::parse(raw.substr(split + 4));
+    CHECK(body["id"].is_null());
+    REQUIRE(body.contains("error"));
+    CHECK(body["error"]["code"] == static_cast<int>(ErrorCode::ParseError));
+}
+
+TEST_CASE("Dispatch handles parse error path (newline-delimited input)") {
+    Server s;
+    std::string framed = "{bad}\n";
+    std::istringstream in(framed);
+    std::ostringstream out;
+    std::ostringstream log;
+    s.Run(in, out, log);
+
+    // Mirrors client format: newline-delimited reply.
+    auto raw = out.str();
+    REQUIRE(!raw.empty());
+    REQUIRE(raw.back() == '\n');
+    auto body = json::parse(raw.substr(0, raw.size() - 1));
     CHECK(body["id"].is_null());
     REQUIRE(body.contains("error"));
     CHECK(body["error"]["code"] == static_cast<int>(ErrorCode::ParseError));
