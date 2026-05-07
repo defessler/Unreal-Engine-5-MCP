@@ -215,7 +215,7 @@ first 4) in `<projectRoot>/.mcp.json`:
         "BP_READER_ENGINE_DIR": "D:\\YourGame",
         "BP_READER_PROJECT":    "D:\\YourGame\\MyProject\\MyProject.uproject",
         "BP_READER_PREWARM":    "1",
-        "BP_READER_EDITOR_ARGS": "-DisablePlugin=DLSS"
+        "BP_READER_EDITOR_ARGS": "-EnableAllPlugins"
       }
     }
   }
