@@ -1,0 +1,252 @@
+// Tests for CachingBlueprintReader. We use a counting in-memory backend
+// so we can assert exactly how many times the wrapped reader was called.
+
+#include <doctest/doctest.h>
+
+#include "backends/CachingBlueprintReader.h"
+#include "backends/MockBlueprintReader.h"
+
+#include "test_helpers.h"
+
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+using namespace bpr;
+using namespace bpr::backends;
+using namespace std::chrono_literals;
+
+namespace {
+
+// Decorator counting forwarded calls. Wraps a real MockBlueprintReader so
+// the data shape is canonical.
+class CountingReader : public IBlueprintReader {
+public:
+    explicit CountingReader(MockBlueprintReader inner)
+        : inner_(std::move(inner)) {}
+
+    std::atomic<int> readBlueprintCalls{0};
+    std::atomic<int> listBlueprintsCalls{0};
+    std::atomic<int> listVariablesCalls{0};
+    std::atomic<int> getGraphCalls{0};
+    std::atomic<int> getFunctionCalls{0};
+    std::atomic<int> getComponentsCalls{0};
+    std::atomic<int> findNodeCalls{0};
+
+    std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override {
+        ++listBlueprintsCalls; return inner_.ListBlueprints(path);
+    }
+    BPMetadata ReadBlueprint(std::string_view a) override {
+        ++readBlueprintCalls; return inner_.ReadBlueprint(a);
+    }
+    BPGraph GetGraph(std::string_view a, std::string_view g) override {
+        ++getGraphCalls; return inner_.GetGraph(a, g);
+    }
+    BPFunction GetFunction(std::string_view a, std::string_view f) override {
+        ++getFunctionCalls; return inner_.GetFunction(a, f);
+    }
+    std::vector<BPVariable> ListVariables(std::string_view a) override {
+        ++listVariablesCalls; return inner_.ListVariables(a);
+    }
+    std::vector<BPComponent> GetComponents(std::string_view a) override {
+        ++getComponentsCalls; return inner_.GetComponents(a);
+    }
+    std::vector<BPNode> FindNode(std::string_view a, std::string_view q,
+                                 std::string_view k) override {
+        ++findNodeCalls; return inner_.FindNode(a, q, k);
+    }
+
+    // Write tools — mock throws, but cache layer still invalidates so we
+    // forward and let it throw.
+    void AddVariable(std::string_view a, std::string_view n, const BPPinType& t,
+                     std::string_view d, std::string_view c, bool r, bool e) override {
+        inner_.AddVariable(a, n, t, d, c, r, e);
+    }
+    void SetNodePosition(std::string_view a, std::string_view g, std::string_view n,
+                         int x, int y) override {
+        inner_.SetNodePosition(a, g, n, x, y);
+    }
+    void DeleteNode(std::string_view a, std::string_view g, std::string_view n) override {
+        inner_.DeleteNode(a, g, n);
+    }
+    std::string AddNode(std::string_view a, std::string_view g, std::string_view k,
+                        int x, int y, const std::map<std::string, std::string, std::less<>>& e) override {
+        return inner_.AddNode(a, g, k, x, y, e);
+    }
+    void WirePins(std::string_view a, std::string_view g,
+                  std::string_view fn, std::string_view fp,
+                  std::string_view tn, std::string_view tp) override {
+        inner_.WirePins(a, g, fn, fp, tn, tp);
+    }
+    void DeleteVariable(std::string_view a, std::string_view n) override {
+        inner_.DeleteVariable(a, n);
+    }
+    void RenameVariable(std::string_view a, std::string_view o, std::string_view n) override {
+        inner_.RenameVariable(a, o, n);
+    }
+    std::string AddFunction(std::string_view a, std::string_view n) override {
+        return inner_.AddFunction(a, n);
+    }
+    void AddFunctionInput(std::string_view a, std::string_view f, std::string_view p,
+                          const BPPinType& t) override {
+        inner_.AddFunctionInput(a, f, p, t);
+    }
+    void AddFunctionOutput(std::string_view a, std::string_view f, std::string_view p,
+                           const BPPinType& t) override {
+        inner_.AddFunctionOutput(a, f, p, t);
+    }
+    void DeleteFunction(std::string_view a, std::string_view n) override {
+        inner_.DeleteFunction(a, n);
+    }
+    void SetVariableDefault(std::string_view a, std::string_view n,
+                            std::string_view d) override {
+        inner_.SetVariableDefault(a, n, d);
+    }
+
+private:
+    MockBlueprintReader inner_;
+};
+
+struct Fixture {
+    CountingReader* counter = nullptr;
+    std::unique_ptr<CachingBlueprintReader> cache;
+
+    Fixture() {
+        auto inner = std::make_unique<CountingReader>(
+            MockBlueprintReader(test::FixturesDir()));
+        counter = inner.get();
+        cache = std::make_unique<CachingBlueprintReader>(std::move(inner), 30s);
+    }
+};
+
+} // namespace
+
+TEST_CASE("Cache: second read of same blueprint hits the cache") {
+    Fixture f;
+    auto a = f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    auto b = f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    CHECK(f.counter->readBlueprintCalls == 1);
+    CHECK(a.Name == b.Name);
+    CHECK(f.cache->GetStats().hits  == 1);
+    CHECK(f.cache->GetStats().misses == 1);
+}
+
+TEST_CASE("Cache: different assets are independent keys") {
+    Fixture f;
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ReadBlueprint("/Game/Items/BP_Pickup");
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");      // hit
+    f.cache->ReadBlueprint("/Game/Items/BP_Pickup");  // hit
+    CHECK(f.counter->readBlueprintCalls == 2);
+}
+
+TEST_CASE("Cache: different operations on same asset are independent keys") {
+    Fixture f;
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ListVariables("/Game/AI/BP_Enemy");
+    f.cache->GetGraph("/Game/AI/BP_Enemy", "EventGraph");
+    // All three are first-time misses — none should hit the same slot.
+    CHECK(f.counter->readBlueprintCalls   == 1);
+    CHECK(f.counter->listVariablesCalls   == 1);
+    CHECK(f.counter->getGraphCalls        == 1);
+}
+
+TEST_CASE("Cache: GetGraph keyed by (asset, graphName)") {
+    Fixture f;
+    f.cache->GetGraph("/Game/AI/BP_Enemy", "EventGraph");
+    f.cache->GetGraph("/Game/AI/BP_Enemy", "EventGraph");
+    CHECK(f.counter->getGraphCalls == 1);
+}
+
+TEST_CASE("Cache: FindNode keyed by (asset, query, kind)") {
+    Fixture f;
+    f.cache->FindNode("/Game/AI/BP_Enemy", "Sequence", "");
+    f.cache->FindNode("/Game/AI/BP_Enemy", "Sequence", "");
+    f.cache->FindNode("/Game/AI/BP_Enemy", "Branch",   "");  // diff query
+    f.cache->FindNode("/Game/AI/BP_Enemy", "Sequence", "Sequence");  // diff kind
+    CHECK(f.counter->findNodeCalls == 3);
+}
+
+TEST_CASE("Cache: write invalidates the affected asset") {
+    Fixture f;
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");  // hit
+    CHECK(f.counter->readBlueprintCalls == 1);
+
+    // Mock backend's writes throw — but the decorator MUST still
+    // invalidate after a successful pass-through. Use the public
+    // InvalidateAsset to simulate a "successful write" scenario without
+    // depending on a write-capable backend.
+    f.cache->InvalidateAsset("/Game/AI/BP_Enemy");
+
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");  // miss again
+    CHECK(f.counter->readBlueprintCalls == 2);
+}
+
+TEST_CASE("Cache: write to one asset doesn't drop other assets") {
+    Fixture f;
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ReadBlueprint("/Game/Items/BP_Pickup");
+    f.cache->InvalidateAsset("/Game/AI/BP_Enemy");
+
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");      // miss (was invalidated)
+    f.cache->ReadBlueprint("/Game/Items/BP_Pickup");  // hit (untouched)
+    CHECK(f.counter->readBlueprintCalls == 3);
+}
+
+TEST_CASE("Cache: write also invalidates ListBlueprints (modified_iso changes)") {
+    Fixture f;
+    f.cache->ListBlueprints("/Game");
+    f.cache->ListBlueprints("/Game");  // hit
+    CHECK(f.counter->listBlueprintsCalls == 1);
+
+    f.cache->InvalidateAsset("/Game/AI/BP_Enemy");
+
+    f.cache->ListBlueprints("/Game");  // miss — list was dropped
+    CHECK(f.counter->listBlueprintsCalls == 2);
+}
+
+TEST_CASE("Cache: TTL expiry forces a refetch") {
+    auto inner = std::make_unique<CountingReader>(
+        MockBlueprintReader(test::FixturesDir()));
+    auto* counter = inner.get();
+    CachingBlueprintReader cache(std::move(inner), 100ms);
+
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");  // hit
+    CHECK(counter->readBlueprintCalls == 1);
+
+    std::this_thread::sleep_for(150ms);
+
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");  // expired -> miss
+    CHECK(counter->readBlueprintCalls == 2);
+}
+
+TEST_CASE("Cache: InvalidateAll drops everything") {
+    Fixture f;
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ListVariables("/Game/Items/BP_Pickup");
+    f.cache->ListBlueprints("/Game");
+    f.cache->InvalidateAll();
+    f.cache->ReadBlueprint("/Game/AI/BP_Enemy");
+    f.cache->ListVariables("/Game/Items/BP_Pickup");
+    f.cache->ListBlueprints("/Game");
+    CHECK(f.counter->readBlueprintCalls   == 2);
+    CHECK(f.counter->listVariablesCalls   == 2);
+    CHECK(f.counter->listBlueprintsCalls  == 2);
+}
+
+TEST_CASE("WrapWithCache(ttl=0) returns the inner reader unwrapped") {
+    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto* rawInner = inner.get();
+    auto wrapped = WrapWithCache(std::move(inner), 0s);
+    // Pointer identity check — the wrapper should pass through.
+    CHECK(wrapped.get() == rawInner);
+}
+
+TEST_CASE("WrapWithCache(ttl>0) returns a CachingBlueprintReader") {
+    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto wrapped = WrapWithCache(std::move(inner), 30s);
+    auto* asCache = dynamic_cast<CachingBlueprintReader*>(wrapped.get());
+    CHECK(asCache != nullptr);
+}

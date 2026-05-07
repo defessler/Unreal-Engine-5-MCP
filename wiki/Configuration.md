@@ -17,6 +17,7 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
 | `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Most useful value: `-EnableAllPlugins` — makes plugin-module load failures non-fatal so the editor starts up even when binary marketplace plugins (DLSS, Wwise, etc.) aren't built. See [Troubleshooting](Troubleshooting). |
 | `BP_READER_EDITOR_CONFIG`   | (empty → `Development`)                | Picks which `UnrealEditor-Cmd[-Win64-Config].exe` the daemon launches. Default unsets to `Development` (suffix-less). Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your `BlueprintReaderEditor` module is built in that config — UE only loads plugin DLLs whose suffix matches the running editor process. |
+| `BP_READER_CACHE_TTL_SECONDS` | `30`                                 | How long the server memoizes read-tool responses for (per (operation, asset) key). Set to `0` to disable. See [Response caching](#response-caching) below. |
 
 ## Pre-warm
 
@@ -141,6 +142,39 @@ daemon hits READY, subsequent tool calls run under the per-call timeout.
 If you hit the **per-call** timeout regularly, warm the DDC by opening the
 project in the full editor once; commandlet-mode shader compiles run
 serially against an empty DDC and dominate cold-start cost.
+
+## Response caching
+
+The server memoizes read-tool results for a short TTL (default 30 s). This
+matters because AI clients tend to issue **flurries** of related reads:
+"tell me about BP_Enemy" → `summarize_blueprint` → `read_blueprint` →
+`list_variables` → `get_graph` is a typical pattern, and the agent often
+retries with different `fields` projections. Without caching every one of
+those round-trips the editor commandlet (~50–500 ms each, all duplicate
+work for the same `.uasset`).
+
+Cache semantics:
+- Each read call is keyed by `(operation, asset_path, *extras*)` — for
+  example `("graph", "/Game/AI/BP_Enemy", "EventGraph")`.
+- Entries expire after `BP_READER_CACHE_TTL_SECONDS`.
+- Any **write tool** invalidates ALL cached entries for the affected
+  `asset_path`. `list_blueprints` is also invalidated by any write
+  (because the `modified_iso` summary changes).
+- Cache is in-memory, per-process, NOT shared across MCP sessions.
+
+When to tune the TTL:
+- **Default (`30`)** — right for AI-client workloads where you query the
+  same BP repeatedly within a turn or two.
+- **Longer (`120`+)** — fine if you almost never edit BPs in the editor
+  while the MCP server is running. You'll see slightly stale results if
+  someone manually edits a `.uasset` with the editor open.
+- **`0` (disable)** — set this when you're benchmarking the underlying
+  backend, or you have an external mutator that the cache wouldn't see
+  (rare).
+
+Trade-off: TTL is the simplest correct invalidation strategy that doesn't
+require knowing `.uasset` on-disk paths. Until users complain about
+staleness, it's plenty.
 
 ## Mock backend fixtures
 
