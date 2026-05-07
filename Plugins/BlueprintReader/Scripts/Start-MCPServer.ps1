@@ -69,8 +69,12 @@ if (-not (Test-Path $Exe)) {
     exit 1
 }
 
-# Auto-load env from .mcp.json if the params weren't passed.
+# Auto-load env from .mcp.json if the params weren't passed. Also forwards
+# any *other* BP_READER_* vars that live in the JSON's env block — this is
+# the escape hatch for IDEs that drop env entries past some count when
+# launching MCP servers (observed with JetBrains Copilot in Rider/IDEA).
 $mcpJson = Join-Path $ProjectDir '.mcp.json'
+$envBlock = $null
 if (Test-Path $mcpJson) {
     try {
         $cfg = Get-Content $mcpJson -Raw | ConvertFrom-Json
@@ -86,11 +90,27 @@ if (Test-Path $mcpJson) {
     }
 }
 
-# Apply (only what's set; let the server's own defaults handle the rest).
+# Apply the four "first-class" params (the ones with explicit -Foo overrides).
+# Server defaults handle anything still unset.
 if ($Backend)   { $env:BP_READER_BACKEND    = $Backend }
 if ($EngineDir) { $env:BP_READER_ENGINE_DIR = $EngineDir }
 if ($UProject)  { $env:BP_READER_PROJECT    = $UProject }
 if ($Prewarm)   { $env:BP_READER_PREWARM    = $Prewarm }
+
+# Forward the rest of .mcp.json's env block verbatim (BP_READER_EDITOR_ARGS,
+# BP_READER_STARTUP_TIMEOUT_SECONDS, BP_READER_TIMEOUT_SECONDS, anything else
+# the user added). Skip anything already set in the parent shell so direct
+# `$env:FOO = bar` calls before invoking us still win.
+$forwarded = @()
+$handled = @('BP_READER_BACKEND','BP_READER_ENGINE_DIR','BP_READER_PROJECT','BP_READER_PREWARM')
+if ($envBlock) {
+    foreach ($prop in $envBlock.PSObject.Properties) {
+        if ($prop.Name -in $handled) { continue }
+        if (Test-Path "env:$($prop.Name)") { continue }   # respect parent-shell override
+        Set-Item -Path "env:$($prop.Name)" -Value $prop.Value
+        $forwarded += $prop.Name
+    }
+}
 
 Write-Host "$tag launching:" -ForegroundColor Cyan
 Write-Host "  exe       = $Exe"
@@ -98,6 +118,9 @@ Write-Host "  backend   = $($env:BP_READER_BACKEND  -replace '^$','(default: moc
 Write-Host "  engineDir = $($env:BP_READER_ENGINE_DIR -replace '^$','(unset)')"
 Write-Host "  uproject  = $($env:BP_READER_PROJECT   -replace '^$','(unset)')"
 Write-Host "  prewarm   = $($env:BP_READER_PREWARM   -replace '^$','(default: 0)')"
+if ($forwarded.Count -gt 0) {
+    Write-Host "  forwarded from .mcp.json: $($forwarded -join ', ')"
+}
 Write-Host ""
 Write-Host "$tag server reads JSON-RPC frames on stdin; stderr is shown below." -ForegroundColor DarkGray
 Write-Host "$tag Ctrl-C (or close stdin) to stop." -ForegroundColor DarkGray
