@@ -13,6 +13,8 @@ add_executable(bp-reader-tests
     test_soak.cpp
     test_diagnostics.cpp
     test_protocol_negotiation.cpp
+    test_json_projection.cpp
+    test_caching_reader.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE

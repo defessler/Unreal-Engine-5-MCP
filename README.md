@@ -23,6 +23,7 @@ Two backends:
 
 | Tool                | Direction | Description                                                                |
 |---------------------|-----------|----------------------------------------------------------------------------|
+| `summarize_blueprint` | read    | **Tiny** orientation response: parent class + counts of variables / functions / graphs / macros / interfaces. Use this BEFORE `read_blueprint` when you don't yet know how big a BP is. |
 | `list_blueprints`   | read      | List all blueprint assets under a content path. Defaults to `/Game`.       |
 | `read_blueprint`    | read      | Top-level metadata: parent class, interfaces, variables, graph summaries.  |
 | `get_graph`         | read      | Full node + connection graph by name. Defaults to `EventGraph`.            |
@@ -47,6 +48,12 @@ Two backends:
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
+
+Every read tool also accepts `fields` (response projection — drop keys you
+don't need), plus `limit` / `offset` for tools that return arrays. AI clients
+pay tokens for every byte of a tool response, so projecting and paginating
+matters. See [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#response-controls-read-tools)
+for examples.
 
 ## Quick start: hooking it up to Claude
 
@@ -101,7 +108,7 @@ For other configs:
 - **Claude Desktop** — same JSON shape under
   `%APPDATA%\Claude\claude_desktop_config.json`'s `mcpServers`.
 - **Mock-only** (no UE) — drop the entire `env` block; the server defaults
-  to the bundled fixtures and exposes the 7 read tools as a demo.
+  to the bundled fixtures and exposes the 8 read tools as a demo.
 
 ### 3. Try it
 
@@ -125,6 +132,7 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_EDITOR_CONFIG`     | (empty → `Development`)                | Picks `UnrealEditor-Cmd[-Win64-Config].exe`. Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your editor target was built in that config — UE only loads plugin DLLs whose suffix matches the editor exe. |
 | `BP_READER_DAEMON`            | `1` (on)                               | `1`/`true`/`yes`/`on` to enable. Set `0` to fall back to one-shot mode.  |
 | `BP_READER_PREWARM`           | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost behind whatever Claude is doing. |
+| `BP_READER_CACHE_TTL_SECONDS` | `30`                                   | How long the server memoizes read-tool responses for. AI clients flurry repeated reads on the same BP — caching short-circuits the duplicates. `0` disables. Writes invalidate the affected asset's entries. |
 
 ## Performance
 

@@ -30,6 +30,8 @@ Claude: [calls read_blueprint, summarizes]
 Common patterns:
 
 - **"List all blueprints under `/Game/AI`"** → `list_blueprints`
+- **"How big is this BP?"** → `summarize_blueprint` (cheap orientation —
+  use this before drilling in)
 - **"What variables does it have?"** → `list_variables` or `read_blueprint`
 - **"Show me the event graph"** → `get_graph`
 - **"Find any `K2Node_VariableSet` nodes"** → `find_node` with `kind: variable_set`
@@ -39,6 +41,34 @@ Common patterns:
 `find_node` is the workhorse for "what touches X" questions — it returns
 nodes filtered by class name, title substring, or `kind` (a normalized
 classification of K2 node types).
+
+### Keeping responses small
+
+Every read tool accepts an optional `fields` parameter that drops keys
+you don't need from the response. AI clients pay tokens for every byte
+of a tool result, so projection matters on busy BPs:
+
+```jsonc
+// Just the parent class — useful when scanning many BPs
+{ "asset_path": "/Game/AI/BP_Enemy", "fields": ["parent_class"] }
+
+// Just variable names + types
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "fields": ["variables[].name", "variables[].type.category"] }
+
+// Find calls to a function, just IDs and titles
+{ "asset_path": "/Game/AI/BP_Enemy", "query": "ApplyDamage",
+  "fields": ["id", "title"] }
+```
+
+`limit` / `offset` paginate the array-shaped tools (`list_blueprints`,
+`list_variables`, `find_node`, `get_components`). On a project with
+thousands of blueprints, `list_blueprints` with `limit: 50` is dramatically
+cheaper than the full list.
+
+The server also caches read results for 30 s by default — repeated
+queries about the same BP within a turn are essentially free. See
+[Configuration → Response caching](Configuration#response-caching).
 
 ## Editing
 

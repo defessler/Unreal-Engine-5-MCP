@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 21 tools (7 read + 12 write + 2 meta) with input schemas") {
+TEST_CASE("ToolRegistry exposes 22 tools (8 read + 12 write + 2 meta) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 21);
+    CHECK(spec.size() == 22);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
@@ -148,4 +148,127 @@ TEST_CASE("Tool handlers throw on missing required arg") {
     CHECK_THROWS_AS(f.Call("read_blueprint", json::object()), std::invalid_argument);
     CHECK_THROWS_AS(f.Call("get_function", json{{"asset_path", "/Game/AI/BP_Enemy"}}),
                     std::invalid_argument);
+}
+
+// ===== Response controls (fields / limit / offset) =========================
+
+TEST_CASE("summarize_blueprint returns counts plus parent_class") {
+    Fixture f;
+    auto out = f.Call("summarize_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}});
+    CHECK(out["asset_path"] == "/Game/AI/BP_Enemy");
+    CHECK(out["parent_class"] == "ACharacter");
+    CHECK(out["variable_count"].is_number());
+    CHECK(out["function_count"].is_number());
+    CHECK(out["graph_count"].is_number());
+    CHECK(out["macro_count"].is_number());
+    CHECK(out["interface_count"].is_number());
+    // Sanity: counts must agree with what list_variables / read_blueprint say.
+    auto vars = f.Call("list_variables", json{{"asset_path", "/Game/AI/BP_Enemy"}});
+    CHECK(out["variable_count"] == static_cast<int>(vars.size()));
+}
+
+TEST_CASE("summarize_blueprint payload is small (~few hundred bytes)") {
+    Fixture f;
+    auto out = f.Call("summarize_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}});
+    auto full = f.Call("read_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}});
+    CHECK(out.dump().size() < full.dump().size() / 2);
+}
+
+TEST_CASE("read_blueprint honors fields projection") {
+    Fixture f;
+    auto out = f.Call("read_blueprint", json{
+        {"asset_path", "/Game/AI/BP_Enemy"},
+        {"fields", json::array({"parent_class"})}});
+    CHECK(out.size() == 1);
+    CHECK(out["parent_class"] == "ACharacter");
+    CHECK_FALSE(out.contains("variables"));
+}
+
+TEST_CASE("read_blueprint with array projection on variables[].name") {
+    Fixture f;
+    auto out = f.Call("read_blueprint", json{
+        {"asset_path", "/Game/AI/BP_Enemy"},
+        {"fields", json::array({"variables[].name"})}});
+    CHECK(out.size() == 1);
+    REQUIRE(out["variables"].is_array());
+    for (auto& v : out["variables"]) {
+        CHECK(v.size() == 1);
+        CHECK(v.contains("name"));
+    }
+}
+
+TEST_CASE("list_blueprints honors limit/offset pagination") {
+    Fixture f;
+    auto all = f.Call("list_blueprints", json{{"path","/Game"}});
+    REQUIRE(all.is_array());
+    REQUIRE(all.size() >= 2);
+
+    auto first = f.Call("list_blueprints", json{{"path","/Game"},{"limit",1}});
+    REQUIRE(first.is_array());
+    CHECK(first.size() == 1);
+    CHECK(first[0]["asset_path"] == all[0]["asset_path"]);
+
+    auto second = f.Call("list_blueprints", json{{"path","/Game"},{"limit",1},{"offset",1}});
+    REQUIRE(second.is_array());
+    CHECK(second.size() == 1);
+    CHECK(second[0]["asset_path"] == all[1]["asset_path"]);
+}
+
+TEST_CASE("list_blueprints with fields returns just the requested keys per element") {
+    Fixture f;
+    auto out = f.Call("list_blueprints", json{
+        {"path","/Game"},
+        {"fields", json::array({"asset_path"})}});
+    REQUIRE(out.is_array());
+    CHECK(out.size() >= 1);
+    for (auto& el : out) {
+        CHECK(el.size() == 1);
+        CHECK(el.contains("asset_path"));
+    }
+}
+
+TEST_CASE("list_variables honors limit/offset and fields together") {
+    Fixture f;
+    auto all = f.Call("list_variables", json{{"asset_path","/Game/AI/BP_Enemy"}});
+    REQUIRE(all.is_array());
+
+    auto sliced = f.Call("list_variables", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"limit", 2},
+        {"fields", json::array({"name"})}});
+    REQUIRE(sliced.is_array());
+    CHECK(sliced.size() == std::min<std::size_t>(2, all.size()));
+    for (auto& v : sliced) {
+        CHECK(v.size() == 1);
+        CHECK(v.contains("name"));
+    }
+}
+
+TEST_CASE("Negative limit/offset throw") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("list_blueprints",
+                           json{{"path","/Game"},{"offset",-1}}),
+                    std::invalid_argument);
+    // limit < -1 disallowed; -1 is the sentinel (no cap) so it must be allowed.
+    CHECK_THROWS_AS(f.Call("list_blueprints",
+                           json{{"path","/Game"},{"limit",-2}}),
+                    std::invalid_argument);
+    CHECK_NOTHROW(f.Call("list_blueprints",
+                         json{{"path","/Game"},{"limit",-1}}));
+}
+
+TEST_CASE("offset past end yields empty array, not error") {
+    Fixture f;
+    auto out = f.Call("list_blueprints", json{
+        {"path","/Game"}, {"offset", 9999}});
+    REQUIRE(out.is_array());
+    CHECK(out.empty());
+}
+
+TEST_CASE("fields with non-string element throws invalid_argument") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("read_blueprint", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"fields", json::array({"name", 42})}}),
+        std::invalid_argument);
 }
