@@ -23,9 +23,16 @@ struct BackendConfig {
                                        // asset registry + warm shaders the first time;
                                        // 120s isn't enough for them. Tune via
                                        // BP_READER_STARTUP_TIMEOUT_SECONDS.
+    std::string editorConfig;     // "Development" (default) | "DebugGame" |
+                                  // "Debug" | "Test" | "Shipping". Picks
+                                  // which UnrealEditor-Cmd[-Win64-Config].exe
+                                  // the daemon launches — must match the
+                                  // config your BlueprintReaderEditor module
+                                  // was compiled in. Set via
+                                  // BP_READER_EDITOR_CONFIG.
     std::string editorExtraArgs;  // appended to UnrealEditor-Cmd's command line
                                   // (whitespace-separated). Useful for
-                                  // -DisablePlugin=Foo when a project enables
+                                  // -EnableAllPlugins when a project enables
                                   // plugins whose binaries aren't built. Set
                                   // via BP_READER_EDITOR_ARGS.
     bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
