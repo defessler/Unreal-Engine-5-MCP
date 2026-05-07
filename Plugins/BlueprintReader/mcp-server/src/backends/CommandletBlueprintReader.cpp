@@ -295,16 +295,22 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
         throw BlueprintReaderError("BP_READER_PROJECT is not set");
     }
 
-    // UE binary naming: Development is suffix-less, every other config gets
-    // "-Win64-<Config>" appended. The daemon must launch the variant whose
-    // config matches the BlueprintReaderEditor module's compiled config —
-    // mismatch = UE silently skips loading our plugin's DLL.
+    // UE binary naming for the editor commandlet exe (per
+    // UEBuildBinary.cs::GetAdditionalConsoleAppPath): take the already
+    // config-decorated binary name, strip the extension, append "-Cmd",
+    // re-add the extension. So:
+    //   Development: UnrealEditor.exe          -> UnrealEditor-Cmd.exe
+    //   DebugGame:   UnrealEditor-Win64-DebugGame.exe
+    //                                          -> UnrealEditor-Win64-DebugGame-Cmd.exe
+    // The daemon must launch the variant whose config matches the
+    // BlueprintReaderEditor module's compiled config — mismatch = UE
+    // silently skips loading our plugin's DLL.
     {
         const auto binDir = cfg_.engineDir / "Engine" / "Binaries" / "Win64";
         const std::string& cfgName = cfg_.editorConfig;  // "Development" / "DebugGame" / etc.
         std::filesystem::path candidate = (cfgName.empty() || cfgName == "Development")
             ? binDir / "UnrealEditor-Cmd.exe"
-            : binDir / fmt::format("UnrealEditor-Cmd-Win64-{}.exe", cfgName);
+            : binDir / fmt::format("UnrealEditor-Win64-{}-Cmd.exe", cfgName);
         if (!std::filesystem::exists(candidate)) {
             throw BlueprintReaderError(fmt::format(
                 "UnrealEditor-Cmd ({} config) not found at: {}\n"

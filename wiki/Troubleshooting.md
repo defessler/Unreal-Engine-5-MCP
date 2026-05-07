@@ -166,8 +166,11 @@ configuration suffix matches the running editor process:
 | Editor exe | Plugin DLL it loads |
 |------------|--------------------|
 | `UnrealEditor-Cmd.exe` (Development) | `UnrealEditor-BlueprintReaderEditor.dll` |
-| `UnrealEditor-Cmd-Win64-DebugGame.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll` |
-| `UnrealEditor-Cmd-Win64-Debug.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-Debug.dll` |
+| `UnrealEditor-Win64-DebugGame-Cmd.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll` |
+| `UnrealEditor-Win64-Debug-Cmd.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-Debug.dll` |
+
+(The `-Cmd` suffix lands *after* the config decoration — see
+`UEBuildBinary.cs::GetAdditionalConsoleAppPath`.)
 
 The daemon defaults to launching `UnrealEditor-Cmd.exe` (Development). If
 your editor target was built in a different config, the matching plugin

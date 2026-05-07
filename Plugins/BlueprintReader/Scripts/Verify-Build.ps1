@@ -111,7 +111,7 @@ if ($dllOk -and -not $haveDevelopment -and $haveOtherConfigs.Count -gt 0) {
     Write-Host '  Either:'
     Write-Host '    (a) build BlueprintReader in Development, or'
     Write-Host ('    (b) set BP_READER_EDITOR_CONFIG="' + $cfg + '" in your MCP config so the daemon')
-    Write-Host ('        launches UnrealEditor-Cmd-Win64-' + $cfg + '.exe instead.')
+    Write-Host ('        launches UnrealEditor-Win64-' + $cfg + '-Cmd.exe instead.')
     Write-Host ''
 }
 
