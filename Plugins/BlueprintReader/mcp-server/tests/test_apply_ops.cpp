@@ -1,0 +1,291 @@
+// Tests for apply_ops + the apply_ops surface that compile_function /
+// auto_layout_graph also exercise.
+//
+// We need writable backend semantics so apply_ops can actually run a
+// batch end-to-end. The MockBlueprintReader is read-only, so this file
+// supplies a small in-memory mutable backend (FakeWritableReader) that
+// just tracks which calls came in and mints fake GUIDs for AddNode.
+// Good enough to verify dispatch + slot resolution + idempotency.
+
+#include <doctest/doctest.h>
+
+#include "tools/ApplyOps.h"
+#include "backends/IBlueprintReader.h"
+#include "backends/MockBlueprintReader.h"
+
+#include "test_helpers.h"
+
+#include <atomic>
+#include <map>
+#include <string>
+#include <vector>
+
+using namespace bpr;
+using namespace bpr::backends;
+using nlohmann::json;
+
+namespace {
+
+// Mutable backend: reads delegate to a real MockBlueprintReader, writes
+// just record-and-succeed (or record-and-throw if `failOnWrite`).
+class FakeWritableReader : public IBlueprintReader {
+public:
+    FakeWritableReader()
+        : inner_(test::FixturesDir()) {}
+
+    struct Call {
+        std::string op;
+        std::string asset;
+        std::string detail;  // e.g. var name, graph name
+    };
+    std::vector<Call> calls;
+    int nextGuidNum = 1;
+    bool failOnWrite = false;
+    // For idempotency tests: synthesized "extra" variables/functions added
+    // by writes appear here. Reads merge them in.
+    std::map<std::string, std::vector<BPVariable>> extraVars;
+    std::map<std::string, std::vector<BPFunctionSummary>> extraFuncs;
+
+    std::string Mint() {
+        char buf[37];
+        std::snprintf(buf, sizeof(buf),
+            "00000000-0000-0000-0000-%012d", nextGuidNum++);
+        return buf;
+    }
+
+    void Note(std::string op, std::string asset, std::string detail = {}) {
+        calls.push_back({std::move(op), std::move(asset), std::move(detail)});
+        if (failOnWrite) {
+            throw BlueprintReaderError("simulated write failure");
+        }
+    }
+
+    // ---- reads (delegate, with merged extras) ----
+    std::vector<BPAssetSummary> ListBlueprints(std::string_view p) override {
+        return inner_.ListBlueprints(p);
+    }
+    BPMetadata ReadBlueprint(std::string_view a) override {
+        BPMetadata m = inner_.ReadBlueprint(a);
+        auto it = extraFuncs.find(std::string(a));
+        if (it != extraFuncs.end()) {
+            for (const auto& f : it->second) m.Functions.push_back(f);
+        }
+        return m;
+    }
+    BPGraph                  GetGraph(std::string_view a, std::string_view g) override {
+        return inner_.GetGraph(a, g);
+    }
+    BPFunction               GetFunction(std::string_view a, std::string_view f) override {
+        return inner_.GetFunction(a, f);
+    }
+    std::vector<BPVariable>  ListVariables(std::string_view a) override {
+        auto v = inner_.ListVariables(a);
+        auto it = extraVars.find(std::string(a));
+        if (it != extraVars.end()) {
+            for (const auto& x : it->second) v.push_back(x);
+        }
+        return v;
+    }
+    std::vector<BPComponent> GetComponents(std::string_view a) override {
+        return inner_.GetComponents(a);
+    }
+    std::vector<BPNode>      FindNode(std::string_view a, std::string_view q,
+                                      std::string_view k) override {
+        return inner_.FindNode(a, q, k);
+    }
+
+    // ---- writes (recorded, or fail) ----
+    void AddVariable(std::string_view a, std::string_view n, const BPPinType&,
+                     std::string_view, std::string_view, bool, bool) override {
+        Note("AddVariable", std::string(a), std::string(n));
+        BPVariable v;
+        v.Name = std::string(n);
+        extraVars[std::string(a)].push_back(std::move(v));
+    }
+    void SetNodePosition(std::string_view a, std::string_view, std::string_view,
+                         int, int) override {
+        Note("SetNodePosition", std::string(a));
+    }
+    void DeleteNode(std::string_view a, std::string_view, std::string_view) override {
+        Note("DeleteNode", std::string(a));
+    }
+    std::string AddNode(std::string_view a, std::string_view, std::string_view kind,
+                        int, int,
+                        const std::map<std::string, std::string, std::less<>>&) override {
+        Note("AddNode", std::string(a), std::string(kind));
+        return Mint();
+    }
+    void WirePins(std::string_view a, std::string_view,
+                  std::string_view, std::string_view,
+                  std::string_view, std::string_view) override {
+        Note("WirePins", std::string(a));
+    }
+    void DeleteVariable(std::string_view a, std::string_view n) override {
+        Note("DeleteVariable", std::string(a), std::string(n));
+    }
+    void RenameVariable(std::string_view a, std::string_view, std::string_view) override {
+        Note("RenameVariable", std::string(a));
+    }
+    std::string AddFunction(std::string_view a, std::string_view n) override {
+        Note("AddFunction", std::string(a), std::string(n));
+        BPFunctionSummary fs;
+        fs.Name = std::string(n);
+        extraFuncs[std::string(a)].push_back(std::move(fs));
+        return std::string(n);
+    }
+    void AddFunctionInput(std::string_view a, std::string_view, std::string_view,
+                          const BPPinType&) override {
+        Note("AddFunctionInput", std::string(a));
+    }
+    void AddFunctionOutput(std::string_view a, std::string_view, std::string_view,
+                           const BPPinType&) override {
+        Note("AddFunctionOutput", std::string(a));
+    }
+    void DeleteFunction(std::string_view a, std::string_view n) override {
+        Note("DeleteFunction", std::string(a), std::string(n));
+    }
+    void SetVariableDefault(std::string_view a, std::string_view n, std::string_view) override {
+        Note("SetVariableDefault", std::string(a), std::string(n));
+    }
+
+private:
+    MockBlueprintReader inner_;
+};
+
+} // namespace
+
+TEST_CASE("apply_ops: empty ops list runs cleanly") {
+    FakeWritableReader r;
+    auto out = bpr::tools::RunOps(r, json::array(), /*atomic=*/true);
+    CHECK(out["ok"] == true);
+    CHECK(out["succeeded"] == 0);
+    CHECK(out["failed"] == 0);
+    CHECK(r.calls.empty());
+}
+
+TEST_CASE("apply_ops: sequential dispatch") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","NewVar"},
+             {"type","float"}},
+        json{{"op","add_function"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","NewFunc"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    CHECK(out["succeeded"] == 2);
+    REQUIRE(r.calls.size() == 2);
+    CHECK(r.calls[0].op == "AddVariable");
+    CHECK(r.calls[1].op == "AddFunction");
+}
+
+TEST_CASE("apply_ops: named slot resolves through wire_pins") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_node"}, {"id","branch"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","Branch"}, {"x",0},{"y",0}},
+        json{{"op","add_node"}, {"id","seq"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","Sequence"}, {"x",200},{"y",0}},
+        json{{"op","wire_pins"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"from_node","$branch"}, {"from_pin","then"},
+             {"to_node",  "$seq"},    {"to_pin",  "exec"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    CHECK(out["succeeded"] == 3);
+    REQUIRE(out["slots"].size() == 2);
+    CHECK(out["slots"].contains("branch"));
+    CHECK(out["slots"].contains("seq"));
+    // 3 writes = 2 add_node + 1 wire_pins. AddNode also triggers a
+    // GetGraph for pin enrichment (a read), which doesn't show up in the
+    // calls log.
+    int adds = 0, wires = 0;
+    for (const auto& c : r.calls) {
+        if (c.op == "AddNode")  ++adds;
+        if (c.op == "WirePins") ++wires;
+    }
+    CHECK(adds  == 2);
+    CHECK(wires == 1);
+}
+
+TEST_CASE("apply_ops: {ref:\"slot\"} form also resolves") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_node"}, {"id","n1"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","Branch"}, {"x",0},{"y",0}},
+        json{{"op","delete_node"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"node_id", json{{"ref","n1"}}}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    CHECK(out["succeeded"] == 2);
+}
+
+TEST_CASE("apply_ops: unknown slot ref fails clearly") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","wire_pins"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"from_node","$does_not_exist"}, {"from_pin","exec"},
+             {"to_node",  "$also_missing"},   {"to_pin",  "exec"}},
+    });
+    CHECK_THROWS_AS(bpr::tools::RunOps(r, ops, /*atomic=*/true),
+                    bpr::backends::BlueprintReaderError);
+}
+
+TEST_CASE("apply_ops: atomic=false continues after failure") {
+    FakeWritableReader r;
+    r.failOnWrite = true;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V1"}, {"type","float"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V2"}, {"type","int"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/false);
+    CHECK(out["ok"] == false);
+    CHECK(out["succeeded"] == 0);
+    CHECK(out["failed"] == 2);
+    REQUIRE(out["results"].size() == 2);
+    CHECK(out["results"][0]["ok"] == false);
+    CHECK(out["results"][0].contains("error"));
+}
+
+TEST_CASE("apply_ops: idempotent add_variable returns already_existed:true") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Health"}, {"type","float"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    REQUIRE(out["results"].size() == 1);
+    CHECK(out["results"][0]["ok"] == true);
+    CHECK(out["results"][0]["already_existed"] == true);
+    // And no AddVariable call was made — the duplicate was short-circuited.
+    int adds = 0;
+    for (const auto& c : r.calls) if (c.op == "AddVariable") ++adds;
+    CHECK(adds == 0);
+}
+
+TEST_CASE("apply_ops: type shorthand flows through") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","SomeNewActor"}, {"type","object:Actor"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    CHECK(out["results"][0]["already_existed"] == false);
+}

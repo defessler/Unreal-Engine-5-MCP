@@ -1,9 +1,17 @@
 #include "tools/BlueprintTools.h"
+#include "tools/ApplyOps.h"
+#include "tools/CompileFunction.h"
 #include "tools/JsonProjection.h"
+#include "tools/TypeShorthand.h"
+
+#include "backends/IBlueprintReader.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <fmt/core.h>
 #include <nlohmann/json.hpp>
@@ -370,15 +378,19 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_variable";
         d.description =
-            "Add a member variable to a blueprint. `type` is a BPPinType: "
-            "{category, sub_category, sub_category_object, is_array, is_set, is_map}.";
+            "Add a member variable to a blueprint. `type` accepts either a "
+            "shorthand string (\"float\", \"int\", \"bool\", \"string\", "
+            "\"object:Actor\", \"struct:FVector\", \"[]float\", "
+            "\"{string:int}\") or the canonical BPPinType object "
+            "{category, sub_category, sub_category_object, is_array, is_set, is_map}. "
+            "Idempotent: if a variable with this name already exists, returns "
+            "{ok:true, already_existed:true} without modifying it.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
                 {"asset_path",    {{"type","string"}}},
                 {"name",          {{"type","string"}}},
-                {"type",          {{"type","object"},
-                                   {"description","BPPinType wire shape, e.g. {\"category\":\"real\",\"sub_category\":\"float\"}"}}},
+                {"type",          {{"description","Type shorthand string or BPPinType object — see tool description."}}},
                 {"default_value", {{"type","string"}}},
                 {"category",      {{"type","string"}}},
                 {"replicated",    {{"type","boolean"}}},
@@ -390,28 +402,32 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             const std::string& asset = RequireString(args, "asset_path");
             const std::string& name  = RequireString(args, "name");
             auto typeIt = args.find("type");
-            if (typeIt == args.end() || !typeIt->is_object()) {
-                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            if (typeIt == args.end()) {
+                throw std::invalid_argument(R"(missing argument "type")");
             }
-            // Build BPPinType tolerantly: only `category` is required.
-            BPPinType type;
-            type.Category = RequireString(*typeIt, "category");
-            if (auto it = typeIt->find("sub_category"); it != typeIt->end() && it->is_string()) {
-                type.SubCategory = it->get<std::string>();
-            }
-            if (auto it = typeIt->find("sub_category_object"); it != typeIt->end() && it->is_string()) {
-                type.SubCategoryObject = it->get<std::string>();
-            }
-            type.IsArray = typeIt->value("is_array", false);
-            type.IsSet   = typeIt->value("is_set",   false);
-            type.IsMap   = typeIt->value("is_map",   false);
+            BPPinType type = ParseTypeArg(*typeIt);
 
             std::string defaultValue = OptString(args, "default_value", "");
             std::string category     = OptString(args, "category",      "");
             bool replicated = args.value("replicated", false);
             bool editable   = args.value("editable",   false);
+
+            // Idempotency: check first. The mock backend doesn't implement
+            // pre-flight checks, so the existence probe goes through the
+            // same ListVariables path the agent would use to inspect.
+            try {
+                auto existing = reader.ListVariables(asset);
+                for (const auto& v : existing) {
+                    if (v.Name == name) {
+                        return nlohmann::json{{"ok", true}, {"already_existed", true}};
+                    }
+                }
+            } catch (...) {
+                // ListVariables failure shouldn't block the write — fall
+                // through; the write itself will surface the real error.
+            }
             reader.AddVariable(asset, name, type, defaultValue, category, replicated, editable);
-            return nlohmann::json{{"ok", true}};
+            return nlohmann::json{{"ok", true}, {"already_existed", false}};
         });
     }
 
@@ -474,7 +490,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             "Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent. "
             "Kind-specific args: VariableGet/VariableSet -> `variable`; "
             "CallFunction -> `function` + `function_owner` (UClass path or short name); "
-            "CustomEvent -> `event_name`. Returns {ok, node_id}.";
+            "CustomEvent -> `event_name`. Returns {ok, node_id, pins:[...]}. "
+            "The `pins` array carries each pin's name/guid/direction/type so "
+            "you can wire it without a follow-up get_graph call.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
@@ -511,7 +529,178 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             put("target_class",   "TargetClass");
             put("struct_type",    "StructType");
             std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
-            return nlohmann::json{{"ok", true}, {"node_id", newId}};
+
+            // Post-fetch the graph to extract the new node's pins. The
+            // CachingBlueprintReader will absorb most of the cost on the
+            // common case where the agent just got the graph or is about
+            // to. This eliminates a class of round-trips: the caller now
+            // has everything they need to call wire_pins.
+            nlohmann::json pinsJson = nlohmann::json::array();
+            std::string title;
+            std::string nodeClass;
+            try {
+                auto g = reader.GetGraph(asset, graph);
+                for (const auto& n : g.Nodes) {
+                    if (n.Id == newId) {
+                        title = n.Title;
+                        nodeClass = n.Class;
+                        for (const auto& p : n.Pins) {
+                            nlohmann::json t = {{"category", p.Type.Category}};
+                            if (p.Type.SubCategory)       t["sub_category"]        = *p.Type.SubCategory;
+                            if (p.Type.SubCategoryObject) t["sub_category_object"] = *p.Type.SubCategoryObject;
+                            if (p.Type.IsArray) t["is_array"] = true;
+                            if (p.Type.IsSet)   t["is_set"]   = true;
+                            if (p.Type.IsMap)   t["is_map"]   = true;
+                            pinsJson.push_back({
+                                {"name",      p.Name},
+                                {"guid",      p.Id},
+                                {"direction", p.Direction},
+                                {"type",      std::move(t)},
+                            });
+                        }
+                        break;
+                    }
+                }
+            } catch (...) { /* pin enrichment is best-effort */ }
+            nlohmann::json out = {
+                {"ok", true},
+                {"node_id", newId},
+                {"pins", std::move(pinsJson)},
+            };
+            if (!title.empty())     out["title"] = title;
+            if (!nodeClass.empty()) out["class"] = nodeClass;
+            return out;
+        });
+    }
+
+    // ----- get_node --------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "get_node";
+        d.description =
+            "Fetch a single node by GUID inside a graph. Returns the node's "
+            "class, title, position, pins, and links — same shape as one "
+            "entry from `get_graph`'s nodes array, minus the round-trip cost "
+            "of fetching every node. Pairs with `find_node` (which gives you "
+            "the GUID) for targeted inspection.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"graph_name", {{"type","string"}}},
+                {"node_id",    {{"type","string"}, {"description","Node GUID"}}},
+                {"fields",     FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name","node_id"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& graph = RequireString(args, "graph_name");
+            const std::string& node  = RequireString(args, "node_id");
+            auto ctl = ParseResponseControls(args);
+            auto g = reader.GetGraph(asset, graph);
+            for (auto& n : g.Nodes) {
+                if (n.Id == node) {
+                    nlohmann::json body = n;
+                    ApplyResponseControls(body, ctl);
+                    return body;
+                }
+            }
+            throw bpr::backends::AssetNotFound(fmt::format(
+                "node '{}' not found in graph '{}' of '{}'", node, graph, asset));
+        });
+    }
+
+    // ----- find_overriders -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "find_overriders";
+        d.description =
+            "Find blueprints under `path` that match a structural query: "
+            "extend `parent_class`, override `function_name`, and/or implement "
+            "`interface`. All filters are optional but at least one must be "
+            "set. Returns a list of `{asset_path, parent_class, matched: [...]}` "
+            "entries. Replaces the manual `list_blueprints` + N×`read_blueprint` "
+            "loop the agent would otherwise walk.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"path",           {{"type","string"},
+                                    {"description","Content-path scope. Defaults to /Game."}}},
+                {"parent_class",   {{"type","string"},
+                                    {"description","Match BPs whose parent class equals this (short name OR /Script/... path)."}}},
+                {"function_name",  {{"type","string"},
+                                    {"description","Match BPs that define a function with this name (e.g. \"BeginPlay\")."}}},
+                {"interface",      {{"type","string"},
+                                    {"description","Match BPs that implement this interface (short name)."}}},
+                {"limit",  LimitProperty()},
+                {"offset", OffsetProperty()},
+                {"fields", FieldsProperty()},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            std::string parent = OptString(args, "parent_class", "");
+            std::string fn     = OptString(args, "function_name", "");
+            std::string iface  = OptString(args, "interface", "");
+            if (parent.empty() && fn.empty() && iface.empty()) {
+                throw std::invalid_argument(
+                    "find_overriders requires at least one of "
+                    "parent_class / function_name / interface");
+            }
+            auto ctl = ParseResponseControls(args);
+
+            // Helper: short-name vs full-path equality (UE parent_class fields
+            // can be either depending on engine version + how the BP was saved).
+            auto matchesClass = [](std::string_view candidate,
+                                   std::string_view query) {
+                if (candidate == query) return true;
+                // Strip path / class-suffix to compare short names.
+                auto last = candidate.find_last_of("/.");
+                std::string_view candShort = last == std::string_view::npos
+                                                 ? candidate
+                                                 : candidate.substr(last + 1);
+                if (candShort.size() > 2 &&
+                    candShort.substr(candShort.size() - 2) == "_C") {
+                    candShort = candShort.substr(0, candShort.size() - 2);
+                }
+                return candShort == query;
+            };
+
+            nlohmann::json out = nlohmann::json::array();
+            auto items = reader.ListBlueprints(path);
+            for (const auto& s : items) {
+                std::vector<std::string> matched;
+                BPMetadata meta;
+                bool needFullRead = !fn.empty() || !iface.empty();
+                if (!parent.empty() && matchesClass(s.ParentClass, parent)) {
+                    matched.push_back("parent_class");
+                }
+                if (needFullRead) {
+                    try { meta = reader.ReadBlueprint(s.AssetPath); }
+                    catch (...) { continue; }
+                    if (!fn.empty()) {
+                        for (const auto& f : meta.Functions) {
+                            if (f.Name == fn) { matched.push_back("function_name"); break; }
+                        }
+                    }
+                    if (!iface.empty()) {
+                        for (const auto& i : meta.Interfaces) {
+                            if (i == iface) { matched.push_back("interface"); break; }
+                        }
+                    }
+                }
+                if (!matched.empty()) {
+                    out.push_back({
+                        {"asset_path",   s.AssetPath},
+                        {"name",         s.Name},
+                        {"parent_class", s.ParentClass},
+                        {"matched",      matched},
+                    });
+                }
+            }
+            ApplyResponseControls(out, ctl);
+            return out;
         });
     }
 
@@ -522,7 +711,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.description =
             "Connect two pins. `from_pin` and `to_pin` accept either a pin GUID "
             "(preferred — see get_graph) or a pin name. The schema's pin "
-            "compatibility rules are enforced.";
+            "compatibility rules are enforced; on failure, the error message "
+            "includes the actual pin types so the caller can self-correct.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -536,14 +726,55 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             {"required", nlohmann::json::array({"asset_path","graph_name","from_node","from_pin","to_node","to_pin"})},
         };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            reader.WirePins(
-                RequireString(args, "asset_path"),
-                RequireString(args, "graph_name"),
-                RequireString(args, "from_node"),
-                RequireString(args, "from_pin"),
-                RequireString(args, "to_node"),
-                RequireString(args, "to_pin"));
-            return nlohmann::json{{"ok", true}};
+            const std::string asset    = RequireString(args, "asset_path");
+            const std::string graph    = RequireString(args, "graph_name");
+            const std::string fromNode = RequireString(args, "from_node");
+            const std::string fromPin  = RequireString(args, "from_pin");
+            const std::string toNode   = RequireString(args, "to_node");
+            const std::string toPin    = RequireString(args, "to_pin");
+            try {
+                reader.WirePins(asset, graph, fromNode, fromPin, toNode, toPin);
+                return nlohmann::json{{"ok", true}};
+            } catch (const std::exception& e) {
+                // Try to enrich the error with the pin types of both ends.
+                // The agent gets actionable info ("can't wire object:Actor
+                // to bool") instead of just "wire failed."
+                std::string fromType, toType;
+                auto findPin = [](const BPNode& n, const std::string& spec) -> const BPPin* {
+                    for (const auto& p : n.Pins) {
+                        if (p.Id == spec || p.Name == spec) return &p;
+                    }
+                    return nullptr;
+                };
+                auto describeType = [](const BPPinType& t) {
+                    std::string s = t.Category;
+                    if (t.SubCategory) s += ":" + *t.SubCategory;
+                    if (t.SubCategoryObject) s += "(" + *t.SubCategoryObject + ")";
+                    if (t.IsArray) s = "[]" + s;
+                    if (t.IsSet)   s = "{}" + s;
+                    if (t.IsMap)   s = "{key:" + s + "}";
+                    return s;
+                };
+                try {
+                    auto g = reader.GetGraph(asset, graph);
+                    for (const auto& n : g.Nodes) {
+                        if (n.Id == fromNode) {
+                            if (auto* p = findPin(n, fromPin)) fromType = describeType(p->Type);
+                        }
+                        if (n.Id == toNode) {
+                            if (auto* p = findPin(n, toPin)) toType = describeType(p->Type);
+                        }
+                    }
+                } catch (...) { /* type lookup is best-effort */ }
+                std::string msg = e.what();
+                if (!fromType.empty() || !toType.empty()) {
+                    msg += fmt::format(
+                        " [from_pin type={}, to_pin type={}]",
+                        fromType.empty() ? "<unknown>" : fromType,
+                        toType.empty()   ? "<unknown>" : toType);
+                }
+                throw bpr::backends::BlueprintReaderError(msg);
+            }
         });
     }
 
@@ -599,8 +830,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.name = "add_function";
         d.description =
             "Create a new BP function graph with the given name. Returns "
-            "{ok, function_name}. Use add_function_input / add_function_output "
-            "to declare its signature.";
+            "{ok, function_name, already_existed}. Use add_function_input / "
+            "add_function_output to declare its signature. Idempotent — "
+            "calling with an existing name returns already_existed:true.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -612,51 +844,53 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
             const std::string& asset = RequireString(args, "asset_path");
             const std::string& name  = RequireString(args, "name");
+            // Idempotency probe via ReadBlueprint (returns the function list).
+            try {
+                auto meta = reader.ReadBlueprint(asset);
+                for (const auto& fn : meta.Functions) {
+                    if (fn.Name == name) {
+                        return nlohmann::json{
+                            {"ok", true},
+                            {"function_name", name},
+                            {"already_existed", true}};
+                    }
+                }
+            } catch (...) { /* fall through; the write surfaces real errors */ }
             std::string echoed = reader.AddFunction(asset, name);
-            return nlohmann::json{{"ok", true}, {"function_name", echoed}};
+            return nlohmann::json{
+                {"ok", true},
+                {"function_name", echoed},
+                {"already_existed", false}};
         });
     }
-
-    auto buildBPPinType = [](const nlohmann::json& obj) -> BPPinType {
-        BPPinType type;
-        type.Category = RequireString(obj, "category");
-        if (auto it = obj.find("sub_category"); it != obj.end() && it->is_string()) {
-            type.SubCategory = it->get<std::string>();
-        }
-        if (auto it = obj.find("sub_category_object"); it != obj.end() && it->is_string()) {
-            type.SubCategoryObject = it->get<std::string>();
-        }
-        type.IsArray = obj.value("is_array", false);
-        type.IsSet   = obj.value("is_set",   false);
-        type.IsMap   = obj.value("is_map",   false);
-        return type;
-    };
 
     // ----- add_function_input ----------------------------------------------
     {
         ToolDescriptor d;
         d.name = "add_function_input";
         d.description =
-            "Add an input parameter to an existing function. `type` is a BPPinType.";
+            "Add an input parameter to an existing function. `type` accepts "
+            "either a shorthand string (e.g. \"float\", \"object:Actor\") or "
+            "a BPPinType object.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
                 {"asset_path",    {{"type","string"}}},
                 {"function_name", {{"type","string"}}},
                 {"param_name",    {{"type","string"}}},
-                {"type",          {{"type","object"}}},
+                {"type",          {{"description","Type shorthand string or BPPinType object."}}},
             }},
             {"required", nlohmann::json::array({"asset_path","function_name","param_name","type"})},
         };
-        registry.Add(std::move(d), [&reader, buildBPPinType](const nlohmann::json& args) {
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
             const std::string& asset = RequireString(args, "asset_path");
             const std::string& fn    = RequireString(args, "function_name");
             const std::string& param = RequireString(args, "param_name");
             auto typeIt = args.find("type");
-            if (typeIt == args.end() || !typeIt->is_object()) {
-                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            if (typeIt == args.end()) {
+                throw std::invalid_argument(R"(missing argument "type")");
             }
-            reader.AddFunctionInput(asset, fn, param, buildBPPinType(*typeIt));
+            reader.AddFunctionInput(asset, fn, param, ParseTypeArg(*typeIt));
             return nlohmann::json{{"ok", true}};
         });
     }
@@ -667,26 +901,28 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.name = "add_function_output";
         d.description =
             "Add an output parameter to an existing function. Spawns a "
-            "FunctionResult node if there isn't one yet.";
+            "FunctionResult node if there isn't one yet. `type` accepts "
+            "either a shorthand string (e.g. \"float\", \"object:Actor\") or "
+            "a BPPinType object.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
                 {"asset_path",    {{"type","string"}}},
                 {"function_name", {{"type","string"}}},
                 {"param_name",    {{"type","string"}}},
-                {"type",          {{"type","object"}}},
+                {"type",          {{"description","Type shorthand string or BPPinType object."}}},
             }},
             {"required", nlohmann::json::array({"asset_path","function_name","param_name","type"})},
         };
-        registry.Add(std::move(d), [&reader, buildBPPinType](const nlohmann::json& args) {
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
             const std::string& asset = RequireString(args, "asset_path");
             const std::string& fn    = RequireString(args, "function_name");
             const std::string& param = RequireString(args, "param_name");
             auto typeIt = args.find("type");
-            if (typeIt == args.end() || !typeIt->is_object()) {
-                throw std::invalid_argument(R"(missing or non-object argument "type")");
+            if (typeIt == args.end()) {
+                throw std::invalid_argument(R"(missing argument "type")");
             }
-            reader.AddFunctionOutput(asset, fn, param, buildBPPinType(*typeIt));
+            reader.AddFunctionOutput(asset, fn, param, ParseTypeArg(*typeIt));
             return nlohmann::json{{"ok", true}};
         });
     }
@@ -904,6 +1140,144 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             };
         });
     }
+
+    // ----- auto_layout_graph -----------------------------------------------
+    // v1: a simple topological grid layout computed server-side. Walks the
+    // exec edges from any FunctionEntry / Event node to produce columns,
+    // ranks the rest by class. Calls set_node_position on every node.
+    //
+    // The "right" implementation is a plugin-side hook into UE's actual
+    // graph-tidy code (KismetGraphSchema::DistributeNodesAlongAxis +
+    // friends), which gets the same neat output as the editor's
+    // right-click "Tidy" command. That's tracked as plugin work; this
+    // server-side version keeps the agent unblocked and produces a
+    // readable (if not pretty) layout in the meantime.
+    {
+        ToolDescriptor d;
+        d.name = "auto_layout_graph";
+        d.description =
+            "Auto-position the nodes in a graph so they don't overlap. "
+            "v1 is a column-grid layout computed from exec connectivity — "
+            "readable but not as tidy as UE's built-in graph-tidy. Plugin-"
+            "side integration with KismetGraphSchema's actual tidy pass is "
+            "tracked separately. Returns {ok, placed: <n>}.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"graph_name", {{"type","string"}}},
+                {"col_width",  {{"type","integer"},
+                                {"description","Horizontal spacing between columns. Default 400."}}},
+                {"row_height", {{"type","integer"},
+                                {"description","Vertical spacing between rows. Default 200."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","graph_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string graph = RequireString(args, "graph_name");
+            int colWidth  = OptInt(args, "col_width",  400);
+            int rowHeight = OptInt(args, "row_height", 200);
+
+            auto g = reader.GetGraph(asset, graph);
+
+            // Build forward-exec adjacency: node_id -> list of downstream node_ids.
+            // Identify exec edges by pin name "exec/then/else/loop/loopBody/completed"
+            // — best-effort but covers the common K2 nodes.
+            auto isExecPinName = [](std::string_view n) {
+                return n == "exec" || n == "execute" || n == "then" || n == "else" ||
+                       n == "loop" || n == "loopBody" || n == "completed";
+            };
+            std::map<std::string, std::vector<std::string>> downstream;
+            // Map pin GUID -> owning node_id (for connections that reference pins by GUID).
+            std::map<std::string, std::string, std::less<>> pinOwner;
+            std::map<std::string, std::string, std::less<>> pinName;
+            for (const auto& n : g.Nodes) {
+                for (const auto& p : n.Pins) {
+                    pinOwner[p.Id] = n.Id;
+                    pinName[p.Id]  = p.Name;
+                }
+            }
+            for (const auto& c : g.Connections) {
+                // Exec edge if either endpoint pin's name looks exec-y.
+                std::string fpName = c.FromPin;
+                std::string tpName = c.ToPin;
+                if (auto it = pinName.find(c.FromPin); it != pinName.end()) fpName = it->second;
+                if (auto it = pinName.find(c.ToPin);   it != pinName.end()) tpName = it->second;
+                if (!isExecPinName(fpName) && !isExecPinName(tpName)) continue;
+                downstream[c.FromNode].push_back(c.ToNode);
+            }
+
+            // Roots: nodes with class containing "Entry" or "Event" (no
+            // upstream exec). If we don't find any, fall back to all nodes
+            // as their own roots — at least they'll be ranked into columns.
+            std::set<std::string> hasUpstream;
+            for (const auto& [_, dsts] : downstream)
+                for (const auto& d : dsts) hasUpstream.insert(d);
+            std::vector<std::string> roots;
+            for (const auto& n : g.Nodes) {
+                bool isEntryClass = n.Class.find("FunctionEntry") != std::string::npos ||
+                                    n.Class.find("Event")         != std::string::npos ||
+                                    n.Class.find("CustomEvent")   != std::string::npos;
+                if (isEntryClass && !hasUpstream.count(n.Id)) roots.push_back(n.Id);
+            }
+            if (roots.empty()) {
+                for (const auto& n : g.Nodes) if (!hasUpstream.count(n.Id)) roots.push_back(n.Id);
+            }
+
+            // BFS from roots; column = depth, row = order-of-discovery within column.
+            std::map<std::string, int, std::less<>> col;  // node_id -> column
+            std::vector<std::string> bfs = roots;
+            for (const auto& r : roots) col[r] = 0;
+            for (std::size_t i = 0; i < bfs.size(); ++i) {
+                int c = col[bfs[i]];
+                for (const auto& d : downstream[bfs[i]]) {
+                    auto [it, inserted] = col.insert({d, c + 1});
+                    if (inserted) bfs.push_back(d);
+                }
+            }
+            // Any disconnected leftovers get their own column at the right.
+            int maxCol = 0;
+            for (auto& [_, v] : col) maxCol = std::max(maxCol, v);
+            int leftoverCol = maxCol + 1;
+            for (const auto& n : g.Nodes) {
+                if (col.find(n.Id) == col.end()) col[n.Id] = leftoverCol;
+            }
+
+            // Group by column, assign rows.
+            std::map<int, std::vector<std::string>> byCol;
+            for (const auto& [id, c] : col) byCol[c].push_back(id);
+
+            // Apply positions via set_node_position. Done as individual
+            // ops here (not apply_ops) because the reader saves per-call
+            // anyway — extra batching wouldn't help until plugin-side
+            // single-recompile lands.
+            int placed = 0;
+            for (const auto& [c, ids] : byCol) {
+                int row = 0;
+                for (const auto& id : ids) {
+                    int x = c * colWidth;
+                    int y = row * rowHeight;
+                    try {
+                        reader.SetNodePosition(asset, graph, id, x, y);
+                        ++placed;
+                    } catch (...) { /* skip — can't move what doesn't exist */ }
+                    ++row;
+                }
+            }
+            return nlohmann::json{
+                {"ok",      true},
+                {"placed",  placed},
+                {"strategy","grid"},
+            };
+        });
+    }
+
+    // ===== Batch + DSL =====================================================
+    // apply_ops and compile_function live in their own files because their
+    // dispatch tables are bigger than the per-tool handlers above.
+    RegisterApplyOps(registry, reader);
+    RegisterCompileFunction(registry, reader);
 }
 
 } // namespace bpr::tools

@@ -1,8 +1,41 @@
 # Tool Reference
 
-22 tools — 8 read, 12 write, 2 meta. All use snake_case JSON keys; nullable
-string fields emit `null`; `BPNode.meta` is a real nested object (not a
-string-of-JSON). Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
+27 tools — 10 read, 13 write, 2 meta, 2 batch. All use snake_case JSON keys;
+nullable string fields emit `null`; `BPNode.meta` is a real nested object
+(not a string-of-JSON). Wire shapes are pinned in
+`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
+
+## Type shorthand (write tools)
+
+Every write tool that takes a `type` argument accepts both the canonical
+BPPinType object form and a compact string shorthand:
+
+```jsonc
+"type": "float"               // → {category:"real", sub_category:"float"}
+"type": "int"
+"type": "bool"
+"type": "string"
+"type": "object:Actor"        // object reference; long path also accepted
+"type": "struct:FVector"
+"type": "interface:IDamageable"
+"type": "enum:EWeaponType"
+"type": "[]float"             // array<float>
+"type": "{}int"               // set<int>
+"type": "{string:int}"        // map<string,int>
+
+// canonical form still works:
+"type": { "category": "real", "sub_category": "float" }
+```
+
+Bad shorthand (`"type": "garbage"`) throws `invalid_argument` before the
+backend is touched, with a hint listing the accepted forms.
+
+## Idempotent writes
+
+`add_variable` and `add_function` are idempotent — calling them with a
+name that already exists returns `{ok: true, already_existed: true}`
+instead of throwing. The agent can retry blindly without first checking
+whether the name's taken.
 
 ## Response controls (read tools)
 
@@ -119,6 +152,34 @@ graphs.
 }
 ```
 
+### `get_node`
+Fetch a single node by GUID. Same shape as one entry from `get_graph`'s
+nodes array. Cheaper than re-fetching the whole graph after a mutation
+when all you need is "did the wire I just made stick?" Pairs with
+`find_node` (which gives you the GUID).
+
+```json
+{ "asset_path":"/Game/AI/BP_TestEnemy",
+  "graph_name":"EventGraph", "node_id":"<guid>" }
+```
+
+### `find_overriders`
+Structural query across BPs under `path` (defaults to `/Game`). Filter by
+`parent_class` / `function_name` / `interface` (any combination, at
+least one required). Returns matching `{asset_path, parent_class, matched: [...]}`
+entries. Replaces the manual `list_blueprints` + N×`read_blueprint` loop.
+
+```jsonc
+// Find every BP that overrides BeginPlay
+{ "function_name": "BeginPlay" }
+
+// All AI characters that implement IDamageable
+{ "path":"/Game/AI", "parent_class":"ACharacter", "interface":"IDamageable" }
+```
+
+`parent_class` accepts both short names (`ACharacter`) and full paths
+(`/Script/Engine.Character`).
+
 ## Write tools
 
 All write tools recompile and save the blueprint. They return the new
@@ -164,19 +225,40 @@ Change a member variable's default value (string form).
 ```
 
 ### `add_node`
-Spawn a node. Returns its new GUID.
+Spawn a node. Returns its new GUID **plus the full pin list** so you can
+wire it without a follow-up `get_graph` call.
 
 ```json
 {
   "asset_path":   "/Game/AI/BP_TestEnemy",
   "graph_name":   "EventGraph",
   "kind":         "branch",            // see list_node_kinds
-  "position":     { "x": 0, "y": 0 },
+  "x": 0, "y": 0,
   // optional, kind-specific:
   "variable":      "Health",            // for variable_get/set
   "function_owner":"/Script/Engine.GameplayStatics", // for call_function
-  "function_name": "GetPlayerCharacter",             // for call_function
+  "function":      "GetPlayerCharacter",             // for call_function
   "target_class":  "/Script/Engine.Actor"            // for cast nodes
+}
+```
+
+Response shape:
+
+```jsonc
+{ "ok": true,
+  "node_id": "<guid>",
+  "title": "Branch",
+  "class": "K2Node_IfThenElse",
+  "pins": [
+    { "name": "exec",      "guid": "...", "direction": "input",
+      "type": {"category":"exec"} },
+    { "name": "Condition", "guid": "...", "direction": "input",
+      "type": {"category":"bool"} },
+    { "name": "True",      "guid": "...", "direction": "output",
+      "type": {"category":"exec"} },
+    { "name": "False",     "guid": "...", "direction": "output",
+      "type": {"category":"exec"} }
+  ]
 }
 ```
 
@@ -196,6 +278,13 @@ Remove a node by GUID; breaks links into/out of it.
 
 ### `wire_pins`
 Connect two pins, schema-validated. Prefer GUIDs; names work as fallback.
+On failure, the error message **includes both pin types** so the agent
+can self-correct in one turn:
+
+```
+WirePins: schema rejected the connection [from_pin type=object(Actor),
+to_pin type=bool]
+```
 
 ```json
 {
@@ -207,6 +296,9 @@ Connect two pins, schema-validated. Prefer GUIDs; names work as fallback.
   "to_pin":       "Exec"
 }
 ```
+
+`auto_layout_graph` is a follow-up companion: spawn nodes anywhere, then
+call it once to lay them out cleanly.
 
 ### `add_function`
 Create a new BP function graph. Returns the echoed function name.
@@ -235,6 +327,120 @@ one yet.
   "type":         { "category": "float" }
 }
 ```
+
+## Batch tools
+
+### `apply_ops`
+Run a sequence of write operations as a single tool call. Reduces N
+round-trips and N agent reasoning steps to one. Each op is `{op:"<name>", ...args}`
+matching the corresponding individual tool's args.
+
+**Named slots**: any `add_node` op may carry an `id` field. Subsequent
+ops can reference that node's GUID with `"$<id>"` or `{"ref":"<id>"}`
+in any node-id field. Eliminates the need to thread minted GUIDs through
+the agent's reasoning.
+
+```jsonc
+{
+  "ops": [
+    { "op": "add_function", "asset_path": "/Game/AI/BP_Enemy", "name": "TakeDamage" },
+    { "op": "add_function_input", "asset_path": "/Game/AI/BP_Enemy",
+      "function_name": "TakeDamage", "param_name": "Amount", "type": "float" },
+    { "op": "add_node", "id": "branch",
+      "asset_path": "/Game/AI/BP_Enemy", "graph_name": "TakeDamage",
+      "kind": "Branch", "x": 200, "y": 0 },
+    { "op": "add_node", "id": "getHealth",
+      "asset_path": "/Game/AI/BP_Enemy", "graph_name": "TakeDamage",
+      "kind": "VariableGet", "variable": "Health", "x": 0, "y": 100 },
+    { "op": "wire_pins",
+      "asset_path": "/Game/AI/BP_Enemy", "graph_name": "TakeDamage",
+      "from_node": "$getHealth", "from_pin": "Health",
+      "to_node":   "$branch",    "to_pin":   "Condition" }
+  ],
+  "atomic": true
+}
+```
+
+Returns:
+
+```jsonc
+{ "ok": true,
+  "succeeded": 5, "failed": 0,
+  "slots":   { "branch": "<guid1>", "getHealth": "<guid2>" },
+  "results": [ { "ok": true, "function_name": "TakeDamage", "already_existed": false },
+               { "ok": true },
+               { "ok": true, "node_id": "<guid1>", "pins": [...] },
+               { "ok": true, "node_id": "<guid2>", "pins": [...] },
+               { "ok": true } ] }
+```
+
+`atomic: false` continues on errors; failed ops appear as `{ok:false, error:"..."}`
+in the per-op results array.
+
+**Limitation (v1):** each underlying op still saves+recompiles individually.
+True single-recompile batching needs plugin work — tracked separately.
+The agent reasoning win is already large because all the GUID threading
+and round-trips collapse into one call.
+
+### `compile_function`
+Compile a tiny pseudocode DSL into a fully-wired BP function. The agent
+thinks in pseudocode (its native form); the server materializes nodes +
+wires + layout in one call.
+
+```jsonc
+{
+  "asset_path": "/Game/AI/BP_Enemy",
+  "function_name": "TakeDamage",
+  "inputs":  [{ "name": "Amount", "type": "float" }],
+  "body": [
+    { "if":   { "var": "bIsInvulnerable" },
+      "then": [],
+      "else": [
+        { "set": "Health",
+          "to":  { "call": "Subtract::Float",
+                   "args": { "A": { "var": "Health" }, "B": { "var": "Amount" } } } },
+        { "if":   { "call": "LessEqual::Float",
+                    "args": { "A": { "var": "Health" }, "B": { "var": "Amount" } } },
+          "then": [{ "call": "OnDeath" }] }
+      ]
+    }
+  ]
+}
+```
+
+Statement forms (v1): `{if, then, [else]}`, `{set, to}`, `{call, args}`,
+`{comment}`.
+Expression forms (v1): `{var:"name"}`, `{call:"fn", args:{...}}`.
+
+Pass `dry_run: true` to get the compiled op list without executing —
+useful for the agent to inspect / confirm before committing.
+
+**Limitations (v1):**
+- `{lit:value}` literal expressions not yet supported. Model literals as
+  const variables and reference them with `{var:"name"}`, or drop to
+  `apply_ops` with an explicit literal-node spawn.
+- After `if/then/else`, exec continues from the `then` branch's tail; the
+  `else` tail is left dangling. Use `apply_ops` + explicit Sequence/Join
+  wiring if you need both branches to merge.
+- Per-op save+recompile applies (same as `apply_ops`).
+
+On unrecognized statement/expression forms, the response says exactly
+which form was invalid so the agent can fall back to `apply_ops` for
+that statement only.
+
+### `auto_layout_graph`
+Reposition every node in a graph using a column-grid layout based on
+exec connectivity. Calls `set_node_position` on each node. Readable
+output, but not as tidy as UE's built-in graph-tidy command. Plugin-side
+integration with `KismetGraphSchema`'s real tidy pass is tracked
+separately — until then this keeps generated graphs from overlapping.
+
+```json
+{ "asset_path":"/Game/AI/BP_Enemy", "graph_name":"EventGraph",
+  "col_width": 400, "row_height": 200 }
+```
+
+Returns `{ok, placed, strategy: "grid"}`.
 
 ## Meta tools
 
