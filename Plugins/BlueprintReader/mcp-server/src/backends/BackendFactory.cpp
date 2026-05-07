@@ -1,99 +1,113 @@
 #include "backends/BackendFactory.h"
 #include "backends/CommandletBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
+#include "Env.h"
 
-#include <cctype>
-#include <cstdlib>
+#include <iostream>
 
 #include <fmt/core.h>
 
 namespace bpr::backends {
 
-namespace {
-
-std::string EnvOrDefault(const char* key, std::string fallback) {
-#ifdef _MSC_VER
-    char* buf = nullptr;
-    std::size_t len = 0;
-    if (_dupenv_s(&buf, &len, key) == 0 && buf != nullptr) {
-        std::string out(buf);
-        std::free(buf);
-        return out.empty() ? fallback : out;
-    }
-    return fallback;
-#else
-    if (const char* v = std::getenv(key); v != nullptr && *v != '\0') {
-        return std::string(v);
-    }
-    return fallback;
-#endif
-}
-
-int IntFromEnvOrDefault(const char* key, int fallback) {
-    auto s = EnvOrDefault(key, "");
-    if (s.empty()) return fallback;
-    try {
-        return std::stoi(s);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-} // namespace
-
-BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir) {
+BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
+                            std::ostream& log) {
     BackendConfig cfg;
-    cfg.backend = EnvOrDefault("BP_READER_BACKEND", "mock");
-    auto fix = EnvOrDefault("BP_READER_FIXTURES_DIR", "");
+
+    // ----- explicit env vars (with defaults) ---------------------------
+    cfg.backend = env::GetOrDefault("BP_READER_BACKEND", "");
+
+    auto fix = env::GetOrDefault("BP_READER_FIXTURES_DIR", "");
     if (fix.empty()) {
         cfg.fixturesDir = executableDir / "fixtures";
     } else {
         cfg.fixturesDir = std::filesystem::path(fix);
     }
 
-    auto engineDir = EnvOrDefault("BP_READER_ENGINE_DIR", "");
-    if (!engineDir.empty()) {
-        cfg.engineDir = std::filesystem::path(engineDir);
-    }
-    auto uproj = EnvOrDefault("BP_READER_PROJECT", "");
-    if (!uproj.empty()) {
-        cfg.uproject = std::filesystem::path(uproj);
-    }
-    cfg.timeoutSeconds        = IntFromEnvOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
-    cfg.startupTimeoutSeconds = IntFromEnvOrDefault("BP_READER_STARTUP_TIMEOUT_SECONDS", 600);
-    cfg.editorConfig          = EnvOrDefault("BP_READER_EDITOR_CONFIG", "");  // empty = Development
-    cfg.editorExtraArgs       = EnvOrDefault("BP_READER_EDITOR_ARGS", "");
+    auto engineDir = env::GetOrDefault("BP_READER_ENGINE_DIR", "");
+    if (!engineDir.empty()) cfg.engineDir = std::filesystem::path(engineDir);
 
-    // Daemon defaults to ON for the commandlet backend — the speedup is
-    // ~200x and the fallback to one-shot is automatic on transport failure.
-    // Set BP_READER_DAEMON=0|false|no|off to opt out.
-    cfg.useDaemon = true;
-    auto daemon = EnvOrDefault("BP_READER_DAEMON", "");
-    if (!daemon.empty()) {
-        std::string d;
-        d.reserve(daemon.size());
-        for (char c : daemon) d.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        if (d == "0" || d == "false" || d == "no" || d == "off") {
-            cfg.useDaemon = false;
-        } else if (d == "1" || d == "true" || d == "yes" || d == "on") {
-            cfg.useDaemon = true;
-        }
-        // Otherwise: leave the default. (Better than silently swapping the
-        // mode on a typo.)
+    auto uproj = env::GetOrDefault("BP_READER_PROJECT", "");
+    if (!uproj.empty()) cfg.uproject = std::filesystem::path(uproj);
+
+    cfg.timeoutSeconds        = env::IntOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
+    cfg.startupTimeoutSeconds = env::IntOrDefault("BP_READER_STARTUP_TIMEOUT_SECONDS", 600);
+    cfg.editorConfig          = env::GetOrDefault("BP_READER_EDITOR_CONFIG", "");
+    cfg.editorExtraArgs       = env::GetOrDefault("BP_READER_EDITOR_ARGS", "");
+    cfg.useDaemon             = env::BoolOrDefault("BP_READER_DAEMON", true, log);
+    cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
+
+    // ----- auto-discovery (Tier 1 UX) ---------------------------------
+    //
+    // The exe normally lives at:
+    //   <projectRoot>/Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe
+    //                              ^pluginDir^
+    //                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //                              \-------- 5 levels up to project root --/
+    //
+    // From there we can read .uproject -> EngineAssociation, and resolve the
+    // engine root from HKCU. Eliminates BP_READER_PROJECT and
+    // BP_READER_ENGINE_DIR for users on the standard layout.
+
+    // Plugin dir is 3 levels above exeDir:
+    //   <plugin>/mcp-server/build/Release/bp-reader-mcp.exe
+    //                ^1         ^2     ^3 (== exeDir)
+    //   ^plugin = up 3 from exeDir
+    std::filesystem::path pluginDir;
+    {
+        auto p = executableDir;  // ...\Release
+        for (int i = 0; i < 3 && !p.empty(); ++i) p = p.parent_path();
+        pluginDir = p;
     }
 
-    // Pre-warm: spawn the editor daemon on MCP startup so the first tool call
-    // is already warm. Off by default — costs ~600 MB RAM whether or not you
-    // ever call a BP tool.
-    auto prewarm = EnvOrDefault("BP_READER_PREWARM", "");
-    if (!prewarm.empty()) {
-        std::string p;
-        p.reserve(prewarm.size());
-        for (char c : prewarm) p.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        if (p == "1" || p == "true" || p == "yes" || p == "on") {
-            cfg.prewarm = true;
+    if (cfg.uproject.empty()) {
+        // Search up from pluginDir's parent (Plugins/) for a .uproject.
+        std::filesystem::path searchStart = pluginDir.parent_path();  // Plugins/
+        if (auto found = env::FindUprojectAbove(searchStart)) {
+            cfg.uproject = *found;
+            log << "[bp-reader-mcp] auto-discovered project: "
+                << cfg.uproject.string() << "\n";
         }
     }
+
+    if (cfg.engineDir.empty() && !cfg.uproject.empty()) {
+        if (auto assoc = env::ReadEngineAssociation(cfg.uproject)) {
+            if (auto root = env::ResolveEngineFromRegistry(*assoc)) {
+                cfg.engineDir = *root;
+                log << "[bp-reader-mcp] auto-discovered engine: "
+                    << cfg.engineDir.string() << " (from EngineAssociation="
+                    << *assoc << ")\n";
+            } else {
+                log << "[bp-reader-mcp] warning: .uproject EngineAssociation='"
+                    << *assoc << "' not found in HKCU\\SOFTWARE\\Epic Games\\"
+                    << "Unreal Engine\\Builds — set BP_READER_ENGINE_DIR "
+                    << "explicitly, or right-click the .uproject and run "
+                    << "'Switch Unreal Engine version'\n";
+            }
+        }
+    }
+
+    if (cfg.editorConfig.empty()) {
+        if (auto detected = env::DetectEditorConfig(pluginDir)) {
+            cfg.editorConfig = *detected;
+            // Only emit a log line if it's a non-default config — Development
+            // is the implicit default and worth less log noise.
+            if (cfg.editorConfig != "Development") {
+                log << "[bp-reader-mcp] auto-detected editor config: "
+                    << cfg.editorConfig
+                    << " (matched plugin DLL suffix; override with "
+                    << "BP_READER_EDITOR_CONFIG)\n";
+            }
+        }
+    }
+
+    // Backend default — if we found a uproject, switch to commandlet.
+    // Mock is only the right default when there's nothing project-shaped
+    // around the exe.
+    if (cfg.backend.empty()) {
+        cfg.backend = cfg.uproject.empty() ? "mock" : "commandlet";
+    }
+
     return cfg;
 }
 

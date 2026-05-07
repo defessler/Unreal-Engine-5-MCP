@@ -10,12 +10,17 @@ namespace bpr::tools {
 
 namespace {
 
-const std::string& RequireString(const nlohmann::json& obj, std::string_view key) {
+// Returns by value (copy) instead of const-ref into the json. The ref form
+// was safe today — the caller's lambda holds the json alive for the
+// duration — but it was a footgun for any future caller binding the result
+// to something with longer lifetime. Sub-microsecond extra cost; not on a
+// hot path that anyone cares about.
+std::string RequireString(const nlohmann::json& obj, std::string_view key) {
     auto it = obj.find(key);
     if (it == obj.end() || !it->is_string()) {
         throw std::invalid_argument(fmt::format(R"(missing or non-string argument "{}")", key));
     }
-    return it->get_ref<const std::string&>();
+    return it->get<std::string>();
 }
 
 std::string OptString(const nlohmann::json& obj, std::string_view key,

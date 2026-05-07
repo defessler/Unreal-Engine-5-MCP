@@ -180,6 +180,23 @@ UE5_MCP\
 └── README.md
 ```
 
+## Subcommands
+
+```pwsh
+bp-reader-mcp.exe doctor                    # check setup, exit non-zero if broken
+bp-reader-mcp.exe config                    # print .mcp.json snippet (Claude Code)
+bp-reader-mcp.exe config --client=copilot   # same, for VS Code Copilot
+bp-reader-mcp.exe config --client=claude-desktop
+bp-reader-mcp.exe --help
+```
+
+`doctor` walks the install — engine path, .uproject location + plugin
+entry, editor exe, plugin DLL config-suffix match — and prints actionable
+fix hints with build commands. Replaces the `Verify-Build.bat` flow.
+
+`config` auto-discovers the engine + project paths and outputs a
+ready-to-paste config block for the chosen client.
+
 ## Manual launch
 
 To run the server outside Claude — debugging, scripted JSON-RPC, smoke

@@ -157,6 +157,35 @@ cost.
 
 ## 4. Wire it into your AI client
 
+The fastest path is to ask the server for a ready-to-paste config snippet:
+
+```powershell
+# Auto-discovers your engine + project from the exe location
+Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe config --client=claude-code
+```
+
+That prints a complete `.mcp.json` block with absolute paths filled in.
+Other client formats:
+
+- `--client=claude-desktop` (same JSON shape, used in `claude_desktop_config.json`)
+- `--client=copilot` (uses the `"servers"` key VS Code expects)
+
+If the auto-discovered values look wrong (or you need to override), the
+manual path + per-client conventions are documented below.
+
+### Sanity-check the install before wiring
+
+```powershell
+Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe doctor
+```
+
+Walks the same checks the server runs at startup and prints what's
+missing with concrete fix commands. Exits non-zero if anything's broken,
+so it's CI-friendly. Replaces the `Verify-Build.bat` flow for a more
+detailed picture (the .bat still works but only checks file presence).
+
+---
+
 Wiring is per-client and lives on its own page. Pick yours:
 
 - **[Claude Code / Claude Desktop](Clients#claude-code-recommended)** —

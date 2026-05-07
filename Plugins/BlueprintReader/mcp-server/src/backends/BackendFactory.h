@@ -6,6 +6,7 @@
 #include "backends/IBlueprintReader.h"
 
 #include <filesystem>
+#include <iosfwd>
 #include <memory>
 #include <string>
 
@@ -42,9 +43,14 @@ struct BackendConfig {
                                   // editor cold-start cost.
 };
 
-// Read BP_READER_BACKEND and BP_READER_FIXTURES_DIR from the environment.
+// Read BP_READER_* from the environment, then auto-discover anything still
+// unset by walking up from the exe to find a .uproject and resolving its
+// engine via the registry. `log` receives any informational/warning messages
+// (auto-discovery findings, env-var parse warnings).
+//
 // fixturesDir defaults to <executableDir>/fixtures.
-BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir);
+BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
+                            std::ostream& log);
 
 // May throw BlueprintReaderError for unsupported backends or bad fixture
 // directories.

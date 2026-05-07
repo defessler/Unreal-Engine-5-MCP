@@ -1,16 +1,23 @@
 // bp-reader-mcp — entry point.
 //
-// On startup:
-//   1. Resolve executable directory to find the bundled fixtures dir.
-//   2. Build the requested backend (env var BP_READER_BACKEND, default "mock").
-//   3. Register MCP tools.
-//   4. Run the JSON-RPC stdio loop until EOF.
+// Without subcommand args: runs the MCP JSON-RPC stdio loop (the normal
+// production path used by Claude Code, Copilot, etc.).
 //
-// Diagnostics go to stderr; stdout is the JSON-RPC transport — never write
-// anything else there.
+// With subcommands:
+//   bp-reader-mcp.exe doctor              — run setup checks, exit non-zero
+//                                           if anything's broken. Replaces
+//                                           Verify-Build.bat for live diagnosis.
+//   bp-reader-mcp.exe config [--client]   — print a ready-to-paste MCP
+//                                           config snippet using the
+//                                           auto-discovered paths.
+//   bp-reader-mcp.exe --help              — usage.
+//
+// Diagnostics + subcommand output go to stderr/stdout-text. The MCP loop's
+// stdout is the JSON-RPC transport — never write anything non-framed there.
 
 #include "backends/BackendFactory.h"
 #include "backends/MockBlueprintReader.h"
+#include "Diagnostics.h"
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
@@ -20,6 +27,9 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include <fmt/core.h>
 
@@ -44,6 +54,17 @@ std::filesystem::path ExecutableDir() {
 #endif
 }
 
+std::filesystem::path ExecutablePath() {
+#if defined(_WIN32)
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n == MAX_PATH) return {};
+    return std::filesystem::path(buf);
+#else
+    return {};
+#endif
+}
+
 void EnsureBinaryStdio() {
 #if defined(_WIN32)
     // Windows defaults stdin/stdout to text mode, which mangles framing
@@ -51,19 +72,183 @@ void EnsureBinaryStdio() {
     _setmode(_fileno(stdin),  _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
-    // Make the C++ streams unbuffered-ish so flushes show up immediately.
+    // Two layers of buffering on Windows: iostream's filebuf and the C
+    // runtime's stdout buffer. `unitbuf` makes the iostream layer flush on
+    // every <<, but the bytes can still sit in the CRT block buffer until it
+    // fills up — for an MCP client reading bytes off a pipe, that means the
+    // response sits in our CRT buffer until the next request arrives, and
+    // the client's handshake timeout fires. Disable CRT buffering so every
+    // WriteFrame() actually hits the pipe immediately.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::cout.setf(std::ios::unitbuf);
 }
 
-} // namespace
+void PrintUsage(std::ostream& out) {
+    out <<
+R"(bp-reader-mcp — MCP server exposing UE5 BlueprintReader tools.
 
-int main() {
-    EnsureBinaryStdio();
+Usage:
+  bp-reader-mcp                Run the JSON-RPC stdio loop (production mode).
+  bp-reader-mcp doctor         Run setup checks; exit 0 if healthy.
+  bp-reader-mcp config         Print a ready-to-paste MCP config snippet
+                               with auto-discovered paths filled in.
+  bp-reader-mcp config --client=claude-code     Same, formatted for Claude Code (.mcp.json).
+  bp-reader-mcp config --client=claude-desktop  Same, for Claude Desktop config.
+  bp-reader-mcp config --client=copilot         Same, for VS Code Copilot (.vscode/mcp.json).
+  bp-reader-mcp --help         This help.
 
-    using namespace bpr;
+Configuration is via environment variables — see README's "Configuration" section.
+Most paths are auto-discovered from the exe's location; usually no env vars
+are needed for the standard layout.
+)";
+}
+
+// ---------------------------------------------------------------------------
+// `doctor` subcommand
+// ---------------------------------------------------------------------------
+
+int RunDoctor() {
+    auto exeDir = ExecutableDir();
+    auto cfg = bpr::backends::ConfigFromEnv(exeDir, std::cerr);
+
+    std::cout << "bp-reader-mcp doctor\n";
+    std::cout << "  Exe          : " << ExecutablePath().string() << "\n";
+    std::cout << "  Backend      : " << cfg.backend << "\n";
+    std::cout << "  Engine       : "
+              << (cfg.engineDir.empty() ? "(not configured)" : cfg.engineDir.string())
+              << "\n";
+    std::cout << "  Project      : "
+              << (cfg.uproject.empty() ? "(not configured)" : cfg.uproject.string())
+              << "\n";
+    std::cout << "  EditorConfig : "
+              << (cfg.editorConfig.empty() ? "Development (default)" : cfg.editorConfig)
+              << "\n\n";
+
+    auto report = bpr::diag::RunSetupChecks(cfg);
+    bpr::diag::PrintReport(report, std::cout, /*colors=*/true);
+
+    if (report.HasError()) {
+        std::cout << "\nResult: \x1b[31mFAIL\x1b[0m — fix the errors above and re-run.\n";
+        return 1;
+    }
+    if (report.HasWarning()) {
+        std::cout << "\nResult: \x1b[33mOK with warnings\x1b[0m — see above.\n";
+        return 0;
+    }
+    std::cout << "\nResult: \x1b[32mOK\x1b[0m — everything looks good.\n";
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// `config` subcommand
+// ---------------------------------------------------------------------------
+
+std::string EscapeJsonPath(const std::filesystem::path& p) {
+    std::string s = p.string();
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        if (c == '\\') out.append("\\\\");
+        else out.push_back(c);
+    }
+    return out;
+}
+
+int RunConfig(const std::vector<std::string>& args) {
+    std::string client = "claude-code";  // default
+    for (const auto& a : args) {
+        if (a.rfind("--client=", 0) == 0) {
+            client = a.substr(9);
+        } else if (a == "--help" || a == "-h") {
+            PrintUsage(std::cout);
+            return 0;
+        }
+    }
 
     auto exeDir = ExecutableDir();
-    auto cfg = backends::ConfigFromEnv(exeDir);
+    std::ostringstream notes;
+    auto cfg = bpr::backends::ConfigFromEnv(exeDir, notes);
+
+    if (cfg.backend != "commandlet") {
+        std::cerr << "config: backend is '" << cfg.backend
+                  << "' (no UE project discovered). Move the exe under "
+                     "<project>/Plugins/BlueprintReader/mcp-server/build/Release/, "
+                     "or set BP_READER_PROJECT, then re-run.\n";
+        return 1;
+    }
+    if (cfg.uproject.empty() || cfg.engineDir.empty()) {
+        std::cerr << "config: auto-discovery couldn't find both a .uproject and "
+                     "an engine path. Set BP_READER_PROJECT / BP_READER_ENGINE_DIR "
+                     "and re-run, or run `bp-reader-mcp doctor` for details.\n";
+        return 1;
+    }
+
+    auto exePath = EscapeJsonPath(ExecutablePath());
+    auto enginePath = EscapeJsonPath(cfg.engineDir);
+    auto projPath = EscapeJsonPath(cfg.uproject);
+    std::string cfgName = cfg.editorConfig.empty() ? "" : cfg.editorConfig;
+
+    std::string envBlock = fmt::format(
+R"(      "env": {{
+        "BP_READER_PREWARM":       "1",
+        "BP_READER_EDITOR_ARGS":   "-EnableAllPlugins"{cfgLine}
+      }})",
+        fmt::arg("cfgLine", (cfgName.empty() || cfgName == "Development")
+                                ? ""
+                                : fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));
+
+    if (client == "claude-code" || client == "claude-desktop") {
+        std::cout << fmt::format(
+R"({{
+  "mcpServers": {{
+    "bp-reader": {{
+      "command": "{exe}",
+{env}
+    }}
+  }}
+}}
+)", fmt::arg("exe", exePath), fmt::arg("env", envBlock));
+    } else if (client == "copilot") {
+        std::cout << fmt::format(
+R"({{
+  "servers": {{
+    "bp-reader": {{
+      "type": "stdio",
+      "command": "{exe}",
+{env}
+    }}
+  }}
+}}
+)", fmt::arg("exe", exePath), fmt::arg("env", envBlock));
+    } else {
+        std::cerr << "config: unknown --client='" << client
+                  << "' (try claude-code, claude-desktop, or copilot)\n";
+        return 1;
+    }
+
+    std::cerr << "\n# Auto-discovery notes:\n";
+    std::cerr << notes.str();
+    std::cerr << "\n# Engine: " << cfg.engineDir.string()
+              << "\n# Project: " << cfg.uproject.string()
+              << "\n# EditorConfig: "
+              << (cfgName.empty() ? "Development (default)" : cfgName)
+              << "\n# Auto-discovered values are NOT echoed in the env block "
+                 "above —\n# the server picks them up from the exe location at "
+                 "runtime.\n# Override with explicit BP_READER_* vars if you "
+                 "need to.\n";
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Production MCP loop with startup sanity check
+// ---------------------------------------------------------------------------
+
+int RunServerLoop() {
+    using namespace bpr;
+    EnsureBinaryStdio();
+
+    auto exeDir = ExecutableDir();
+    auto cfg = backends::ConfigFromEnv(exeDir, std::cerr);
 
     std::cerr << fmt::format(
         "[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} "
@@ -75,6 +260,15 @@ int main() {
         cfg.prewarm   ? "true" : "false",
         cfg.editorConfig.empty() ? "Development" : cfg.editorConfig,
         cfg.editorExtraArgs);
+
+    // Run setup checks BEFORE we attempt to spin up the daemon. Any
+    // findings get logged immediately so users see the actionable hint
+    // instead of silent hang / cryptic "daemon exited" 30 s later.
+    auto report = diag::RunSetupChecks(cfg);
+    if (!report.findings.empty()) {
+        std::cerr << "[bp-reader-mcp] setup check:\n";
+        diag::PrintReport(report, std::cerr, /*colors=*/false);
+    }
 
     std::unique_ptr<backends::IBlueprintReader> reader;
     try {
@@ -99,4 +293,31 @@ int main() {
     server.Run(std::cin, std::cout, std::cerr);
     std::cerr << "[bp-reader-mcp] stdin closed; exiting\n";
     return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    std::vector<std::string> args;
+    for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+
+    if (!args.empty()) {
+        const auto& a = args[0];
+        if (a == "--help" || a == "-h" || a == "help") {
+            PrintUsage(std::cout);
+            return 0;
+        }
+        if (a == "doctor") {
+            return RunDoctor();
+        }
+        if (a == "config") {
+            return RunConfig({args.begin() + 1, args.end()});
+        }
+        // Unknown subcommand — print usage on stderr and bail.
+        std::cerr << "bp-reader-mcp: unknown argument '" << a << "'\n\n";
+        PrintUsage(std::cerr);
+        return 2;
+    }
+
+    return RunServerLoop();
 }
