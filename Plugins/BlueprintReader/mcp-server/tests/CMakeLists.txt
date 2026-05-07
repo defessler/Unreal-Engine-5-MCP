@@ -15,6 +15,8 @@ add_executable(bp-reader-tests
     test_protocol_negotiation.cpp
     test_json_projection.cpp
     test_caching_reader.cpp
+    test_type_shorthand.cpp
+    test_apply_ops.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE

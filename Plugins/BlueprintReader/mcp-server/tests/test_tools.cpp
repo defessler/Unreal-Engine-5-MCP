@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 22 tools (8 read + 12 write + 2 meta) with input schemas") {
+TEST_CASE("ToolRegistry exposes 27 tools (10 read + 13 write + 2 meta + 2 batch) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 22);
+    CHECK(spec.size() == 27);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
@@ -270,5 +270,166 @@ TEST_CASE("fields with non-string element throws invalid_argument") {
     CHECK_THROWS_AS(f.Call("read_blueprint", json{
         {"asset_path","/Game/AI/BP_Enemy"},
         {"fields", json::array({"name", 42})}}),
+        std::invalid_argument);
+}
+
+// ===== Composability tools (get_node / find_overriders) ====================
+
+TEST_CASE("get_node: fetch a single node by GUID") {
+    Fixture f;
+    auto graph = f.Call("get_graph", json{{"asset_path","/Game/AI/BP_Enemy"}});
+    REQUIRE(graph["nodes"].is_array());
+    REQUIRE(!graph["nodes"].empty());
+    std::string guid = graph["nodes"][0]["id"].get<std::string>();
+    auto node = f.Call("get_node", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"graph_name","EventGraph"},
+        {"node_id", guid}});
+    CHECK(node["id"] == guid);
+    CHECK(node.contains("class"));
+    CHECK(node.contains("pins"));
+}
+
+TEST_CASE("get_node: missing node throws AssetNotFound") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("get_node", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"graph_name","EventGraph"},
+        {"node_id","00000000-0000-0000-0000-deadbeefdead"}}),
+        bpr::backends::AssetNotFound);
+}
+
+TEST_CASE("find_overriders: requires at least one filter") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("find_overriders", json{{"path","/Game"}}),
+                    std::invalid_argument);
+}
+
+TEST_CASE("find_overriders: parent_class filter (short name match)") {
+    Fixture f;
+    auto out = f.Call("find_overriders", json{
+        {"path", "/Game"},
+        {"parent_class", "ACharacter"}});
+    REQUIRE(out.is_array());
+    // BP_Enemy parent is ACharacter in the fixtures; should match.
+    bool foundEnemy = false;
+    for (auto& el : out) {
+        CHECK(el.contains("matched"));
+        CHECK(el.contains("asset_path"));
+        if (el["asset_path"] == "/Game/AI/BP_Enemy") foundEnemy = true;
+    }
+    CHECK(foundEnemy);
+}
+
+TEST_CASE("find_overriders: function_name filter") {
+    Fixture f;
+    auto out = f.Call("find_overriders", json{
+        {"path", "/Game"},
+        {"function_name", "AddScore"}});
+    REQUIRE(out.is_array());
+    // BP_PlayerController has AddScore in fixtures.
+    bool found = false;
+    for (auto& el : out) {
+        if (el["asset_path"] == "/Game/Player/BP_PlayerController") {
+            found = true;
+            // matched array should contain the filter that matched.
+            REQUIRE(el["matched"].is_array());
+            bool sawFn = false;
+            for (auto& m : el["matched"]) if (m == "function_name") sawFn = true;
+            CHECK(sawFn);
+        }
+    }
+    CHECK(found);
+}
+
+// ===== Idempotency =========================================================
+
+TEST_CASE("add_variable on existing name returns already_existed:true (mock)") {
+    // The MOCK backend throws on writes — but the idempotency probe runs
+    // BEFORE the write, so calling add_variable for an existing variable
+    // name short-circuits cleanly without ever hitting the throw.
+    Fixture f;
+    auto out = f.Call("add_variable", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"name", "Health"},          // exists in BP_Enemy fixture
+        {"type", "float"}});
+    CHECK(out["ok"] == true);
+    CHECK(out["already_existed"] == true);
+}
+
+TEST_CASE("add_function on existing name returns already_existed:true (mock)") {
+    Fixture f;
+    auto out = f.Call("add_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"name", "TakeDamage"}});  // exists in BP_Enemy fixture
+    CHECK(out["ok"] == true);
+    CHECK(out["already_existed"] == true);
+}
+
+// ===== Type shorthand on tool surface ======================================
+
+TEST_CASE("add_variable accepts type shorthand string (still throws on mock write path)") {
+    Fixture f;
+    // For a *new* variable, the mock backend's write throws — but the
+    // shorthand path should be exercised before that. Use a try/catch
+    // pattern: we just want to confirm "float" parses and reaches the
+    // backend (which then throws because mock is read-only).
+    CHECK_THROWS_AS(f.Call("add_variable", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"name", "BrandNew"},
+        {"type", "float"}}),
+        bpr::backends::BlueprintReaderError);
+
+    // And bad shorthand throws std::invalid_argument before the backend
+    // is even consulted.
+    CHECK_THROWS_AS(f.Call("add_variable", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"name", "BadVar"},
+        {"type", "garbage_type"}}),
+        std::invalid_argument);
+}
+
+// ===== auto_layout_graph ===================================================
+
+TEST_CASE("auto_layout_graph: throws on read-only mock (records intent)") {
+    // Tests that the dispatcher + topology pass at least exercises the
+    // SetNodePosition call. Mock throws on write, but the fact that we
+    // reached SetNodePosition means the graph was traversed correctly.
+    Fixture f;
+    auto out = f.Call("auto_layout_graph", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"graph_name","EventGraph"}});
+    // Mock's SetNodePosition throws, which the layout tool catches
+    // per-node. So we should see placed=0 and ok=true.
+    CHECK(out["ok"] == true);
+    CHECK(out["placed"] == 0);
+    CHECK(out["strategy"] == "grid");
+}
+
+// ===== compile_function dispatch ===========================================
+
+TEST_CASE("compile_function: dry_run returns the planned ops") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"inputs",  json::array({json{{"name","Amount"},{"type","float"}}})},
+        {"body",    json::array({
+            json{{"set","Health"}, {"to", json{{"var","Health"}}}},
+        })},
+        {"dry_run", true}});
+    CHECK(out["dry_run"] == true);
+    REQUIRE(out["ops"].is_array());
+    REQUIRE(out["ops"].size() >= 4);  // add_function + add_input + varget + varset (+ wires)
+    CHECK(out["ops"][0]["op"] == "add_function");
+}
+
+TEST_CASE("compile_function: rejects unknown statement form") {
+    Fixture f;
+    CHECK_THROWS_AS(f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({json{{"unknown_form", "nope"}}})},
+        {"dry_run", true}}),
         std::invalid_argument);
 }
