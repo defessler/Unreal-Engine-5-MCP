@@ -52,8 +52,10 @@ add_library(bp-reader-core STATIC
     src/jsonrpc/Mcp.cpp
     src/tools/ToolRegistry.cpp
     src/tools/BlueprintTools.cpp
+    src/tools/JsonProjection.cpp
     src/backends/MockBlueprintReader.cpp
     src/backends/CommandletBlueprintReader.cpp
+    src/backends/CachingBlueprintReader.cpp
     src/backends/BackendFactory.cpp
 )
 target_include_directories(bp-reader-core PUBLIC

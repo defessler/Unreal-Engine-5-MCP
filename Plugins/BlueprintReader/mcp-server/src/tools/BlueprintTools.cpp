@@ -1,5 +1,7 @@
 #include "tools/BlueprintTools.h"
+#include "tools/JsonProjection.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -46,6 +48,73 @@ nlohmann::json AssetPathSchema() {
     };
 }
 
+// Returns an int arg or fallback. Negative values raise.
+int OptInt(const nlohmann::json& obj, std::string_view key, int fallback) {
+    auto it = obj.find(key);
+    if (it == obj.end() || it->is_null()) return fallback;
+    if (!it->is_number_integer()) {
+        throw std::invalid_argument(fmt::format(R"(argument "{}" must be an integer)", key));
+    }
+    return it->get<int>();
+}
+
+// Property fragments shared across tool input schemas. Composed into the
+// `properties` block by ApplyResponseControls below.
+nlohmann::json FieldsProperty() {
+    return {
+        {"type", "array"},
+        {"items", {{"type", "string"}}},
+        {"description",
+         "Optional response projection. Each entry is a dotted field path; "
+         "use `[]` to apply the path to every element of an array. Example: "
+         "[\"name\", \"variables[].name\"] returns just the BP name and the "
+         "names of its variables. Omit to get the full payload."},
+    };
+}
+nlohmann::json LimitProperty() {
+    return {
+        {"type", "integer"},
+        {"description", "Optional cap on the number of items returned (after offset). "
+                        "Use to keep responses small on big projects."},
+    };
+}
+nlohmann::json OffsetProperty() {
+    return {
+        {"type", "integer"},
+        {"description", "Optional 0-based offset into the result array. Pair with "
+                        "`limit` for paging through long lists."},
+    };
+}
+
+// Mutate `body` to apply offset/limit (when body is an array) and
+// field projection. Convenience helper called from every read-tool handler.
+struct ResponseControls {
+    int offset = 0;
+    int limit  = -1;  // -1 => no cap
+    std::vector<std::string> fields;
+};
+ResponseControls ParseResponseControls(const nlohmann::json& args) {
+    ResponseControls ctl;
+    ctl.offset = OptInt(args, "offset", 0);
+    ctl.limit  = OptInt(args, "limit", -1);
+    ctl.fields = ParseFieldsArg(args);
+    if (ctl.offset < 0) throw std::invalid_argument(R"(argument "offset" must be >= 0)");
+    if (ctl.limit < -1) throw std::invalid_argument(R"(argument "limit" must be >= 0)");
+    return ctl;
+}
+void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
+    if (body.is_array() && (ctl.offset > 0 || ctl.limit >= 0)) {
+        std::size_t off = std::min<std::size_t>(ctl.offset, body.size());
+        std::size_t end = (ctl.limit < 0)
+                              ? body.size()
+                              : std::min<std::size_t>(off + ctl.limit, body.size());
+        nlohmann::json sliced = nlohmann::json::array();
+        for (std::size_t i = off; i < end; ++i) sliced.push_back(std::move(body[i]));
+        body = std::move(sliced);
+    }
+    ApplyProjection(body, ctl.fields);
+}
+
 } // namespace
 
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
@@ -54,7 +123,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_blueprints";
         d.description =
-            "List blueprint assets under a content path. Defaults to /Game.";
+            "List blueprint assets under a content path. Defaults to /Game. "
+            "On big projects this can return thousands of entries — use "
+            "`limit`/`offset` to page, and `fields` (e.g. [\"asset_path\"]) "
+            "to drop columns you don't need.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
@@ -62,12 +134,18 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                     {"type", "string"},
                     {"description", "Content path filter, e.g. /Game/AI. Defaults to /Game."},
                 }},
+                {"limit",  LimitProperty()},
+                {"offset", OffsetProperty()},
+                {"fields", FieldsProperty()},
             }},
         };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
             std::string path = OptString(args, "path", "/Game");
+            auto ctl = ParseResponseControls(args);
             auto items = reader.ListBlueprints(path);
-            return nlohmann::json(items);
+            nlohmann::json body = items;
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
@@ -77,11 +155,58 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.name = "read_blueprint";
         d.description =
             "Read top-level metadata for a blueprint: parent class, interfaces, "
-            "variables, function/graph summaries, macros.";
+            "variables, function/graph summaries, macros. "
+            "Pass `fields` (e.g. [\"parent_class\", \"variables[].name\"]) to "
+            "project just what you need — full payloads can be many KB on busy BPs.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"fields",     FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.ReadBlueprint(asset);
+            ApplyResponseControls(body, ctl);
+            return body;
+        });
+    }
+
+    // ----- summarize_blueprint --------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "summarize_blueprint";
+        d.description =
+            "Tiny orientation response for a blueprint: parent class plus "
+            "counts of variables, functions, graphs, macros, and interfaces. "
+            "Use this BEFORE `read_blueprint` when you don't yet know how big "
+            "the BP is — saves loading the full payload to find out it has "
+            "hundreds of variables.";
         d.input_schema = AssetPathSchema();
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
-            return nlohmann::json(reader.ReadBlueprint(asset));
+            std::string asset = RequireString(args, "asset_path");
+            nlohmann::json full = reader.ReadBlueprint(asset);
+            auto countOf = [&](const char* key) -> int {
+                auto it = full.find(key);
+                return (it != full.end() && it->is_array())
+                           ? static_cast<int>(it->size())
+                           : 0;
+            };
+            nlohmann::json out = {
+                {"name",            full.value("name", asset)},
+                {"asset_path",      asset},
+                {"parent_class",    full.value("parent_class", "")},
+                {"variable_count",  countOf("variables")},
+                {"function_count",  countOf("functions")},
+                {"graph_count",     countOf("graphs")},
+                {"macro_count",     countOf("macros")},
+                {"interface_count", countOf("interfaces")},
+            };
+            return out;
         });
     }
 
@@ -90,25 +215,27 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_graph";
         d.description =
-            "Fetch a graph (nodes + connections) by name. Defaults to EventGraph.";
+            "Fetch a graph (nodes + connections) by name. Defaults to EventGraph. "
+            "Big graphs are big — pass `fields` (e.g. [\"nodes[].title\", \"nodes[].kind\"]) "
+            "to drop fields you don't need.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
-                {"asset_path", {
-                    {"type", "string"},
-                    {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"},
-                }},
-                {"graph_name", {
-                    {"type", "string"},
-                    {"description", "Graph name. Defaults to \"EventGraph\"."},
-                }},
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"graph_name", {{"type", "string"},
+                                {"description", "Graph name. Defaults to \"EventGraph\"."}}},
+                {"fields", FieldsProperty()},
             }},
             {"required", nlohmann::json::array({"asset_path"})},
         };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
+            std::string asset = RequireString(args, "asset_path");
             std::string graph = OptString(args, "graph_name", "EventGraph");
-            return nlohmann::json(reader.GetGraph(asset, graph));
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.GetGraph(asset, graph);
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
@@ -118,25 +245,26 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.name = "get_function";
         d.description =
             "Fetch a blueprint function: signature (inputs/outputs), locals, "
-            "and body graph.";
+            "and body graph. Use `fields` to project (e.g. "
+            "[\"inputs[].name\", \"outputs[].name\"] for just the signature).";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
-                {"asset_path", {
-                    {"type", "string"},
-                    {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"},
-                }},
-                {"function_name", {
-                    {"type", "string"},
-                    {"description", "Function name as it appears in the blueprint."},
-                }},
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"function_name", {{"type", "string"},
+                                   {"description", "Function name as it appears in the blueprint."}}},
+                {"fields", FieldsProperty()},
             }},
             {"required", nlohmann::json::array({"asset_path", "function_name"})},
         };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
-            const std::string& fn = RequireString(args, "function_name");
-            return nlohmann::json(reader.GetFunction(asset, fn));
+            std::string asset = RequireString(args, "asset_path");
+            std::string fn = RequireString(args, "function_name");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.GetFunction(asset, fn);
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
@@ -147,11 +275,25 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.description =
             "List the SCS components (StaticMeshComponent, LightComponent, "
             "child actors, etc.) attached to a blueprint, with parent/child "
-            "hierarchy. Each entry: {name, class, parent, is_root}.";
-        d.input_schema = AssetPathSchema();
+            "hierarchy. Each entry: {name, class, parent, is_root}. Supports "
+            "`fields`/`limit`/`offset`.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"limit",  LimitProperty()},
+                {"offset", OffsetProperty()},
+                {"fields", FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
-            return nlohmann::json(reader.GetComponents(asset));
+            std::string asset = RequireString(args, "asset_path");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.GetComponents(asset);
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
@@ -161,11 +303,26 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         d.name = "list_variables";
         d.description =
             "List all member variables on a blueprint, with type, default, "
-            "category, and replication state.";
-        d.input_schema = AssetPathSchema();
+            "category, and replication state. Big BPs can have 100+ variables "
+            "— use `fields` (e.g. [\"name\", \"type.category\"]) and "
+            "`limit`/`offset` to keep responses small.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"limit",  LimitProperty()},
+                {"offset", OffsetProperty()},
+                {"fields", FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
-            return nlohmann::json(reader.ListVariables(asset));
+            std::string asset = RequireString(args, "asset_path");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.ListVariables(asset);
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
@@ -177,31 +334,32 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             "Search nodes within a blueprint by class or title (case-insensitive substring). "
             "Optional `kind` further filters by the K2 extras kind, e.g. CallFunction, "
             "VariableGet, Event, CustomEvent, DynamicCast, MacroInstance, "
-            "FunctionEntry, FunctionResult.";
+            "FunctionEntry, FunctionResult. Supports `fields`/`limit`/`offset` — typical "
+            "use is `fields=[\"id\", \"title\", \"kind\"]` to keep responses small.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
-                {"asset_path", {
-                    {"type", "string"},
-                    {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"},
-                }},
-                {"query", {
-                    {"type", "string"},
-                    {"description", "Substring matched against node class or title. "
-                                    "Pass an empty string to match any node when filtering by `kind` only."},
-                }},
-                {"kind", {
-                    {"type", "string"},
-                    {"description", "Optional. K2 extras `kind` to match exactly (case-insensitive)."},
-                }},
+                {"asset_path", {{"type", "string"},
+                                {"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+                {"query", {{"type", "string"},
+                           {"description", "Substring matched against node class or title. "
+                                           "Pass an empty string to match any node when filtering by `kind` only."}}},
+                {"kind",   {{"type", "string"},
+                            {"description", "Optional. K2 extras `kind` to match exactly (case-insensitive)."}}},
+                {"limit",  LimitProperty()},
+                {"offset", OffsetProperty()},
+                {"fields", FieldsProperty()},
             }},
             {"required", nlohmann::json::array({"asset_path", "query"})},
         };
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-            const std::string& asset = RequireString(args, "asset_path");
-            const std::string& q = RequireString(args, "query");
+            std::string asset = RequireString(args, "asset_path");
+            std::string q = RequireString(args, "query");
             std::string kind = OptString(args, "kind", "");
-            return nlohmann::json(reader.FindNode(asset, q, kind));
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = reader.FindNode(asset, q, kind);
+            ApplyResponseControls(body, ctl);
+            return body;
         });
     }
 
