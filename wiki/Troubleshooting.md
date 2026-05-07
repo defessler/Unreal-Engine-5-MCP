@@ -152,6 +152,44 @@ exits cleanly. The verifier will spot this and print the exact UBT
 command to fix it (it autodetects your `.uproject` and the editor
 target name).
 
+## Plugin DLL exists but UE silently skips it (no log mention at all)
+
+Symptom: Verify-Build says `[ OK ] UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll`,
+but the daemon log has zero mentions of `BlueprintReader` — UE neither
+loads the plugin nor logs a failure for it. The daemon initialises the
+engine, finishes plugin discovery, then exits without running our
+commandlet.
+
+Cause: **config-suffix mismatch**. UE only loads plugin module DLLs whose
+configuration suffix matches the running editor process:
+
+| Editor exe | Plugin DLL it loads |
+|------------|--------------------|
+| `UnrealEditor-Cmd.exe` (Development) | `UnrealEditor-BlueprintReaderEditor.dll` |
+| `UnrealEditor-Cmd-Win64-DebugGame.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll` |
+| `UnrealEditor-Cmd-Win64-Debug.exe` | `UnrealEditor-BlueprintReaderEditor-Win64-Debug.dll` |
+
+The daemon defaults to launching `UnrealEditor-Cmd.exe` (Development). If
+your editor target was built in a different config, the matching plugin
+DLL has a suffix the Development exe doesn't look for — silent skip.
+
+**Fix**: tell the daemon which config to launch:
+
+```json
+"env": {
+  "BP_READER_BACKEND":       "commandlet",
+  "BP_READER_ENGINE_DIR":    "...",
+  "BP_READER_PROJECT":       "...",
+  "BP_READER_EDITOR_CONFIG": "DebugGame"
+}
+```
+
+Or just rebuild the plugin in Development (`Build.bat ProjectEditor Win64
+Development ...`) so the DLL matches the suffix-less exe.
+
+`Verify-Build.bat` lists every config variant it finds and prints this
+warning when only non-Development variants are present.
+
 ## "daemon exited before reaching READY" — plugin or module failed to load
 
 If the server's stderr says `daemon exited before reaching READY`

@@ -61,6 +61,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir) {
     }
     cfg.timeoutSeconds        = IntFromEnvOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
     cfg.startupTimeoutSeconds = IntFromEnvOrDefault("BP_READER_STARTUP_TIMEOUT_SECONDS", 600);
+    cfg.editorConfig          = EnvOrDefault("BP_READER_EDITOR_CONFIG", "");  // empty = Development
     cfg.editorExtraArgs       = EnvOrDefault("BP_READER_EDITOR_ARGS", "");
 
     // Daemon defaults to ON for the commandlet backend — the speedup is
@@ -107,6 +108,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
         cc.timeout         = std::chrono::seconds(cfg.timeoutSeconds);
         cc.startupTimeout  = std::chrono::seconds(cfg.startupTimeoutSeconds);
         cc.useDaemon       = cfg.useDaemon;
+        cc.editorConfig    = cfg.editorConfig;
         cc.editorExtraArgs = cfg.editorExtraArgs;
         auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
         if (cfg.prewarm && cfg.useDaemon) {
