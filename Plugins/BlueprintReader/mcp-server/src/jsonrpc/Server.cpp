@@ -43,22 +43,43 @@ bool ReadHeaderLine(std::istream& in, std::string& out) {
 
 } // namespace
 
-std::optional<std::string> ReadFrame(std::istream& in) {
+namespace {
+
+// Read a single newline-delimited JSON message: everything up to the next \n
+// (which we consume but don't include in the body). Tolerates \r\n. Returns
+// nullopt on clean EOF before any non-whitespace byte. The first byte (already
+// peeked by the caller) is consumed as part of the line.
+std::optional<std::string> ReadNewlineFrame(std::istream& in) {
+    std::string body;
+    while (true) {
+        int c = in.get();
+        if (c == std::char_traits<char>::eof()) {
+            // EOF in the middle of a line — return what we have if non-empty,
+            // otherwise treat as clean EOF.
+            return body.empty() ? std::nullopt : std::optional<std::string>(body);
+        }
+        if (c == '\n') {
+            // Strip a trailing \r if the line was \r\n-terminated.
+            if (!body.empty() && body.back() == '\r') body.pop_back();
+            return body;
+        }
+        body.push_back(static_cast<char>(c));
+    }
+}
+
+// Read a Content-Length-framed message. Headers are case-insensitive; we
+// accept any extra headers and only require Content-Length.
+std::optional<std::string> ReadContentLengthFrame(std::istream& in) {
     std::size_t contentLength = 0;
     bool sawContentLength = false;
 
     while (true) {
         std::string line;
         if (!ReadHeaderLine(in, line)) {
-            // Clean EOF before any header.
             return std::nullopt;
         }
-        if (line.empty()) {
-            // End of headers.
-            break;
-        }
+        if (line.empty()) break;  // end of headers
 
-        // Parse "Header-Name: value".
         auto colon = line.find(':');
         if (colon == std::string::npos) {
             throw std::runtime_error(fmt::format("malformed header line: '{}'", line));
@@ -66,10 +87,8 @@ std::optional<std::string> ReadFrame(std::istream& in) {
         std::string name = TrimAscii(line.substr(0, colon));
         std::string value = TrimAscii(line.substr(colon + 1));
 
-        // Header names are case-insensitive.
         std::transform(name.begin(), name.end(), name.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
         if (name == "content-length") {
             try {
                 contentLength = static_cast<std::size_t>(std::stoull(value));
@@ -78,13 +97,11 @@ std::optional<std::string> ReadFrame(std::istream& in) {
                 throw std::runtime_error(fmt::format("invalid Content-Length: '{}'", value));
             }
         }
-        // Other headers (e.g. Content-Type) are accepted and ignored.
     }
 
     if (!sawContentLength) {
         throw std::runtime_error("missing Content-Length header");
     }
-
     std::string body(contentLength, '\0');
     in.read(body.data(), static_cast<std::streamsize>(contentLength));
     auto got = in.gcount();
@@ -95,9 +112,41 @@ std::optional<std::string> ReadFrame(std::istream& in) {
     return body;
 }
 
-void WriteFrame(std::ostream& out, const nlohmann::json& body) {
+} // namespace
+
+std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat) {
+    // Skip leading whitespace (newlines, CRs, spaces). Some clients pad with
+    // a trailing \n after the framing terminator; tolerate it instead of
+    // throwing "malformed header" on next read.
+    while (true) {
+        int c = in.peek();
+        if (c == std::char_traits<char>::eof()) return std::nullopt;
+        if (c == '\r' || c == '\n' || c == ' ' || c == '\t') { in.get(); continue; }
+        break;
+    }
+
+    int peeked = in.peek();
+    if (peeked == std::char_traits<char>::eof()) return std::nullopt;
+
+    // Auto-detect: JSON values start with `{` (object) or `[` (array). Anything
+    // else (printable ASCII like "Content-Length:") is LSP-style header framing.
+    if (peeked == '{' || peeked == '[') {
+        if (outFormat) *outFormat = FrameFormat::NewlineDelimited;
+        return ReadNewlineFrame(in);
+    }
+    if (outFormat) *outFormat = FrameFormat::ContentLength;
+    return ReadContentLengthFrame(in);
+}
+
+void WriteFrame(std::ostream& out, const nlohmann::json& body, FrameFormat format) {
     std::string serialized = body.dump();
-    out << "Content-Length: " << serialized.size() << "\r\n\r\n" << serialized;
+    if (format == FrameFormat::NewlineDelimited) {
+        // MCP spec: one JSON object per line, no embedded newlines.
+        // nlohmann::json::dump() with default settings produces a single line.
+        out << serialized << '\n';
+    } else {
+        out << "Content-Length: " << serialized.size() << "\r\n\r\n" << serialized;
+    }
     out.flush();
 }
 
@@ -193,10 +242,17 @@ std::optional<nlohmann::json> Server::Dispatch(const nlohmann::json& body) {
 }
 
 void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
+    // Mirror the framing format the client sends. Locked in on the first
+    // frame we successfully read. Defaults to MCP-spec newline-delimited
+    // for safety if we somehow have to write before reading.
+    FrameFormat clientFormat = FrameFormat::NewlineDelimited;
+    bool formatLocked = false;
+
     while (true) {
         std::optional<std::string> frame;
+        FrameFormat thisFormat = clientFormat;
         try {
-            frame = ReadFrame(in);
+            frame = ReadFrame(in, &thisFormat);
         } catch (const std::exception& e) {
             log << "[bp-reader-mcp] frame error: " << e.what() << "\n";
             // Without framing we can't recover the stream; bail.
@@ -205,6 +261,14 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
         if (!frame) {
             // Clean EOF.
             return;
+        }
+        if (!formatLocked) {
+            clientFormat = thisFormat;
+            formatLocked = true;
+            log << "[bp-reader-mcp] framing="
+                << (clientFormat == FrameFormat::NewlineDelimited ? "newline-delimited"
+                                                                  : "content-length")
+                << " (auto-detected from first request)\n";
         }
 
         nlohmann::json body;
@@ -215,7 +279,7 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
             auto env = MakeErrorEnvelope(nullptr,
                 Error{static_cast<int>(ErrorCode::ParseError),
                       fmt::format("parse error: {}", e.what()), std::nullopt});
-            WriteFrame(out, env);
+            WriteFrame(out, env, clientFormat);
             continue;
         }
 
@@ -227,7 +291,7 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
                 auto env = MakeErrorEnvelope(nullptr,
                     Error{static_cast<int>(ErrorCode::InvalidRequest),
                           "empty batch", std::nullopt});
-                WriteFrame(out, env);
+                WriteFrame(out, env, clientFormat);
                 continue;
             }
             nlohmann::json batchOut = nlohmann::json::array();
@@ -237,13 +301,13 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
                 }
             }
             if (!batchOut.empty()) {
-                WriteFrame(out, batchOut);
+                WriteFrame(out, batchOut, clientFormat);
             }
             continue;
         }
 
         if (auto r = Dispatch(body)) {
-            WriteFrame(out, *r);
+            WriteFrame(out, *r, clientFormat);
         }
     }
 }

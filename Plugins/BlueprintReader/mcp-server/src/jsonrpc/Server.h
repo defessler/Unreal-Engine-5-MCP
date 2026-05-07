@@ -1,8 +1,19 @@
-// JSON-RPC 2.0 server — Content-Length framed stdio transport.
+// JSON-RPC 2.0 server — stdio transport with auto-detected framing.
+//
+// Supports BOTH framings interoperably:
+//   * MCP-spec stdio: newline-delimited JSON (one JSON object per line).
+//     This is what https://modelcontextprotocol.io/specification/transports
+//     mandates and what the official SDKs + JetBrains Copilot use.
+//   * LSP-style: "Content-Length: N\r\n\r\n<payload>" framing. Used by some
+//     clients and by our smoke tests.
+//
+// On read, we auto-detect which the client is sending by peeking the first
+// non-whitespace byte. On write, we mirror the format the client used so
+// the response shape matches what they parse.
 //
 // Spec refs:
 //   * JSON-RPC 2.0: https://www.jsonrpc.org/specification
-//   * MCP transport: LSP-style "Content-Length: N\r\n\r\n<payload>" framing.
+//   * MCP transport: https://modelcontextprotocol.io/specification/transports
 #pragma once
 
 #include <functional>
@@ -58,13 +69,23 @@ struct Response {
 // Response. For notifications (id absent), the return value is ignored.
 using Handler = std::function<Response(const nlohmann::json& params)>;
 
-// Reads a single Content-Length framed message from `in`. Returns the raw
-// JSON body string. Returns std::nullopt on clean EOF before any header.
-// Throws std::runtime_error on malformed framing.
-std::optional<std::string> ReadFrame(std::istream& in);
+// Wire format used for stdio framing.
+enum class FrameFormat {
+    NewlineDelimited,  // MCP spec: one JSON object per line
+    ContentLength,     // LSP-style: "Content-Length: N\r\n\r\n<body>"
+};
 
-// Writes a single framed JSON message to `out`. Flushes after write.
-void WriteFrame(std::ostream& out, const nlohmann::json& body);
+// Reads a single framed message from `in`, auto-detecting format on the
+// first byte. Sets *outFormat (if non-null) to whichever format the frame
+// used so callers can mirror it on writes. Returns the raw JSON body as a
+// string. Returns std::nullopt on clean EOF before any data.
+// Throws std::runtime_error on malformed framing.
+std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat = nullptr);
+
+// Writes a single framed JSON message to `out` using the requested format,
+// then flushes. Defaults to newline-delimited (MCP spec) for new code.
+void WriteFrame(std::ostream& out, const nlohmann::json& body,
+                FrameFormat format = FrameFormat::NewlineDelimited);
 
 class Server {
 public:
