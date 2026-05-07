@@ -45,6 +45,8 @@ public:
         std::chrono::seconds startupTimeout{600};  // initial daemon READY wait;
                                                    // big projects need minutes to
                                                    // load modules + scan asset registry
+        std::string editorExtraArgs;               // appended to commandlet command
+                                                   // line, whitespace-separated
         bool useDaemon = false;
     };
 
