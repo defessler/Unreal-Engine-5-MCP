@@ -11,6 +11,8 @@ add_executable(bp-reader-tests
     test_commandlet_backend.cpp
     test_framing_stress.cpp
     test_soak.cpp
+    test_diagnostics.cpp
+    test_protocol_negotiation.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE

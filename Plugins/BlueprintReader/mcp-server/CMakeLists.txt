@@ -46,6 +46,8 @@ add_library(doctest::doctest ALIAS doctest)
 # Library target with the server's guts (linked into both exe and tests).
 # ---------------------------------------------------------------------------
 add_library(bp-reader-core STATIC
+    src/Env.cpp
+    src/Diagnostics.cpp
     src/jsonrpc/Server.cpp
     src/jsonrpc/Mcp.cpp
     src/tools/ToolRegistry.cpp
