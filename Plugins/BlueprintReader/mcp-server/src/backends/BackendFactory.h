@@ -41,6 +41,13 @@ struct BackendConfig {
                                   // Spawns the editor daemon on startup in a background
                                   // thread so the first tool call doesn't pay the ~5–30 s
                                   // editor cold-start cost.
+    int  cacheTtlSeconds = 30;    // Memoize read-tool results for this many
+                                  // seconds. 0 disables caching. Default is
+                                  // 30 — long enough to absorb back-to-back
+                                  // queries from an AI client, short enough
+                                  // that user edits in the editor flush within
+                                  // a turn or two. Set via
+                                  // BP_READER_CACHE_TTL_SECONDS.
 };
 
 // Read BP_READER_* from the environment, then auto-discover anything still

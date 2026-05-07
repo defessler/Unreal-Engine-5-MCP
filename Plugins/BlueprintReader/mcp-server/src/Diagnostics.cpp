@@ -115,7 +115,7 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
             "Auto-discovery (EnabledByDefault: true) usually handles this, "
             "but big-project TargetRules sometimes filter it out — adding "
             "an explicit entry is the reliable fix.",
-            R"(Add to MyGameProject.uproject's Plugins array:
+            R"(Add to <YourProject>.uproject's Plugins array:
     { "Name": "BlueprintReader", "Enabled": true })"));
     } else {
         r.findings.push_back(Ok("BlueprintReader is enabled in .uproject"));

@@ -1,52 +1,101 @@
 # Tool Reference
 
-21 tools — 7 read, 12 write, 2 meta. All use snake_case JSON keys; nullable
+22 tools — 8 read, 12 write, 2 meta. All use snake_case JSON keys; nullable
 string fields emit `null`; `BPNode.meta` is a real nested object (not a
 string-of-JSON). Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
+## Response controls (read tools)
+
+Every read tool below accepts the same trio of optional arguments for
+shrinking responses — important for AI clients, where every byte of a
+tool response is consumed as context tokens:
+
+| Argument | Effect |
+|---------|--------|
+| `fields`  | Array of dotted paths. Keep only those keys; drop the rest. Use `[]` to apply the path to every element of an array. Example: `["name", "variables[].name"]` returns just the BP name and the names of its variables. |
+| `limit`   | Cap the number of items returned (only meaningful when the response is an array — `list_blueprints`, `list_variables`, `find_node`, `get_components`). |
+| `offset`  | 0-based index into the result array. Pair with `limit` for paging. |
+
+Omitting these gives the full payload (back-compat with pre-projection
+clients).
+
 ## Read tools
 
-### `list_blueprints`
-List all blueprint assets under a content path. Defaults to `/Game`.
-Uses the asset registry — fast, doesn't load every BP.
+### `summarize_blueprint`
+Tiny orientation response: parent class plus counts of variables,
+functions, graphs, macros, and interfaces. Use this **first** when you
+don't yet know how big a BP is — saves loading the full payload to find
+out it has hundreds of variables.
 
 ```json
 // args
-{ "root": "/Game/AI" }
+{ "asset_path": "/Game/AI/BP_TestEnemy" }
 
 // returns
-{ "blueprints": [
-    { "asset_path": "/Game/AI/BP_TestEnemy",  "parent_class": "/Script/Engine.Actor" },
-    { "asset_path": "/Game/AI/BP_TestPickup", "parent_class": "/Script/Engine.Actor" }
-] }
+{
+  "name":            "BP_TestEnemy",
+  "asset_path":      "/Game/AI/BP_TestEnemy",
+  "parent_class":    "ACharacter",
+  "variable_count":  5,
+  "function_count":  2,
+  "graph_count":     3,
+  "macro_count":     0,
+  "interface_count": 1
+}
+```
+
+### `list_blueprints`
+List all blueprint assets under a content path. Defaults to `/Game`.
+Uses the asset registry — fast, doesn't load every BP. On big projects
+this can return thousands of entries — use `limit`/`offset` to page,
+and `fields` to drop columns.
+
+```json
+// args
+{ "path": "/Game/AI", "limit": 50, "fields": ["asset_path"] }
+
+// returns
+[
+  { "asset_path": "/Game/AI/BP_TestEnemy" },
+  { "asset_path": "/Game/AI/BP_TestPickup" }
+]
 ```
 
 ### `read_blueprint`
-Top-level metadata: parent class, interfaces, variables, graph summaries.
+Top-level metadata: parent class, interfaces, variables, graph
+summaries. Pass `fields` to project, e.g. `["parent_class", "variables[].name"]`.
 
 ```json
-{ "asset_path": "/Game/AI/BP_TestEnemy" }
+{ "asset_path": "/Game/AI/BP_TestEnemy",
+  "fields": ["parent_class", "variables[].name"] }
 ```
 
 ### `get_graph`
-Full node + connection graph by name. Defaults to `EventGraph`.
+Full node + connection graph by name. Defaults to `EventGraph`. Big
+graphs are big — `fields=["nodes[].title", "nodes[].kind"]` is a common
+projection.
 
 ```json
 { "asset_path": "/Game/AI/BP_TestEnemy", "graph_name": "EventGraph" }
 ```
 
 ### `get_function`
-A function's signature (inputs/outputs/locals) + body graph.
+A function's signature (inputs/outputs/locals) + body graph. Project
+with `fields=["inputs[].name", "outputs[].name"]` for just the signature.
 
 ```json
 { "asset_path": "/Game/AI/BP_TestEnemy", "function_name": "ApplyDamage" }
 ```
 
 ### `list_variables`
-Member variables with type, default, category, replication state.
+Member variables with type, default, category, replication state. Big
+BPs can have 100+ variables — use `fields`/`limit`/`offset` to keep
+responses small.
 
 ```json
-{ "asset_path": "/Game/AI/BP_TestEnemy" }
+{ "asset_path": "/Game/AI/BP_TestEnemy",
+  "fields": ["name", "type.category"],
+  "limit":  20 }
 ```
 
 ### `get_components`
@@ -58,21 +107,24 @@ SCS components — name, class, parent, root flag.
 
 ### `find_node`
 Substring search by class/title; optional `kind` filter on K2 extras.
+Pair with `fields=["id", "title", "kind"]` for tiny responses on busy
+graphs.
 
 ```json
 {
-  "asset_path":   "/Game/AI/BP_TestEnemy",
-  "graph_name":   "EventGraph",        // optional, omit to search all graphs
-  "query":        "Health",            // optional substring
-  "class_filter": "K2Node_VariableGet",// optional
-  "kind":         "variable_get"       // optional, see list_node_kinds
+  "asset_path": "/Game/AI/BP_TestEnemy",
+  "query":      "Health",
+  "kind":       "VariableGet",
+  "fields":     ["id", "title", "kind"]
 }
 ```
 
 ## Write tools
 
 All write tools recompile and save the blueprint. They return the new
-state (variable list, node GUID, etc.) on success.
+state (variable list, node GUID, etc.) on success. Successful writes
+also drop the [server-side cache](Configuration#response-caching) for
+the affected asset, so a follow-up read sees the new state.
 
 ### `add_variable`
 Add a member variable with full BPPinType + default + category + flags.

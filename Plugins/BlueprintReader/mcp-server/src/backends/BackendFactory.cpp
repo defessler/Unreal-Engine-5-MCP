@@ -1,4 +1,5 @@
 #include "backends/BackendFactory.h"
+#include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "Env.h"
@@ -35,6 +36,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
     cfg.editorExtraArgs       = env::GetOrDefault("BP_READER_EDITOR_ARGS", "");
     cfg.useDaemon             = env::BoolOrDefault("BP_READER_DAEMON", true, log);
     cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
+    cfg.cacheTtlSeconds       = env::IntOrDefault("BP_READER_CACHE_TTL_SECONDS", 30);
 
     // ----- auto-discovery (Tier 1 UX) ---------------------------------
     //
@@ -112,31 +114,34 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 }
 
 std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
-    if (cfg.backend == "mock") {
-        return std::make_unique<MockBlueprintReader>(cfg.fixturesDir);
-    }
-    if (cfg.backend == "commandlet") {
-        CommandletBlueprintReader::Config cc;
-        cc.engineDir       = cfg.engineDir;
-        cc.uproject        = cfg.uproject;
-        cc.timeout         = std::chrono::seconds(cfg.timeoutSeconds);
-        cc.startupTimeout  = std::chrono::seconds(cfg.startupTimeoutSeconds);
-        cc.useDaemon       = cfg.useDaemon;
-        cc.editorConfig    = cfg.editorConfig;
-        cc.editorExtraArgs = cfg.editorExtraArgs;
-        auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
-        if (cfg.prewarm && cfg.useDaemon) {
-            r->Prewarm();
+    auto buildInner = [&]() -> std::unique_ptr<IBlueprintReader> {
+        if (cfg.backend == "mock") {
+            return std::make_unique<MockBlueprintReader>(cfg.fixturesDir);
         }
-        return r;
-    }
-    if (cfg.backend == "live") {
+        if (cfg.backend == "commandlet") {
+            CommandletBlueprintReader::Config cc;
+            cc.engineDir       = cfg.engineDir;
+            cc.uproject        = cfg.uproject;
+            cc.timeout         = std::chrono::seconds(cfg.timeoutSeconds);
+            cc.startupTimeout  = std::chrono::seconds(cfg.startupTimeoutSeconds);
+            cc.useDaemon       = cfg.useDaemon;
+            cc.editorConfig    = cfg.editorConfig;
+            cc.editorExtraArgs = cfg.editorExtraArgs;
+            auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
+            if (cfg.prewarm && cfg.useDaemon) {
+                r->Prewarm();
+            }
+            return r;
+        }
+        if (cfg.backend == "live") {
+            throw BlueprintReaderError(fmt::format(
+                "backend '{}' is not implemented yet (Phase 2). "
+                "Set BP_READER_BACKEND to 'mock' or 'commandlet'.", cfg.backend));
+        }
         throw BlueprintReaderError(fmt::format(
-            "backend '{}' is not implemented yet (Phase 2). "
-            "Set BP_READER_BACKEND to 'mock' or 'commandlet'.", cfg.backend));
-    }
-    throw BlueprintReaderError(fmt::format(
-        "unknown backend '{}': expected one of mock|commandlet|live", cfg.backend));
+            "unknown backend '{}': expected one of mock|commandlet|live", cfg.backend));
+    };
+    return WrapWithCache(buildInner(), std::chrono::seconds(cfg.cacheTtlSeconds));
 }
 
 } // namespace bpr::backends
