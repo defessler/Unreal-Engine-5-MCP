@@ -91,7 +91,7 @@ UE setup — useful for iterating on the MCP server itself.
 cd Plugins/BlueprintReader/mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe   # 45 mock cases run; 12 live cases skip
+build\tests\Release\bp-reader-tests.exe   # 60 mock cases run; 12 live + 4 soak cases skip by default
 ```
 
 ### UE plugin (needed for the commandlet backend)
@@ -138,10 +138,22 @@ files from the unity cpp and only recompiles what changed.
 Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
 ```
 
-45 cases pass; 12 commandlet-backed cases auto-skip without env vars set.
-CI runs this on every push to `main` that touches
+60 cases pass in <1 s; 16 auto-skip (12 commandlet-backed without UE
+env vars set + 4 soak cases tagged into a separate suite). CI runs
+this on every push to `main` that touches
 `Plugins/BlueprintReader/mcp-server/**` or the workflow file.
 Workflow at `.github/workflows/mcp-server.yml`.
+
+### Soak / large-project simulation (opt-in)
+
+```pwsh
+Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe --test-suite=soak
+```
+
+4 cases, ~22k assertions: 5000 mixed tool calls (read tool surface,
+randomized), 1000 each through both framings, large-response handling
+via `find_node`, "big project" path diversity simulation. Takes a
+few seconds. Run after transport-layer or tool-registry changes.
 
 ### Live (drives real `UnrealEditor-Cmd.exe`)
 
