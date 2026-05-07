@@ -131,6 +131,27 @@ daemon restarts.
 restart the MCP server / Claude session). The next call respawns a
 fresh editor with a fresh registry.
 
+## First diagnostic: run the verifier
+
+Before chasing log messages, run the build-state verifier:
+
+```
+Plugins\BlueprintReader\Scripts\Verify-Build.bat
+```
+
+It checks both halves of the plugin:
+
+- `bp-reader-mcp.exe` — built by cmake / the PreBuildStep
+- `UnrealEditor-BlueprintReaderEditor.dll` — built by UBT during an
+  editor-target build
+
+Most "daemon exited before reaching READY" cases turn out to be a
+missing `UnrealEditor-BlueprintReaderEditor.dll`: UE finishes plugin
+discovery, doesn't find a `BlueprintReader` commandlet class, and
+exits cleanly. The verifier will spot this and print the exact UBT
+command to fix it (it autodetects your `.uproject` and the editor
+target name).
+
 ## "daemon exited before reaching READY" — plugin or module failed to load
 
 If the server's stderr says `daemon exited before reaching READY`
