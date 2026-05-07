@@ -76,6 +76,19 @@ TEST_CASE("ReadFrame errors on Content-Length-style frame missing the header") {
     CHECK_THROWS_AS(ReadFrame(is), std::runtime_error);
 }
 
+TEST_CASE("ReadFrame strips a leading UTF-8 BOM") {
+    // Some clients on Windows insert a BOM when piping JSON. nlohmann::json's
+    // parser would otherwise throw on it.
+    std::string framed = "\xEF\xBB\xBF";  // BOM
+    framed += R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
+    framed += "\n";
+    std::istringstream is(framed);
+    auto raw = ReadFrame(is);
+    REQUIRE(raw.has_value());
+    auto parsed = json::parse(*raw);
+    CHECK(parsed["id"] == 1);
+}
+
 TEST_CASE("Dispatch handles parse error path (Content-Length input)") {
     Server s;
     std::string framed = "Content-Length: 5\r\n\r\n{bad}";
