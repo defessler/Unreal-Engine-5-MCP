@@ -9,6 +9,8 @@ add_executable(bp-reader-tests
     test_mock_backend.cpp
     test_tools.cpp
     test_commandlet_backend.cpp
+    test_framing_stress.cpp
+    test_soak.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE
