@@ -15,7 +15,7 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                          | How long the server waits for the editor daemon to reach READY on first launch. Bigger UE projects (lots of plugins, large content set, cold DDC) can take 5–10 minutes the first time. |
 | `BP_READER_DAEMON`          | `1` (on)                               | `0`/`false`/`no`/`off` to opt out of daemon mode.                        |
 | `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
-| `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Use this to disable plugins whose binaries aren't built in your engine — e.g. `-DisablePlugin=DLSS` — without modifying the `.uproject`. |
+| `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Most useful value: `-EnableAllPlugins` — makes plugin-module load failures non-fatal so the editor starts up even when binary marketplace plugins (DLSS, Wwise, etc.) aren't built. See [Troubleshooting](Troubleshooting). |
 
 ## Pre-warm
 
