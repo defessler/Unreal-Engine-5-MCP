@@ -118,10 +118,30 @@ std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat) {
     // Skip leading whitespace (newlines, CRs, spaces). Some clients pad with
     // a trailing \n after the framing terminator; tolerate it instead of
     // throwing "malformed header" on next read.
+    //
+    // Also tolerate a UTF-8 BOM (EF BB BF) at the start of the stream — some
+    // clients on Windows insert one when piping JSON, and nlohmann::json's
+    // parser throws on a leading BOM by default.
     while (true) {
         int c = in.peek();
         if (c == std::char_traits<char>::eof()) return std::nullopt;
         if (c == '\r' || c == '\n' || c == ' ' || c == '\t') { in.get(); continue; }
+        // BOM check: if the next 3 bytes are EF BB BF, eat them and re-skip.
+        if (c == 0xEF) {
+            // Read 3 bytes; check for BOM. Anything else is malformed but we
+            // re-throw at parse time rather than guess.
+            char tri[3];
+            in.read(tri, 3);
+            if (in.gcount() == 3 &&
+                static_cast<unsigned char>(tri[0]) == 0xEF &&
+                static_cast<unsigned char>(tri[1]) == 0xBB &&
+                static_cast<unsigned char>(tri[2]) == 0xBF) {
+                continue;  // BOM consumed, skip more whitespace
+            }
+            // Not a BOM — push back what we read and let it fail downstream.
+            for (int i = 2; i >= 0; --i) in.putback(tri[i]);
+            break;
+        }
         break;
     }
 

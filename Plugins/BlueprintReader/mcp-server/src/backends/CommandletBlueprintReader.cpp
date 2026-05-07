@@ -105,12 +105,63 @@ struct ProcResult {
     std::string failureReason;
 };
 
+// Append `n` bytes from `buf` to `tail`, capping `tail` at `cap` bytes by
+// dropping from the front. Cuts at the next '\n' boundary so we don't leave
+// a half-codepoint on UTF-8 path strings (UE log lines often contain non-
+// ASCII content). Falls back to a hard erase if no newline is found within
+// the cap window.
 void AppendTail(std::string& tail, const char* buf, size_t n, size_t cap = 8192) {
     tail.append(buf, n);
     if (tail.size() > cap) {
-        tail.erase(0, tail.size() - cap);
+        std::size_t cutFrom = tail.size() - cap;
+        auto nl = tail.find('\n', cutFrom);
+        if (nl != std::string::npos) {
+            tail.erase(0, nl + 1);
+        } else {
+            tail.erase(0, cutFrom);
+        }
     }
 }
+
+// Tiny RAII wrapper around a Win32 HANDLE. CloseHandle is safe on nullptr
+// and on INVALID_HANDLE_VALUE — but we keep our own nullptr-guard so the
+// destructor doesn't loudly fail on Windows builds with stricter flags.
+struct UniqueHandle {
+    HANDLE h = nullptr;
+    UniqueHandle() = default;
+    explicit UniqueHandle(HANDLE x) : h(x) {}
+    UniqueHandle(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(const UniqueHandle&) = delete;
+    UniqueHandle(UniqueHandle&& other) noexcept : h(other.h) { other.h = nullptr; }
+    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
+        if (this != &other) { Reset(); h = other.h; other.h = nullptr; }
+        return *this;
+    }
+    ~UniqueHandle() { Reset(); }
+    void Reset(HANDLE x = nullptr) {
+        if (h && h != INVALID_HANDLE_VALUE) CloseHandle(h);
+        h = x;
+    }
+    HANDLE Release() { HANDLE x = h; h = nullptr; return x; }
+    explicit operator bool() const { return h != nullptr && h != INVALID_HANDLE_VALUE; }
+};
+
+// Generic scope guard: invoke a callable when the scope exits, unless
+// Dismiss() was called. Used to clean up the per-call temp file even if
+// any code between RunOpDaemon's "create file" and "drop file" throws.
+template <typename F>
+class ScopeGuard {
+public:
+    explicit ScopeGuard(F f) : f_(std::move(f)) {}
+    ~ScopeGuard() { if (active_) f_(); }
+    void Dismiss() { active_ = false; }
+    ScopeGuard(const ScopeGuard&) = delete;
+    ScopeGuard& operator=(const ScopeGuard&) = delete;
+private:
+    F f_;
+    bool active_ = true;
+};
+template <typename F> ScopeGuard<F> MakeScopeGuard(F f) { return ScopeGuard<F>(std::move(f)); }
 
 ProcResult RunChild(const std::wstring& exe,
                     const std::vector<std::wstring>& args,
@@ -195,9 +246,19 @@ ProcResult RunChild(const std::wstring& exe,
             break;
         }
     }
+    // Final drain after the wait loop exits — anything written between the
+    // last in-loop drain and process exit/terminate would otherwise be lost
+    // from res.stderrTail, which is exactly what shows up in our error
+    // messages.
+    drain(outR, res.stdoutTail);
+    drain(errR, res.stderrTail);
 
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
+    // Initialize code explicitly. If GetExitCodeProcess fails we want a
+    // sentinel rather than whatever uninit value it left behind.
+    DWORD code = 0xFFFFFFFF;
+    if (!GetExitCodeProcess(pi.hProcess, &code)) {
+        code = 0xFFFFFFFF;
+    }
     res.exitCode = code;
 
     CloseHandle(pi.hProcess);
@@ -489,9 +550,13 @@ void CommandletBlueprintReader::Prewarm() {
 
 void CommandletBlueprintReader::EnsureDaemon() {
     if (daemonProcess_ != nullptr) {
-        // Sanity: if the child died unexpectedly, recycle.
-        DWORD code = STILL_ACTIVE;
-        if (GetExitCodeProcess(daemonProcess_, &code) && code != STILL_ACTIVE) {
+        // Sanity: if the child died unexpectedly, recycle. Use a 0-timeout
+        // wait rather than GetExitCodeProcess + STILL_ACTIVE comparison —
+        // the latter is fooled if the child legitimately exits with code
+        // 259 (== STILL_ACTIVE).
+        if (WaitForSingleObject(daemonProcess_, 0) == WAIT_OBJECT_0) {
+            DWORD code = 0;
+            GetExitCodeProcess(daemonProcess_, &code);
             std::fprintf(stderr,
                 "[bp-reader-mcp][commandlet][daemon] child exited with code %lu; respawning\n",
                 static_cast<unsigned long>(code));
@@ -634,9 +699,12 @@ std::string CommandletBlueprintReader::ReadUntilMarker(
             return consumed;
         }
 
-        // Check if child died.
-        DWORD code = STILL_ACTIVE;
-        if (GetExitCodeProcess(daemonProcess_, &code) && code != STILL_ACTIVE) {
+        // Check if child died. Same code-259 caveat — WaitForSingleObject(0)
+        // returns WAIT_OBJECT_0 only if the process is actually signaled
+        // (i.e. exited).
+        if (WaitForSingleObject(daemonProcess_, 0) == WAIT_OBJECT_0) {
+            DWORD code = 0;
+            GetExitCodeProcess(daemonProcess_, &code);
             throw BlueprintReaderError(fmt::format(
                 "daemon process exited (code={}); tail:\n{}", code, TrimLines(accumulator_, 250)));
         }
@@ -680,21 +748,35 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
     line.append(L" -Out=" + QuoteArg(outFile.wstring()));
     line.append(L" -Compact\n");
 
-    auto cleanup = [&]() {
+    // RAII cleanup of the temp file: runs even if any throw between here
+    // and the dismiss point at the end. Avoids the previous pattern of
+    // manually `cleanup();` before each `throw` and relying on every
+    // future caller to remember.
+    auto outFileGuard = MakeScopeGuard([&]() {
         std::error_code ec;
         std::filesystem::remove(outFile, ec);
-    };
+    });
 
     std::string lineUtf8 = Narrow(line);
 
     const auto t0 = std::chrono::steady_clock::now();
 
-    DWORD written = 0;
-    if (!WriteFile(daemonStdin_, lineUtf8.data(),
-                   static_cast<DWORD>(lineUtf8.size()), &written, nullptr) ||
-        written != lineUtf8.size()) {
-        cleanup();
-        throw BlueprintReaderError("daemon stdin write failed");
+    // Loop on partial writes — anonymous pipes can in principle short-write
+    // a long command line if the kernel pipe buffer is small. Today our
+    // command lines are << pipe buffer size, but loop anyway for safety.
+    {
+        const char* p = lineUtf8.data();
+        std::size_t left = lineUtf8.size();
+        while (left > 0) {
+            DWORD written = 0;
+            if (!WriteFile(daemonStdin_, p,
+                           static_cast<DWORD>(left), &written, nullptr) ||
+                written == 0) {
+                throw BlueprintReaderError("daemon stdin write failed");
+            }
+            p += written;
+            left -= written;
+        }
     }
 
     // Wait for the per-call sentinel `__BPR_DONE <code>__\n`. The plugin
@@ -711,7 +793,6 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
         try {
             exitCode = std::stoi(digits);
         } catch (...) {
-            cleanup();
             throw BlueprintReaderError(fmt::format(
                 "daemon emitted malformed sentinel: code='{}'", digits));
         }
@@ -725,7 +806,6 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
 
     if (exitCode != 0) {
         std::string tail = TrimLines(accumulator_, 250);
-        cleanup();
         if (exitCode == 4) {
             throw AssetNotFound(fmt::format(
                 "daemon op exit=4 (missing target); tail:\n{}", tail));
@@ -744,11 +824,10 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
         std::ifstream in(outFile);
         in >> parsed;
     } catch (const std::exception& e) {
-        cleanup();
         throw BlueprintReaderError(fmt::format(
             "failed to parse daemon JSON ({}): {}", outFile.string(), e.what()));
     }
-    cleanup();
+    // outFileGuard runs here on normal return.
     return parsed;
 }
 

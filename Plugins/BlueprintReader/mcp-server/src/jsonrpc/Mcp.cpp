@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <stdexcept>
+#include <vector>
 
 #include <fmt/core.h>
 
@@ -37,9 +38,31 @@ void RegisterHandlers(jr::Server& server,
                       const tools::ToolRegistry& registry,
                       const ServerInfo& info) {
     // -------- initialize ---------------------------------------------------
-    server.Register("initialize", [info](const nlohmann::json& /*params*/) -> jr::Response {
+    server.Register("initialize", [info](const nlohmann::json& params) -> jr::Response {
+        // Echo the client's protocolVersion if we recognize it; fall back to
+        // our default. The MCP spec evolves and clients send a string like
+        // "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
+        // is the spec-compliant negotiation behaviour — hardcoding our own
+        // version forces older clients to either error or strip features.
+        // We accept any version equal to or older than ours to be permissive.
+        static const std::vector<std::string> kKnownVersions = {
+            "2024-11-05", // initial public spec
+            "2025-03-26", // tool annotations / progress
+            "2025-06-18", // resources, etc.
+        };
+        std::string negotiated = info.protocolVersion;
+        if (params.is_object()) {
+            auto pv = params.find("protocolVersion");
+            if (pv != params.end() && pv->is_string()) {
+                std::string requested = pv->get<std::string>();
+                for (const auto& v : kKnownVersions) {
+                    if (v == requested) { negotiated = requested; break; }
+                }
+            }
+        }
+
         nlohmann::json result = {
-            {"protocolVersion", info.protocolVersion},
+            {"protocolVersion", negotiated},
             {"capabilities", {
                 {"tools", nlohmann::json::object()}, // we serve tools, no list-changed notifs
             }},
