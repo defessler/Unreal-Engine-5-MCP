@@ -382,10 +382,10 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
         cleanup();
         throw BlueprintReaderError(fmt::format(
             "commandlet timed out after {}s; tail of stderr:\n{}",
-            cfg_.timeout.count(), TrimLines(r.stderrTail, 50)));
+            cfg_.timeout.count(), TrimLines(r.stderrTail, 250)));
     }
     if (r.exitCode != 0) {
-        std::string tail = TrimLines(r.stderrTail.empty() ? r.stdoutTail : r.stderrTail, 50);
+        std::string tail = TrimLines(r.stderrTail.empty() ? r.stdoutTail : r.stderrTail, 250);
         cleanup();
         if (r.exitCode == 4) {
             throw AssetNotFound(fmt::format(
@@ -544,27 +544,52 @@ void CommandletBlueprintReader::EnsureDaemon() {
     try {
         ReadUntilMarker("__BPR_READY__\n", cfg_.startupTimeout);
     } catch (const std::exception& e) {
+        // Persist the full daemon stderr/stdout to a known file before tearing
+        // down — the inline tail (now 250 lines but still bounded) often
+        // truncates the actual fatal when many other plugins log warnings
+        // first. Users can read this file to see the whole story.
+        std::filesystem::path logPath;
+        try {
+            logPath = std::filesystem::temp_directory_path() / "bp-reader-mcp-daemon-failure.log";
+            std::ofstream logFile(logPath, std::ios::trunc);
+            if (logFile) {
+                logFile << "=== Daemon failed to reach READY ===\n";
+                logFile << "Engine    : " << cfg_.engineDir.string() << "\n";
+                logFile << "Project   : " << cfg_.uproject.string() << "\n";
+                logFile << "ExtraArgs : " << cfg_.editorExtraArgs << "\n";
+                logFile << "Error     : " << e.what() << "\n\n";
+                logFile << "=== Full editor stdout/stderr (newest line last) ===\n";
+                logFile << accumulator_;
+            }
+        } catch (...) {
+            // Don't let logging-the-failure failure shadow the original failure.
+            logPath.clear();
+        }
         TerminateDaemon();
+
         const std::string what = e.what();
+        const std::string logHint = logPath.empty()
+            ? std::string{}
+            : fmt::format("\nFull daemon log: {}", logPath.string());
+
         // The two failure modes have very different fixes — separate them so
         // the next reader of the message doesn't go chase the wrong one.
         if (what.find("process exited") != std::string::npos) {
             throw BlueprintReaderError(fmt::format(
-                "daemon exited before reaching READY: {}\n"
-                "Hint: scan the tail above for 'Error:' / 'Fatal:' lines. If a "
-                "plugin or module failed to load (e.g. 'Plugin X failed to load "
-                "because module Y could not be found'), set "
-                "BP_READER_EDITOR_ARGS=\"-EnableAllPlugins\". UE's CLI "
-                "-DisablePlugins= switch is a no-op for plugins that are "
-                "already enabled in the .uproject; -EnableAllPlugins is the "
-                "real escape hatch — it makes plugin-module load failures "
-                "non-fatal so the daemon can finish starting up.",
-                what));
+                "daemon exited before reaching READY: {}{}\n"
+                "Hint: scan the tail above (and the full log) for 'Error:' / "
+                "'Fatal:' lines, OR for absence of any 'BlueprintReader' / "
+                "'BlueprintReaderEditor' / 'Commandlet' messages — if you see "
+                "no BlueprintReader logs, the UE plugin module probably isn't "
+                "built (rebuild the editor target). For plugin/module load "
+                "failures (e.g. 'Plugin X failed to load because module Y...'), "
+                "set BP_READER_EDITOR_ARGS=\"-EnableAllPlugins\".",
+                what, logHint));
         }
         throw BlueprintReaderError(fmt::format(
             "daemon timed out reaching READY (waited {}s; bump "
-            "BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects): {}",
-            cfg_.startupTimeout.count(), what));
+            "BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects): {}{}",
+            cfg_.startupTimeout.count(), what, logHint));
     }
     const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
@@ -590,13 +615,13 @@ std::string CommandletBlueprintReader::ReadUntilMarker(
         DWORD code = STILL_ACTIVE;
         if (GetExitCodeProcess(daemonProcess_, &code) && code != STILL_ACTIVE) {
             throw BlueprintReaderError(fmt::format(
-                "daemon process exited (code={}); tail:\n{}", code, TrimLines(accumulator_, 50)));
+                "daemon process exited (code={}); tail:\n{}", code, TrimLines(accumulator_, 250)));
         }
 
         if (std::chrono::steady_clock::now() >= deadline) {
             throw BlueprintReaderError(fmt::format(
                 "daemon read timeout after {}s waiting for marker; tail:\n{}",
-                timeout.count(), TrimLines(accumulator_, 50)));
+                timeout.count(), TrimLines(accumulator_, 250)));
         }
 
         DWORD avail = 0;
@@ -676,7 +701,7 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
                  opArgs.size(), exitCode, static_cast<long long>(dt));
 
     if (exitCode != 0) {
-        std::string tail = TrimLines(accumulator_, 50);
+        std::string tail = TrimLines(accumulator_, 250);
         cleanup();
         if (exitCode == 4) {
             throw AssetNotFound(fmt::format(
