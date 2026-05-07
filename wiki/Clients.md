@@ -174,6 +174,58 @@ VS Code prompts to trust the server the first time it sees a new
 entry. If a server gets stuck after edits, run **MCP: Reset Cached
 Tools** or reload the window.
 
+## GitHub Copilot (JetBrains Rider / IDEA / etc.)
+
+JetBrains Copilot supports MCP, but its env-block handling has a quirk
+worth knowing about: env vars past the first ~4 entries can silently
+fail to reach the spawned server. If you set everything in the
+config's `env` block and the server's banner shows defaults for the
+later entries, this is what's happening.
+
+**Workaround: route the launch through `Start-MCPServer.bat`**, which
+re-loads the env from `.mcp.json` itself before exec'ing the exe. The
+launcher reads every `BP_READER_*` key from the JSON's env block and
+sets it in the child process — so even if Copilot only forwards 2 of
+your 6 vars, the launcher fills in the rest.
+
+```json
+{
+  "bp-reader": {
+    "type": "stdio",
+    "command": "D:\\YourGame\\MyProject\\Plugins\\BlueprintReader\\Scripts\\Start-MCPServer.bat",
+    "env": {
+      "BP_READER_BACKEND":    "commandlet",
+      "BP_READER_ENGINE_DIR": "D:\\YourGame",
+      "BP_READER_PROJECT":    "D:\\YourGame\\MyProject\\MyProject.uproject"
+    }
+  }
+}
+```
+
+Then put the **complete** env block (including any vars beyond the
+first 4) in `<projectRoot>/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "bp-reader": {
+      "command": "...bp-reader-mcp.exe",
+      "env": {
+        "BP_READER_BACKEND":    "commandlet",
+        "BP_READER_ENGINE_DIR": "D:\\YourGame",
+        "BP_READER_PROJECT":    "D:\\YourGame\\MyProject\\MyProject.uproject",
+        "BP_READER_PREWARM":    "1",
+        "BP_READER_EDITOR_ARGS": "-DisablePlugin=DLSS"
+      }
+    }
+  }
+}
+```
+
+The launcher's banner prints `forwarded from .mcp.json: …` so you can
+verify what got injected. Restart the IDE after switching the
+`command` field.
+
 ## ChatGPT (requires a bridge)
 
 > ⚠ **ChatGPT does not support local stdio MCP servers.** It only
