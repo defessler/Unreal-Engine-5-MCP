@@ -85,6 +85,17 @@ std::wstring BuildCommandLine(const std::wstring& exe,
     return cmd;
 }
 
+// Split a whitespace-separated string into tokens. No quote handling — UE
+// commandlet args almost never contain spaces in their values, so anything
+// fancier than std::istringstream is overkill for now.
+std::vector<std::wstring> SplitArgs(const std::string& s) {
+    std::vector<std::wstring> out;
+    std::istringstream iss(s);
+    std::string tok;
+    while (iss >> tok) out.push_back(Widen(tok));
+    return out;
+}
+
 struct ProcResult {
     bool launched = false;
     bool timedOut = false;
@@ -345,6 +356,7 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
     args.push_back(L"-unattended");
     args.push_back(L"-nopause");
     args.push_back(L"-stdout");
+    for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) args.push_back(std::move(extra));
 
     const auto t0 = std::chrono::steady_clock::now();
     auto r = RunChild(editorCmdExe_.wstring(), args, cfg_.timeout);
@@ -491,6 +503,7 @@ void CommandletBlueprintReader::EnsureDaemon() {
     args.push_back(L"-unattended");
     args.push_back(L"-nopause");
     args.push_back(L"-stdout");
+    for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) args.push_back(std::move(extra));
     std::wstring cmd = BuildCommandLine(editorCmdExe_.wstring(), args);
 
     STARTUPINFOW si{};
@@ -532,10 +545,22 @@ void CommandletBlueprintReader::EnsureDaemon() {
         ReadUntilMarker("__BPR_READY__\n", cfg_.startupTimeout);
     } catch (const std::exception& e) {
         TerminateDaemon();
+        const std::string what = e.what();
+        // The two failure modes have very different fixes — separate them so
+        // the next reader of the message doesn't go chase the wrong one.
+        if (what.find("process exited") != std::string::npos) {
+            throw BlueprintReaderError(fmt::format(
+                "daemon exited before reaching READY: {}\n"
+                "Hint: scan the tail above for 'Error:' / 'Fatal:' lines. If a "
+                "plugin or module failed to load (e.g. 'Plugin X failed to load'), "
+                "you can usually skip it via "
+                "BP_READER_EDITOR_ARGS=\"-DisablePlugin=PluginName\".",
+                what));
+        }
         throw BlueprintReaderError(fmt::format(
-            "daemon failed to reach READY (waited up to {}s; bump "
+            "daemon timed out reaching READY (waited {}s; bump "
             "BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects): {}",
-            cfg_.startupTimeout.count(), e.what()));
+            cfg_.startupTimeout.count(), what));
     }
     const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();

@@ -131,18 +131,50 @@ daemon restarts.
 restart the MCP server / Claude session). The next call respawns a
 fresh editor with a fresh registry.
 
-## "daemon failed to reach READY" / server times out before starting
+## "daemon exited before reaching READY" — plugin or module failed to load
 
-Big UE projects can take **minutes** for `UnrealEditor-Cmd.exe` to load
-all editor modules, scan the asset registry, and compile shaders
-against a cold DDC. The server's *startup* timeout is separate from
-the per-call timeout for this reason — but if your project is slower
-than the default, bump it.
+If the server's stderr says `daemon exited before reaching READY`
+followed by a `(code=1)` and a tail with `LogPluginManager: Error:
+Plugin 'X' failed to load because module 'Y' could not be found.`,
+your project enables a plugin whose binaries aren't built in this
+engine. Common offenders: DLSS, FSR, NVIDIA Reflex, Wwise plugins —
+binary marketplace plugins that come pre-built for the launcher engine
+but not your source-built one.
+
+The MCP server only needs to read `.uasset` files; it doesn't need
+those plugins. Skip them via `BP_READER_EDITOR_ARGS`:
+
+```json
+"env": {
+  "BP_READER_BACKEND":      "commandlet",
+  "BP_READER_ENGINE_DIR":   "D:\\Projects\\Unreal Engine 5",
+  "BP_READER_PROJECT":      "D:\\Path\\To\\Your.uproject",
+  "BP_READER_EDITOR_ARGS":  "-DisablePlugin=DLSS"
+}
+```
+
+For multiple plugins, separate with spaces:
 
 ```
-[bp-reader-mcp][commandlet][daemon] daemon failed to reach READY
-  (waited up to 600s; bump BP_READER_STARTUP_TIMEOUT_SECONDS for
-  slower projects): daemon read timeout after 600s waiting for marker
+"BP_READER_EDITOR_ARGS": "-DisablePlugin=DLSS -DisablePlugin=Wwise"
+```
+
+The args are appended verbatim to the editor's command line (after
+`-Daemon -nullrhi -nosplash …`). Anything UE's commandlet accepts
+works here.
+
+## "daemon timed out reaching READY" / server hits the startup timeout
+
+Different failure mode from the one above — the daemon **didn't exit**;
+it's still running but hadn't printed `__BPR_READY__` within the
+startup-timeout window. Big UE projects can take **minutes** to load
+all editor modules, scan the asset registry, and compile shaders
+against a cold DDC.
+
+```
+[bp-reader-mcp][commandlet][daemon] daemon timed out reaching READY
+  (waited 600s; bump BP_READER_STARTUP_TIMEOUT_SECONDS for slower
+  projects): daemon read timeout after 600s waiting for marker
 ```
 
 **Fix**: increase `BP_READER_STARTUP_TIMEOUT_SECONDS`. In `.mcp.json`:
