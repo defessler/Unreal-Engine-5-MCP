@@ -65,12 +65,55 @@ Write-Host ''
 # Build-output checks (these are what users actually need)
 # ---------------------------------------------------------------------------
 Write-Host 'Build outputs:' -ForegroundColor White
-$mcpExe   = Join-Path $PluginDir 'mcp-server\build\Release\bp-reader-mcp.exe'
-$editorDll = Join-Path $PluginDir 'Binaries\Win64\UnrealEditor-BlueprintReaderEditor.dll'
+$mcpExe = Join-Path $PluginDir 'mcp-server\build\Release\bp-reader-mcp.exe'
+$mcpOk  = Check 'bp-reader-mcp.exe (MCP server)' $mcpExe
 
-$mcpOk = Check 'bp-reader-mcp.exe (MCP server)' $mcpExe
-$dllOk = Check 'UnrealEditor-BlueprintReaderEditor.dll (UE plugin module)' $editorDll
+# UE's binary naming: Development is suffix-less, every other config gets
+# "-Win64-<Config>" appended. Find ALL variants so we can tell the user
+# which configs they've built (and warn if Development is missing — that's
+# the one the daemon defaults to launching).
+$binDir = Join-Path $PluginDir 'Binaries\Win64'
+$dllVariants = Get-ChildItem -LiteralPath $binDir `
+                             -Filter 'UnrealEditor-BlueprintReaderEditor*.dll' `
+                             -ErrorAction SilentlyContinue
+$dllOk = $false
+$haveDevelopment = $false
+$haveOtherConfigs = @()
+foreach ($v in $dllVariants) {
+    $dllOk = $true
+    if ($v.Name -eq 'UnrealEditor-BlueprintReaderEditor.dll') {
+        $haveDevelopment = $true
+        Write-Host ('[ OK ] UnrealEditor-BlueprintReaderEditor.dll (Development)') -ForegroundColor Green
+        Write-Host ('       ' + $v.FullName) -ForegroundColor DarkGray
+    } else {
+        # e.g. UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll
+        if ($v.Name -match '^UnrealEditor-BlueprintReaderEditor-Win64-(.+)\.dll$') {
+            $haveOtherConfigs += $Matches[1]
+        }
+        Write-Host ('[ OK ] ' + $v.Name) -ForegroundColor Green
+        Write-Host ('       ' + $v.FullName) -ForegroundColor DarkGray
+    }
+}
+if (-not $dllOk) {
+    Write-Host '[MISS] UnrealEditor-BlueprintReaderEditor*.dll (UE plugin module — any config)' -ForegroundColor Red
+    Write-Host ('       searched: ' + (Join-Path $binDir 'UnrealEditor-BlueprintReaderEditor*.dll')) -ForegroundColor DarkGray
+}
 Write-Host ''
+
+# Warn if the user only has non-Development variants. The daemon defaults to
+# launching UnrealEditor-Cmd.exe (Development) unless BP_READER_EDITOR_CONFIG
+# is set; loading would silently skip a non-matching plugin DLL.
+if ($dllOk -and -not $haveDevelopment -and $haveOtherConfigs.Count -gt 0) {
+    $cfg = $haveOtherConfigs[0]
+    Write-Host 'Note: only non-Development DLL variants are present.' -ForegroundColor Yellow
+    Write-Host ('  Found: ' + ($haveOtherConfigs -join ', '))
+    Write-Host '  The MCP daemon defaults to launching UnrealEditor-Cmd.exe (Development).'
+    Write-Host '  Either:'
+    Write-Host '    (a) build BlueprintReader in Development, or'
+    Write-Host ('    (b) set BP_READER_EDITOR_CONFIG="' + $cfg + '" in your MCP config so the daemon')
+    Write-Host ('        launches UnrealEditor-Cmd-Win64-' + $cfg + '.exe instead.')
+    Write-Host ''
+}
 
 # ---------------------------------------------------------------------------
 # Find the .uproject in ProjectDir to give the user concrete fix commands
