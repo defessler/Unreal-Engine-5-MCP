@@ -152,6 +152,32 @@ exits cleanly. The verifier will spot this and print the exact UBT
 command to fix it (it autodetects your `.uproject` and the editor
 target name).
 
+## Client connects but times out before any tool call ("Request timed out")
+
+Symptom: Copilot / your client logs `MCP error -32001: Request timed out`
+~60 s after starting the server. The server's stderr shows it started up
+fine — banner, daemon READY — but no `framing=` line appears, meaning we
+never received a request.
+
+Cause: stdio framing mismatch. The MCP spec mandates **newline-delimited
+JSON** for stdio transport, but bp-reader historically also accepted
+LSP-style `Content-Length:` framing. Server versions before commit
+`<dual-framing fix>` only spoke Content-Length and silently failed when a
+client sent newline-delimited JSON (the spec-compliant default for the
+official SDKs and JetBrains Copilot).
+
+**Fix**: pull the latest server. The current build auto-detects which
+framing the client sends on the first request and mirrors it on
+responses. The first non-error log line after the request arrives is now:
+
+```
+[bp-reader-mcp] framing=newline-delimited (auto-detected from first request)
+```
+
+If you don't see that line within a few seconds of client connection,
+the client is sending something neither format recognises (very rare;
+usually means the input stream is corrupted somehow — open an issue).
+
 ## Plugin DLL exists but UE silently skips it (no log mention at all)
 
 Symptom: Verify-Build says `[ OK ] UnrealEditor-BlueprintReaderEditor-Win64-DebugGame.dll`,
