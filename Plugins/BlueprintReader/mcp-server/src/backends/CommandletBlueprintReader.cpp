@@ -552,9 +552,13 @@ void CommandletBlueprintReader::EnsureDaemon() {
             throw BlueprintReaderError(fmt::format(
                 "daemon exited before reaching READY: {}\n"
                 "Hint: scan the tail above for 'Error:' / 'Fatal:' lines. If a "
-                "plugin or module failed to load (e.g. 'Plugin X failed to load'), "
-                "you can usually skip it via "
-                "BP_READER_EDITOR_ARGS=\"-DisablePlugin=PluginName\".",
+                "plugin or module failed to load (e.g. 'Plugin X failed to load "
+                "because module Y could not be found'), set "
+                "BP_READER_EDITOR_ARGS=\"-EnableAllPlugins\". UE's CLI "
+                "-DisablePlugins= switch is a no-op for plugins that are "
+                "already enabled in the .uproject; -EnableAllPlugins is the "
+                "real escape hatch — it makes plugin-module load failures "
+                "non-fatal so the daemon can finish starting up.",
                 what));
         }
         throw BlueprintReaderError(fmt::format(

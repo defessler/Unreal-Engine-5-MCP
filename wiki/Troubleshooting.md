@@ -137,31 +137,42 @@ If the server's stderr says `daemon exited before reaching READY`
 followed by a `(code=1)` and a tail with `LogPluginManager: Error:
 Plugin 'X' failed to load because module 'Y' could not be found.`,
 your project enables a plugin whose binaries aren't built in this
-engine. Common offenders: DLSS, FSR, NVIDIA Reflex, Wwise plugins —
-binary marketplace plugins that come pre-built for the launcher engine
-but not your source-built one.
+engine. Common offenders: DLSS, FSR, NVIDIA Reflex, Wwise — binary
+marketplace plugins that come pre-built for the launcher engine but
+not for your source-built one.
 
-The MCP server only needs to read `.uasset` files; it doesn't need
-those plugins. Skip them via `BP_READER_EDITOR_ARGS`:
+**Don't try `-DisablePlugin=`** — UE's CLI plugin-disable switches
+(both `-DisablePlugin=` and `-DisablePlugins=`) silently no-op for
+plugins that are already enabled in the `.uproject`. They only filter
+plugins added by `-EnablePlugins=`. This is verifiable in
+`Engine/Source/Runtime/Projects/Private/PluginManager.cpp` —
+`Context.ConfiguredPluginNames.Contains(name)` is checked before
+applying the disable, and `.uproject`-listed plugins are added to
+that set first.
+
+**The real escape hatch is `-EnableAllPlugins`.** Counter-intuitively
+named, but it does double duty: it adds discovered plugins to the
+enable set AND converts plugin-module load failures from
+fatal-with-popup into warnings, so the editor commandlet can finish
+starting up.
 
 ```json
 "env": {
-  "BP_READER_BACKEND":      "commandlet",
-  "BP_READER_ENGINE_DIR":   "D:\\Projects\\Unreal Engine 5",
-  "BP_READER_PROJECT":      "D:\\Path\\To\\Your.uproject",
-  "BP_READER_EDITOR_ARGS":  "-DisablePlugin=DLSS"
+  "BP_READER_BACKEND":     "commandlet",
+  "BP_READER_ENGINE_DIR":  "D:\\Projects\\Unreal Engine 5",
+  "BP_READER_PROJECT":     "D:\\Path\\To\\Your.uproject",
+  "BP_READER_EDITOR_ARGS": "-EnableAllPlugins"
 }
 ```
 
-For multiple plugins, separate with spaces:
+The MCP server only needs the asset registry + Blueprint
+introspection — DLSS / Wwise / etc. failing to load doesn't affect
+its ability to read `.uasset` files.
 
-```
-"BP_READER_EDITOR_ARGS": "-DisablePlugin=DLSS -DisablePlugin=Wwise"
-```
-
-The args are appended verbatim to the editor's command line (after
-`-Daemon -nullrhi -nosplash …`). Anything UE's commandlet accepts
-works here.
+If you'd rather not enable extra plugins for the commandlet, the
+alternative is to **edit `.uproject`** to set `"Enabled": false` for
+the broken plugins. That's invasive but it's the only way to actually
+keep the plugin out of the configuration.
 
 ## "daemon timed out reaching READY" / server hits the startup timeout
 
