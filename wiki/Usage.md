@@ -92,12 +92,63 @@ Patterns that compose well:
 
 | Goal                                | Tool sequence                                                              |
 |--------------------------------------|----------------------------------------------------------------------------|
-| Add a member var with type X         | `add_variable`                                                             |
+| Add a member var with type X         | `add_variable` (use shorthand: `"type":"float"`, `"object:Actor"`, etc.)   |
 | Add an editable replicated var       | `add_variable` (with `editable: true`, `replicated: true`)                 |
-| Spawn a Branch + wire exec           | `add_node` (kind=`branch`) → `wire_pins`                                   |
+| Spawn a Branch + wire exec           | `add_node` (kind=`branch`) → `wire_pins` (no `get_graph` round-trip — pins come back from `add_node`) |
 | Add a function that reads a var      | `add_function` → `add_function_input` (if needed) → `add_node` (`variable_get`) → `wire_pins` |
 | Refactor: rename + update call sites | `rename_variable` (graphs are auto-updated)                                |
 | Audit: where is X read?              | `find_node` with `class_filter: K2Node_VariableGet`, then `query: VarName` |
+| Audit: who overrides BeginPlay?      | `find_overriders` with `function_name: BeginPlay`                          |
+| Inspect a single node by GUID        | `get_node` (cheaper than re-fetching the whole `get_graph`)                |
+
+### Generating whole functions in one call
+
+For multi-step work, compose with **`apply_ops`** (run a batch of writes
+with named-slot GUID resolution) or **`compile_function`** (compile a
+pseudocode DSL into nodes+wires):
+
+```jsonc
+// apply_ops — every node spawn + wire in one tool call
+{ "ops": [
+  { "op": "add_function", "asset_path": "/Game/AI/BP_Enemy", "name": "TakeDamage" },
+  { "op": "add_function_input",  "asset_path": "/Game/AI/BP_Enemy",
+    "function_name": "TakeDamage", "param_name": "Amount", "type": "float" },
+  { "op": "add_node", "id": "branch",  "asset_path": "/Game/AI/BP_Enemy",
+    "graph_name": "TakeDamage", "kind": "Branch", "x": 200, "y": 0 },
+  { "op": "add_node", "id": "getH",    "asset_path": "/Game/AI/BP_Enemy",
+    "graph_name": "TakeDamage", "kind": "VariableGet",
+    "variable": "Health", "x": 0, "y": 100 },
+  { "op": "wire_pins", "asset_path": "/Game/AI/BP_Enemy",
+    "graph_name": "TakeDamage",
+    "from_node": "$getH",   "from_pin": "Health",
+    "to_node":   "$branch", "to_pin":   "Condition" }
+] }
+```
+
+```jsonc
+// compile_function — pseudocode → graph
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "function_name": "Heal",
+  "inputs": [{ "name": "Amount", "type": "float" }],
+  "body": [
+    { "set": "Health",
+      "to":  { "call": "Add::Float",
+               "args": { "A": { "var": "Health" }, "B": { "var": "Amount" } } } }
+  ] }
+```
+
+Run **`auto_layout_graph`** afterwards to lay nodes out cleanly without
+having to invent coordinates yourself.
+
+### Idempotency and error self-correction
+
+- `add_variable` / `add_function` with an existing name return
+  `{ok:true, already_existed:true}` instead of throwing — retry blindly
+  without checking first.
+- `wire_pins` errors include both pin types
+  (`[from_pin type=object(Actor), to_pin type=bool]`), so the agent can
+  fix a type mismatch in one turn instead of needing to re-inspect the
+  graph.
 
 ### Discovering valid node kinds and pin types
 

@@ -31,6 +31,8 @@ Two backends:
 | `list_variables`    | read      | Member variables with type, default, category, replication state.          |
 | `get_components`    | read      | SCS components — name, class, parent, root flag.                           |
 | `find_node`         | read      | Substring search by class/title; optional `kind` filter on K2 extras.      |
+| `get_node`          | read      | Fetch a single node by GUID — pins + links + position, no full-graph cost. |
+| `find_overriders`   | read      | Structural query: BPs that extend a parent, override a function, or implement an interface. |
 | `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
 | `delete_variable`   | **write** | Remove a member variable by name.                                          |
 | `rename_variable`   | **write** | Rename a member variable; updates references in graphs.                    |
@@ -45,6 +47,9 @@ Two backends:
 | `set_variable_default` | **write** | Change a member variable's default value (string form).                |
 | `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
 | `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
+| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Reduces 10-call sequences to one. |
+| `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var`) into nodes+wires+layout. Lets the agent generate BPs the way it generates code. |
+| `auto_layout_graph` | **write** | Reposition every node in a graph using a column-grid layout based on exec connectivity. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
@@ -54,6 +59,18 @@ don't need), plus `limit` / `offset` for tools that return arrays. AI clients
 pay tokens for every byte of a tool response, so projecting and paginating
 matters. See [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#response-controls-read-tools)
 for examples.
+
+Every write tool that takes a `type` accepts a string shorthand —
+`"float"`, `"object:Actor"`, `"struct:FVector"`, `"[]float"`,
+`"{string:int}"` — alongside the canonical BPPinType object form.
+`add_variable` and `add_function` are idempotent (return
+`already_existed:true` instead of erroring on duplicates), and `wire_pins`
+errors include both pin types so the agent can self-correct.
+
+For multi-step generation, `apply_ops` runs a whole batch in one call with
+named-slot GUID resolution, and `compile_function` accepts a pseudocode
+DSL (if/set/call/var) and materializes the graph. See [Tool Reference →
+Batch tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#batch-tools).
 
 ## Quick start: hooking it up to Claude
 
@@ -108,7 +125,7 @@ For other configs:
 - **Claude Desktop** — same JSON shape under
   `%APPDATA%\Claude\claude_desktop_config.json`'s `mcpServers`.
 - **Mock-only** (no UE) — drop the entire `env` block; the server defaults
-  to the bundled fixtures and exposes the 8 read tools as a demo.
+  to the bundled fixtures and exposes the 10 read tools as a demo.
 
 ### 3. Try it
 
