@@ -17,6 +17,7 @@ add_executable(bp-reader-tests
     test_caching_reader.cpp
     test_type_shorthand.cpp
     test_apply_ops.cpp
+    test_read_only.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE
