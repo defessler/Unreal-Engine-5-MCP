@@ -98,6 +98,12 @@ public:
     void SetPinDefault(std::string_view assetPath, std::string_view graphName,
                        std::string_view nodeId, std::string_view pinSpec,
                        std::string_view value) override;
+    void RetypeVariable(std::string_view assetPath, std::string_view name,
+                        const BPPinType& newType) override;
+    void SetVariableCategory(std::string_view assetPath, std::string_view name,
+                             std::string_view category) override;
+    DuplicateBlueprintResult DuplicateBlueprint(std::string_view sourceAssetPath,
+                                                std::string_view destAssetPath) override;
 
     // Batch sentinels (A1) — wraps a write batch so the daemon defers
     // CompileBlueprint+SavePackage to one combined call at EndBatch.

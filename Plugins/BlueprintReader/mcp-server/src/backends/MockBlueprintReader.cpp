@@ -247,6 +247,24 @@ void MockBlueprintReader::SetPinDefault(std::string_view, std::string_view,
         "SetPinDefault: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
+void MockBlueprintReader::RetypeVariable(std::string_view, std::string_view,
+                                         const BPPinType&) {
+    throw BlueprintReaderError(
+        "RetypeVariable: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::SetVariableCategory(std::string_view, std::string_view,
+                                              std::string_view) {
+    throw BlueprintReaderError(
+        "SetVariableCategory: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+IBlueprintReader::DuplicateBlueprintResult
+MockBlueprintReader::DuplicateBlueprint(std::string_view, std::string_view) {
+    throw BlueprintReaderError(
+        "DuplicateBlueprint: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
                                                   std::string_view query,
                                                   std::string_view kind) {

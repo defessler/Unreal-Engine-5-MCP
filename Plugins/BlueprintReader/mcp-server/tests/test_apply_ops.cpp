@@ -167,6 +167,21 @@ public:
         Note("SetPinDefault", std::string(a),
              std::string(pin) + "=" + std::string(value));
     }
+    void RetypeVariable(std::string_view a, std::string_view n, const BPPinType& t) override {
+        Note("RetypeVariable", std::string(a),
+             std::string(n) + ":" + t.Category);
+    }
+    void SetVariableCategory(std::string_view a, std::string_view n, std::string_view c) override {
+        Note("SetVariableCategory", std::string(a),
+             std::string(n) + "=" + std::string(c));
+    }
+    DuplicateBlueprintResult DuplicateBlueprint(std::string_view s, std::string_view d) override {
+        Note("DuplicateBlueprint", std::string(s), std::string(d));
+        DuplicateBlueprintResult r;
+        r.alreadyExisted   = false;
+        r.sourceAssetPath  = std::string(s);
+        return r;
+    }
 
     // Batch sentinels — recorded but not forwarded; the inner mock has its
     // own no-op default that's fine for unit tests. EndBatch can return
@@ -610,6 +625,104 @@ TEST_CASE("apply_ops: tags diagnostics with op_index when node_guid was minted i
     auto& d = out["diagnostics"][0];
     REQUIRE(d.contains("op_index"));
     CHECK(d["op_index"] == 1);  // <-- minted by op[1] (add_node "node")
+}
+
+// ===== BP-2 / BP-5 / BP-7: retype, duplicate, category =====================
+
+TEST_CASE("apply_ops: retype_variable forwards to backend with type shorthand") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","retype_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Item"},
+             {"type","object:Actor"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    int retypes = 0;
+    for (const auto& c : r.calls) if (c.op == "RetypeVariable") ++retypes;
+    CHECK(retypes == 1);
+}
+
+TEST_CASE("apply_ops: set_variable_category forwards label") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","set_variable_category"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Health"},
+             {"category","Stats"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    int cats = 0;
+    for (const auto& c : r.calls) if (c.op == "SetVariableCategory") ++cats;
+    CHECK(cats == 1);
+}
+
+TEST_CASE("apply_ops: set_variable_category empty category clears") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","set_variable_category"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Health"}},  // no category field
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+}
+
+TEST_CASE("apply_ops: duplicate_blueprint returns dest path + already_existed") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","duplicate_blueprint"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"dest_asset_path","/Game/AI/BP_EnemyVariant"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    REQUIRE(out["results"].size() == 1);
+    auto& res = out["results"][0];
+    CHECK(res["asset_path"] == "/Game/AI/BP_EnemyVariant");
+    CHECK(res["source_asset_path"] == "/Game/AI/BP_Enemy");
+    CHECK(res["already_existed"] == false);
+}
+
+TEST_CASE("apply_ops: duplicate_blueprint then add_variable in one batch") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","duplicate_blueprint"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"dest_asset_path","/Game/AI/BP_NewVariant"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_NewVariant"},
+             {"name","NewField"}, {"type","int"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, true);
+    CHECK(out["ok"] == true);
+    CHECK(out["succeeded"] == 2);
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+}
+
+TEST_CASE("preview_ops: duplicate_blueprint with non-/Game/ dest is rejected") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","duplicate_blueprint"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"dest_asset_path","/Engine/X/BP_Bad"}},
+    });
+    auto out = bpr::tools::ValidateOps(r, ops);
+    CHECK(out["ok"] == false);
+    CHECK(out["results"][0].contains("error"));
+}
+
+TEST_CASE("apply_ops: retype_variable validates type shorthand at the boundary") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","retype_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Item"},
+             {"type","totally_garbage"}},
+    });
+    CHECK_THROWS(bpr::tools::RunOps(r, ops, true));
 }
 
 TEST_CASE("apply_ops: diagnostic with unknown node_guid carries no op_index") {

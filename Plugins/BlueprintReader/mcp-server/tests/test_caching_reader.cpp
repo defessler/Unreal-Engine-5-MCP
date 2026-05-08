@@ -114,6 +114,15 @@ public:
                        std::string_view pin, std::string_view v) override {
         inner_.SetPinDefault(a, g, n, pin, v);
     }
+    void RetypeVariable(std::string_view a, std::string_view n, const BPPinType& t) override {
+        inner_.RetypeVariable(a, n, t);
+    }
+    void SetVariableCategory(std::string_view a, std::string_view n, std::string_view c) override {
+        inner_.SetVariableCategory(a, n, c);
+    }
+    DuplicateBlueprintResult DuplicateBlueprint(std::string_view s, std::string_view d) override {
+        return inner_.DuplicateBlueprint(s, d);
+    }
 
 private:
     MockBlueprintReader inner_;
