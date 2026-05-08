@@ -401,6 +401,15 @@ CachingBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
     return out;
 }
 
+IBlueprintReader::WriteGeneratedSourceResult
+CachingBlueprintReader::WriteGeneratedSource(std::string_view destPath,
+                                             std::string_view content,
+                                             bool createDirs) {
+    // No cache invalidation needed — generated source files don't
+    // affect BP asset registry / .uasset state.
+    return inner_->WriteGeneratedSource(destPath, content, createDirs);
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

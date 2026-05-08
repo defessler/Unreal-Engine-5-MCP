@@ -1,5 +1,6 @@
 #include "tools/codegen/CppEmit.h"
 #include "tools/Bpir.h"
+#include "tools/codegen/UnsupportedTreatment.h"
 
 #include <fmt/core.h>
 
@@ -62,6 +63,20 @@ std::string MapInner(std::string_view inner) {
     if (name == "object" || name == "soft_object") {
         if (sub.empty()) return "UObject*";
 
+        // Strip /Script/Module.ClassName path prefix down to bare
+        // ClassName. Decompile carries SubCategoryObject through as the
+        // full UE path on object refs (e.g. "/Script/Engine.Actor"); we
+        // only want the trailing class for our prefix heuristic.
+        std::string_view bare = sub;
+        if (auto dot = bare.find_last_of('.'); dot != std::string_view::npos) {
+            bare = bare.substr(dot + 1);
+        }
+        // Strip the BP "_C" suffix UE serializes for generated classes.
+        if (bare.size() > 2 &&
+            bare.substr(bare.size() - 2) == "_C") {
+            bare = bare.substr(0, bare.size() - 2);
+        }
+
         // Detect "already has UE prefix": A/U followed by another
         // uppercase letter, total length ≥ 2. E.g. "AActor", "UWidget"
         // are already prefixed; "Actor", "Widget" are not (single
@@ -71,19 +86,19 @@ std::string MapInner(std::string_view inner) {
                    (n[0] == 'A' || n[0] == 'U') &&
                    (n[1] >= 'A' && n[1] <= 'Z');
         };
-        if (isAlreadyPrefixed(sub)) return std::string(sub) + "*";
+        if (isAlreadyPrefixed(bare)) return std::string(bare) + "*";
 
         // Actor-derived heuristic: bare "Actor", classes ending in
         // "Actor", or well-known A-prefixed types.
-        if (sub == "Actor" ||
-            (sub.size() > 5 && sub.substr(sub.size() - 5) == "Actor") ||
-            sub == "Pawn" || sub == "Character" ||
-            sub == "Controller" || sub == "PlayerController" ||
-            sub == "PlayerState" || sub == "GameMode" ||
-            sub == "GameState" || sub == "HUD") {
-            return std::string("A") + std::string(sub) + "*";
+        if (bare == "Actor" ||
+            (bare.size() > 5 && bare.substr(bare.size() - 5) == "Actor") ||
+            bare == "Pawn" || bare == "Character" ||
+            bare == "Controller" || bare == "PlayerController" ||
+            bare == "PlayerState" || bare == "GameMode" ||
+            bare == "GameState" || bare == "HUD") {
+            return std::string("A") + std::string(bare) + "*";
         }
-        return std::string("U") + std::string(sub) + "*";
+        return std::string("U") + std::string(bare) + "*";
     }
     if (name == "class" || name == "soft_class") {
         if (sub.empty()) return "UClass*";
@@ -399,12 +414,39 @@ struct Emitter {
             const auto& u = s["unsupported"];
             std::string nodeClass = u.value("node_class", "?");
             std::string guid      = u.value("guid", "");
-            Line(fmt::format(
-                "// TODO[bpr-unsupported]: {} (guid={}) — manual port required.",
-                nodeClass, guid));
-            // Add to notes for sidecar emission.
+            // Phase 2B: classify the node and emit a richer treatment
+            // — best-effort C++ stub when we know the pattern, else
+            // a TODO. Either way, the sidecar entry captures the note
+            // so the agent can iterate over manual steps.
+            auto cls = ClassifyUnsupported(u);
+            if (cls.kind == UnsupportedClassification::Kind::Approximation &&
+                !cls.snippet.empty()) {
+                // Snippet may span multiple lines — emit each at the
+                // current indent.
+                std::size_t pos = 0;
+                while (pos < cls.snippet.size()) {
+                    auto nl = cls.snippet.find('\n', pos);
+                    std::string lineText = cls.snippet.substr(
+                        pos, nl == std::string::npos ? std::string::npos : nl - pos);
+                    if (!lineText.empty()) Line(lineText);
+                    if (nl == std::string::npos) break;
+                    pos = nl + 1;
+                }
+            } else {
+                Line(fmt::format(
+                    "// TODO[bpr-unsupported]: {} (guid={}) — manual port required.",
+                    nodeClass, guid));
+                if (!cls.note.empty()) {
+                    Line(fmt::format("// Manual: {}", cls.note));
+                }
+            }
+            // Sidecar entry — keep the original BPIR fields plus the
+            // treatment classification.
             nlohmann::json note = u;
-            note["treatment"] = "todo_comment";
+            note["treatment"] =
+                (cls.kind == UnsupportedClassification::Kind::Approximation)
+                    ? "approximation" : "todo_comment";
+            if (!cls.note.empty()) note["manual_note"] = cls.note;
             notes.push_back(std::move(note));
             return;
         }

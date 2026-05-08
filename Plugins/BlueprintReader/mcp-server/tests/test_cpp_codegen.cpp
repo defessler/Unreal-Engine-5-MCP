@@ -57,6 +57,16 @@ TEST_CASE("MapBpirTypeToCpp: object refs use proper U/A prefix") {
     CHECK(MapBpirTypeToCpp("object:AActor")  == "AActor*");
 }
 
+TEST_CASE("MapBpirTypeToCpp: object refs with full /Script/ path strip path prefix") {
+    // Caught live: BP variables sometimes serialize SubCategoryObject as
+    // the canonical UE path. The mapper should strip /Script/Module. and
+    // the trailing _C if present.
+    CHECK(MapBpirTypeToCpp("object:/Script/Engine.Actor")  == "AActor*");
+    CHECK(MapBpirTypeToCpp("object:/Script/Engine.Pawn")   == "APawn*");
+    CHECK(MapBpirTypeToCpp("object:/Script/Engine.Object") == "UObject*");
+    CHECK(MapBpirTypeToCpp("object:/Game/AI/BP_Boss.BP_Boss_C") == "UBP_Boss*");
+}
+
 TEST_CASE("MapBpirTypeToCpp: structs") {
     CHECK(MapBpirTypeToCpp("struct:Vector")  == "FVector");
     CHECK(MapBpirTypeToCpp("struct:FVector") == "FVector");

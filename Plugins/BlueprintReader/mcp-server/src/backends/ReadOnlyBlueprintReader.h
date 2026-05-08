@@ -68,6 +68,9 @@ public:
                              std::string_view) override;
     DuplicateBlueprintResult DuplicateBlueprint(std::string_view,
                                                 std::string_view) override;
+    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view,
+                                                    std::string_view,
+                                                    bool) override;
 
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in

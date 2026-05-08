@@ -121,6 +121,14 @@ IBlueprintReader::DuplicateBlueprintResult
 ReadOnlyBlueprintReader::DuplicateBlueprint(std::string_view, std::string_view) {
     Reject("duplicate_blueprint");
 }
+IBlueprintReader::WriteGeneratedSourceResult
+ReadOnlyBlueprintReader::WriteGeneratedSource(std::string_view, std::string_view, bool) {
+    // Writing source files isn't strictly a BP-graph mutation, but it
+    // does modify the project tree — and read-only mode's whole point
+    // is "don't touch anything." Reject for consistency with the
+    // BP-mutation tools.
+    Reject("write_generated_source");
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

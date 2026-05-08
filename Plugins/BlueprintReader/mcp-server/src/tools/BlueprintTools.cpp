@@ -5,7 +5,9 @@
 #include "tools/Decompile.h"
 #include "tools/JsonProjection.h"
 #include "tools/TypeShorthand.h"
+#include "tools/codegen/CppClassEmit.h"
 #include "tools/codegen/CppEmit.h"
+#include "tools/codegen/UnsupportedTreatment.h"
 
 #include "backends/IBlueprintReader.h"
 
@@ -309,6 +311,135 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                 {"source", result.source},
                 {"notes", result.notes},
                 {"unsupported_count", result.notes.size()},
+            };
+        });
+    }
+
+    // ----- transpile_blueprint (Phase 2A — full UCLASS .h/.cpp) -----------
+    {
+        ToolDescriptor d;
+        d.name = "transpile_blueprint";
+        d.description =
+            "Convert a whole BP class to a compilable UE C++ .h/.cpp pair. "
+            "Composes decompile_blueprint + CppClassEmit: emits a UCLASS "
+            "declaration with UPROPERTY decls (Replicated / EditAnywhere "
+            "/ Category specifiers inferred from BP variable metadata), "
+            "UFUNCTION decls (BlueprintCallable + Category from BP "
+            "function metadata), function bodies, and "
+            "GetLifetimeReplicatedProps() registration when any variable "
+            "is Replicated.\n\n"
+            "Class name follows UE convention: a BP named \"BP_Enemy\" "
+            "with parent ACharacter becomes \"ABP_Enemy_Generated\". "
+            "The suffix is configurable via class_name_suffix (default "
+            "\"_Generated\"); pass \"\" if you want the class to drop in "
+            "place of the BP entirely.\n\n"
+            "Returns header + impl source strings, suggested filenames, "
+            "and a `notes` array listing every unsupported BP construct "
+            "encountered (timelines, latent actions, etc.) for the agent "
+            "to triage.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"target_lang", {{"type","string"},
+                                 {"enum", nlohmann::json::array({"cpp"})}}},
+                {"module_api_macro", {{"type","string"},
+                                      {"description","E.g. \"MYGAME_API\". Empty for bare class decl."}}},
+                {"class_name_suffix", {{"type","string"},
+                                       {"description","Default \"_Generated\". Empty drops in place of the BP."}}},
+                {"use_operator_aliases", {{"type","boolean"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string lang  = OptString(args, "target_lang", "cpp");
+            if (lang != "cpp") {
+                throw std::invalid_argument(fmt::format(
+                    "transpile_blueprint: target_lang=\"{}\" not yet supported; only \"cpp\" in Phase 2.", lang));
+            }
+            CppClassEmitOptions opts;
+            opts.moduleApiMacro    = OptString(args, "module_api_macro", "");
+            if (auto it = args.find("class_name_suffix"); it != args.end() && it->is_string()) {
+                opts.classNameSuffix = it->get<std::string>();
+            }
+            opts.emitOpts.useOperatorAliases = args.value("use_operator_aliases", true);
+
+            nlohmann::json bpir = DecompileBlueprint(reader, asset);
+            CppClassEmitResult result = EmitCppClass(bpir, opts);
+            // Build the sidecar JSON describing every unsupported /
+            // approximation node + manual steps. Caller writes this
+            // alongside the .h/.cpp as <Class>.transpile-notes.json so
+            // the agent can iterate over what's left to port.
+            std::vector<std::string> filenames = {
+                result.headerFileName, result.implFileName,
+            };
+            nlohmann::json sidecar = BuildSidecar(asset, filenames, result.notes);
+            // Sidecar filename: strip the .h extension and add a
+            // distinctive suffix so it sits next to the .cpp/.h pair.
+            std::string sidecarFile = result.headerFileName;
+            if (sidecarFile.size() > 2 &&
+                sidecarFile.substr(sidecarFile.size() - 2) == ".h") {
+                sidecarFile.resize(sidecarFile.size() - 2);
+            }
+            sidecarFile += ".transpile-notes.json";
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", asset},
+                {"target_lang", lang},
+                {"class_name", result.className},
+                {"header_file", result.headerFileName},
+                {"impl_file",   result.implFileName},
+                {"header_source", result.headerSource},
+                {"impl_source",   result.implSource},
+                {"notes", result.notes},
+                {"sidecar", sidecar},
+                {"sidecar_file", sidecarFile},
+                {"unsupported_count", result.notes.size()},
+            };
+        });
+    }
+
+    // ----- write_generated_source (Phase 2C) -------------------------------
+    // Write a transpiled source file (.h or .cpp) into the project's
+    // Source/ tree. Path-validated by the plugin (must start with
+    // <ProjectDir>/Source/) — no path-traversal escape. Use after
+    // transpile_blueprint to drop the generated UCLASS pair onto disk
+    // so UBT can compile it.
+    {
+        ToolDescriptor d;
+        d.name = "write_generated_source";
+        d.description =
+            "Write a transpiled .h/.cpp file into the project's Source/ "
+            "tree. Confined by the plugin to paths under "
+            "<ProjectDir>/Source/ — anything else is rejected. Pair with "
+            "`transpile_blueprint`: pass the `header_source` / "
+            "`impl_source` strings the transpile returned, plus the "
+            "destination paths under your game module's Source dir.\n\n"
+            "After all files are written, run UBT (or use the editor's "
+            "Live Coding) to compile the new class — the BP can then "
+            "reparent to the C++ class for hybrid workflows.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"path",        {{"type","string"},
+                                 {"description","Absolute destination path under <ProjectDir>/Source/."}}},
+                {"content",     {{"type","string"},
+                                 {"description","File content — typically transpile_blueprint's header_source or impl_source."}}},
+                {"create_dirs", {{"type","boolean"},
+                                 {"description","Create parent directories if missing. Default true."}}},
+            }},
+            {"required", nlohmann::json::array({"path","content"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path    = RequireString(args, "path");
+            std::string content = RequireString(args, "content");
+            bool createDirs     = args.value("create_dirs", true);
+            auto r = reader.WriteGeneratedSource(path, content, createDirs);
+            return nlohmann::json{
+                {"ok", true},
+                {"path", r.path},
+                {"bytes_written", r.bytesWritten},
             };
         });
     }

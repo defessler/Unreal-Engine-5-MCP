@@ -22,6 +22,8 @@ add_executable(bp-reader-tests
     test_bpir.cpp
     test_decompile.cpp
     test_cpp_codegen.cpp
+    test_cpp_class.cpp
+    test_unsupported_treatment.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE
