@@ -1340,7 +1340,20 @@ namespace
 		FAssetRegistryModule& AssetRegistryModule =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 		IAssetRegistry& AR = AssetRegistryModule.Get();
-		AR.SearchAllAssets(/*bSynchronousSearch=*/true);
+		// Path-scoped scan, not a full SearchAllAssets. The previous code
+		// did `SearchAllAssets(bSync=true)` which forces the entire project's
+		// asset registry to finalize and fires the global
+		// OnAssetRegistryLoadComplete broadcast. That broadcast invokes
+		// every plugin's load handler — and one bad handler (e.g. Niagara
+		// loading a NiagaraDataChannel asset whose post-load constructor
+		// crashes in some projects) takes the whole commandlet down with
+		// exit=3 and a long callstack ending in our RunListOp.
+		//
+		// ScanPathsSynchronous populates only the requested path's metadata,
+		// doesn't invoke the global completion broadcast, and doesn't load
+		// asset payloads (only header tags). bForceRescan=false → cheap no-op
+		// when the path's already in the registry from earlier startup.
+		AR.ScanPathsSynchronous({PathFilter}, /*bForceRescan=*/false);
 
 		FARFilter Filter;
 		Filter.bRecursivePaths = true;
