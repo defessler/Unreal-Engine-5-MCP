@@ -52,8 +52,18 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 // continues and reports per-op `{ok:false, error}` entries.
 //
 // Returns the same shape as the tool: { ok, succeeded, failed, slots, results }.
+//
+// `onFailure` controls what EndBatch does when atomic stops the loop early:
+//   "compile" (default) — best-effort: compile + save what landed before
+//                         the failure. Matches today's per-op behavior.
+//   "skip"             — discard the pending compile + save. Nothing is
+//                         persisted to disk. The in-memory daemon state
+//                         stays dirty until restart; documented limitation.
+//   "rollback"         — reserved; not implemented in v1. Falls back to
+//                         "compile" with a warning logged.
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
-                      const nlohmann::json& ops, bool atomic);
+                      const nlohmann::json& ops, bool atomic,
+                      std::string_view onFailure = "compile");
 
 // Validate a sequence of ops without mutating anything (B2). Walks the
 // op array, parses each op's required fields, resolves named-slot refs

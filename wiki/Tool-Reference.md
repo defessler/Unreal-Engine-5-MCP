@@ -400,15 +400,25 @@ in the per-op results array.
 
 **Single-recompile batching (A1).** Ops inside a batch *defer* their
 compile + save until the trailing `EndBatch` flush — N ops on the same
-BP collapse to 1 compile + 1 save. Mid-batch failure uses best-effort
-semantics: whatever ops landed before the failure still get committed.
+BP collapse to 1 compile + 1 save. Mid-batch failure semantics are
+controlled by `on_failure`:
+
+- `"compile"` (default) — best-effort: compile + save what landed
+  before the failure. Matches the equivalent unbatched sequence's
+  observable outcome.
+- `"skip"` — discard the pending compile + save. Nothing reaches disk.
+  The in-memory daemon state stays dirty (subsequent reads in the same
+  daemon session can see partial mutations) until restart; documented
+  limitation of strict-atomic mode.
 
 **Compile diagnostics (C1).** The result includes a top-level
-`diagnostics` array (with `severity`, `message`, optional `node_guid`),
-plus `compile_errors` and `compile_warnings` counts. Lets the agent
-detect "compiled with warnings" without re-reading the BP. Per-op
-diagnostic attribution is not reliable when batched — the diagnostics
-are per-BP-flush.
+`diagnostics` array. Each entry carries `severity`, `message`, optional
+`node_guid`, optional `asset_path`, and — for nodes minted within
+this batch — an `op_index` pointing at which op produced the offending
+node. Lets the agent attribute "wire failed type-check on the Branch's
+Condition pin" to "the wire_pins op at index 7" without re-reading the
+BP. Top-level `compile_errors` and `compile_warnings` counts give a
+quick OK/not-OK signal.
 
 **Supported ops:** `create_blueprint`, `add_variable`, `delete_variable`,
 `rename_variable`, `set_variable_default`, `add_function`,
@@ -473,6 +483,11 @@ so the whole function compiles in a single recompile.
   - Boolean: `&&`, `||`, `!`
   - Float-explicit variants: `+f`, `-f`, `*f`, `/f`, `==f`, `<f`, `<=f`
   - Or use `"Owner::Function"` form for any other call.
+
+**Auto-wired entry.** The function's `K2Node_FunctionEntry` is wired
+straight into the first statement's exec input — same as what UE does
+when you build a function in the editor. No manual `wire_pins` call is
+needed to "kick off" the body.
 
 **Exec-tail merging.** After an `if/then/else`, exec from BOTH branches
 converges into the next statement (UE's K2 schema accepts multiple

@@ -206,7 +206,8 @@ void MockBlueprintReader::RenameVariable(std::string_view, std::string_view, std
         "RenameVariable: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
-std::string MockBlueprintReader::AddFunction(std::string_view, std::string_view) {
+IBlueprintReader::AddFunctionResult
+MockBlueprintReader::AddFunction(std::string_view, std::string_view) {
     throw BlueprintReaderError(
         "AddFunction: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }

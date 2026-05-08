@@ -161,8 +161,8 @@ void CachingBlueprintReader::BeginBatch() {
     inner_->BeginBatch();
 }
 
-nlohmann::json CachingBlueprintReader::EndBatch() {
-    nlohmann::json flushAck = inner_->EndBatch();
+nlohmann::json CachingBlueprintReader::EndBatch(bool skipCompile) {
+    nlohmann::json flushAck = inner_->EndBatch(skipCompile);
     std::set<std::string> toInvalidate;
     bool flushGlobal = false;
     {
@@ -322,7 +322,8 @@ void CachingBlueprintReader::RenameVariable(std::string_view assetPath, std::str
     InvalidateAsset(assetPath);
 }
 
-std::string CachingBlueprintReader::AddFunction(std::string_view assetPath, std::string_view name) {
+IBlueprintReader::AddFunctionResult
+CachingBlueprintReader::AddFunction(std::string_view assetPath, std::string_view name) {
     auto out = inner_->AddFunction(assetPath, name);
     InvalidateAsset(assetPath);
     return out;

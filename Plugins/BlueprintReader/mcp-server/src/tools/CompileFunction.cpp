@@ -420,9 +420,15 @@ void RegisterCompileFunction(ToolRegistry& registry,
         c.asset = asset;
         c.graph = fname;
 
-        // Step 1: ensure function exists. Idempotent.
+        // Step 1: ensure function exists. Idempotent. Tag the op with a
+        // slot id so apply_ops's OpAddFunction binds the FunctionEntry's
+        // GUID to it — we can then wire the entry's `then` exec into the
+        // first body statement automatically (no manual wire_pins call
+        // needed by the caller).
+        const std::string kEntrySlot = "__entry";
         c.ops.push_back({
             {"op", "add_function"},
+            {"id", kEntrySlot},
             {"asset_path", asset},
             {"name", fname},
         });
@@ -463,13 +469,12 @@ void RegisterCompileFunction(ToolRegistry& registry,
             }
         }
 
-        // Step 3: compile the body. Entry exec tails start empty —
-        // the agent or a follow-up wire_pins call connects the function-
-        // entry node's "then" exec output to the first statement. (Most
-        // real BP functions don't need this because UE auto-wires the
-        // entry's exec to the first statement on compile if the path is
-        // unbroken, but our isolated batch can't rely on that.)
-        ExecTails tails;
+        // Step 3: compile the body. The body's inbound tails start at
+        // the FunctionEntry node's `then` exec (slot `__entry` bound by
+        // OpAddFunction). The first statement's WireTailsTo call wires
+        // FunctionEntry's `then` straight into its execute pin —
+        // matching what UE does when you build a function in the editor.
+        ExecTails tails = {{kEntrySlot, "then"}};
         CompileStatements(c, tails, args["body"]);
 
         // Step 4: dry-run mode short-circuits to just returning the ops
