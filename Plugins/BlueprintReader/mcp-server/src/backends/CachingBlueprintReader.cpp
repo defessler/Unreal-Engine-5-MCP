@@ -377,6 +377,30 @@ void CachingBlueprintReader::SetPinDefault(std::string_view assetPath,
     InvalidateAsset(assetPath);
 }
 
+void CachingBlueprintReader::RetypeVariable(std::string_view assetPath,
+                                            std::string_view name,
+                                            const BPPinType& newType) {
+    inner_->RetypeVariable(assetPath, name, newType);
+    InvalidateAsset(assetPath);
+}
+
+void CachingBlueprintReader::SetVariableCategory(std::string_view assetPath,
+                                                 std::string_view name,
+                                                 std::string_view category) {
+    inner_->SetVariableCategory(assetPath, name, category);
+    InvalidateAsset(assetPath);
+}
+
+IBlueprintReader::DuplicateBlueprintResult
+CachingBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
+                                           std::string_view destAssetPath) {
+    auto out = inner_->DuplicateBlueprint(sourceAssetPath, destAssetPath);
+    // New asset → drop the destination's cache (in case anything was
+    // stale from a prior delete) and the global ListBlueprints cache.
+    InvalidateAsset(destAssetPath);
+    return out;
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

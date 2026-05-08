@@ -67,6 +67,9 @@ TEST_CASE("ReadOnly: every write tool throws BlueprintReaderError mentioning the
     check([&]{ r->SetVariableDefault("/x","V","100"); });
     check([&]{ r->CreateBlueprint("/Game/X","Actor"); });
     check([&]{ r->SetPinDefault("/x","g","n","p","v"); });
+    check([&]{ r->RetypeVariable("/x","V",floatType); });
+    check([&]{ r->SetVariableCategory("/x","V","Cat"); });
+    check([&]{ r->DuplicateBlueprint("/Game/X","/Game/Y"); });
 }
 
 TEST_CASE("ReadOnly: error message mentions the affected op name") {

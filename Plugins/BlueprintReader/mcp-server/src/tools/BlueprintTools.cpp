@@ -812,6 +812,102 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- retype_variable (BP-2) ------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "retype_variable";
+        d.description =
+            "Change a member variable's type without delete + re-add. UE "
+            "rewires every VariableGet / VariableSet node that references "
+            "the variable in place — existing graphs survive. For a "
+            "brand-new variable, use add_variable instead. `type` accepts "
+            "the same shorthand strings (\"float\", \"object:Actor\", "
+            "\"[]float\") and BPPinType objects as add_variable.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+                {"type",       {{"description","Type shorthand string or BPPinType object."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name","type"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            const std::string& asset = RequireString(args, "asset_path");
+            const std::string& name  = RequireString(args, "name");
+            auto typeIt = args.find("type");
+            if (typeIt == args.end()) {
+                throw std::invalid_argument(R"(missing argument "type")");
+            }
+            reader.RetypeVariable(asset, name, ParseTypeArg(*typeIt));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- set_variable_category (BP-7) ------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_variable_category";
+        d.description =
+            "Change the My-Blueprint-panel category label on a member "
+            "variable (the \"Stats\" / \"Combat\" group header in the "
+            "BP editor). Empty `category` clears the label back to "
+            "default. For a brand-new variable, pass `category` to "
+            "add_variable instead — this tool is for retroactive edits.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+                {"category",   {{"type","string"},
+                                {"description","Empty clears the category back to default."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            reader.SetVariableCategory(
+                RequireString(args, "asset_path"),
+                RequireString(args, "name"),
+                args.value("category", std::string{}));
+            return nlohmann::json{{"ok", true}};
+        });
+    }
+
+    // ----- duplicate_blueprint (BP-5) --------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "duplicate_blueprint";
+        d.description =
+            "File-level duplicate: source BP at `asset_path` → new BP at "
+            "`dest_asset_path`. Both must be under /Game/. Idempotent: if "
+            "the destination already exists, returns "
+            "{ok:true, already_existed:true} without overwriting. The new "
+            "BP starts identical to the source (same vars, functions, "
+            "graphs, components) and is registered with the asset registry "
+            "so a follow-up apply_ops batch can mutate it.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",      {{"type","string"},
+                                     {"description","Source BP under /Game/. Must exist."}}},
+                {"dest_asset_path", {{"type","string"},
+                                     {"description","Destination BP under /Game/. Must NOT exist (idempotent: returns already_existed:true if it does)."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","dest_asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string source = RequireString(args, "asset_path");
+            std::string dest   = RequireString(args, "dest_asset_path");
+            auto r = reader.DuplicateBlueprint(source, dest);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", dest},
+                {"source_asset_path", source},
+                {"already_existed", r.alreadyExisted},
+            };
+        });
+    }
+
     // ----- delete_variable -------------------------------------------------
     {
         ToolDescriptor d;

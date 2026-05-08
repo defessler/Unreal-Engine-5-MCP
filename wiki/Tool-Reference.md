@@ -1,6 +1,6 @@
 # Tool Reference
 
-30 tools — 10 read, 14 write, 3 meta, 3 batch. All use snake_case JSON keys;
+33 tools — 10 read, 17 write, 3 meta, 3 batch. All use snake_case JSON keys;
 nullable string fields emit `null`; `BPNode.meta` is a real nested object
 (not a string-of-JSON). Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
@@ -208,6 +208,19 @@ Idempotent — calling with an existing asset returns
 - short names: `"Actor"`, `"ACharacter"` (UE prefix conventions are tried)
 - full UClass paths: `"/Script/Engine.Actor"`
 
+### `duplicate_blueprint`
+File-level duplicate: source BP at `asset_path` → new BP at
+`dest_asset_path`. Both must be under `/Game/`. Idempotent — if the
+destination already exists, returns `{ok:true, already_existed:true}`
+without overwriting. The new BP starts identical to the source (same
+vars, functions, graphs, components) and is registered with the asset
+registry so a follow-up `apply_ops` batch can mutate it.
+
+```json
+{ "asset_path":      "/Game/AI/BP_Enemy",
+  "dest_asset_path": "/Game/AI/BP_Boss" }
+```
+
 ### `add_variable`
 Add a member variable with full BPPinType + default + category + flags.
 
@@ -222,6 +235,34 @@ Add a member variable with full BPPinType + default + category + flags.
   "editable":     true,
   "blueprint_read_only": false
 }
+```
+
+### `retype_variable`
+Change a member variable's type **without delete + re-add**. UE rewires
+every `VariableGet` / `VariableSet` node that references it in place,
+so existing graphs survive. For a brand-new variable, use
+`add_variable` instead.
+
+```json
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "name":       "Item",
+  "type":       "object:Actor" }
+```
+
+`type` accepts the same shorthand strings (`"float"`, `"object:Actor"`,
+`"[]float"`, `"{string:int}"`) and BPPinType objects as `add_variable`.
+
+### `set_variable_category`
+Change the My-Blueprint-panel category label on a member variable —
+the "Stats" / "Combat" group header in the BP editor's variables list.
+Empty `category` clears it back to default. For a brand-new variable,
+pass `category` to `add_variable` instead — this tool is for
+retroactive edits.
+
+```json
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "name":       "Health",
+  "category":   "Stats" }
 ```
 
 ### `delete_variable`

@@ -131,6 +131,31 @@ public:
                                std::string_view pinSpec,
                                std::string_view value) = 0;
 
+    // Change a member variable's type WITHOUT delete + re-add — UE
+    // rewires every VariableGet / VariableSet node that references it
+    // in place, so existing graphs survive (BP-2). For a brand-new
+    // variable, use AddVariable instead.
+    virtual void RetypeVariable(std::string_view assetPath,
+                                std::string_view name,
+                                const BPPinType& newType) = 0;
+
+    // Change the My-Blueprint-panel category label on a member
+    // variable. Empty `category` clears the label back to default
+    // (BP-7).
+    virtual void SetVariableCategory(std::string_view assetPath,
+                                     std::string_view name,
+                                     std::string_view category) = 0;
+
+    // File-level duplicate of a blueprint (BP-5). `destAssetPath` must
+    // be under /Game/. Idempotent — if the destination already exists,
+    // returns alreadyExisted=true without overwriting.
+    struct DuplicateBlueprintResult {
+        bool alreadyExisted = false;
+        std::string sourceAssetPath;
+    };
+    virtual DuplicateBlueprintResult DuplicateBlueprint(
+        std::string_view sourceAssetPath, std::string_view destAssetPath) = 0;
+
     // ----- Batch sentinels (A1) ------------------------------------------------
     // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
     // CompileBlueprint + SavePackage runs once per affected BP at EndBatch
