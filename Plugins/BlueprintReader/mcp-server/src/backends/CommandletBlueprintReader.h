@@ -85,7 +85,7 @@ public:
     void DeleteVariable(std::string_view assetPath, std::string_view name) override;
     void RenameVariable(std::string_view assetPath, std::string_view oldName,
                         std::string_view newName) override;
-    std::string AddFunction(std::string_view assetPath, std::string_view name) override;
+    AddFunctionResult AddFunction(std::string_view assetPath, std::string_view name) override;
     void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
                           std::string_view paramName, const BPPinType& type) override;
     void AddFunctionOutput(std::string_view assetPath, std::string_view functionName,
@@ -104,7 +104,7 @@ public:
     // EndBatch returns the daemon's flush ack (recompiled list + compile
     // diagnostics, C1).
     void BeginBatch() override;
-    nlohmann::json EndBatch() override;
+    nlohmann::json EndBatch(bool skipCompile = false) override;
 
     // Spin up the editor daemon now in a background thread. Tool calls that
     // arrive before the daemon is READY block on the same daemonMutex_ used

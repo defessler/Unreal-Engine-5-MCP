@@ -509,6 +509,37 @@ TEST_CASE("compile_function v2: comparison '==' alias works") {
     CHECK(sawEqualEqual);
 }
 
+TEST_CASE("compile_function v2: auto-wires FunctionEntry exec into first statement") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({
+            json{{"call","Foo"}},
+        })},
+        {"dry_run", true}});
+    REQUIRE(out["ops"].is_array());
+    // The add_function op should carry an `id: "__entry"` slot tag —
+    // OpAddFunction binds the FunctionEntry node's GUID to it, and the
+    // first statement's exec wire references "$__entry".
+    bool sawEntrySlot = false;
+    bool sawEntryWire = false;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "add_function" &&
+            op.value("id", "") == "__entry") {
+            sawEntrySlot = true;
+        }
+        if (op.value("op", "") == "wire_pins" &&
+            op.value("from_node", "") == "$__entry" &&
+            op.value("from_pin", "")  == "then" &&
+            op.value("to_pin", "")    == "execute") {
+            sawEntryWire = true;
+        }
+    }
+    CHECK(sawEntrySlot);
+    CHECK(sawEntryWire);
+}
+
 TEST_CASE("compile_function v2: if/else with following stmt fans both tails into next exec") {
     Fixture f;
     auto out = f.Call("compile_function", json{

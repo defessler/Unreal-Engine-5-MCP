@@ -89,7 +89,7 @@ public:
     void RenameVariable(std::string_view a, std::string_view o, std::string_view n) override {
         inner_.RenameVariable(a, o, n);
     }
-    std::string AddFunction(std::string_view a, std::string_view n) override {
+    AddFunctionResult AddFunction(std::string_view a, std::string_view n) override {
         return inner_.AddFunction(a, n);
     }
     void AddFunctionInput(std::string_view a, std::string_view f, std::string_view p,
