@@ -484,6 +484,46 @@ void LiveBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,
     });
 }
 
+void LiveBlueprintReader::RetypeVariable(std::string_view a, std::string_view n,
+                                         const BPPinType& t) {
+    std::vector<std::string> args = {
+        "-Op=RetypeVariable",
+        "-Asset=" + std::string(a),
+        "-Name=" + std::string(n),
+        "-TypeCategory=" + t.Category,
+    };
+    if (t.SubCategory)       args.push_back("-TypeSubCategory=" + *t.SubCategory);
+    if (t.SubCategoryObject) args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
+    if (t.IsArray) args.push_back("-TypeIsArray");
+    if (t.IsSet)   args.push_back("-TypeIsSet");
+    if (t.IsMap)   args.push_back("-TypeIsMap");
+    (void)RunOp(args);
+}
+
+void LiveBlueprintReader::SetVariableCategory(std::string_view a, std::string_view n,
+                                              std::string_view category) {
+    std::vector<std::string> args = {
+        "-Op=SetVariableCategory",
+        "-Asset=" + std::string(a),
+        "-Name=" + std::string(n),
+    };
+    if (!category.empty()) args.push_back("-Category=" + std::string(category));
+    (void)RunOp(args);
+}
+
+IBlueprintReader::DuplicateBlueprintResult
+LiveBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_view dest) {
+    auto j = RunOp({
+        "-Op=DuplicateBlueprint",
+        "-Asset=" + std::string(source),
+        "-Dest="  + std::string(dest),
+    });
+    DuplicateBlueprintResult out;
+    out.alreadyExisted   = j.is_object() && j.value("already_existed", false);
+    out.sourceAssetPath  = std::string(source);
+    return out;
+}
+
 // ----- batch sentinels ---------------------------------------------------
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});

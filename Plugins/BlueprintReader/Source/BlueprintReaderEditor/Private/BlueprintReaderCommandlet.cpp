@@ -6,6 +6,8 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "AssetToolsModule.h"
+#include "IAssetTools.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
@@ -94,6 +96,10 @@ namespace
 		CreateBlueprint,
 		// Pin default (B1) — supports compile_function's {lit:value}.
 		SetPinDefault,
+		// Variable lifecycle gaps reported by users:
+		RetypeVariable,         // change a var's type without delete+re-add (preserves nodes)
+		SetVariableCategory,    // change a var's My-Blueprint-panel category label
+		DuplicateBlueprint,     // file-level duplicate (BP-5)
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -127,6 +133,9 @@ namespace
 		if (OpStr.Equals(TEXT("EndBatch"), ESearchCase::IgnoreCase))           { OutOp = EOp::EndBatch; return true; }
 		if (OpStr.Equals(TEXT("CreateBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CreateBlueprint; return true; }
 		if (OpStr.Equals(TEXT("SetPinDefault"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetPinDefault; return true; }
+		if (OpStr.Equals(TEXT("RetypeVariable"), ESearchCase::IgnoreCase))     { OutOp = EOp::RetypeVariable; return true; }
+		if (OpStr.Equals(TEXT("SetVariableCategory"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetVariableCategory; return true; }
+		if (OpStr.Equals(TEXT("DuplicateBlueprint"), ESearchCase::IgnoreCase)) { OutOp = EOp::DuplicateBlueprint; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -221,10 +230,12 @@ namespace
 	}
 
 	// Forward decls — these are defined later in the file but referenced
-	// by ops higher up (SetPinDefaultOp uses both). Definitions land in
-	// their existing locations alongside the WirePins code / EmitOk helper.
+	// by ops higher up (SetPinDefaultOp / RetypeVariableOp use them).
+	// Definitions land in their existing locations alongside the WirePins
+	// code / EmitOk / AddVariable helpers.
 	UEdGraphPin* FindPinByIdOrName(UEdGraphNode* Node, const FString& Spec);
 	int32 EmitOk(const FString& OutputPath, bool bPretty);
+	bool BuildPinTypeFromFlags(const FString& Params, FEdGraphPinType& Out);
 
 	// Severity → wire string, matching what the MCP server's tool-result
 	// envelope expects. (UE 5.7 removed CriticalError from the enum.)
@@ -569,6 +580,164 @@ namespace
 		Node->Modify();
 		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- RetypeVariable (BP-2) ---------------------------------------
+	// Change a member variable's type WITHOUT delete + re-add. Preserves
+	// every VariableGet / VariableSet node that references it — UE
+	// rewires their pin types in place.
+	int32 RunRetypeVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString VarName;
+		FParse::Value(*Params, TEXT("Name="), VarName);
+		FEdGraphPinType NewType;
+		if (AssetPath.IsEmpty() || VarName.IsEmpty() ||
+		    !BuildPinTypeFromFlags(Params, NewType))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("RetypeVariable requires -Asset= -Name= -TypeCategory= [-TypeSubCategory=...] [-TypeSubCategoryObject=...]"));
+			return 1;
+		}
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		// Confirm the variable exists before mutating — UE's
+		// ChangeMemberVariableType is a void function with no failure
+		// signal; the only way to fail loudly is to pre-check.
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, FName(*VarName)) == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("RetypeVariable: variable '%s' not found on %s"), *VarName, *AssetPath);
+			return 4;
+		}
+		FBlueprintEditorUtils::ChangeMemberVariableType(BP, FName(*VarName), NewType);
+		if (!MaybeCompileAndSave(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- SetVariableCategory (BP-7) ----------------------------------
+	// Change the My-Blueprint-panel category label on a member variable.
+	// Empty -Category= clears the category back to the default.
+	int32 RunSetVariableCategoryOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString VarName, Category;
+		FParse::Value(*Params, TEXT("Name="),     VarName);
+		FParse::Value(*Params, TEXT("Category="), Category);
+		if (AssetPath.IsEmpty() || VarName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetVariableCategory requires -Asset= -Name= [-Category=]"));
+			return 1;
+		}
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, FName(*VarName)) == INDEX_NONE)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetVariableCategory: variable '%s' not found on %s"), *VarName, *AssetPath);
+			return 4;
+		}
+		// `nullptr` for InLocalVarScope = member variable (vs function-
+		// local). bDontRecompile=true lets MaybeCompileAndSave handle
+		// the compile (or defer it under a batch).
+		FBlueprintEditorUtils::SetBlueprintVariableCategory(
+			BP, FName(*VarName), nullptr, FText::FromString(Category),
+			/*bDontRecompile=*/true);
+		if (!MaybeCompileAndSave(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- DuplicateBlueprint (BP-5) -----------------------------------
+	// File-level duplicate: source BP at /Game/X → new BP at /Game/Y.
+	// Idempotent on the destination path: if /Game/Y already exists,
+	// returns already_existed:true without overwriting.
+	int32 RunDuplicateBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString SourceAsset = ResolveAssetPath(Params);
+		FString DestAsset;
+		FParse::Value(*Params, TEXT("Dest="), DestAsset);
+		if (SourceAsset.IsEmpty() || DestAsset.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DuplicateBlueprint requires -Asset=/Game/X -Dest=/Game/Y"));
+			return 1;
+		}
+		if (!DestAsset.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DuplicateBlueprint: -Dest must be under /Game/ (got: %s)"), *DestAsset);
+			return 1;
+		}
+
+		// Idempotency: if the destination already exists, return without
+		// touching anything. Same contract as create_blueprint.
+		if (UBlueprint* Existing = LoadMutableBlueprint(DestAsset))
+		{
+			(void)Existing;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetStringField(TEXT("asset_path"), DestAsset);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		UBlueprint* SourceBP = LoadMutableBlueprint(SourceAsset);
+		if (!SourceBP)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DuplicateBlueprint: source asset not found: %s"), *SourceAsset);
+			return 4;
+		}
+
+		// IAssetTools::DuplicateAsset takes (NewAssetName, NewPackagePath,
+		// SourceObject). Split the destination path: package path is
+		// everything up to (but not including) the last segment; asset
+		// name is the last segment.
+		FString DestPackagePath, DestName;
+		{
+			int32 LastSlash;
+			if (!DestAsset.FindLastChar(TEXT('/'), LastSlash) || LastSlash <= 0)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("DuplicateBlueprint: -Dest='%s' is malformed"), *DestAsset);
+				return 1;
+			}
+			DestPackagePath = DestAsset.Left(LastSlash);
+			DestName        = DestAsset.RightChop(LastSlash + 1);
+		}
+
+		FAssetToolsModule& AssetToolsModule =
+			FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+		IAssetTools& AssetTools = AssetToolsModule.Get();
+		UObject* NewObj = AssetTools.DuplicateAsset(DestName, DestPackagePath, SourceBP);
+		if (!NewObj)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DuplicateBlueprint: DuplicateAsset failed for %s -> %s"),
+				*SourceAsset, *DestAsset);
+			return 5;
+		}
+
+		UBlueprint* NewBP = Cast<UBlueprint>(NewObj);
+		if (!NewBP)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DuplicateBlueprint: duplicate isn't a UBlueprint (was %s)"),
+				*NewObj->GetClass()->GetName());
+			return 5;
+		}
+		// MaybeCompileAndSave handles the save + compile. AssetCreated
+		// notification fires inside DuplicateAsset already, so a
+		// follow-up batch op can LoadMutableBlueprint it.
+		if (!MaybeCompileAndSave(NewBP)) return 5;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetStringField(TEXT("asset_path"), DestAsset);
+		Obj->SetStringField(TEXT("source_asset_path"), SourceAsset);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
 	// Emit a small ack JSON blob for a successful write op.
@@ -1460,6 +1629,9 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::EndBatch)           return RunEndBatchOp(Params, OutputPath, bPretty);
 	if (Op == EOp::CreateBlueprint)    return RunCreateBlueprintOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetPinDefault)      return RunSetPinDefaultOp(Params, OutputPath, bPretty);
+	if (Op == EOp::RetypeVariable)     return RunRetypeVariableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetVariableCategory)return RunSetVariableCategoryOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DuplicateBlueprint) return RunDuplicateBlueprintOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

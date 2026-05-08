@@ -34,6 +34,9 @@ Two backends:
 | `get_node`          | read      | Fetch a single node by GUID — pins + links + position, no full-graph cost. |
 | `find_overriders`   | read      | Structural query: BPs that extend a parent, override a function, or implement an interface. |
 | `create_blueprint`  | **write** | Create a new BP under `/Game/...` extending a parent class. Idempotent.    |
+| `duplicate_blueprint` | **write** | File-level duplicate: source BP → new BP at a new path. Idempotent.       |
+| `retype_variable`   | **write** | Change a member variable's type without delete + re-add. Preserves graph node references. |
+| `set_variable_category` | **write** | Change the My-Blueprint-panel category label on a variable.            |
 | `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
 | `delete_variable`   | **write** | Remove a member variable by name.                                          |
 | `rename_variable`   | **write** | Rename a member variable; updates references in graphs.                    |

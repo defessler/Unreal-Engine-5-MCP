@@ -20,6 +20,8 @@ public class BlueprintReaderEditor : ModuleRules
 			"Json",
 			"JsonUtilities",
 			"AssetRegistry",
+			// IAssetTools::DuplicateAsset (BP-5: duplicate_blueprint).
+			"AssetTools",
 			// Live-mode TCP listener (BlueprintReaderLiveServer.cpp).
 			"Sockets",
 			"Networking"
