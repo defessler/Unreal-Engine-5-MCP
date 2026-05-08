@@ -1,8 +1,11 @@
 #include "tools/BlueprintTools.h"
 #include "tools/ApplyOps.h"
+#include "tools/Bpir.h"
 #include "tools/CompileFunction.h"
+#include "tools/Decompile.h"
 #include "tools/JsonProjection.h"
 #include "tools/TypeShorthand.h"
+#include "tools/codegen/CppEmit.h"
 
 #include "backends/IBlueprintReader.h"
 
@@ -181,6 +184,132 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             nlohmann::json body = reader.ReadBlueprint(asset);
             ApplyResponseControls(body, ctl);
             return body;
+        });
+    }
+
+    // ----- decompile_function (Phase 1B of BP↔C++) ------------------------
+    // Walk a BP function's graph and reconstruct a structured BPIR AST
+    // (see wiki/BPIR.md). Pure server-side; reuses get_function's data.
+    {
+        ToolDescriptor d;
+        d.name = "decompile_function";
+        d.description =
+            "Convert a BP function to BPIR (Blueprint Intermediate "
+            "Representation) — a versioned JSON AST that's the pivot for "
+            "BP ↔ source-language conversions. Pattern-matches K2 nodes "
+            "(Branch / Cast / Sequence / VariableSet / CallFunction / "
+            "FunctionResult) into structured statements + expressions. "
+            "Anything unrecognized appears as `{unsupported: {...}}` in "
+            "the body, AND in a top-level `unsupported_nodes` summary "
+            "for quick \"what couldn't I represent?\" inspection.\n\n"
+            "Pair with `transpile_function` (BPIR → C++) for the full "
+            "BP→source pipeline. The BPIR returned here is also valid "
+            "input for `compile_function` (existing tool) — round-trip "
+            "BP → BPIR → BP works for the patterns BPIR covers cleanly.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"function_name", {{"type","string"}}},
+                {"fields",        FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path","function_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string fname = RequireString(args, "function_name");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = DecompileFunction(reader, asset, fname);
+            ApplyResponseControls(body, ctl);
+            return body;
+        });
+    }
+
+    // ----- decompile_blueprint --------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "decompile_blueprint";
+        d.description =
+            "Whole-class BPIR extraction: variables + interfaces + every "
+            "function's BPIR. Returns `{kind: \"class\", ...}` doc — the "
+            "input shape `transpile_blueprint` expects for full UCLASS "
+            "C++ generation. Per-function decompile failures don't tank "
+            "the whole call; failed functions appear with `<decompile-"
+            "failure>` markers in their unsupported_nodes.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"fields",     FieldsProperty()},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto ctl = ParseResponseControls(args);
+            nlohmann::json body = DecompileBlueprint(reader, asset);
+            ApplyResponseControls(body, ctl);
+            return body;
+        });
+    }
+
+    // ----- transpile_function (Phase 1C — BPIR → C++) ---------------------
+    {
+        ToolDescriptor d;
+        d.name = "transpile_function";
+        d.description =
+            "Convert a BP function to C++ source. Composes "
+            "decompile_function (BP → BPIR) + C++ codegen (BPIR → "
+            "source). Phase 1 emits readable C++: real type names + "
+            "syntactically valid blocks, but UCLASS/UFUNCTION scaffolding "
+            "is left as comments — Phase 2 lands the compilable mode "
+            "with full `.h`/`.cpp` generation. Unsupported nodes appear "
+            "as `// TODO[bpr-unsupported]` comments + a `notes` array "
+            "the agent can iterate over.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"function_name", {{"type","string"}}},
+                {"target_lang",   {{"type","string"},
+                                   {"enum", nlohmann::json::array({"cpp"})},
+                                   {"description","Target language. Phase 1 ships C++; future: lua, python, js."}}},
+                {"mode",          {{"type","string"},
+                                   {"enum", nlohmann::json::array({"readable","compilable"})},
+                                   {"description","\"readable\" (default) emits annotated C++ for review; \"compilable\" (Phase 2) emits drop-in .h/.cpp pairs."}}},
+                {"use_operator_aliases", {{"type","boolean"},
+                                          {"description","Render +, ==, && etc. instead of UKismetMathLibrary calls. Default true."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","function_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string fname = RequireString(args, "function_name");
+            std::string lang  = OptString(args, "target_lang", "cpp");
+            std::string mode  = OptString(args, "mode", "readable");
+            if (lang != "cpp") {
+                throw std::invalid_argument(fmt::format(
+                    "transpile_function: target_lang=\"{}\" not yet supported; only \"cpp\" is implemented in Phase 1.",
+                    lang));
+            }
+            CppEmitOptions opts;
+            opts.mode = (mode == "compilable") ? CppEmitOptions::Mode::Compilable
+                                                : CppEmitOptions::Mode::Readable;
+            opts.useOperatorAliases = args.value("use_operator_aliases", true);
+
+            // BP → BPIR → C++.
+            nlohmann::json bpir = DecompileFunction(reader, asset, fname);
+            CppEmitResult result = EmitCppFunction(bpir, opts);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", asset},
+                {"function_name", fname},
+                {"target_lang", lang},
+                {"mode", mode},
+                {"source", result.source},
+                {"notes", result.notes},
+                {"unsupported_count", result.notes.size()},
+            };
         });
     }
 
