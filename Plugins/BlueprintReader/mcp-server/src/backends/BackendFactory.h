@@ -53,6 +53,14 @@ struct BackendConfig {
                                   // for coexistence with an open UE editor —
                                   // see Troubleshooting wiki. Set via
                                   // BP_READER_READ_ONLY.
+
+    // Live backend (BP_READER_BACKEND=live): connect to a running UE
+    // editor's BlueprintReaderEditor module's TCP listener instead of
+    // spawning a commandlet child. Editor and MCP server must share the
+    // same token. See Configuration → "Live backend" in the wiki.
+    std::string liveHost;         // BP_READER_LIVE_HOST (default 127.0.0.1)
+    int liveProcPort = 0;         // BP_READER_LIVE_PORT (required for live)
+    std::string liveToken;        // BP_READER_LIVE_TOKEN (required)
 };
 
 // Read BP_READER_* from the environment, then auto-discover anything still
