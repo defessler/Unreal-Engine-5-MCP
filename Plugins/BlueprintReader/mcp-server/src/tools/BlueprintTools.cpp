@@ -890,11 +890,16 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                     }
                 }
             } catch (...) { /* fall through; the write surfaces real errors */ }
-            std::string echoed = reader.AddFunction(asset, name);
-            return nlohmann::json{
+            auto out = reader.AddFunction(asset, name);
+            nlohmann::json result = {
                 {"ok", true},
-                {"function_name", echoed},
-                {"already_existed", false}};
+                {"function_name", out.functionName},
+                {"already_existed", false},
+            };
+            if (!out.entryNodeId.empty()) {
+                result["entry_node_id"] = out.entryNodeId;
+            }
+            return result;
         });
     }
 

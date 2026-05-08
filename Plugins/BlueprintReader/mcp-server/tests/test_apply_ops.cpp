@@ -128,12 +128,17 @@ public:
     void RenameVariable(std::string_view a, std::string_view, std::string_view) override {
         Note("RenameVariable", std::string(a));
     }
-    std::string AddFunction(std::string_view a, std::string_view n) override {
+    AddFunctionResult AddFunction(std::string_view a, std::string_view n) override {
         Note("AddFunction", std::string(a), std::string(n));
         BPFunctionSummary fs;
         fs.Name = std::string(n);
         extraFuncs[std::string(a)].push_back(std::move(fs));
-        return std::string(n);
+        // Mint a deterministic-ish entry-node GUID so OpAddFunction's slot
+        // binding has something to write into the SlotMap.
+        AddFunctionResult r;
+        r.functionName = std::string(n);
+        r.entryNodeId  = Mint();
+        return r;
     }
     void AddFunctionInput(std::string_view a, std::string_view, std::string_view,
                           const BPPinType&) override {
@@ -167,10 +172,12 @@ public:
     // own no-op default that's fine for unit tests. EndBatch can return
     // a synthetic compile-diagnostics payload for C1 tests.
     void BeginBatch() override { ++beginBatchCalls; }
-    nlohmann::json EndBatch() override {
+    nlohmann::json EndBatch(bool skipCompile = false) override {
         ++endBatchCalls;
+        if (skipCompile) ++endBatchSkipCalls;
         return endBatchAck;
     }
+    int endBatchSkipCalls = 0;
     nlohmann::json endBatchAck = nlohmann::json::object();
 
 private:
@@ -519,4 +526,107 @@ TEST_CASE("apply_ops: empty diagnostics array is omitted on backends without com
     CHECK(out["ok"] == true);
     CHECK_FALSE(out.contains("diagnostics"));
     CHECK_FALSE(out.contains("compile_errors"));
+}
+
+// ===== on_failure flag (strict atomic mode) =================================
+
+TEST_CASE("apply_ops: on_failure=skip flushes EndBatch with skipCompile=true on failure") {
+    FakeWritableReader r;
+    r.failOnWrite = true;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","NewVar"}, {"type","float"}},
+    });
+    CHECK_THROWS(bpr::tools::RunOps(r, ops, /*atomic=*/true, "skip"));
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+    CHECK(r.endBatchSkipCalls == 1);  // <-- skip path was taken
+}
+
+TEST_CASE("apply_ops: on_failure=compile (default) flushes EndBatch with skipCompile=false on failure") {
+    FakeWritableReader r;
+    r.failOnWrite = true;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","NewVar"}, {"type","float"}},
+    });
+    CHECK_THROWS(bpr::tools::RunOps(r, ops, /*atomic=*/true, "compile"));
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+    CHECK(r.endBatchSkipCalls == 0);  // <-- did NOT skip
+}
+
+TEST_CASE("apply_ops: on_failure=skip on success path still uses skipCompile=false") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","Health"}, {"type","float"}},  // already exists, idempotent
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true, "skip");
+    CHECK(out["ok"] == true);
+    CHECK(r.endBatchSkipCalls == 0);  // success path doesn't honor skip
+}
+
+TEST_CASE("apply_ops: unknown on_failure value throws") {
+    FakeWritableReader r;
+    CHECK_THROWS_AS(
+        bpr::tools::RunOps(r, json::array(), /*atomic=*/true, "yolo"),
+        std::invalid_argument);
+}
+
+// ===== Op-attribution for compile diagnostics ===============================
+
+TEST_CASE("apply_ops: tags diagnostics with op_index when node_guid was minted in this batch") {
+    FakeWritableReader r;
+    // Pre-arrange: stub the EndBatch ack to include a diagnostic pointing
+    // at a node_guid that op[1]'s add_node will mint. The fake's Mint()
+    // produces deterministic GUIDs starting at "00000000-...-000000000001".
+    // op[0] = AddFunction → mints the function-entry GUID (000000000001)
+    // op[1] = AddNode     → mints node GUID (000000000002)
+    r.endBatchAck = json{
+        {"ok", true},
+        {"diagnostics", json::array({
+            json{{"severity","warning"},
+                 {"message","unused pin"},
+                 {"node_guid","00000000-0000-0000-0000-000000000002"},
+                 {"asset_path","/Game/AI/BP_Enemy"}}
+        })},
+        {"error_count", 0},
+        {"warning_count", 1},
+    };
+    json ops = json::array({
+        json{{"op","add_function"}, {"id","fn"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"name","NewFn"}},
+        json{{"op","add_node"}, {"id","node"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","NewFn"},
+             {"kind","Branch"}, {"x",0},{"y",0}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+    REQUIRE(out["diagnostics"].is_array());
+    REQUIRE(out["diagnostics"].size() == 1);
+    auto& d = out["diagnostics"][0];
+    REQUIRE(d.contains("op_index"));
+    CHECK(d["op_index"] == 1);  // <-- minted by op[1] (add_node "node")
+}
+
+TEST_CASE("apply_ops: diagnostic with unknown node_guid carries no op_index") {
+    FakeWritableReader r;
+    r.endBatchAck = json{
+        {"ok", true},
+        {"diagnostics", json::array({
+            json{{"severity","warning"},
+                 {"message","existing-node warning"},
+                 {"node_guid","00000000-0000-0000-0000-deadbeefcafe"}}
+        })},
+    };
+    json ops = json::array({
+        json{{"op","add_variable"}, {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V"}, {"type","float"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+    REQUIRE(out["diagnostics"].size() == 1);
+    CHECK_FALSE(out["diagnostics"][0].contains("op_index"));
 }

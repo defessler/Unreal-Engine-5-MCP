@@ -122,7 +122,7 @@ nlohmann::json OpAddVariable(backends::IBlueprintReader& reader,
 }
 
 nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
-                             const nlohmann::json& op, SlotMap&) {
+                             const nlohmann::json& op, SlotMap& slots) {
     std::string asset = GetString(op, "asset_path");
     std::string name  = GetString(op, "name");
     try {
@@ -133,8 +133,23 @@ nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
             }
         }
     } catch (...) { /* fall through */ }
-    auto echoed = reader.AddFunction(asset, name);
-    return {{"ok", true}, {"function_name", echoed}, {"already_existed", false}};
+    auto out = reader.AddFunction(asset, name);
+    // If the op carried a slot id, bind the entry node's GUID to it so
+    // later ops in the same batch can wire FunctionEntry's `then` exec
+    // into their first statement (compile_function relies on this).
+    if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string() &&
+        !out.entryNodeId.empty()) {
+        slots[idIt->get<std::string>()] = out.entryNodeId;
+    }
+    nlohmann::json result = {
+        {"ok", true},
+        {"function_name", out.functionName},
+        {"already_existed", false},
+    };
+    if (!out.entryNodeId.empty()) {
+        result["entry_node_id"] = out.entryNodeId;
+    }
+    return result;
 }
 
 nlohmann::json OpAddFunctionParam(backends::IBlueprintReader& reader,
@@ -539,10 +554,28 @@ nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
 }
 
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
-                      const nlohmann::json& ops, bool atomic) {
+                      const nlohmann::json& ops, bool atomic,
+                      std::string_view onFailure) {
     if (!ops.is_array()) {
         throw std::invalid_argument(R"(RunOps requires "ops" to be an array)");
     }
+    // Resolve on_failure once. Unknown values fall back to "compile" with
+    // a clear error so misspellings don't silently change behavior.
+    bool skipOnFailure = false;
+    if (onFailure == "compile" || onFailure.empty()) {
+        skipOnFailure = false;
+    } else if (onFailure == "skip") {
+        skipOnFailure = true;
+    } else if (onFailure == "rollback") {
+        // Not implemented in v1 — would need plugin-side FScopedTransaction.
+        // Fall through to compile semantics.
+        skipOnFailure = false;
+    } else {
+        throw std::invalid_argument(fmt::format(
+            R"(unknown on_failure value "{}" — supported: "compile" (default) | "skip")",
+            onFailure));
+    }
+
     SlotMap slots;
     nlohmann::json results = nlohmann::json::array();
     int succeeded = 0, failed = 0;
@@ -552,22 +585,45 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     // (typically 100ms-2s each) into a single recompile per affected BP.
     // RAII guard guarantees EndBatch runs even on early-exit paths
     // (atomic=true throw, bug in dispatcher, etc.) — best-effort failure
-    // semantics: the daemon still saves whatever ops landed.
+    // semantics by default: the daemon still saves whatever ops landed.
+    // The guard's `skipOnExit` flag flips when we've already handled the
+    // explicit EndBatch path (success or atomic-failure).
     struct BatchGuard {
         backends::IBlueprintReader& r;
         bool active = true;
+        bool skipOnEarlyExit = false;
         BatchGuard(backends::IBlueprintReader& r_) : r(r_) { r.BeginBatch(); }
-        ~BatchGuard() { if (active) { try { (void)r.EndBatch(); } catch (...) {} } }
+        ~BatchGuard() {
+            if (active) {
+                try { (void)r.EndBatch(skipOnEarlyExit); } catch (...) {}
+            }
+        }
         void release() { active = false; }
     };
     BatchGuard guard(reader);
 
+    // For diagnostic attribution: track which op_index minted each
+    // node_guid. Snapshot the slot map before each op, diff after.
+    // When EndBatch surfaces compile diagnostics tagged with a node_guid,
+    // we look up the op that produced that node and tag the diagnostic
+    // with `op_index` so the caller can attribute warnings to a specific
+    // batch operation.
+    std::map<std::string, std::size_t> guidToOpIndex;
     auto runDispatch = [&]() {
         for (std::size_t i = 0; i < ops.size(); ++i) {
             const auto& op = ops[i];
+            std::size_t prevSlotCount = slots.size();
             try {
                 results.push_back(DispatchOp(reader, op, slots));
                 ++succeeded;
+                // Diff slot map: any new entries were minted by this op.
+                if (slots.size() > prevSlotCount) {
+                    for (const auto& [slotId, guid] : slots) {
+                        if (!guid.empty() && guidToOpIndex.find(guid) == guidToOpIndex.end()) {
+                            guidToOpIndex[guid] = i;
+                        }
+                    }
+                }
             } catch (const std::exception& e) {
                 ++failed;
                 if (atomic) {
@@ -590,15 +646,17 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     try {
         runDispatch();
     } catch (...) {
-        // Best-effort: still flush the batch (compile+save what landed)
-        // before propagating. Then suppress further EndBatch from RAII.
-        try { (void)reader.EndBatch(); } catch (...) {}
+        // Mid-batch failure path. on_failure="compile" (default) flushes
+        // partial state to disk; "skip" discards it. Either way, EndBatch
+        // runs so the plugin's BatchPending state is cleared.
+        try { (void)reader.EndBatch(skipOnFailure); } catch (...) {}
         guard.release();
         throw;
     }
     // Normal path — explicit EndBatch so we surface any flush errors and
-    // capture the diagnostics ack (C1).
-    flushAck = reader.EndBatch();
+    // capture the diagnostics ack (C1). on_failure doesn't apply here
+    // because nothing failed.
+    flushAck = reader.EndBatch(/*skipCompile=*/false);
     guard.release();
 
     nlohmann::json out = {
@@ -611,9 +669,28 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     // C1: lift compile diagnostics from the EndBatch ack to the top level
     // so callers see them without digging. EndBatch returns {} on backends
     // that don't have a compile step (Mock, etc.) — gracefully skipped.
+    //
+    // Op-attribution: for each diagnostic that carries a node_guid, look
+    // up which op_index in this batch minted that node and tag the
+    // diagnostic with `op_index`. Lets callers correlate "warning X" to
+    // "the wire_pins op at index 7". Best-effort — if a diagnostic
+    // points at a node not minted by this batch (existing nodes, e.g.
+    // referenced by var name), no op_index is attached.
     if (flushAck.is_object()) {
         if (flushAck.contains("diagnostics") && flushAck["diagnostics"].is_array()) {
-            out["diagnostics"] = flushAck["diagnostics"];
+            nlohmann::json tagged = nlohmann::json::array();
+            for (auto& d : flushAck["diagnostics"]) {
+                nlohmann::json copy = d;
+                if (copy.is_object() && copy.contains("node_guid") &&
+                    copy["node_guid"].is_string()) {
+                    auto it = guidToOpIndex.find(copy["node_guid"].get<std::string>());
+                    if (it != guidToOpIndex.end()) {
+                        copy["op_index"] = it->second;
+                    }
+                }
+                tagged.push_back(std::move(copy));
+            }
+            out["diagnostics"] = std::move(tagged);
         }
         if (flushAck.contains("error_count"))   out["compile_errors"]   = flushAck["error_count"];
         if (flushAck.contains("warning_count")) out["compile_warnings"] = flushAck["warning_count"];
@@ -657,6 +734,18 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
             }},
             {"atomic", {{"type","boolean"},
                         {"description","Bail on first failure (default true)."}}},
+            {"on_failure", {{"type","string"},
+                            {"enum", nlohmann::json::array({"compile","skip"})},
+                            {"description",
+                             "What EndBatch does after a mid-batch failure. "
+                             "\"compile\" (default): best-effort — compile + save "
+                             "what landed before the failure. Matches today's "
+                             "per-op behavior. \"skip\": don't compile, don't "
+                             "save — nothing reaches disk. The in-memory daemon "
+                             "state stays dirty until restart, so subsequent "
+                             "reads in the same session can see the partial "
+                             "mutations; this is a documented limitation of "
+                             "strict-atomic mode."}}},
         }},
         {"required", nlohmann::json::array({"ops"})},
     };
@@ -667,7 +756,8 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
                 R"(apply_ops requires "ops" to be an array)");
         }
         bool atomic = args.value("atomic", true);
-        return RunOps(reader, *opsIt, atomic);
+        std::string onFailure = args.value("on_failure", std::string{"compile"});
+        return RunOps(reader, *opsIt, atomic, onFailure);
     });
 
     // ----- preview_ops (B2) ------------------------------------------------

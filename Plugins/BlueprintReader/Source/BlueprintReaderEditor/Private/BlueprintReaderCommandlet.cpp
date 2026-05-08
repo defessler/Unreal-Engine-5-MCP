@@ -357,13 +357,21 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
-	int32 RunEndBatchOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	int32 RunEndBatchOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		// Always clear the defer flag first — even if we throw mid-flush we
 		// don't want subsequent ops to silently keep deferring.
 		BatchDeferFlag() = false;
 		TArray<TWeakObjectPtr<UBlueprint>> Pending = MoveTemp(BatchPending());
 		BatchPending().Reset();
+
+		// `-Skip` flag (passed by RunOps when on_failure="skip" + a mid-batch
+		// failure occurred): discard the pending compile + save. The
+		// in-memory UBlueprints stay dirty for this daemon session — agent
+		// must avoid acting on them until the daemon restarts or they're
+		// explicitly reloaded. Documented limitation; matches the "don't
+		// persist partial state" contract of strict atomic mode.
+		const bool bSkipCompile = FParse::Param(*Params, TEXT("Skip"));
 
 		TArray<TSharedPtr<FJsonValue>> Recompiled;
 		TArray<TSharedPtr<FJsonValue>> AllDiagnostics;
@@ -374,6 +382,13 @@ namespace
 			UBlueprint* BP = Weak.Get();
 			if (!BP) continue;  // GC'd between batch ops — nothing to save
 			const FString AssetPath = BP->GetPathName();
+			if (bSkipCompile)
+			{
+				// Don't compile, don't save — just record what would have
+				// been recompiled so the caller knows which BPs are now
+				// in a dirty in-memory state.
+				continue;
+			}
 			TArray<TSharedPtr<FJsonValue>> Diags;
 			const bool bOk = CompileAndSaveBlueprint(BP, &Diags);
 			if (!bOk) ++Failures;
@@ -1137,6 +1152,14 @@ namespace
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetStringField(TEXT("function_name"), FunctionName);
+		// Return the FunctionEntry node's GUID so callers (notably
+		// compile_function) can wire its `then` exec output into the
+		// first statement they spawn — saves a follow-up read+find.
+		if (UK2Node_FunctionEntry* Entry = FindFunctionEntry(NewGraph))
+		{
+			Obj->SetStringField(TEXT("entry_node_id"),
+				Entry->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

@@ -85,8 +85,14 @@ public:
     virtual void RenameVariable(std::string_view assetPath, std::string_view oldName,
                                 std::string_view newName) = 0;
 
-    // Add a new BP function graph. Returns the function name (echoed back).
-    virtual std::string AddFunction(std::string_view assetPath, std::string_view name) = 0;
+    // Add a new BP function graph. Returns the function name (echoed back)
+    // plus the FunctionEntry node's GUID so callers can wire its `then`
+    // exec output into their first statement without a follow-up read.
+    struct AddFunctionResult {
+        std::string functionName;
+        std::string entryNodeId;  // empty if the plugin couldn't locate it
+    };
+    virtual AddFunctionResult AddFunction(std::string_view assetPath, std::string_view name) = 0;
 
     // Add an input parameter to an existing function. `type` is a wire BPPinType.
     virtual void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
@@ -142,8 +148,16 @@ public:
     // diagnostics, error_count, warning_count}` (C1). Default implementation
     // returns an empty object — backends without a real compile step have
     // nothing to surface.
+    //
+    // `skipCompile` is the on_failure="skip" path — the caller knows
+    // something failed mid-batch and doesn't want partial state on disk.
+    // Plugin honors this by skipping the per-BP compile + save loop in
+    // EndBatch (in-memory state stays dirty until daemon restarts;
+    // documented as a limitation of strict-atomic mode).
     virtual void BeginBatch() {}
-    virtual nlohmann::json EndBatch() { return nlohmann::json::object(); }
+    virtual nlohmann::json EndBatch(bool /*skipCompile*/ = false) {
+        return nlohmann::json::object();
+    }
 };
 
 } // namespace bpr::backends
