@@ -93,6 +93,18 @@ public:
     void DeleteFunction(std::string_view assetPath, std::string_view name) override;
     void SetVariableDefault(std::string_view assetPath, std::string_view name,
                             std::string_view newDefault) override;
+    CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
+                                          std::string_view parentClass) override;
+    void SetPinDefault(std::string_view assetPath, std::string_view graphName,
+                       std::string_view nodeId, std::string_view pinSpec,
+                       std::string_view value) override;
+
+    // Batch sentinels (A1) — wraps a write batch so the daemon defers
+    // CompileBlueprint+SavePackage to one combined call at EndBatch.
+    // EndBatch returns the daemon's flush ack (recompiled list + compile
+    // diagnostics, C1).
+    void BeginBatch() override;
+    nlohmann::json EndBatch() override;
 
     // Spin up the editor daemon now in a background thread. Tool calls that
     // arrive before the daemon is READY block on the same daemonMutex_ used

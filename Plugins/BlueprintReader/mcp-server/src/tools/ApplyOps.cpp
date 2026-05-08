@@ -3,10 +3,13 @@
 
 #include <fmt/core.h>
 
+#include <cstdio>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace bpr::tools {
 
@@ -281,6 +284,34 @@ nlohmann::json OpSetVariableDefault(backends::IBlueprintReader& reader,
     return {{"ok", true}};
 }
 
+nlohmann::json OpCreateBlueprint(backends::IBlueprintReader& reader,
+                                 const nlohmann::json& op, SlotMap&) {
+    std::string asset  = GetString(op, "asset_path");
+    std::string parent = GetString(op, "parent_class");
+    auto r = reader.CreateBlueprint(asset, parent);
+    return {
+        {"ok", true},
+        {"asset_path", asset},
+        {"already_existed", r.alreadyExisted},
+        {"parent_class", r.parentClass.empty() ? parent : r.parentClass},
+    };
+}
+
+nlohmann::json OpSetPinDefault(backends::IBlueprintReader& reader,
+                               const nlohmann::json& op, SlotMap& slots) {
+    std::string asset = GetString(op, "asset_path");
+    std::string graph = GetString(op, "graph_name");
+    auto nIt = op.find("node_id");
+    if (nIt == op.end()) {
+        throw std::invalid_argument(R"(set_pin_default op requires "node_id")");
+    }
+    std::string node  = ResolveNodeRef(*nIt, slots, "node_id");
+    std::string pin   = GetString(op, "pin_name");
+    std::string value = OptStr(op, "value", "");
+    reader.SetPinDefault(asset, graph, node, pin, value);
+    return {{"ok", true}};
+}
+
 // Dispatch one op. Caller chooses whether to catch.
 nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
                           const nlohmann::json& op, SlotMap& slots) {
@@ -289,6 +320,8 @@ nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
         throw std::invalid_argument(R"(every op requires a string "op" field)");
     }
     const auto& kind = it->get_ref<const std::string&>();
+    if (kind == "create_blueprint")     return OpCreateBlueprint(reader, op, slots);
+    if (kind == "set_pin_default")      return OpSetPinDefault(reader, op, slots);
     if (kind == "add_variable")         return OpAddVariable    (reader, op, slots);
     if (kind == "delete_variable")      return OpDeleteVariable (reader, op, slots);
     if (kind == "rename_variable")      return OpRenameVariable (reader, op, slots);
@@ -302,13 +335,208 @@ nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
     if (kind == "set_node_position")    return OpSetNodePosition(reader, op, slots);
     if (kind == "delete_node")          return OpDeleteNode     (reader, op, slots);
     throw std::invalid_argument(fmt::format(
-        "unknown op '{}'. Supported: add_variable, delete_variable, "
-        "rename_variable, set_variable_default, add_function, "
-        "add_function_input, add_function_output, delete_function, "
-        "add_node, wire_pins, set_node_position, delete_node", kind));
+        "unknown op '{}'. Supported: create_blueprint, add_variable, "
+        "delete_variable, rename_variable, set_variable_default, "
+        "add_function, add_function_input, add_function_output, "
+        "delete_function, add_node, wire_pins, set_node_position, "
+        "delete_node", kind));
+}
+
+// ----- Validate-only path (B2: preview_ops) ------------------------------
+// One per dispatch op. Mirrors DispatchOp's table. Each fn validates
+// required fields + resolves slots; reports the asset_path it would touch
+// (so the caller can list affected BPs). No writes; reads are allowed.
+//
+// For ops that mint a slot (add_node / create_blueprint), we synthesize a
+// placeholder GUID and bind it so subsequent ops in the same preview can
+// resolve `$<id>` references successfully.
+std::string MintPlaceholderGuid(int& counter) {
+    char buf[40];
+    std::snprintf(buf, sizeof(buf),
+        "00000000-0000-0000-0000-%012d", counter++);
+    return buf;
+}
+
+void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
+                SlotMap& slots, int& placeholderCounter,
+                std::set<std::string>& wouldCompile) {
+    auto it = op.find("op");
+    if (it == op.end() || !it->is_string()) {
+        throw std::invalid_argument(R"(every op requires a string "op" field)");
+    }
+    const auto& kind = it->get_ref<const std::string&>();
+
+    auto noteAsset = [&](std::string_view a) { wouldCompile.insert(std::string(a)); };
+
+    if (kind == "create_blueprint") {
+        std::string asset  = GetString(op, "asset_path");
+        (void)GetString(op, "parent_class");
+        if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
+            slots[idIt->get<std::string>()] = MintPlaceholderGuid(placeholderCounter);
+        }
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "add_variable") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "name");
+        if (op.find("type") == op.end()) {
+            throw std::invalid_argument(R"(add_variable op requires "type")");
+        }
+        // Type shorthand validation runs against the helper without writes.
+        ParseTypeArg(op["type"]);
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "delete_variable" || kind == "rename_variable" ||
+        kind == "set_variable_default") {
+        std::string asset = GetString(op, "asset_path");
+        // Confirm variable exists (read-only check).
+        if (kind == "delete_variable" || kind == "set_variable_default") {
+            std::string name = GetString(op, "name");
+            try {
+                bool found = false;
+                for (const auto& v : reader.ListVariables(asset)) {
+                    if (v.Name == name) { found = true; break; }
+                }
+                if (!found) {
+                    throw std::invalid_argument(fmt::format(
+                        R"(variable "{}" not found on "{}")", name, asset));
+                }
+            } catch (const bpr::backends::BlueprintReaderError&) {
+                // Asset itself missing — bubble up.
+                throw;
+            }
+        } else {
+            (void)GetString(op, "old_name");
+            (void)GetString(op, "new_name");
+        }
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "add_function" || kind == "delete_function") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "name");
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "add_function_input" || kind == "add_function_output") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "function_name");
+        (void)GetString(op, "param_name");
+        if (op.find("type") == op.end()) {
+            throw std::invalid_argument(
+                R"(add_function_input/output op requires "type")");
+        }
+        ParseTypeArg(op["type"]);
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "add_node") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "graph_name");
+        (void)GetString(op, "kind");
+        (void)GetInt(op, "x");
+        (void)GetInt(op, "y");
+        if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
+            slots[idIt->get<std::string>()] = MintPlaceholderGuid(placeholderCounter);
+        }
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "wire_pins") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "graph_name");
+        auto fnIt = op.find("from_node");
+        auto tnIt = op.find("to_node");
+        if (fnIt == op.end() || tnIt == op.end()) {
+            throw std::invalid_argument(
+                R"(wire_pins op requires "from_node" and "to_node")");
+        }
+        // ResolveNodeRef throws on unbound slots — exactly the validation
+        // we want.
+        (void)ResolveNodeRef(*fnIt, slots, "from_node");
+        (void)ResolveNodeRef(*tnIt, slots, "to_node");
+        (void)GetString(op, "from_pin");
+        (void)GetString(op, "to_pin");
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "set_node_position") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "graph_name");
+        auto nIt = op.find("node_id");
+        if (nIt == op.end()) throw std::invalid_argument(R"(set_node_position requires "node_id")");
+        (void)ResolveNodeRef(*nIt, slots, "node_id");
+        (void)GetInt(op, "x"); (void)GetInt(op, "y");
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "delete_node") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "graph_name");
+        auto nIt = op.find("node_id");
+        if (nIt == op.end()) throw std::invalid_argument(R"(delete_node requires "node_id")");
+        (void)ResolveNodeRef(*nIt, slots, "node_id");
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "set_pin_default") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "graph_name");
+        auto nIt = op.find("node_id");
+        if (nIt == op.end()) throw std::invalid_argument(R"(set_pin_default requires "node_id")");
+        (void)ResolveNodeRef(*nIt, slots, "node_id");
+        (void)GetString(op, "pin_name");
+        noteAsset(asset);
+        return;
+    }
+    throw std::invalid_argument(fmt::format(
+        "unknown op '{}' (preview_ops uses the same op set as apply_ops)", kind));
 }
 
 } // namespace
+
+nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
+                           const nlohmann::json& ops) {
+    if (!ops.is_array()) {
+        throw std::invalid_argument(R"(ValidateOps requires "ops" to be an array)");
+    }
+    SlotMap slots;
+    std::set<std::string> wouldCompile;
+    int placeholderCounter = 1;
+    nlohmann::json results = nlohmann::json::array();
+    int validated = 0, failed = 0;
+    for (std::size_t i = 0; i < ops.size(); ++i) {
+        const auto& op = ops[i];
+        try {
+            ValidateOp(reader, op, slots, placeholderCounter, wouldCompile);
+            ++validated;
+            results.push_back({
+                {"ok", true},
+                {"op", op.contains("op") && op["op"].is_string()
+                           ? op["op"].get<std::string>() : ""},
+            });
+        } catch (const std::exception& e) {
+            ++failed;
+            results.push_back({
+                {"ok", false},
+                {"op_index", i},
+                {"op", op.contains("op") && op["op"].is_string()
+                           ? op["op"].get<std::string>() : ""},
+                {"error", e.what()},
+            });
+        }
+    }
+    return nlohmann::json{
+        {"ok", failed == 0},
+        {"validated", validated},
+        {"failed",    failed},
+        {"slots",     slots},
+        {"results",   std::move(results)},
+        {"would_compile", std::vector<std::string>(wouldCompile.begin(), wouldCompile.end())},
+    };
+}
 
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
                       const nlohmann::json& ops, bool atomic) {
@@ -318,35 +546,80 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     SlotMap slots;
     nlohmann::json results = nlohmann::json::array();
     int succeeded = 0, failed = 0;
-    for (std::size_t i = 0; i < ops.size(); ++i) {
-        const auto& op = ops[i];
-        try {
-            results.push_back(DispatchOp(reader, op, slots));
-            ++succeeded;
-        } catch (const std::exception& e) {
-            ++failed;
-            if (atomic) {
-                throw bpr::backends::BlueprintReaderError(fmt::format(
-                    "apply_ops failed at op[{}] (op=\"{}\"): {}",
-                    i,
-                    op.contains("op") && op["op"].is_string()
-                        ? op["op"].get<std::string>() : "<missing>",
-                    e.what()));
+
+    // A1: open a batch around the dispatch loop. The plugin defers
+    // CompileBlueprint+SavePackage until EndBatch, collapsing N×compile
+    // (typically 100ms-2s each) into a single recompile per affected BP.
+    // RAII guard guarantees EndBatch runs even on early-exit paths
+    // (atomic=true throw, bug in dispatcher, etc.) — best-effort failure
+    // semantics: the daemon still saves whatever ops landed.
+    struct BatchGuard {
+        backends::IBlueprintReader& r;
+        bool active = true;
+        BatchGuard(backends::IBlueprintReader& r_) : r(r_) { r.BeginBatch(); }
+        ~BatchGuard() { if (active) { try { (void)r.EndBatch(); } catch (...) {} } }
+        void release() { active = false; }
+    };
+    BatchGuard guard(reader);
+
+    auto runDispatch = [&]() {
+        for (std::size_t i = 0; i < ops.size(); ++i) {
+            const auto& op = ops[i];
+            try {
+                results.push_back(DispatchOp(reader, op, slots));
+                ++succeeded;
+            } catch (const std::exception& e) {
+                ++failed;
+                if (atomic) {
+                    throw bpr::backends::BlueprintReaderError(fmt::format(
+                        "apply_ops failed at op[{}] (op=\"{}\"): {}",
+                        i,
+                        op.contains("op") && op["op"].is_string()
+                            ? op["op"].get<std::string>() : "<missing>",
+                        e.what()));
+                }
+                results.push_back({
+                    {"ok", false},
+                    {"op_index", i},
+                    {"error", e.what()},
+                });
             }
-            results.push_back({
-                {"ok", false},
-                {"op_index", i},
-                {"error", e.what()},
-            });
         }
+    };
+    nlohmann::json flushAck;
+    try {
+        runDispatch();
+    } catch (...) {
+        // Best-effort: still flush the batch (compile+save what landed)
+        // before propagating. Then suppress further EndBatch from RAII.
+        try { (void)reader.EndBatch(); } catch (...) {}
+        guard.release();
+        throw;
     }
-    return nlohmann::json{
+    // Normal path — explicit EndBatch so we surface any flush errors and
+    // capture the diagnostics ack (C1).
+    flushAck = reader.EndBatch();
+    guard.release();
+
+    nlohmann::json out = {
         {"ok", failed == 0},
         {"succeeded", succeeded},
         {"failed",    failed},
         {"slots",     slots},
         {"results",   std::move(results)},
     };
+    // C1: lift compile diagnostics from the EndBatch ack to the top level
+    // so callers see them without digging. EndBatch returns {} on backends
+    // that don't have a compile step (Mock, etc.) — gracefully skipped.
+    if (flushAck.is_object()) {
+        if (flushAck.contains("diagnostics") && flushAck["diagnostics"].is_array()) {
+            out["diagnostics"] = flushAck["diagnostics"];
+        }
+        if (flushAck.contains("error_count"))   out["compile_errors"]   = flushAck["error_count"];
+        if (flushAck.contains("warning_count")) out["compile_warnings"] = flushAck["warning_count"];
+        if (flushAck.contains("recompiled"))    out["recompiled"]       = flushAck["recompiled"];
+    }
+    return out;
 }
 
 void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader) {
@@ -396,6 +669,45 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
         bool atomic = args.value("atomic", true);
         return RunOps(reader, *opsIt, atomic);
     });
+
+    // ----- preview_ops (B2) ------------------------------------------------
+    {
+        ToolDescriptor pd;
+        pd.name = "preview_ops";
+        pd.description =
+            "Validate an apply_ops batch without mutating anything. Walks "
+            "the op array, parses each op's required fields, resolves "
+            "named-slot refs against placeholder GUIDs, and uses read-only "
+            "backend calls to confirm referenced vars/functions exist. "
+            "Returns per-op `{ok}` results plus a `would_compile` list of "
+            "asset paths the real apply_ops would touch. Useful for "
+            "agent self-checks (\"is this batch syntactically valid before I "
+            "run it?\") and for a human-in-the-loop confirmation step.";
+        pd.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"ops", {
+                    {"type", "array"},
+                    {"description","Same shape as apply_ops's `ops` field."},
+                    {"items", {
+                        {"type", "object"},
+                        {"properties", {{"op", {{"type","string"}}}}},
+                        {"required", nlohmann::json::array({"op"})},
+                        {"additionalProperties", true},
+                    }},
+                }},
+            }},
+            {"required", nlohmann::json::array({"ops"})},
+        };
+        registry.Add(std::move(pd), [&reader](const nlohmann::json& args) {
+            auto opsIt = args.find("ops");
+            if (opsIt == args.end() || !opsIt->is_array()) {
+                throw std::invalid_argument(
+                    R"(preview_ops requires "ops" to be an array)");
+            }
+            return ValidateOps(reader, *opsIt);
+        });
+    }
 }
 
 } // namespace bpr::tools

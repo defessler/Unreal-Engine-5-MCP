@@ -172,9 +172,18 @@ When to tune the TTL:
   backend, or you have an external mutator that the cache wouldn't see
   (rare).
 
-Trade-off: TTL is the simplest correct invalidation strategy that doesn't
-require knowing `.uasset` on-disk paths. Until users complain about
-staleness, it's plenty.
+**mtime-based invalidation (C2).** When the server knows the project
+directory (auto-discovered or via `BP_READER_PROJECT`), the cache also
+stamps each entry with the `.uasset` file's mtime at insert time and
+re-checks on lookup. External edits in the open editor — e.g. you save a
+BP manually — invalidate the cached entry on the next read, even if the
+TTL hasn't expired. The check is one `stat` per cache hit (microseconds);
+disabled automatically when the project dir isn't resolved.
+
+Trade-off: TTL alone is the conservative-but-stale strategy; mtime adds
+a freshness check on top. The two combined catch both AI-induced edits
+(via the cache's own write-invalidation) and human-induced editor edits
+(via mtime).
 
 ## Mock backend fixtures
 

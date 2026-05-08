@@ -1116,4 +1116,48 @@ void CommandletBlueprintReader::SetVariableDefault(std::string_view assetPath,
     (void)RunOp(args);
 }
 
+IBlueprintReader::CreateBlueprintResult
+CommandletBlueprintReader::CreateBlueprint(std::string_view assetPath,
+                                           std::string_view parentClass) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=CreateBlueprint");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-ParentClass=" + Widen(parentClass));
+    auto result = RunOp(args);
+    CreateBlueprintResult out;
+    if (result.is_object()) {
+        out.alreadyExisted = result.value("already_existed", false);
+        out.parentClass    = result.value("parent_class",   std::string{});
+    }
+    return out;
+}
+
+void CommandletBlueprintReader::SetPinDefault(std::string_view assetPath,
+                                              std::string_view graphName,
+                                              std::string_view nodeId,
+                                              std::string_view pinSpec,
+                                              std::string_view value) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=SetPinDefault");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Graph=" + Widen(graphName));
+    args.push_back(L"-Node="  + Widen(nodeId));
+    args.push_back(L"-Pin="   + Widen(pinSpec));
+    args.push_back(L"-Value=" + Widen(value));
+    (void)RunOp(args);
+}
+
+// ----- Batch sentinels (A1) -------------------------------------------------
+void CommandletBlueprintReader::BeginBatch() {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=BeginBatch");
+    (void)RunOp(args);
+}
+
+nlohmann::json CommandletBlueprintReader::EndBatch() {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=EndBatch");
+    return RunOp(args);
+}
+
 } // namespace bpr::backends

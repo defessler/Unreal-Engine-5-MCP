@@ -75,6 +75,87 @@ struct Compiler {
     }
 };
 
+// ----- B1 helpers --------------------------------------------------------
+// Sentinel slot id returned by CompileExpr for {lit:value} expressions.
+// UE has no first-class literal node; consumers detect this prefix and
+// emit set_pin_default against their input pin instead of wire_pins.
+constexpr const char* kLitPrefix = "__lit:";
+
+bool IsLitSlot(const std::string& slot) {
+    return slot.size() > 6 && slot.compare(0, 6, kLitPrefix) == 0;
+}
+
+std::string LitValue(const std::string& slot) {
+    return slot.substr(6);  // strip "__lit:"
+}
+
+// Resolve a value source into a connection: either a wire from an upstream
+// node's ReturnValue pin, or a literal default written onto the consumer's
+// input pin. Centralizing this lets every "use this value here" site DRY
+// up its lit-handling.
+void EmitValueConnect(Compiler& c, const std::string& fromSlot,
+                      const std::string& fromPin,
+                      const std::string& toSlot, const std::string& toPin) {
+    if (IsLitSlot(fromSlot)) {
+        // Literal: write the value onto the consumer pin's default. Pin
+        // identified by name (we don't have a slot's pin GUIDs at compile
+        // time without round-tripping through add_node's pin enrichment).
+        c.ops.push_back({
+            {"op", "set_pin_default"},
+            {"asset_path", c.asset}, {"graph_name", c.graph},
+            {"node_id", fmt::format("${}", toSlot)},
+            {"pin_name", toPin},
+            {"value",    LitValue(fromSlot)},
+        });
+        return;
+    }
+    c.ops.push_back({
+        {"op", "wire_pins"},
+        {"asset_path", c.asset}, {"graph_name", c.graph},
+        {"from_node", fmt::format("${}", fromSlot)},
+        {"from_pin",  fromPin},
+        {"to_node",   fmt::format("${}", toSlot)},
+        {"to_pin",    toPin},
+    });
+}
+
+// Math / comparison alias map. Keys are user-friendly operators; values
+// are (owner, function_name) pointing at canonical UE functions. The agent
+// can write {call:"+", args:{A:..., B:...}} or {call:"==", ...} instead
+// of remembering UKismetMathLibrary's full naming convention.
+//
+// We default to the int-int variants — UE's K2 schema auto-promotes
+// int↔float on connection so this works for both. For float-explicit
+// math, callers can still write the canonical name directly.
+struct AliasTarget { const char* owner; const char* fn; };
+const std::map<std::string, AliasTarget>& AliasMap() {
+    static const std::map<std::string, AliasTarget> m = {
+        {"+",  {"KismetMathLibrary", "Add_IntInt"}},
+        {"-",  {"KismetMathLibrary", "Subtract_IntInt"}},
+        {"*",  {"KismetMathLibrary", "Multiply_IntInt"}},
+        {"/",  {"KismetMathLibrary", "Divide_IntInt"}},
+        {"%",  {"KismetMathLibrary", "Percent_IntInt"}},
+        {"==", {"KismetMathLibrary", "EqualEqual_IntInt"}},
+        {"!=", {"KismetMathLibrary", "NotEqual_IntInt"}},
+        {"<",  {"KismetMathLibrary", "Less_IntInt"}},
+        {"<=", {"KismetMathLibrary", "LessEqual_IntInt"}},
+        {">",  {"KismetMathLibrary", "Greater_IntInt"}},
+        {">=", {"KismetMathLibrary", "GreaterEqual_IntInt"}},
+        {"&&", {"KismetMathLibrary", "BooleanAND"}},
+        {"||", {"KismetMathLibrary", "BooleanOR"}},
+        {"!",  {"KismetMathLibrary", "Not_PreBool"}},
+        // Float-explicit aliases for callers who care.
+        {"+f", {"KismetMathLibrary", "Add_FloatFloat"}},
+        {"-f", {"KismetMathLibrary", "Subtract_FloatFloat"}},
+        {"*f", {"KismetMathLibrary", "Multiply_FloatFloat"}},
+        {"/f", {"KismetMathLibrary", "Divide_FloatFloat"}},
+        {"==f",{"KismetMathLibrary", "EqualEqual_FloatFloat"}},
+        {"<f", {"KismetMathLibrary", "Less_FloatFloat"}},
+        {"<=f",{"KismetMathLibrary", "LessEqual_FloatFloat"}},
+    };
+    return m;
+}
+
 // Forward decl.
 std::string CompileExpr(Compiler& c, const nlohmann::json& expr);
 
@@ -83,22 +164,16 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr);
 std::string CompileBranch(Compiler& c, const nlohmann::json& cond) {
     std::string condSlot = CompileExpr(c, cond);
     std::string branch = c.AddNode("Branch", "branch");
-    // Wire the value pin of the expression node (we conventionally use
-    // the first output data pin) to the Branch's Condition input. The
-    // commandlet's wire_pins will surface a useful type-mismatch error
-    // if `cond` doesn't return a bool.
-    c.ops.push_back({
-        {"op", "wire_pins"},
-        {"asset_path", c.asset}, {"graph_name", c.graph},
-        {"from_node", fmt::format("${}", condSlot)}, {"from_pin", "ReturnValue"},
-        {"to_node",   fmt::format("${}", branch)},   {"to_pin",   "Condition"},
-    });
+    // Wire the value pin (or set default if cond is a literal) into
+    // the Branch's Condition input.
+    EmitValueConnect(c, condSlot, "ReturnValue", branch, "Condition");
     return branch;
 }
 
 // Compile a value-producing expression to a slot id. The slot's
 // "ReturnValue" pin (or the first output data pin, by convention) holds
-// the value. Throws on unrecognized forms.
+// the value. For {lit:value} expressions, returns a sentinel slot
+// "__lit:<value>" — callers use EmitValueConnect to handle it.
 std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
     if (!expr.is_object()) {
         throw std::invalid_argument(
@@ -113,14 +188,19 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
             {{"variable", it->get<std::string>()}});
     }
     if (auto it = expr.find("lit"); it != expr.end()) {
-        // We don't have a "literal node" in the K2 dispatcher today —
-        // but a CustomEvent-spawned literal node is one option in v2.
-        // For v1, document the limitation and ask the agent to hold
-        // literals on default pin values via set_variable_default.
-        throw std::invalid_argument(
-            "literal expressions ({lit:...}) not yet supported in compile_function — "
-            "model a literal as a const variable + {var:\"name\"} for now, or "
-            "drop to apply_ops with an explicit add_node for the literal node kind");
+        // Literal: stringify the JSON value and return a sentinel slot.
+        // Strings serialize as their raw text (no JSON quotes), other
+        // types use their JSON form (numbers, booleans). The consumer
+        // pin's TrySetDefaultValue validates the string against the pin
+        // type at compile-time, surfacing useful errors via wire_pins's
+        // enriched error path.
+        std::string s;
+        if (it->is_string())            s = it->get<std::string>();
+        else if (it->is_number())       s = it->dump();
+        else if (it->is_boolean())      s = *it ? "true" : "false";
+        else if (it->is_null())         s = "";
+        else                            s = it->dump();  // arrays/objects (rare)
+        return std::string(kLitPrefix) + s;
     }
     if (auto it = expr.find("call"); it != expr.end()) {
         if (!it->is_string()) {
@@ -128,29 +208,28 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
         }
         std::string fn = it->get<std::string>();
         std::string owner;
-        // Allow "Owner::Func" qualified names for cross-class calls.
-        auto sep = fn.find("::");
-        if (sep != std::string::npos) {
-            owner = fn.substr(0, sep);
-            fn    = fn.substr(sep + 2);
+        // Alias check first — operator shorthand like "+" / "==" maps to
+        // canonical UKismetMathLibrary names.
+        if (auto aIt = AliasMap().find(fn); aIt != AliasMap().end()) {
+            owner = aIt->second.owner;
+            fn    = aIt->second.fn;
+        } else {
+            // "Owner::Func" qualified names for cross-class calls.
+            auto sep = fn.find("::");
+            if (sep != std::string::npos) {
+                owner = fn.substr(0, sep);
+                fn    = fn.substr(sep + 2);
+            }
         }
         nlohmann::json extras = {{"function", fn}};
         if (!owner.empty()) extras["function_owner"] = owner;
         std::string slot = c.AddNode("CallFunction", "call", extras);
-        // Wire args by pin-name match — best-effort; mismatches surface
-        // through the wire_pins type-aware error.
+        // Wire args by pin-name match (or set defaults for literals).
         if (auto argsIt = expr.find("args");
             argsIt != expr.end() && argsIt->is_object()) {
             for (auto& [pinName, valExpr] : argsIt->items()) {
                 std::string argSlot = CompileExpr(c, valExpr);
-                c.ops.push_back({
-                    {"op", "wire_pins"},
-                    {"asset_path", c.asset}, {"graph_name", c.graph},
-                    {"from_node", fmt::format("${}", argSlot)},
-                    {"from_pin", "ReturnValue"},
-                    {"to_node", fmt::format("${}", slot)},
-                    {"to_pin", pinName},
-                });
+                EmitValueConnect(c, argSlot, "ReturnValue", slot, pinName);
             }
         }
         return slot;
@@ -161,50 +240,64 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
         expr.dump()));
 }
 
-// Compile a list of statements into nodes + wires, threading exec from
-// `entryExecOut` (a "<slot>:<pin>" anchor) down through the statements.
-// Returns the new exec tail "<slot>:<pin>" after the list — caller wires
-// to whatever comes next.
+// ExecTail: a single "where exec exits this fragment" marker. A statement
+// can produce 0, 1, or many tails. After an if/then/else with both branches
+// non-empty, there are 2 tails — the next statement's exec input gets wired
+// from BOTH (UE's K2 schema accepts multiple sources on an exec input pin,
+// and the node fires when any source fires). This is the natural "merge"
+// pattern in BPs without needing a Sequence/Join node.
 struct ExecTail {
     std::string slot;
     std::string pin;
-    bool valid() const { return !slot.empty(); }
 };
+using ExecTails = std::vector<ExecTail>;
 
-ExecTail CompileStatements(Compiler& c, ExecTail tail,
-                           const nlohmann::json& stmts);
+// Wire every tail in `prevs` to (toSlot, toPin). For 0 tails it's a no-op
+// (function entry case). For 1 tail it's a single wire. For 2+ tails it's
+// a merge — multiple incoming sources to the same exec input.
+void WireTailsTo(Compiler& c, const ExecTails& prevs,
+                 const std::string& toSlot, const std::string& toPin) {
+    for (const auto& t : prevs) {
+        if (t.slot.empty()) continue;
+        c.WireExec(t.slot, t.pin, toSlot, toPin);
+    }
+}
 
-ExecTail CompileStatement(Compiler& c, ExecTail tail,
-                          const nlohmann::json& stmt) {
+// Forward decl.
+ExecTails CompileStatements(Compiler& c, ExecTails tails,
+                            const nlohmann::json& stmts);
+
+// Compile a single statement with `prevs` inbound exec tails. Returns the
+// outbound tails of this statement.
+ExecTails CompileStatement(Compiler& c, ExecTails prevs,
+                           const nlohmann::json& stmt) {
     if (!stmt.is_object()) {
         throw std::invalid_argument(
             "statement must be an object — supported forms: "
             "{if, then, [else]}, {set,to}, {call,args}, {comment}");
     }
     if (stmt.contains("comment")) {
-        // Comments don't generate nodes; just a no-op for now. (A v2
-        // could attach the comment to the next-spawned node's metadata.)
-        return tail;
+        // Comments are a no-op for now — exec passes straight through.
+        return prevs;
     }
     if (stmt.contains("if")) {
         std::string branch = CompileBranch(c, stmt["if"]);
-        if (tail.valid()) c.WireExec(tail.slot, tail.pin, branch, "execute");
-        // Compile then/else.
-        ExecTail thenTail = {branch, "then"};
+        WireTailsTo(c, prevs, branch, "execute");
+        ExecTails thenTails = {{branch, "then"}};
         if (auto t = stmt.find("then"); t != stmt.end()) {
-            thenTail = CompileStatements(c, thenTail, *t);
+            thenTails = CompileStatements(c, thenTails, *t);
         }
-        ExecTail elseTail = {branch, "else"};
+        ExecTails elseTails = {{branch, "else"}};
         if (auto e = stmt.find("else"); e != stmt.end()) {
-            elseTail = CompileStatements(c, elseTail, *e);
+            elseTails = CompileStatements(c, elseTails, *e);
         }
-        // After a Branch, exec tail is ambiguous — can't merge two
-        // exec paths in a BP without a Join node, which doesn't exist
-        // by default. v1 convention: the next statement attaches to the
-        // `then` branch's tail. The else branch's tail is left dangling
-        // (the agent can wire it explicitly via apply_ops if needed).
-        // Document this in the tool description.
-        return thenTail;
+        // Merge: union of both branches' tails. The next statement's exec
+        // input gets wired from each (B1: replaces v1's "else tail dangles").
+        ExecTails out;
+        out.reserve(thenTails.size() + elseTails.size());
+        for (auto& t : thenTails) out.push_back(std::move(t));
+        for (auto& t : elseTails) out.push_back(std::move(t));
+        return out;
     }
     if (stmt.contains("set")) {
         if (!stmt["set"].is_string()) {
@@ -217,17 +310,11 @@ ExecTail CompileStatement(Compiler& c, ExecTail tail,
         std::string valSlot = CompileExpr(c, stmt["to"]);
         std::string setSlot = c.AddNode("VariableSet", "varset",
             {{"variable", varName}});
-        // Wire the value pin into the SetVar's data input (pin name
-        // matches the variable name in K2).
-        c.ops.push_back({
-            {"op", "wire_pins"},
-            {"asset_path", c.asset}, {"graph_name", c.graph},
-            {"from_node", fmt::format("${}", valSlot)}, {"from_pin", "ReturnValue"},
-            {"to_node", fmt::format("${}", setSlot)},   {"to_pin", varName},
-        });
-        // Wire exec.
-        if (tail.valid()) c.WireExec(tail.slot, tail.pin, setSlot, "execute");
-        return ExecTail{setSlot, "then"};
+        // Wire the value (or set default for literals) into the SetVar's
+        // data input (pin name matches the variable name in K2).
+        EmitValueConnect(c, valSlot, "ReturnValue", setSlot, varName);
+        WireTailsTo(c, prevs, setSlot, "execute");
+        return {{setSlot, "then"}};
     }
     if (stmt.contains("call")) {
         if (!stmt["call"].is_string()) {
@@ -235,44 +322,43 @@ ExecTail CompileStatement(Compiler& c, ExecTail tail,
         }
         std::string fn = stmt["call"].get<std::string>();
         std::string owner;
-        auto sep = fn.find("::");
-        if (sep != std::string::npos) {
-            owner = fn.substr(0, sep);
-            fn    = fn.substr(sep + 2);
+        if (auto aIt = AliasMap().find(fn); aIt != AliasMap().end()) {
+            owner = aIt->second.owner;
+            fn    = aIt->second.fn;
+        } else {
+            auto sep = fn.find("::");
+            if (sep != std::string::npos) {
+                owner = fn.substr(0, sep);
+                fn    = fn.substr(sep + 2);
+            }
         }
         nlohmann::json extras = {{"function", fn}};
         if (!owner.empty()) extras["function_owner"] = owner;
         std::string slot = c.AddNode("CallFunction", "callstmt", extras);
-        // Wire args.
         if (auto argsIt = stmt.find("args");
             argsIt != stmt.end() && argsIt->is_object()) {
             for (auto& [pinName, valExpr] : argsIt->items()) {
                 std::string argSlot = CompileExpr(c, valExpr);
-                c.ops.push_back({
-                    {"op", "wire_pins"},
-                    {"asset_path", c.asset}, {"graph_name", c.graph},
-                    {"from_node", fmt::format("${}", argSlot)}, {"from_pin", "ReturnValue"},
-                    {"to_node", fmt::format("${}", slot)},      {"to_pin", pinName},
-                });
+                EmitValueConnect(c, argSlot, "ReturnValue", slot, pinName);
             }
         }
-        if (tail.valid()) c.WireExec(tail.slot, tail.pin, slot, "execute");
-        return ExecTail{slot, "then"};
+        WireTailsTo(c, prevs, slot, "execute");
+        return {{slot, "then"}};
     }
     throw std::invalid_argument(fmt::format(
         "unrecognized statement form. Supported: {{if,then,[else]}}, "
         "{{set,to}}, {{call,args}}, {{comment}}. Got: {}", stmt.dump()));
 }
 
-ExecTail CompileStatements(Compiler& c, ExecTail tail,
-                           const nlohmann::json& stmts) {
+ExecTails CompileStatements(Compiler& c, ExecTails tails,
+                            const nlohmann::json& stmts) {
     if (!stmts.is_array()) {
         throw std::invalid_argument("statement block must be an array");
     }
     for (const auto& s : stmts) {
-        tail = CompileStatement(c, tail, s);
+        tails = CompileStatement(c, tails, s);
     }
-    return tail;
+    return tails;
 }
 
 } // namespace
@@ -284,20 +370,27 @@ void RegisterCompileFunction(ToolRegistry& registry,
     d.description =
         "Compile a tiny pseudocode DSL into a fully-wired BP function. "
         "Accepts the function signature plus a `body` of statements; "
-        "translates to add_node + wire_pins ops and runs them as one "
-        "batch.\n\n"
+        "translates to add_node + wire_pins + set_pin_default ops and "
+        "runs them as one batch (single recompile per affected BP).\n\n"
         "Statements: {if, then, [else]}, {set, to}, {call, args}, {comment}.\n"
-        "Expressions: {var:\"name\"}, {call:\"fn\", args:{...}}.\n\n"
-        "Limitations (v1):\n"
-        "  - {lit:value} not yet supported — model literals as const vars.\n"
-        "  - After an if/then/else, exec continues from the `then` branch's "
-        "    tail; the `else` tail is left dangling. Use apply_ops + explicit "
-        "    Sequence/Join wiring if you need both branches to merge.\n"
-        "  - Each underlying op still saves+recompiles individually (same "
-        "    limitation as apply_ops). True single-recompile is plugin work.\n\n"
+        "Expressions:\n"
+        "  {var:\"name\"}     — VariableGet for a member variable\n"
+        "  {lit:value}      — literal pin default (string / number / bool)\n"
+        "  {call:\"fn\", args:{...}} — CallFunction node\n\n"
+        "`call` accepts operator aliases that map to UKismetMathLibrary:\n"
+        "  +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||, !\n"
+        "  Float-explicit variants: +f, -f, *f, /f, ==f, <f, <=f\n"
+        "Or use canonical \"Owner::Function\" form for any other call.\n\n"
+        "After an if/then/else, exec from BOTH branches converges into "
+        "the next statement (UE's K2 schema accepts multiple sources on "
+        "exec input pins — no Sequence node needed). If a branch's body "
+        "is empty, that side's exec out from the Branch node is the tail.\n\n"
+        "Pass `dry_run: true` to get the compiled op list without "
+        "executing — useful for inspecting what compile_function would do "
+        "before committing.\n\n"
         "On expression/statement form errors, the response says exactly "
-        "which form was unrecognized so the agent can fall back to apply_ops "
-        "for that statement only.";
+        "which form was unrecognized so the agent can fall back to "
+        "apply_ops for that statement only.";
     d.input_schema = {
         {"type","object"},
         {"properties", {
@@ -370,17 +463,14 @@ void RegisterCompileFunction(ToolRegistry& registry,
             }
         }
 
-        // Step 3: compile the body. Entry exec tail = the function's
-        // entry node's "then" pin. We use the well-known FunctionEntry
-        // node's "then" pin name; mismatch surfaces via wire_pins.
-        // For v1, we leave entry-pin wiring to the agent — they can call
-        // wire_pins explicitly afterwards if their first statement
-        // doesn't connect automatically. (Most real BP functions don't
-        // need this because UE auto-wires the entry's exec to the first
-        // statement on compile if the path is unbroken, but our isolated
-        // batch can't rely on that.)
-        ExecTail tail{};
-        CompileStatements(c, tail, args["body"]);
+        // Step 3: compile the body. Entry exec tails start empty —
+        // the agent or a follow-up wire_pins call connects the function-
+        // entry node's "then" exec output to the first statement. (Most
+        // real BP functions don't need this because UE auto-wires the
+        // entry's exec to the first statement on compile if the path is
+        // unbroken, but our isolated batch can't rely on that.)
+        ExecTails tails;
+        CompileStatements(c, tails, args["body"]);
 
         // Step 4: dry-run mode short-circuits to just returning the ops
         // (useful for the agent to inspect what we'd do before committing).

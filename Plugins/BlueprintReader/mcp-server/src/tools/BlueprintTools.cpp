@@ -373,6 +373,40 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 
     // ===== Write tools (Phase 1.5) =========================================
 
+    // ----- create_blueprint (A3) -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "create_blueprint";
+        d.description =
+            "Create a new BP asset under `/Game/...` extending `parent_class`. "
+            "`parent_class` accepts short names (\"Actor\", \"ACharacter\") "
+            "and full UClass paths (\"/Script/Engine.Actor\"). Idempotent: "
+            "calling with an existing asset returns "
+            "`{ok:true, already_existed:true}` without modifying it. Pair "
+            "with `apply_ops` to create + populate a BP in one batch.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",   {{"type","string"},
+                                  {"description","Must start with /Game/. Example: /Game/AI/BP_Boss"}}},
+                {"parent_class", {{"type","string"},
+                                  {"description","UClass short name or full path. Example: Actor or /Script/Engine.Actor"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","parent_class"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset  = RequireString(args, "asset_path");
+            std::string parent = RequireString(args, "parent_class");
+            auto r = reader.CreateBlueprint(asset, parent);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", asset},
+                {"already_existed", r.alreadyExisted},
+                {"parent_class", r.parentClass.empty() ? parent : r.parentClass},
+            };
+        });
+    }
+
     // ----- add_variable ----------------------------------------------------
     {
         ToolDescriptor d;
