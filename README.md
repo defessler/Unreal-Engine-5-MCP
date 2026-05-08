@@ -33,6 +33,7 @@ Two backends:
 | `find_node`         | read      | Substring search by class/title; optional `kind` filter on K2 extras.      |
 | `get_node`          | read      | Fetch a single node by GUID — pins + links + position, no full-graph cost. |
 | `find_overriders`   | read      | Structural query: BPs that extend a parent, override a function, or implement an interface. |
+| `create_blueprint`  | **write** | Create a new BP under `/Game/...` extending a parent class. Idempotent.    |
 | `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
 | `delete_variable`   | **write** | Remove a member variable by name.                                          |
 | `rename_variable`   | **write** | Rename a member variable; updates references in graphs.                    |
@@ -47,8 +48,9 @@ Two backends:
 | `set_variable_default` | **write** | Change a member variable's default value (string form).                |
 | `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
 | `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
-| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Reduces 10-call sequences to one. |
-| `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var`) into nodes+wires+layout. Lets the agent generate BPs the way it generates code. |
+| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Single recompile per affected BP. Surfaces compile diagnostics. |
+| `preview_ops`       | **batch** | Validate an apply_ops batch without mutating anything. Useful for agent self-checks and human-in-the-loop confirmation. |
+| `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var/lit` + math/comparison aliases) into nodes+wires+literals. Lets the agent generate BPs the way it generates code. |
 | `auto_layout_graph` | **write** | Reposition every node in a graph using a column-grid layout based on exec connectivity. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
@@ -68,9 +70,12 @@ Every write tool that takes a `type` accepts a string shorthand —
 errors include both pin types so the agent can self-correct.
 
 For multi-step generation, `apply_ops` runs a whole batch in one call with
-named-slot GUID resolution, and `compile_function` accepts a pseudocode
-DSL (if/set/call/var) and materializes the graph. See [Tool Reference →
-Batch tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#batch-tools).
+named-slot GUID resolution **and a single recompile + save at the batch
+end** (collapses N×compile to 1). `compile_function` accepts a pseudocode
+DSL (`if`/`set`/`call`/`var`/`lit` plus math+comparison operator aliases)
+and materializes the graph. `preview_ops` validates a batch without
+mutating, and `create_blueprint` generates whole new BP assets from
+scratch. See [Tool Reference → Batch tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#batch-tools).
 
 ## Quick start: hooking it up to Claude
 
@@ -125,7 +130,7 @@ For other configs:
 - **Claude Desktop** — same JSON shape under
   `%APPDATA%\Claude\claude_desktop_config.json`'s `mcpServers`.
 - **Mock-only** (no UE) — drop the entire `env` block; the server defaults
-  to the bundled fixtures and exposes the 10 read tools as a demo.
+  to the bundled fixtures and exposes the read tools as a demo.
 
 ### 3. Try it
 

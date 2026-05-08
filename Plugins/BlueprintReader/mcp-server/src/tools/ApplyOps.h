@@ -55,4 +55,22 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
                       const nlohmann::json& ops, bool atomic);
 
+// Validate a sequence of ops without mutating anything (B2). Walks the
+// op array, parses each op's required fields, resolves named-slot refs
+// against placeholder GUIDs (so `$id` references to add_node ops higher
+// in the batch validate correctly), and uses *read-only* reader calls
+// (ReadBlueprint, ListVariables) to confirm referenced variables /
+// functions exist. Returns:
+//
+//   { ok, validated:N, slots:{ id: placeholder_guid, ... },
+//     results:[ {ok:true,op:"..."} | {ok:false,op_index,error}, ... ],
+//     would_compile:[ asset_path, ... ] }
+//
+// `ok` is true iff every op validated. Failed ops are reported per-entry;
+// the caller can decide how to react. No write methods are ever called
+// against the reader — safe to use against a live UE editor session
+// without risk of mutation.
+nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
+                           const nlohmann::json& ops);
+
 } // namespace bpr::tools

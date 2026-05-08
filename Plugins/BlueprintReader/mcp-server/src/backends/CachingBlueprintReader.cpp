@@ -2,6 +2,9 @@
 
 #include <fmt/core.h>
 
+#include <optional>
+#include <system_error>
+
 namespace bpr::backends {
 
 namespace {
@@ -25,19 +28,61 @@ std::string MakeKey(std::string_view op, std::string_view asset,
 
 CachingBlueprintReader::CachingBlueprintReader(
     std::unique_ptr<IBlueprintReader> inner,
-    std::chrono::milliseconds ttl)
-    : inner_(std::move(inner)), ttl_(ttl) {}
+    std::chrono::milliseconds ttl,
+    std::filesystem::path projectDir)
+    : inner_(std::move(inner)), ttl_(ttl), projectDir_(std::move(projectDir)) {}
+
+namespace {
+// Resolve a UE asset path under /Game/ to its on-disk .uasset file
+// inside `<project>/Content/`. Returns empty path if the asset is outside
+// /Game/ (plugin content, /Engine/...) or if projectDir is empty.
+std::filesystem::path ResolveUasset(const std::filesystem::path& projectDir,
+                                    std::string_view assetPath) {
+    if (projectDir.empty() || assetPath.empty()) return {};
+    constexpr std::string_view kGame = "/Game/";
+    if (assetPath.size() < kGame.size() ||
+        assetPath.compare(0, kGame.size(), kGame) != 0) {
+        return {};
+    }
+    std::string_view rest = assetPath.substr(kGame.size());
+    // projectDir may be a .uproject path or its containing dir. Normalize:
+    // if it's a file, take parent.
+    std::filesystem::path root = projectDir;
+    if (root.has_extension()) root = root.parent_path();
+    return root / "Content" / (std::string(rest) + ".uasset");
+}
+
+// Stat the file's mtime; returns nullopt on any failure (file missing,
+// permission, etc.) — caller treats that as "no mtime info, skip check".
+std::optional<std::filesystem::file_time_type>
+SafeMtime(const std::filesystem::path& p) {
+    if (p.empty()) return std::nullopt;
+    std::error_code ec;
+    auto t = std::filesystem::last_write_time(p, ec);
+    if (ec) return std::nullopt;
+    return t;
+}
+} // namespace
 
 std::shared_ptr<const void> CachingBlueprintReader::LookupOrCompute(
     const std::string& key, std::string_view assetPath,
     const std::function<std::shared_ptr<const void>()>& compute) {
+
+    // C2: capture the source file's mtime before going into the lock so
+    // a slow filesystem doesn't block other lookups. The same mtime is
+    // re-used on insert below.
+    auto sourcePath = ResolveUasset(projectDir_, assetPath);
+    auto currentMtime = SafeMtime(sourcePath);
 
     {
         std::lock_guard lock(mu_);
         auto it = entries_.find(key);
         if (it != entries_.end()) {
             auto age = std::chrono::steady_clock::now() - it->second.inserted;
-            if (age < ttl_) {
+            // C2: mtime mismatch evicts even if TTL hasn't expired.
+            bool mtimeStale = it->second.hasMtime && currentMtime &&
+                              it->second.sourceMtime != *currentMtime;
+            if (age < ttl_ && !mtimeStale) {
                 stats_.hits.fetch_add(1, std::memory_order_relaxed);
                 return it->second.value;
             }
@@ -52,9 +97,22 @@ std::shared_ptr<const void> CachingBlueprintReader::LookupOrCompute(
     // unrelated requests.
     auto value = compute();
 
+    // After compute(), re-stat — the file may have been written by the
+    // compute itself (e.g. a write op flushed the BP). Using the post-
+    // compute mtime ensures the entry isn't immediately stale.
+    auto postMtime = SafeMtime(sourcePath);
+    if (!postMtime) postMtime = currentMtime;  // fall back to the pre-stat
+
     {
         std::lock_guard lock(mu_);
-        entries_[key] = Entry{std::chrono::steady_clock::now(), value};
+        Entry e;
+        e.inserted = std::chrono::steady_clock::now();
+        e.value    = value;
+        if (postMtime) {
+            e.sourceMtime = *postMtime;
+            e.hasMtime    = true;
+        }
+        entries_[key] = std::move(e);
         byAsset_[std::string(assetPath)].insert(key);
     }
     return value;
@@ -62,6 +120,14 @@ std::shared_ptr<const void> CachingBlueprintReader::LookupOrCompute(
 
 void CachingBlueprintReader::InvalidateAsset(std::string_view assetPath) {
     std::lock_guard lock(mu_);
+    // During a batch, defer the actual eviction until EndBatch — otherwise
+    // a write op early in the batch would drop entries that subsequent ops
+    // in the same batch are about to re-fetch (defeating the cache).
+    if (batchDepth_ > 0) {
+        pendingInvalidations_.insert(std::string(assetPath));
+        pendingGlobalInvalidation_ = true;  // ListBlueprints summaries change
+        return;
+    }
     auto it = byAsset_.find(std::string(assetPath));
     if (it != byAsset_.end()) {
         for (const auto& k : it->second) entries_.erase(k);
@@ -81,7 +147,51 @@ void CachingBlueprintReader::InvalidateAll() {
     std::lock_guard lock(mu_);
     entries_.clear();
     byAsset_.clear();
+    pendingInvalidations_.clear();
+    pendingGlobalInvalidation_ = false;
     stats_.invalidations.fetch_add(1, std::memory_order_relaxed);
+}
+
+// ----- Batch sentinels (A1) ------------------------------------------------
+void CachingBlueprintReader::BeginBatch() {
+    {
+        std::lock_guard lock(mu_);
+        ++batchDepth_;
+    }
+    inner_->BeginBatch();
+}
+
+nlohmann::json CachingBlueprintReader::EndBatch() {
+    nlohmann::json flushAck = inner_->EndBatch();
+    std::set<std::string> toInvalidate;
+    bool flushGlobal = false;
+    {
+        std::lock_guard lock(mu_);
+        if (batchDepth_ > 0) --batchDepth_;
+        if (batchDepth_ == 0) {
+            toInvalidate = std::move(pendingInvalidations_);
+            pendingInvalidations_.clear();
+            flushGlobal = pendingGlobalInvalidation_;
+            pendingGlobalInvalidation_ = false;
+        }
+    }
+    // Flush outside the lock — InvalidateAsset reacquires it. The deferred
+    // flag is now clear, so these will run their normal eviction path.
+    for (const auto& asset : toInvalidate) {
+        InvalidateAsset(asset);
+    }
+    if (flushGlobal && toInvalidate.empty()) {
+        // Edge case: writes happened with no asset key (shouldn't normally
+        // occur, but make ListBlueprints invalidation correct anyway).
+        std::lock_guard lock(mu_);
+        auto globalIt = byAsset_.find("");
+        if (globalIt != byAsset_.end()) {
+            for (const auto& k : globalIt->second) entries_.erase(k);
+            byAsset_.erase(globalIt);
+            stats_.invalidations.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    return flushAck;
 }
 
 // ============================================================================
@@ -241,14 +351,34 @@ void CachingBlueprintReader::SetVariableDefault(std::string_view assetPath, std:
     InvalidateAsset(assetPath);
 }
 
+IBlueprintReader::CreateBlueprintResult
+CachingBlueprintReader::CreateBlueprint(std::string_view assetPath,
+                                        std::string_view parentClass) {
+    auto out = inner_->CreateBlueprint(assetPath, parentClass);
+    // New asset → drop ListBlueprints cache and any stale entries for this path.
+    InvalidateAsset(assetPath);
+    return out;
+}
+
+void CachingBlueprintReader::SetPinDefault(std::string_view assetPath,
+                                           std::string_view graphName,
+                                           std::string_view nodeId,
+                                           std::string_view pinSpec,
+                                           std::string_view value) {
+    inner_->SetPinDefault(assetPath, graphName, nodeId, pinSpec, value);
+    InvalidateAsset(assetPath);
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================
 
 std::unique_ptr<IBlueprintReader> WrapWithCache(
-    std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl) {
+    std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl,
+    std::filesystem::path projectDir) {
     if (ttl <= std::chrono::seconds(0)) return inner;
-    return std::make_unique<CachingBlueprintReader>(std::move(inner), ttl);
+    return std::make_unique<CachingBlueprintReader>(
+        std::move(inner), ttl, std::move(projectDir));
 }
 
 } // namespace bpr::backends

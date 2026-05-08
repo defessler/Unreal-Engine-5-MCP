@@ -1,6 +1,6 @@
 # Tool Reference
 
-27 tools — 10 read, 13 write, 2 meta, 2 batch. All use snake_case JSON keys;
+29 tools — 10 read, 14 write, 2 meta, 3 batch. All use snake_case JSON keys;
 nullable string fields emit `null`; `BPNode.meta` is a real nested object
 (not a string-of-JSON). Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
@@ -186,6 +186,27 @@ All write tools recompile and save the blueprint. They return the new
 state (variable list, node GUID, etc.) on success. Successful writes
 also drop the [server-side cache](Configuration#response-caching) for
 the affected asset, so a follow-up read sees the new state.
+
+When wrapped inside an `apply_ops` batch, write ops **defer** their
+compile + save until the batch's `EndBatch` flush — a 10-op generation
+collapses to 1 compile + 1 save instead of 10 each. Single-op callers see
+no behavior change. See [Batch tools → `apply_ops`](#apply_ops) for
+details.
+
+### `create_blueprint`
+Create a new BP asset under `/Game/...` extending `parent_class`.
+Idempotent — calling with an existing asset returns
+`{ok:true, already_existed:true}` instead of erroring. Pair with
+`apply_ops` to create + populate a BP in one batch.
+
+```json
+{ "asset_path":   "/Game/AI/BP_Boss",
+  "parent_class": "Actor" }
+```
+
+`parent_class` accepts:
+- short names: `"Actor"`, `"ACharacter"` (UE prefix conventions are tried)
+- full UClass paths: `"/Script/Engine.Actor"`
 
 ### `add_variable`
 Add a member variable with full BPPinType + default + category + flags.
@@ -377,19 +398,50 @@ Returns:
 `atomic: false` continues on errors; failed ops appear as `{ok:false, error:"..."}`
 in the per-op results array.
 
-**Limitation (v1):** each underlying op still saves+recompiles individually.
-True single-recompile batching needs plugin work — tracked separately.
-The agent reasoning win is already large because all the GUID threading
-and round-trips collapse into one call.
+**Single-recompile batching (A1).** Ops inside a batch *defer* their
+compile + save until the trailing `EndBatch` flush — N ops on the same
+BP collapse to 1 compile + 1 save. Mid-batch failure uses best-effort
+semantics: whatever ops landed before the failure still get committed.
+
+**Compile diagnostics (C1).** The result includes a top-level
+`diagnostics` array (with `severity`, `message`, optional `node_guid`),
+plus `compile_errors` and `compile_warnings` counts. Lets the agent
+detect "compiled with warnings" without re-reading the BP. Per-op
+diagnostic attribution is not reliable when batched — the diagnostics
+are per-BP-flush.
+
+**Supported ops:** `create_blueprint`, `add_variable`, `delete_variable`,
+`rename_variable`, `set_variable_default`, `add_function`,
+`add_function_input`, `add_function_output`, `delete_function`,
+`add_node`, `wire_pins`, `set_node_position`, `delete_node`,
+`set_pin_default` (used by `compile_function` for literal pin defaults).
+
+### `preview_ops`
+Validate an `apply_ops` batch **without mutating anything**. Walks the
+op array, parses each op's required fields, resolves named-slot refs
+(against placeholder GUIDs so multi-step refs validate), and uses
+read-only backend calls to confirm referenced variables and functions
+exist. Returns per-op `{ok}` results plus a `would_compile` list of
+asset paths the real `apply_ops` would touch.
+
+```jsonc
+{ "ops": [...] }   // same shape apply_ops accepts
+```
+
+Use cases:
+- Agent self-check before running a multi-op generation
+- Human-in-the-loop confirmation step ("here's what I'd do; OK?")
+- CI/lint pass over a generated batch
 
 ### `compile_function`
 Compile a tiny pseudocode DSL into a fully-wired BP function. The agent
 thinks in pseudocode (its native form); the server materializes nodes +
-wires + layout in one call.
+wires + literals in one call. Wrapped in an `apply_ops` batch internally
+so the whole function compiles in a single recompile.
 
 ```jsonc
 {
-  "asset_path": "/Game/AI/BP_Enemy",
+  "asset_path":    "/Game/AI/BP_Enemy",
   "function_name": "TakeDamage",
   "inputs":  [{ "name": "Amount", "type": "float" }],
   "body": [
@@ -397,10 +449,11 @@ wires + layout in one call.
       "then": [],
       "else": [
         { "set": "Health",
-          "to":  { "call": "Subtract::Float",
-                   "args": { "A": { "var": "Health" }, "B": { "var": "Amount" } } } },
-        { "if":   { "call": "LessEqual::Float",
-                    "args": { "A": { "var": "Health" }, "B": { "var": "Amount" } } },
+          "to":  { "call": "-",   // operator alias → KismetMathLibrary::Subtract_IntInt
+                   "args": { "A": { "var": "Health" },
+                             "B": { "var": "Amount" } } } },
+        { "if":   { "call": "<=", "args": { "A": { "var": "Health" },
+                                            "B": { "lit": 0 } } },     // literal pin default
           "then": [{ "call": "OnDeath" }] }
       ]
     }
@@ -408,21 +461,25 @@ wires + layout in one call.
 }
 ```
 
-Statement forms (v1): `{if, then, [else]}`, `{set, to}`, `{call, args}`,
-`{comment}`.
-Expression forms (v1): `{var:"name"}`, `{call:"fn", args:{...}}`.
+**Statement forms:** `{if, then, [else]}`, `{set, to}`, `{call, args}`, `{comment}`.
+
+**Expression forms:**
+- `{var:"name"}` — VariableGet for a member variable.
+- `{lit: value}` — literal pin default (string / number / boolean). Uses
+  `set_pin_default` under the hood; UE has no first-class literal node.
+- `{call:"fn", args:{...}}` — CallFunction node. Operator aliases:
+  - Math: `+`, `-`, `*`, `/`, `%`
+  - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+  - Boolean: `&&`, `||`, `!`
+  - Float-explicit variants: `+f`, `-f`, `*f`, `/f`, `==f`, `<f`, `<=f`
+  - Or use `"Owner::Function"` form for any other call.
+
+**Exec-tail merging.** After an `if/then/else`, exec from BOTH branches
+converges into the next statement (UE's K2 schema accepts multiple
+sources on exec input pins — no Sequence/Join node needed).
 
 Pass `dry_run: true` to get the compiled op list without executing —
-useful for the agent to inspect / confirm before committing.
-
-**Limitations (v1):**
-- `{lit:value}` literal expressions not yet supported. Model literals as
-  const variables and reference them with `{var:"name"}`, or drop to
-  `apply_ops` with an explicit literal-node spawn.
-- After `if/then/else`, exec continues from the `then` branch's tail; the
-  `else` tail is left dangling. Use `apply_ops` + explicit Sequence/Join
-  wiring if you need both branches to merge.
-- Per-op save+recompile applies (same as `apply_ops`).
+useful for inspecting what `compile_function` would do before committing.
 
 On unrecognized statement/expression forms, the response says exactly
 which form was invalid so the agent can fall back to `apply_ops` for
