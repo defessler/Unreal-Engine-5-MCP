@@ -105,6 +105,9 @@ public:
                              std::string_view category) override;
     DuplicateBlueprintResult DuplicateBlueprint(std::string_view sourceAssetPath,
                                                 std::string_view destAssetPath) override;
+    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view destPath,
+                                                    std::string_view content,
+                                                    bool createDirs) override;
 
     // ----- batch sentinels ------------------------------------------
     void BeginBatch() override;

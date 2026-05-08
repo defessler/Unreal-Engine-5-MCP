@@ -1182,6 +1182,43 @@ void CommandletBlueprintReader::SetVariableCategory(std::string_view assetPath,
     (void)RunOp(args);
 }
 
+IBlueprintReader::WriteGeneratedSourceResult
+CommandletBlueprintReader::WriteGeneratedSource(std::string_view destPath,
+                                                std::string_view content,
+                                                bool createDirs) {
+    // The daemon line-protocol can't carry multi-line content as a CLI
+    // arg. Write the content to a server-side temp file first, then
+    // pass that path via -ContentFile=<path>. The plugin reads + writes
+    // + deletes the temp.
+    namespace fs = std::filesystem;
+    fs::path tempDir = fs::temp_directory_path();
+    fs::path contentTemp = tempDir /
+        ("bpr-write-content-" + std::to_string(static_cast<unsigned long long>(
+            std::hash<std::string>{}(std::string(destPath)))) + ".txt");
+    {
+        std::ofstream f(contentTemp, std::ios::binary);
+        f.write(content.data(), static_cast<std::streamsize>(content.size()));
+    }
+
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=WriteGeneratedSource");
+    args.push_back(L"-Path=" + Widen(destPath));
+    args.push_back(L"-ContentFile=" + contentTemp.wstring());
+    if (createDirs) args.push_back(L"-CreateDirs");
+    auto j = RunOp(args);
+
+    // Plugin should have deleted the temp; clean up just in case.
+    std::error_code ec;
+    fs::remove(contentTemp, ec);
+
+    WriteGeneratedSourceResult out;
+    if (j.is_object()) {
+        out.bytesWritten = j.value("bytes_written", std::size_t{0});
+        out.path         = j.value("path", std::string{});
+    }
+    return out;
+}
+
 IBlueprintReader::DuplicateBlueprintResult
 CommandletBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
                                               std::string_view destAssetPath) {
