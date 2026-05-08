@@ -1055,17 +1055,25 @@ void AppendPinTypeFlags(std::vector<std::wstring>& args, const BPPinType& type) 
 }
 } // namespace
 
-std::string CommandletBlueprintReader::AddFunction(std::string_view assetPath,
-                                                   std::string_view name) {
+IBlueprintReader::AddFunctionResult
+CommandletBlueprintReader::AddFunction(std::string_view assetPath,
+                                       std::string_view name) {
     std::vector<std::wstring> args;
     args.push_back(L"-Op=AddFunction");
     args.push_back(L"-Asset=" + Widen(assetPath));
     args.push_back(L"-Name="  + Widen(name));
     auto j = RunOp(args);
-    if (j.is_object() && j.contains("function_name") && j["function_name"].is_string()) {
-        return j["function_name"].get<std::string>();
+    AddFunctionResult out;
+    out.functionName = std::string(name);
+    if (j.is_object()) {
+        if (j.contains("function_name") && j["function_name"].is_string()) {
+            out.functionName = j["function_name"].get<std::string>();
+        }
+        if (j.contains("entry_node_id") && j["entry_node_id"].is_string()) {
+            out.entryNodeId = j["entry_node_id"].get<std::string>();
+        }
     }
-    return std::string(name);  // commandlet acked but didn't echo — caller passed in
+    return out;
 }
 
 void CommandletBlueprintReader::AddFunctionInput(std::string_view assetPath,
@@ -1154,9 +1162,12 @@ void CommandletBlueprintReader::BeginBatch() {
     (void)RunOp(args);
 }
 
-nlohmann::json CommandletBlueprintReader::EndBatch() {
+nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile) {
     std::vector<std::wstring> args;
     args.push_back(L"-Op=EndBatch");
+    if (skipCompile) {
+        args.push_back(L"-Skip");
+    }
     return RunOp(args);
 }
 

@@ -89,7 +89,7 @@ public:
     void DeleteVariable(std::string_view assetPath, std::string_view name) override;
     void RenameVariable(std::string_view assetPath, std::string_view oldName,
                         std::string_view newName) override;
-    std::string AddFunction(std::string_view assetPath, std::string_view name) override;
+    AddFunctionResult AddFunction(std::string_view assetPath, std::string_view name) override;
     void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
                           std::string_view paramName, const BPPinType& type) override;
     void AddFunctionOutput(std::string_view assetPath, std::string_view functionName,
@@ -108,7 +108,7 @@ public:
     // that subsequent ops in the same batch would re-fetch. Flushed by
     // EndBatch's trailing call to InvalidateAsset for each pending entry.
     void BeginBatch() override;
-    nlohmann::json EndBatch() override;
+    nlohmann::json EndBatch(bool skipCompile = false) override;
 
     // Drop everything for `assetPath`, plus the global ListBlueprints
     // cache. Public so callers / tests can force-clear.

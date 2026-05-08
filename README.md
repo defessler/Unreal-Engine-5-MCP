@@ -48,7 +48,7 @@ Two backends:
 | `set_variable_default` | **write** | Change a member variable's default value (string form).                |
 | `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
 | `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
-| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Single recompile per affected BP. Surfaces compile diagnostics. |
+| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Single recompile per affected BP. Surfaces compile diagnostics with per-op attribution. `on_failure: "compile"` (default) or `"skip"` controls partial-state semantics on mid-batch failure. |
 | `preview_ops`       | **batch** | Validate an apply_ops batch without mutating anything. Useful for agent self-checks and human-in-the-loop confirmation. |
 | `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var/lit` + math/comparison aliases) into nodes+wires+literals. Lets the agent generate BPs the way it generates code. |
 | `auto_layout_graph` | **write** | Reposition every node in a graph using a column-grid layout based on exec connectivity. |

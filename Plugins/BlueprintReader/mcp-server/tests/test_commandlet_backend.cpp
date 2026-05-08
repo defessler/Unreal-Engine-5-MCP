@@ -165,8 +165,11 @@ TEST_CASE("CommandletBlueprintReader: function composition — add_function + ad
     try { reader->DeleteFunction(asset, fn); } catch (...) {}
 
     // 1. Compose the function: name + input + output.
-    std::string echoed = reader->AddFunction(asset, fn);
-    CHECK(echoed == fn);
+    auto added = reader->AddFunction(asset, fn);
+    CHECK(added.functionName == fn);
+    // The plugin echoes back the FunctionEntry node's GUID so callers can
+    // wire its `then` exec without a follow-up read.
+    CHECK_FALSE(added.entryNodeId.empty());
 
     BPPinType floatType;  floatType.Category = "real"; floatType.SubCategory = "float";
     BPPinType boolType;   boolType.Category  = "bool";
