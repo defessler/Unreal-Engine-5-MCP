@@ -17,6 +17,8 @@ param(
 if (-not (Test-Path $Exe)) {
     throw "Executable not found: $Exe"
 }
+# ProcessStartInfo needs an absolute path — relative paths fail at Start().
+$Exe = (Resolve-Path $Exe).Path
 
 # JSON-RPC over LSP-style framing (Content-Length: N\r\n\r\n<body>).
 function Frame([string]$json) {
@@ -50,6 +52,18 @@ $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true
+
+# Pre-existing env wins; otherwise fall back to known-good defaults so the
+# script works from a fresh shell without manual setup.
+if (-not $env:BP_READER_ENGINE_DIR -and (Test-Path "D:\Projects\Unreal Engine 5")) {
+    $psi.EnvironmentVariables["BP_READER_ENGINE_DIR"] = "D:\Projects\Unreal Engine 5"
+}
+if (-not $env:BP_READER_PROJECT) {
+    $psi.EnvironmentVariables["BP_READER_PROJECT"]  = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+}
+if (-not $env:BP_READER_BACKEND) {
+    $psi.EnvironmentVariables["BP_READER_BACKEND"]  = "commandlet"
+}
 
 $proc = New-Object System.Diagnostics.Process
 $proc.StartInfo = $psi
