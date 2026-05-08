@@ -145,7 +145,7 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 
 | Variable                      | Default                                | Purpose                                                                  |
 |-------------------------------|----------------------------------------|--------------------------------------------------------------------------|
-| `BP_READER_BACKEND`           | `mock`                                 | `mock` \| `commandlet` \| `live` (Phase 2, not yet implemented)         |
+| `BP_READER_BACKEND`           | `mock`                                 | `mock` \| `commandlet` \| `live` (talks to a running editor over TCP — see [Configuration → Live backend](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Configuration#live-backend--talk-to-a-running-editor-over-tcp)) |
 | `BP_READER_FIXTURES_DIR`      | `<exe>/fixtures`                       | Mock backend's fixture dir.                                              |
 | `BP_READER_ENGINE_DIR`        | (unset → fail-fast for `commandlet`)   | Path to the source-built engine (`...\UnrealEngine`).                    |
 | `BP_READER_PROJECT`           | (unset → fail-fast for `commandlet`)   | Path to the `.uproject`.                                                 |
@@ -157,6 +157,8 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_PREWARM`           | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost behind whatever Claude is doing. |
 | `BP_READER_CACHE_TTL_SECONDS` | `30`                                   | How long the server memoizes read-tool responses for. AI clients flurry repeated reads on the same BP — caching short-circuits the duplicates. `0` disables. Writes invalidate the affected asset's entries. |
 | `BP_READER_READ_ONLY`         | `0` (off)                              | `1`/`true`/`yes`/`on` to reject every write tool. Use when running the daemon alongside an open editor — concurrent writes to the same `.uasset` corrupt state. |
+| `BP_READER_LIVE_PORT`         | (unset → live disabled)                | TCP port for the `live` backend. Set in BOTH the editor's process env AND the MCP server's env. |
+| `BP_READER_LIVE_TOKEN`        | (unset → live refuses)                 | Shared secret for live-backend auth. Set in both processes; values must match. |
 
 ## Performance
 

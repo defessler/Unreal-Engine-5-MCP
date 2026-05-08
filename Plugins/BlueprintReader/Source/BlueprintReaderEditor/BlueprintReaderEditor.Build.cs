@@ -19,7 +19,10 @@ public class BlueprintReaderEditor : ModuleRules
 			"BlueprintGraph",
 			"Json",
 			"JsonUtilities",
-			"AssetRegistry"
+			"AssetRegistry",
+			// Live-mode TCP listener (BlueprintReaderLiveServer.cpp).
+			"Sockets",
+			"Networking"
 		});
 	}
 }
