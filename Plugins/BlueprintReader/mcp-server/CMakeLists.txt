@@ -61,6 +61,8 @@ add_library(bp-reader-core STATIC
     src/tools/codegen/CppEmit.cpp
     src/tools/codegen/CppClassEmit.cpp
     src/tools/codegen/UnsupportedTreatment.cpp
+    src/tools/parse/CppLex.cpp
+    src/tools/parse/CppParse.cpp
     src/backends/MockBlueprintReader.cpp
     src/backends/CommandletBlueprintReader.cpp
     src/backends/CachingBlueprintReader.cpp
