@@ -24,6 +24,9 @@ add_executable(bp-reader-tests
     test_cpp_codegen.cpp
     test_cpp_class.cpp
     test_unsupported_treatment.cpp
+    test_cpp_lex.cpp
+    test_cpp_parse.cpp
+    test_transpile_roundtrip.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE

@@ -8,6 +8,7 @@
 #include "tools/codegen/CppClassEmit.h"
 #include "tools/codegen/CppEmit.h"
 #include "tools/codegen/UnsupportedTreatment.h"
+#include "tools/parse/CppParse.h"
 
 #include "backends/IBlueprintReader.h"
 
@@ -440,6 +441,74 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                 {"ok", true},
                 {"path", r.path},
                 {"bytes_written", r.bytesWritten},
+            };
+        });
+    }
+
+    // ----- parse_cpp_function (Phase 3 — C++ → BPIR) ----------------------
+    // Closes the BP↔C++ loop: source language → BPIR → BP graph (via
+    // compile_function). Pairs with transpile_function (BPIR → C++) for a
+    // round-trip identity on the patterns CppEmit produces. Accepts both
+    // a full function definition (returnType name(args) { body }) and a
+    // bare body block — when bare, the caller passes the signature
+    // out-of-band as a partially-built BPIR doc.
+    //
+    // The supported subset (if/else, for(auto&...), while, switch, cast,
+    // arithmetic + comparison + logical operators, member/index access,
+    // Cast<T>(), this) is enough to round-trip what compile_function /
+    // CppEmit emit, plus reasonable hand-written extensions. Out of
+    // scope: preprocessor, templates beyond Cast<T>, lambdas, decltype,
+    // exception machinery, pointer arithmetic. Anything outside the
+    // subset throws CppParseError with a `<line>:<col>: <message>`
+    // pointer into the source.
+    {
+        ToolDescriptor d;
+        d.name = "parse_cpp_function";
+        d.description =
+            "Parse a C++ function (or bare body) into a BPIR document — "
+            "the inverse of `transpile_function`. The returned BPIR can "
+            "be fed straight to `compile_function` to materialize a BP "
+            "graph from the source.\n\n"
+            "Two input forms:\n"
+            "  1. Full definition: `bool TakeDamage(float Damage) { ... }`. "
+            "Signature is parsed for inputs/outputs/return type.\n"
+            "  2. Bare body: `{ ... }` or `<stmts>`. Pass `signature` "
+            "(a BPIR function shell with name/inputs/outputs/locals "
+            "already populated) so the parser knows how to scope "
+            "variables.\n\n"
+            "Subset accepted: if/else, range-based for, while, switch + "
+            "case + default, return, break, continue, expression "
+            "statements (assignment / call / compound-assign), local "
+            "declarations, plus expressions over identifiers / qualified "
+            "names / literals / function calls / member access (./->) / "
+            "array index / Cast<T>() / this / unary (!, -) / binary "
+            "(arithmetic / comparison / logical / assign).\n\n"
+            "Errors are reported as `<line>:<col>: <message>`; the "
+            "produced BPIR is validated against the schema before "
+            "return — a malformed parse surfaces as a clear error rather "
+            "than corrupt downstream graphs.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"source",    {{"type","string"},
+                               {"description","C++ source: full function definition or bare body."}}},
+                {"signature", {{"type","object"},
+                               {"description","Optional BPIR function-doc shell (name/inputs/outputs/locals) when `source` is a bare body."}}},
+            }},
+            {"required", nlohmann::json::array({"source"})},
+        };
+        registry.Add(std::move(d), [](const nlohmann::json& args) {
+            std::string source = RequireString(args, "source");
+            nlohmann::json bpir;
+            if (auto sigIt = args.find("signature");
+                sigIt != args.end() && sigIt->is_object()) {
+                bpir = ParseCppFunction(source, *sigIt);
+            } else {
+                bpir = ParseCppFunction(source);
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"bpir", bpir},
             };
         });
     }
