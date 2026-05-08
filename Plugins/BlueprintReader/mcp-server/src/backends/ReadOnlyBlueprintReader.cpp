@@ -121,6 +121,10 @@ nlohmann::json ReadOnlyBlueprintReader::EndBatch(bool skipCompile) {
     return inner_->EndBatch(skipCompile);
 }
 
+nlohmann::json ReadOnlyBlueprintReader::ShutdownDaemon() {
+    return inner_->ShutdownDaemon();
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {

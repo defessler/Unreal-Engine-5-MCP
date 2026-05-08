@@ -158,6 +158,23 @@ public:
     virtual nlohmann::json EndBatch(bool /*skipCompile*/ = false) {
         return nlohmann::json::object();
     }
+
+    // Tear down any backing process / connection / cache the backend holds
+    // open. Optional — default is a no-op for backends that don't have one
+    // (mock, future live). The CommandletBlueprintReader override sends
+    // QUIT to its daemon and joins, freeing the project lock so the user
+    // can launch the full editor (or another tool) without contention.
+    //
+    // Subsequent tool calls auto-respawn the daemon — same path the
+    // existing daemon-died fallback uses. So this is safe to call ad-hoc;
+    // the next read just pays a one-time cold start.
+    //
+    // Returns a JSON object describing what happened: {ok:true,
+    // was_running:bool, ...}. Backends without a teardownable resource
+    // return {ok:true, was_running:false}.
+    virtual nlohmann::json ShutdownDaemon() {
+        return nlohmann::json{{"ok", true}, {"was_running", false}};
+    }
 };
 
 } // namespace bpr::backends
