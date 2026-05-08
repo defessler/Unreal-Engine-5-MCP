@@ -1,6 +1,7 @@
 #include "backends/BackendFactory.h"
 #include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
+#include "backends/LiveBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "backends/ReadOnlyBlueprintReader.h"
 #include "Env.h"
@@ -39,6 +40,9 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
     cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
     cfg.cacheTtlSeconds       = env::IntOrDefault("BP_READER_CACHE_TTL_SECONDS", 30);
     cfg.readOnly              = env::BoolOrDefault("BP_READER_READ_ONLY", false, log);
+    cfg.liveHost              = env::GetOrDefault("BP_READER_LIVE_HOST", "127.0.0.1");
+    cfg.liveProcPort          = env::IntOrDefault("BP_READER_LIVE_PORT", 0);
+    cfg.liveToken             = env::GetOrDefault("BP_READER_LIVE_TOKEN", "");
 
     // ----- auto-discovery (Tier 1 UX) ---------------------------------
     //
@@ -136,9 +140,11 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
             return r;
         }
         if (cfg.backend == "live") {
-            throw BlueprintReaderError(fmt::format(
-                "backend '{}' is not implemented yet (Phase 2). "
-                "Set BP_READER_BACKEND to 'mock' or 'commandlet'.", cfg.backend));
+            LiveBlueprintReader::Config lc;
+            lc.host = cfg.liveHost;
+            lc.port = cfg.liveProcPort;
+            lc.token = cfg.liveToken;
+            return std::make_unique<LiveBlueprintReader>(std::move(lc));
         }
         throw BlueprintReaderError(fmt::format(
             "unknown backend '{}': expected one of mock|commandlet|live", cfg.backend));

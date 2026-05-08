@@ -60,6 +60,7 @@ add_library(bp-reader-core STATIC
     src/backends/CommandletBlueprintReader.cpp
     src/backends/CachingBlueprintReader.cpp
     src/backends/ReadOnlyBlueprintReader.cpp
+    src/backends/LiveBlueprintReader.cpp
     src/backends/BackendFactory.cpp
 )
 target_include_directories(bp-reader-core PUBLIC

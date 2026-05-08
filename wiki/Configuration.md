@@ -7,7 +7,7 @@ startup. In a Claude config you set them under the server's `env` block.
 
 | Variable                    | Default                                | Purpose                                                                  |
 |-----------------------------|----------------------------------------|--------------------------------------------------------------------------|
-| `BP_READER_BACKEND`         | `mock`                                 | `mock` \| `commandlet`                                                   |
+| `BP_READER_BACKEND`         | `mock`                                 | `mock` \| `commandlet` \| `live` (talks to a running editor over TCP — see below) |
 | `BP_READER_FIXTURES_DIR`    | `<exe>/fixtures`                       | Mock backend fixture dir.                                                |
 | `BP_READER_ENGINE_DIR`      | (unset → fail-fast for `commandlet`)   | Source-built engine root (the dir holding `Engine\Binaries\Win64\`).     |
 | `BP_READER_PROJECT`         | (unset → fail-fast for `commandlet`)   | Path to `.uproject`.                                                     |
@@ -19,6 +19,9 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_EDITOR_CONFIG`   | (empty → `Development`)                | Picks which `UnrealEditor-Cmd[-Win64-Config].exe` the daemon launches. Default unsets to `Development` (suffix-less). Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your `BlueprintReaderEditor` module is built in that config — UE only loads plugin DLLs whose suffix matches the running editor process. |
 | `BP_READER_CACHE_TTL_SECONDS` | `30`                                 | How long the server memoizes read-tool responses for (per (operation, asset) key). Set to `0` to disable. See [Response caching](#response-caching) below. |
 | `BP_READER_READ_ONLY`       | `0` (off)                              | `1`/`true`/`yes`/`on` rejects every write tool with a structured error. Use this when running the MCP server alongside an open UE editor (concurrent writes to the same `.uasset` corrupt state). Reads pass through normally; the cache's mtime invalidation (C2) keeps responses fresh as the editor saves. |
+| `BP_READER_LIVE_HOST`       | `127.0.0.1`                            | Hostname for the live backend's TCP connection. Loopback only; non-loopback connections are rejected by the editor-side listener. |
+| `BP_READER_LIVE_PORT`       | (unset → live backend disabled)        | TCP port for the live backend. **Set in BOTH** the editor's process env (the listener binds here) AND the MCP server's process env (the client connects here). Pick anything 8400–8500 range that's not in use. |
+| `BP_READER_LIVE_TOKEN`      | (unset → live backend refuses to start) | Shared secret for the live backend's auth handshake. **Set in BOTH** processes; values must match. Pick a random string. Treat like a password — anyone with localhost access who can read your env vars can mutate BPs. |
 
 ## Pre-warm
 
@@ -185,6 +188,91 @@ Trade-off: TTL alone is the conservative-but-stale strategy; mtime adds
 a freshness check on top. The two combined catch both AI-induced edits
 (via the cache's own write-invalidation) and human-induced editor edits
 (via mtime).
+
+## Live backend — talk to a running editor over TCP
+
+`BP_READER_BACKEND=live` connects the MCP server to a TCP listener
+inside an already-running UE editor's `BlueprintReaderEditor` module,
+instead of spawning a second `UnrealEditor-Cmd.exe` daemon. This is the
+**only** way to do reads + writes coexisting with the open editor — no
+concurrent `.uasset` writes, no DDC contention, no asset-registry
+forks, because there's only one editor process. Reads see the editor's
+live in-memory state (including unsaved edits); writes go through the
+editor's normal mutation pipeline so the content browser refreshes
+immediately.
+
+### Setup
+
+Pick a port (anything in 8400–8500 range that's free) and a token (any
+random string — treat it like a password):
+
+```pwsh
+$env:BP_READER_LIVE_PORT  = "8421"
+$env:BP_READER_LIVE_TOKEN = "use-a-real-random-secret-here"
+```
+
+These must be set in **two** places:
+
+1. **The editor's launching process** — before you start the editor.
+   The `BlueprintReaderEditor` module reads these on `StartupModule`
+   and binds the listener. Set them in your launcher (`.bat`, `.ps1`,
+   IDE run config) or in your shell before running the editor.
+2. **The MCP server's process** — the client uses them to connect and
+   authenticate. Set in `.mcp.json`'s `env` block.
+
+### `.mcp.json` for the live backend
+
+```jsonc
+{
+  "mcpServers": {
+    "bp-reader-live": {
+      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "env": {
+        "BP_READER_BACKEND":    "live",
+        "BP_READER_LIVE_PORT":  "8421",
+        "BP_READER_LIVE_TOKEN": "<same secret the editor was launched with>"
+      }
+    }
+  }
+}
+```
+
+The MCP server connects lazily — it doesn't fail to start if the editor
+isn't running yet. The first tool call returns a clear error pointing at
+"is the editor running with BP_READER_LIVE_PORT set?".
+
+### Operational notes
+
+- **Loopback only.** The editor's listener binds `127.0.0.1`; non-loopback
+  connections are dropped. There's no remote-access mode in v1.
+- **Auth is required.** Editor refuses to start the listener if
+  `BP_READER_LIVE_TOKEN` is empty. Client refuses to connect without it.
+  Wrong token → server closes the connection after `auth_fail`.
+- **One connection at a time** is the design assumption. The listener
+  supports multiple concurrent connections, but ops are dispatched on the
+  game thread serially — so practical throughput is one in-flight op
+  regardless.
+- **Editor stop = server still works.** When you close the editor, the
+  next tool call's connect throws. The MCP server itself stays running
+  and recovers transparently when you re-launch the editor (next call
+  re-connects).
+- **No daemon, no `shutdown_daemon` semantics.** Live mode owns no
+  process; `shutdown_daemon` returns `was_running:false` no-op.
+
+### What works in v1
+
+All 30 tools route over the same wire: reads, writes, batch ops,
+`compile_function`, `preview_ops`. The editor's existing `RunOneOp`
+dispatcher handles them on the game thread — same code as the
+commandlet daemon.
+
+### What's deferred
+
+- Auto-discovery of the listener (you set the port explicitly).
+- Cross-platform — listener is Windows-tested only in v1.
+- Multiple editors at once — one MCP server, one editor.
+- Reconnection backoff — currently throws on first failed op; caller
+  retries explicitly.
 
 ## Read-only coexistence with the open editor
 
