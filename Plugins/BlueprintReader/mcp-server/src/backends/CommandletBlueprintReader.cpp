@@ -1155,6 +1155,47 @@ void CommandletBlueprintReader::SetPinDefault(std::string_view assetPath,
     (void)RunOp(args);
 }
 
+void CommandletBlueprintReader::RetypeVariable(std::string_view assetPath,
+                                               std::string_view name,
+                                               const BPPinType& newType) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=RetypeVariable");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    args.push_back(L"-TypeCategory=" + Widen(newType.Category));
+    if (newType.SubCategory)       args.push_back(L"-TypeSubCategory=" + Widen(*newType.SubCategory));
+    if (newType.SubCategoryObject) args.push_back(L"-TypeSubCategoryObject=" + Widen(*newType.SubCategoryObject));
+    if (newType.IsArray) args.push_back(L"-TypeIsArray");
+    if (newType.IsSet)   args.push_back(L"-TypeIsSet");
+    if (newType.IsMap)   args.push_back(L"-TypeIsMap");
+    (void)RunOp(args);
+}
+
+void CommandletBlueprintReader::SetVariableCategory(std::string_view assetPath,
+                                                    std::string_view name,
+                                                    std::string_view category) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=SetVariableCategory");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Name="  + Widen(name));
+    if (!category.empty()) args.push_back(L"-Category=" + Widen(category));
+    (void)RunOp(args);
+}
+
+IBlueprintReader::DuplicateBlueprintResult
+CommandletBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
+                                              std::string_view destAssetPath) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=DuplicateBlueprint");
+    args.push_back(L"-Asset=" + Widen(sourceAssetPath));
+    args.push_back(L"-Dest="  + Widen(destAssetPath));
+    auto j = RunOp(args);
+    DuplicateBlueprintResult out;
+    out.alreadyExisted   = j.is_object() && j.value("already_existed", false);
+    out.sourceAssetPath  = std::string(sourceAssetPath);
+    return out;
+}
+
 // ----- Batch sentinels (A1) -------------------------------------------------
 void CommandletBlueprintReader::BeginBatch() {
     std::vector<std::wstring> args;

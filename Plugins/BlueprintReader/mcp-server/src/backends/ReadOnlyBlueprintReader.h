@@ -62,6 +62,12 @@ public:
     CreateBlueprintResult CreateBlueprint(std::string_view, std::string_view) override;
     void SetPinDefault(std::string_view, std::string_view, std::string_view,
                        std::string_view, std::string_view) override;
+    void RetypeVariable(std::string_view, std::string_view,
+                        const BPPinType&) override;
+    void SetVariableCategory(std::string_view, std::string_view,
+                             std::string_view) override;
+    DuplicateBlueprintResult DuplicateBlueprint(std::string_view,
+                                                std::string_view) override;
 
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in

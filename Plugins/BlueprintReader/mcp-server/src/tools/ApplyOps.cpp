@@ -327,6 +327,41 @@ nlohmann::json OpSetPinDefault(backends::IBlueprintReader& reader,
     return {{"ok", true}};
 }
 
+nlohmann::json OpRetypeVariable(backends::IBlueprintReader& reader,
+                                const nlohmann::json& op, SlotMap&) {
+    std::string asset = GetString(op, "asset_path");
+    std::string name  = GetString(op, "name");
+    auto typeIt = op.find("type");
+    if (typeIt == op.end()) {
+        throw std::invalid_argument(R"(retype_variable op requires "type")");
+    }
+    BPPinType type = ParseTypeArg(*typeIt);
+    reader.RetypeVariable(asset, name, type);
+    return {{"ok", true}};
+}
+
+nlohmann::json OpSetVariableCategory(backends::IBlueprintReader& reader,
+                                     const nlohmann::json& op, SlotMap&) {
+    reader.SetVariableCategory(
+        GetString(op, "asset_path"),
+        GetString(op, "name"),
+        OptStr(op, "category", ""));
+    return {{"ok", true}};
+}
+
+nlohmann::json OpDuplicateBlueprint(backends::IBlueprintReader& reader,
+                                    const nlohmann::json& op, SlotMap&) {
+    std::string source = GetString(op, "asset_path");
+    std::string dest   = GetString(op, "dest_asset_path");
+    auto r = reader.DuplicateBlueprint(source, dest);
+    return {
+        {"ok", true},
+        {"asset_path", dest},
+        {"source_asset_path", source},
+        {"already_existed", r.alreadyExisted},
+    };
+}
+
 // Dispatch one op. Caller chooses whether to catch.
 nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
                           const nlohmann::json& op, SlotMap& slots) {
@@ -337,6 +372,9 @@ nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
     const auto& kind = it->get_ref<const std::string&>();
     if (kind == "create_blueprint")     return OpCreateBlueprint(reader, op, slots);
     if (kind == "set_pin_default")      return OpSetPinDefault(reader, op, slots);
+    if (kind == "retype_variable")      return OpRetypeVariable(reader, op, slots);
+    if (kind == "set_variable_category")return OpSetVariableCategory(reader, op, slots);
+    if (kind == "duplicate_blueprint")  return OpDuplicateBlueprint(reader, op, slots);
     if (kind == "add_variable")         return OpAddVariable    (reader, op, slots);
     if (kind == "delete_variable")      return OpDeleteVariable (reader, op, slots);
     if (kind == "rename_variable")      return OpRenameVariable (reader, op, slots);
@@ -350,11 +388,12 @@ nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
     if (kind == "set_node_position")    return OpSetNodePosition(reader, op, slots);
     if (kind == "delete_node")          return OpDeleteNode     (reader, op, slots);
     throw std::invalid_argument(fmt::format(
-        "unknown op '{}'. Supported: create_blueprint, add_variable, "
-        "delete_variable, rename_variable, set_variable_default, "
-        "add_function, add_function_input, add_function_output, "
-        "delete_function, add_node, wire_pins, set_node_position, "
-        "delete_node", kind));
+        "unknown op '{}'. Supported: create_blueprint, duplicate_blueprint, "
+        "add_variable, delete_variable, rename_variable, retype_variable, "
+        "set_variable_default, set_variable_category, add_function, "
+        "add_function_input, add_function_output, delete_function, "
+        "add_node, wire_pins, set_node_position, delete_node, "
+        "set_pin_default", kind));
 }
 
 // ----- Validate-only path (B2: preview_ops) ------------------------------
@@ -504,6 +543,34 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
         (void)ResolveNodeRef(*nIt, slots, "node_id");
         (void)GetString(op, "pin_name");
         noteAsset(asset);
+        return;
+    }
+    if (kind == "retype_variable") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "name");
+        if (op.find("type") == op.end()) {
+            throw std::invalid_argument(R"(retype_variable op requires "type")");
+        }
+        ParseTypeArg(op["type"]);
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "set_variable_category") {
+        std::string asset = GetString(op, "asset_path");
+        (void)GetString(op, "name");
+        // category is optional (empty clears it)
+        noteAsset(asset);
+        return;
+    }
+    if (kind == "duplicate_blueprint") {
+        std::string source = GetString(op, "asset_path");
+        std::string dest   = GetString(op, "dest_asset_path");
+        if (dest.size() < 6 || dest.compare(0, 6, "/Game/") != 0) {
+            throw std::invalid_argument(
+                R"(duplicate_blueprint: "dest_asset_path" must start with "/Game/")");
+        }
+        noteAsset(source);
+        noteAsset(dest);
         return;
     }
     throw std::invalid_argument(fmt::format(

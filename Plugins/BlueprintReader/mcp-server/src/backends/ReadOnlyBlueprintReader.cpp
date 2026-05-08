@@ -109,6 +109,18 @@ void ReadOnlyBlueprintReader::SetPinDefault(std::string_view, std::string_view,
                                             std::string_view) {
     Reject("set_pin_default");
 }
+void ReadOnlyBlueprintReader::RetypeVariable(std::string_view, std::string_view,
+                                             const BPPinType&) {
+    Reject("retype_variable");
+}
+void ReadOnlyBlueprintReader::SetVariableCategory(std::string_view, std::string_view,
+                                                  std::string_view) {
+    Reject("set_variable_category");
+}
+IBlueprintReader::DuplicateBlueprintResult
+ReadOnlyBlueprintReader::DuplicateBlueprint(std::string_view, std::string_view) {
+    Reject("duplicate_blueprint");
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode
