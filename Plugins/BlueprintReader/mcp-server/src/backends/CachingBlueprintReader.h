@@ -109,6 +109,7 @@ public:
     // EndBatch's trailing call to InvalidateAsset for each pending entry.
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;
+    nlohmann::json ShutdownDaemon() override;
 
     // Drop everything for `assetPath`, plus the global ListBlueprints
     // cache. Public so callers / tests can force-clear.
