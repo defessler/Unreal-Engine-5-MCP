@@ -2,7 +2,10 @@
 
 #include <fmt/core.h>
 
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
+#include <system_error>
 #include <vector>
 
 #if defined(_WIN32)
@@ -509,6 +512,43 @@ void LiveBlueprintReader::SetVariableCategory(std::string_view a, std::string_vi
     };
     if (!category.empty()) args.push_back("-Category=" + std::string(category));
     (void)RunOp(args);
+}
+
+IBlueprintReader::WriteGeneratedSourceResult
+LiveBlueprintReader::WriteGeneratedSource(std::string_view destPath,
+                                          std::string_view content,
+                                          bool createDirs) {
+    // Same temp-file trick the commandlet uses: the wire frame format
+    // would technically let us send content inline (it's JSON-shaped,
+    // not line-bounded), but we keep symmetry with the commandlet so
+    // both backends share the plugin op's calling convention.
+    namespace fs = std::filesystem;
+    fs::path tempDir = fs::temp_directory_path();
+    fs::path contentTemp = tempDir /
+        ("bpr-live-write-" + std::to_string(static_cast<unsigned long long>(
+            std::hash<std::string>{}(std::string(destPath)))) + ".txt");
+    {
+        std::ofstream f(contentTemp, std::ios::binary);
+        f.write(content.data(), static_cast<std::streamsize>(content.size()));
+    }
+
+    std::vector<std::string> args = {
+        "-Op=WriteGeneratedSource",
+        "-Path=" + std::string(destPath),
+        "-ContentFile=" + contentTemp.string(),
+    };
+    if (createDirs) args.push_back("-CreateDirs");
+    auto j = RunOp(args);
+
+    std::error_code ec;
+    fs::remove(contentTemp, ec);
+
+    WriteGeneratedSourceResult out;
+    if (j.is_object()) {
+        out.bytesWritten = j.value("bytes_written", std::size_t{0});
+        out.path         = j.value("path", std::string{});
+    }
+    return out;
 }
 
 IBlueprintReader::DuplicateBlueprintResult

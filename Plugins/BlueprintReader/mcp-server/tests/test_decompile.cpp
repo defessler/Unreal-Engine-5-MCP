@@ -111,3 +111,40 @@ TEST_CASE("decompile: round-trip BPIR through ValidateBpir works for empty funct
     auto migrated = MigrateToCurrent(doc);
     CHECK_NOTHROW(ValidateBpir(migrated));
 }
+
+// ===== End-to-end: BP → BPIR → C++ class scaffold =========================
+// Validates the pipeline against the bundled mock fixtures. Substring
+// asserts against the generated header — same approach as
+// test_cpp_class.cpp. Catches integration issues (decompile ↔ codegen
+// boundary) the unit-level tests miss.
+
+#include "tools/codegen/CppClassEmit.h"
+
+namespace {
+bool ContainsStr(const std::string& s, const std::string& sub) {
+    return s.find(sub) != std::string::npos;
+}
+} // namespace
+
+TEST_CASE("E2E: BP_Enemy → BPIR → UCLASS C++ produces compile-shaped header") {
+    Fixture f;
+    auto bpir = DecompileBlueprint(f.reader, "/Game/AI/BP_Enemy");
+    auto out  = EmitCppClass(bpir);
+
+    CHECK(ContainsStr(out.headerSource, "ABP_Enemy_Generated"));
+    CHECK(ContainsStr(out.headerSource, "public ACharacter"));
+    CHECK(ContainsStr(out.headerSource, "GameFramework/Character.h"));
+    CHECK(ContainsStr(out.headerSource, "UPROPERTY"));
+    // BP_Enemy.Health is replicated → registration must appear.
+    CHECK(ContainsStr(out.implSource, "DOREPLIFETIME(ABP_Enemy_Generated, Health)"));
+}
+
+TEST_CASE("E2E: BP_Enemy generates UFUNCTION for each function") {
+    Fixture f;
+    auto bpir = DecompileBlueprint(f.reader, "/Game/AI/BP_Enemy");
+    auto out  = EmitCppClass(bpir);
+    // BP_Enemy fixture has TakeDamage + OnDeath functions.
+    CHECK(ContainsStr(out.headerSource, "TakeDamage"));
+    CHECK(ContainsStr(out.headerSource, "OnDeath"));
+    CHECK(ContainsStr(out.headerSource, "UFUNCTION(BlueprintCallable)"));
+}

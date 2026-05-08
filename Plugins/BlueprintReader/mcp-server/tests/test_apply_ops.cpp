@@ -182,6 +182,14 @@ public:
         r.sourceAssetPath  = std::string(s);
         return r;
     }
+    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view p, std::string_view c, bool) override {
+        Note("WriteGeneratedSource", std::string(p),
+             std::to_string(c.size()) + " bytes");
+        WriteGeneratedSourceResult r;
+        r.bytesWritten = c.size();
+        r.path = std::string(p);
+        return r;
+    }
 
     // Batch sentinels — recorded but not forwarded; the inner mock has its
     // own no-op default that's fine for unit tests. EndBatch can return
