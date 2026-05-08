@@ -10,6 +10,8 @@
 #include <string_view>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "BlueprintReaderTypes.h"
 
 namespace bpr::backends {
@@ -101,6 +103,47 @@ public:
     // Change a variable's default value (string form, as displayed in the Details panel).
     virtual void SetVariableDefault(std::string_view assetPath, std::string_view name,
                                     std::string_view newDefault) = 0;
+
+    // Create a brand-new BP under `assetPath` (must be `/Game/...`) extending
+    // `parentClass` (UClass path or short name). Idempotent — if the asset
+    // already exists, returns without throwing. Required so AI agents can
+    // generate whole new BPs, not just mutate existing ones (A3).
+    struct CreateBlueprintResult {
+        bool alreadyExisted = false;
+        std::string parentClass;  // resolved full path, for echo
+    };
+    virtual CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
+                                                  std::string_view parentClass) = 0;
+
+    // Set the literal default value on a node's pin (B1). Used by
+    // compile_function's {lit:value} support — UE has no first-class
+    // literal node, so the value is materialized as the consumer pin's
+    // default. `pinSpec` accepts a pin GUID or a pin name.
+    virtual void SetPinDefault(std::string_view assetPath,
+                               std::string_view graphName,
+                               std::string_view nodeId,
+                               std::string_view pinSpec,
+                               std::string_view value) = 0;
+
+    // ----- Batch sentinels (A1) ------------------------------------------------
+    // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
+    // CompileBlueprint + SavePackage runs once per affected BP at EndBatch
+    // instead of once per op. apply_ops uses this to collapse N×compile to 1.
+    //
+    // Default no-op so backends that don't care (mock, future read-only) need
+    // no changes. CommandletBlueprintReader overrides to emit the matching
+    // -Op=BeginBatch / -Op=EndBatch lines to the daemon.
+    //
+    // Best-effort failure semantics: if a batch is open and a write op throws,
+    // EndBatch should still be called by the caller (in a try/finally pattern)
+    // and will compile+save whatever ops landed before the failure.
+    //
+    // EndBatch returns a JSON object describing the flush: `{ok, recompiled,
+    // diagnostics, error_count, warning_count}` (C1). Default implementation
+    // returns an empty object — backends without a real compile step have
+    // nothing to surface.
+    virtual void BeginBatch() {}
+    virtual nlohmann::json EndBatch() { return nlohmann::json::object(); }
 };
 
 } // namespace bpr::backends

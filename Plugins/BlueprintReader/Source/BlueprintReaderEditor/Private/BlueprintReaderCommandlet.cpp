@@ -9,6 +9,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
+#include "Factories/BlueprintFactory.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
@@ -32,7 +33,10 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Logging/TokenizedMessage.h"
+#include "Misc/UObjectToken.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
@@ -81,6 +85,15 @@ namespace
 		AddFunctionOutput,
 		DeleteFunction,
 		SetVariableDefault,
+		// Batch sentinels (A1): wrap a sequence of write ops so the
+		// expensive CompileBlueprint + SavePackage runs once per affected
+		// BP at EndBatch instead of once per op.
+		BeginBatch,
+		EndBatch,
+		// Asset creation (A3).
+		CreateBlueprint,
+		// Pin default (B1) — supports compile_function's {lit:value}.
+		SetPinDefault,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -110,6 +123,10 @@ namespace
 		if (OpStr.Equals(TEXT("AddFunctionOutput"), ESearchCase::IgnoreCase))  { OutOp = EOp::AddFunctionOutput; return true; }
 		if (OpStr.Equals(TEXT("DeleteFunction"), ESearchCase::IgnoreCase))     { OutOp = EOp::DeleteFunction; return true; }
 		if (OpStr.Equals(TEXT("SetVariableDefault"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetVariableDefault; return true; }
+		if (OpStr.Equals(TEXT("BeginBatch"), ESearchCase::IgnoreCase))         { OutOp = EOp::BeginBatch; return true; }
+		if (OpStr.Equals(TEXT("EndBatch"), ESearchCase::IgnoreCase))           { OutOp = EOp::EndBatch; return true; }
+		if (OpStr.Equals(TEXT("CreateBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CreateBlueprint; return true; }
+		if (OpStr.Equals(TEXT("SetPinDefault"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetPinDefault; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -203,10 +220,76 @@ namespace
 		return nullptr;
 	}
 
-	bool CompileAndSaveBlueprint(UBlueprint* BP)
+	// Forward decls — these are defined later in the file but referenced
+	// by ops higher up (SetPinDefaultOp uses both). Definitions land in
+	// their existing locations alongside the WirePins code / EmitOk helper.
+	UEdGraphPin* FindPinByIdOrName(UEdGraphNode* Node, const FString& Spec);
+	int32 EmitOk(const FString& OutputPath, bool bPretty);
+
+	// Severity → wire string, matching what the MCP server's tool-result
+	// envelope expects. (UE 5.7 removed CriticalError from the enum.)
+	const TCHAR* SeverityToString(EMessageSeverity::Type Sev)
+	{
+		switch (Sev)
+		{
+		case EMessageSeverity::Error:        return TEXT("error");
+		case EMessageSeverity::PerformanceWarning:
+		case EMessageSeverity::Warning:      return TEXT("warning");
+		case EMessageSeverity::Info:         return TEXT("info");
+		default:                              return TEXT("info");
+		}
+	}
+
+	// Drain `Results.Messages` into a JSON array of {severity, message,
+	// node_guid?}. Used by both single-op and batch-end paths to surface
+	// compile diagnostics back to the agent (C1).
+	TArray<TSharedPtr<FJsonValue>> SerializeDiagnostics(const FCompilerResultsLog& Results)
+	{
+		TArray<TSharedPtr<FJsonValue>> Out;
+		Out.Reserve(Results.Messages.Num());
+		for (const TSharedRef<FTokenizedMessage>& Msg : Results.Messages)
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetStringField(TEXT("severity"), SeverityToString(Msg->GetSeverity()));
+			Obj->SetStringField(TEXT("message"),  Msg->ToText().ToString());
+			// Best-effort: scan the message tokens for a UObject reference
+			// pointing at a UEdGraphNode and emit its GUID.
+			for (const TSharedRef<IMessageToken>& Tok : Msg->GetMessageTokens())
+			{
+				if (Tok->GetType() == EMessageToken::Object)
+				{
+					auto* ObjTok = static_cast<FUObjectToken*>(&Tok.Get());
+					if (UObject* O = ObjTok->GetObject().Get())
+					{
+						if (UEdGraphNode* Node = Cast<UEdGraphNode>(O))
+						{
+							Obj->SetStringField(TEXT("node_guid"),
+								Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
+							break;
+						}
+					}
+				}
+			}
+			Out.Add(MakeShared<FJsonValueObject>(Obj));
+		}
+		return Out;
+	}
+
+	// Compile + save. When `OutDiagnostics` is non-null, populates it with
+	// the collected compile diagnostics serialized as JSON values.
+	bool CompileAndSaveBlueprint(UBlueprint* BP,
+	                             TArray<TSharedPtr<FJsonValue>>* OutDiagnostics = nullptr)
 	{
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
-		FKismetEditorUtilities::CompileBlueprint(BP);
+
+		FCompilerResultsLog Results;
+		FKismetEditorUtilities::CompileBlueprint(BP, EBlueprintCompileOptions::None, &Results);
+
+		if (OutDiagnostics)
+		{
+			TArray<TSharedPtr<FJsonValue>> Diags = SerializeDiagnostics(Results);
+			OutDiagnostics->Append(MoveTemp(Diags));
+		}
 
 		UPackage* Package = BP->GetOutermost();
 		if (!Package) return false;
@@ -223,6 +306,254 @@ namespace
 			UE_LOG(LogBlueprintReader, Error, TEXT("SavePackage failed: %s"), *FileName);
 		}
 		return bOk;
+	}
+
+	// ----- Batch state (A1) ---------------------------------------------------
+	// When a BeginBatch op is seen, every subsequent write op defers its
+	// CompileAndSaveBlueprint call. The deferred BPs are tracked here and
+	// flushed by EndBatch in one pass — N×compile collapses to 1×compile per
+	// affected BP. Single-op (non-batch) callers see no behavior change.
+	//
+	// Daemon-scoped: the daemon is a single editor process so static state
+	// is fine. One-shot mode (subprocess-per-call) never opens a batch.
+	bool& BatchDeferFlag()
+	{
+		static bool bDefer = false;
+		return bDefer;
+	}
+	TArray<TWeakObjectPtr<UBlueprint>>& BatchPending()
+	{
+		static TArray<TWeakObjectPtr<UBlueprint>> Pending;
+		return Pending;
+	}
+
+	// Replaces the 12 direct CompileAndSaveBlueprint(BP) call sites. In
+	// non-batch mode this is identical to CompileAndSaveBlueprint. In batch
+	// mode it just records the BP for EndBatch to process.
+	bool MaybeCompileAndSave(UBlueprint* BP)
+	{
+		if (!BP) return false;
+		if (BatchDeferFlag())
+		{
+			BatchPending().AddUnique(BP);
+			// Mark structurally modified now so subsequent ops in the same
+			// batch see a consistent state. The compile + save is still
+			// deferred to EndBatch.
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+			return true;
+		}
+		return CompileAndSaveBlueprint(BP);
+	}
+
+	int32 RunBeginBatchOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		// Idempotent — re-issuing BeginBatch without an EndBatch is allowed
+		// (tests + crash recovery may do this); just clear any stale state.
+		BatchDeferFlag() = true;
+		BatchPending().Reset();
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("batch_open"), true);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunEndBatchOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		// Always clear the defer flag first — even if we throw mid-flush we
+		// don't want subsequent ops to silently keep deferring.
+		BatchDeferFlag() = false;
+		TArray<TWeakObjectPtr<UBlueprint>> Pending = MoveTemp(BatchPending());
+		BatchPending().Reset();
+
+		TArray<TSharedPtr<FJsonValue>> Recompiled;
+		TArray<TSharedPtr<FJsonValue>> AllDiagnostics;
+		int32 Failures = 0;
+		int32 Errors = 0, Warnings = 0;
+		for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
+		{
+			UBlueprint* BP = Weak.Get();
+			if (!BP) continue;  // GC'd between batch ops — nothing to save
+			const FString AssetPath = BP->GetPathName();
+			TArray<TSharedPtr<FJsonValue>> Diags;
+			const bool bOk = CompileAndSaveBlueprint(BP, &Diags);
+			if (!bOk) ++Failures;
+			// Tag each diagnostic with the asset_path so callers can attribute
+			// when multiple BPs compile in one batch.
+			for (auto& D : Diags)
+			{
+				if (D.IsValid() && D->Type == EJson::Object)
+				{
+					TSharedPtr<FJsonObject> Obj = D->AsObject();
+					if (Obj.IsValid())
+					{
+						Obj->SetStringField(TEXT("asset_path"), AssetPath);
+						const FString Sev = Obj->GetStringField(TEXT("severity"));
+						if (Sev == TEXT("error"))   ++Errors;
+						if (Sev == TEXT("warning")) ++Warnings;
+					}
+				}
+				AllDiagnostics.Add(D);
+			}
+			Recompiled.Add(MakeShared<FJsonValueString>(AssetPath));
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), Failures == 0);
+		Obj->SetArrayField(TEXT("recompiled"), Recompiled);
+		Obj->SetNumberField(TEXT("failed"), Failures);
+		Obj->SetArrayField(TEXT("diagnostics"), AllDiagnostics);
+		Obj->SetNumberField(TEXT("error_count"),   Errors);
+		Obj->SetNumberField(TEXT("warning_count"), Warnings);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- CreateBlueprint (A3) ---------------------------------------------
+	// Creates a new BP under `/Game/...` with the given parent class. Idempotent:
+	// if the asset already exists, returns {ok:true, already_existed:true}.
+	// Adapts the SeedCommandlet pattern (FactoryCreateNew via UBlueprintFactory)
+	// and registers with the asset registry so a follow-up op in the same batch
+	// can LoadMutableBlueprint it.
+	UClass* ResolveParentClass(const FString& Spec)
+	{
+		if (Spec.IsEmpty()) return nullptr;
+		// Direct path form: "/Script/Engine.Actor"
+		if (UClass* C = LoadObject<UClass>(nullptr, *Spec)) return C;
+		// Short-name form: "Actor", "Pawn", "ACharacter" — try common prefixes.
+		const TCHAR* Prefixes[] = {TEXT(""), TEXT("/Script/Engine."), TEXT("/Script/CoreUObject.")};
+		for (const TCHAR* Pre : Prefixes)
+		{
+			FString Trial = FString(Pre) + Spec;
+			if (UClass* C = LoadObject<UClass>(nullptr, *Trial)) return C;
+			// Drop a leading 'A' or 'U' if present (UE convention).
+			if (Spec.Len() > 1 && (Spec[0] == TEXT('A') || Spec[0] == TEXT('U')))
+			{
+				FString Trim = FString(Pre) + Spec.RightChop(1);
+				if (UClass* C = LoadObject<UClass>(nullptr, *Trim)) return C;
+			}
+		}
+		return nullptr;
+	}
+
+	int32 RunCreateBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString ParentClassSpec;
+		FParse::Value(*Params, TEXT("ParentClass="), ParentClassSpec);
+
+		if (AssetPath.IsEmpty() || ParentClassSpec.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CreateBlueprint requires -Asset=/Game/... and -ParentClass=<UClass path or short name>"));
+			return 1;
+		}
+		if (!AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CreateBlueprint: -Asset must be under /Game/ (got: %s)"), *AssetPath);
+			return 1;
+		}
+
+		// Idempotency probe — if the asset already exists, short-circuit.
+		if (UBlueprint* Existing = LoadMutableBlueprint(AssetPath))
+		{
+			(void)Existing;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		UClass* ParentClass = ResolveParentClass(ParentClassSpec);
+		if (!ParentClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CreateBlueprint: parent class not found: %s"), *ParentClassSpec);
+			return 4;
+		}
+
+		// Derive package name + asset short name from the asset path.
+		// `/Game/AI/BP_Foo` -> package `/Game/AI/BP_Foo`, asset `BP_Foo`.
+		const FString PackageName = AssetPath;
+		const FString AssetName   = FPackageName::GetShortName(AssetPath);
+
+		UPackage* Package = CreatePackage(*PackageName);
+		if (!Package)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreatePackage failed: %s"), *PackageName);
+			return 5;
+		}
+		Package->FullyLoad();
+
+		UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
+		Factory->ParentClass = ParentClass;
+
+		UBlueprint* BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
+			UBlueprint::StaticClass(), Package, *AssetName,
+			RF_Public | RF_Standalone, nullptr, GWarn));
+		if (!BP)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("FactoryCreateNew failed: %s"), *PackageName);
+			return 5;
+		}
+		BP->MarkPackageDirty();
+
+		// Critical: register with asset registry so a follow-up op in the
+		// same batch (e.g. AddVariable) can LoadMutableBlueprint() this asset.
+		FAssetRegistryModule& ARM = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		ARM.Get().AssetCreated(BP);
+
+		if (!MaybeCompileAndSave(BP)) return 5;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("parent_class"), ParentClass->GetPathName());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- SetPinDefault (B1) ------------------------------------------------
+	// Sets the literal default value on a node's pin. compile_function uses
+	// this to materialize {lit:value} expressions — UE has no first-class
+	// "literal node", so the value is set as the consumer pin's default.
+	int32 RunSetPinDefaultOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString GraphName, NodeId, PinSpec, Value;
+		FParse::Value(*Params, TEXT("Graph="), GraphName);
+		FParse::Value(*Params, TEXT("Node="),  NodeId);
+		FParse::Value(*Params, TEXT("Pin="),   PinSpec);
+		FParse::Value(*Params, TEXT("Value="), Value);
+
+		if (AssetPath.IsEmpty() || GraphName.IsEmpty() || NodeId.IsEmpty() || PinSpec.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetPinDefault requires -Asset= -Graph= -Node= -Pin= [-Value=]"));
+			return 1;
+		}
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 2;
+		UEdGraph* Graph = FindGraphByName(BP, GraphName);
+		if (!Graph) return 4;
+		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
+		if (!Node) return 4;
+		UEdGraphPin* Pin = FindPinByIdOrName(Node, PinSpec);
+		if (!Pin)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetPinDefault: pin '%s' not found on node %s"), *PinSpec, *NodeId);
+			return 4;
+		}
+		// Modify the pin's default value. UE 5.7's TrySetDefaultValue
+		// returns void — type-mismatch errors surface via the compile log
+		// and bubble up through the EndBatch diagnostics path (C1).
+		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+		Schema->TrySetDefaultValue(*Pin, Value);
+		Pin->Modify();
+		Node->Modify();
+		if (!MaybeCompileAndSave(BP)) return 5;
+		return EmitOk(OutputPath, bPretty);
 	}
 
 	// Emit a small ack JSON blob for a successful write op.
@@ -297,7 +628,7 @@ namespace
 		if (bEditable)   Var.PropertyFlags |= CPF_Edit | CPF_BlueprintVisible;
 		if (bReplicated) { Var.PropertyFlags |= CPF_Net; Var.ReplicationCondition = COND_None; }
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -336,7 +667,7 @@ namespace
 		Node->NodePosX = X;
 		Node->NodePosY = Y;
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -368,7 +699,7 @@ namespace
 		// handles both, plus refreshes any dependent UI state.
 		FBlueprintEditorUtils::RemoveNode(BP, Node, /*bDontRecompile=*/true);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -607,7 +938,7 @@ namespace
 		if (!Spawned) return 5;
 		const FString NewId = Spawned->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -690,7 +1021,7 @@ namespace
 		}
 		FromPin->MakeLinkTo(ToPin);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -717,7 +1048,7 @@ namespace
 		}
 		FBlueprintEditorUtils::RemoveMemberVariable(BP, Var);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -802,7 +1133,7 @@ namespace
 			BP, FName(*FunctionName), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
 		FBlueprintEditorUtils::AddFunctionGraph<UClass>(BP, NewGraph, /*bIsUserCreated=*/true, nullptr);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetStringField(TEXT("function_name"), FunctionName);
@@ -842,7 +1173,7 @@ namespace
 		}
 		Entry->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output, /*bUseUniqueName=*/false);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -873,7 +1204,7 @@ namespace
 		UK2Node_FunctionResult* Result = FindOrCreateFunctionResult(Graph);
 		Result->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Input, /*bUseUniqueName=*/false);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -901,7 +1232,7 @@ namespace
 		// EFlags=None purges the graph + any UFUNCTION the compiler emitted.
 		FBlueprintEditorUtils::RemoveGraph(BP, Graph, EGraphRemoveFlags::None);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -930,7 +1261,7 @@ namespace
 		}
 		BP->NewVariables[Index].DefaultValue = NewDefault;
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -963,7 +1294,7 @@ namespace
 		}
 		FBlueprintEditorUtils::RenameMemberVariable(BP, Old, New);
 
-		if (!CompileAndSaveBlueprint(BP)) return 5;
+		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -1089,6 +1420,10 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::AddFunctionOutput)  return RunAddFunctionOutputOp(Params, OutputPath, bPretty);
 	if (Op == EOp::DeleteFunction)     return RunDeleteFunctionOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetVariableDefault) return RunSetVariableDefaultOp(Params, OutputPath, bPretty);
+	if (Op == EOp::BeginBatch)         return RunBeginBatchOp(Params, OutputPath, bPretty);
+	if (Op == EOp::EndBatch)           return RunEndBatchOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CreateBlueprint)    return RunCreateBlueprintOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetPinDefault)      return RunSetPinDefaultOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
