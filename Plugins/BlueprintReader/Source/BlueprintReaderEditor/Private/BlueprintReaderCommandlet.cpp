@@ -100,6 +100,8 @@ namespace
 		RetypeVariable,         // change a var's type without delete+re-add (preserves nodes)
 		SetVariableCategory,    // change a var's My-Blueprint-panel category label
 		DuplicateBlueprint,     // file-level duplicate (BP-5)
+		// Phase 2C — write transpiled source into the project tree.
+		WriteGeneratedSource,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -136,6 +138,7 @@ namespace
 		if (OpStr.Equals(TEXT("RetypeVariable"), ESearchCase::IgnoreCase))     { OutOp = EOp::RetypeVariable; return true; }
 		if (OpStr.Equals(TEXT("SetVariableCategory"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetVariableCategory; return true; }
 		if (OpStr.Equals(TEXT("DuplicateBlueprint"), ESearchCase::IgnoreCase)) { OutOp = EOp::DuplicateBlueprint; return true; }
+		if (OpStr.Equals(TEXT("WriteGeneratedSource"), ESearchCase::IgnoreCase)) { OutOp = EOp::WriteGeneratedSource; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -646,6 +649,75 @@ namespace
 			/*bDontRecompile=*/true);
 		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
+	}
+
+	// ----- WriteGeneratedSource (Phase 2C of BP↔C++) ---------------------
+	// Write a generated .h/.cpp file into the project's Source/ tree.
+	// Args: -Path=<absolute dest> -ContentFile=<absolute source temp>
+	//       [-CreateDirs]
+	// The server writes the actual content to a temp file (so we don't
+	// have to encode big strings into command-line args; the daemon
+	// protocol is line-based). The plugin reads that temp + writes to
+	// dest, then deletes the temp. Path validation confines writes to
+	// the project's Source/ directory — anything else is rejected.
+	int32 RunWriteGeneratedSourceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString DestPath, ContentPath;
+		FParse::Value(*Params, TEXT("Path="),        DestPath);
+		FParse::Value(*Params, TEXT("ContentFile="), ContentPath);
+		const bool bCreateDirs = FParse::Param(*Params, TEXT("CreateDirs"));
+
+		if (DestPath.IsEmpty() || ContentPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WriteGeneratedSource requires -Path=<dest> -ContentFile=<src>"));
+			return 1;
+		}
+
+		// Canonicalize paths so prefix-checks work consistently.
+		FString DestAbs = FPaths::ConvertRelativePathToFull(DestPath);
+		FString ProjectSourceDir = FPaths::ConvertRelativePathToFull(
+			FPaths::Combine(FPaths::ProjectDir(), TEXT("Source")));
+
+		if (!DestAbs.StartsWith(ProjectSourceDir))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WriteGeneratedSource: destination must be under '%s' (got: %s)"),
+				*ProjectSourceDir, *DestAbs);
+			return 1;
+		}
+
+		FString Content;
+		if (!FFileHelper::LoadFileToString(Content, *ContentPath))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WriteGeneratedSource: failed to read content temp file: %s"),
+				*ContentPath);
+			return 4;
+		}
+
+		if (bCreateDirs)
+		{
+			IFileManager::Get().MakeDirectory(*FPaths::GetPath(DestAbs), /*Tree=*/true);
+		}
+
+		if (!FFileHelper::SaveStringToFile(Content, *DestAbs,
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WriteGeneratedSource: failed to write %s"), *DestAbs);
+			return 5;
+		}
+
+		// Best-effort cleanup of the temp file (the server may have
+		// already done this; ignore failures).
+		IFileManager::Get().Delete(*ContentPath);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("path"), DestAbs);
+		Obj->SetNumberField(TEXT("bytes_written"), Content.Len());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
 	// ----- DuplicateBlueprint (BP-5) -----------------------------------
@@ -1632,6 +1704,7 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::RetypeVariable)     return RunRetypeVariableOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetVariableCategory)return RunSetVariableCategoryOp(Params, OutputPath, bPretty);
 	if (Op == EOp::DuplicateBlueprint) return RunDuplicateBlueprintOp(Params, OutputPath, bPretty);
+	if (Op == EOp::WriteGeneratedSource) return RunWriteGeneratedSourceOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

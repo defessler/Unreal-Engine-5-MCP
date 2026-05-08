@@ -156,6 +156,19 @@ public:
     virtual DuplicateBlueprintResult DuplicateBlueprint(
         std::string_view sourceAssetPath, std::string_view destAssetPath) = 0;
 
+    // Phase 2C: write a transpiled source file (.h or .cpp) into the
+    // project's Source/ tree. Used by transpile_blueprint to drop the
+    // generated UCLASS pair onto disk so UBT can compile it. The plugin
+    // validates `destPath` is under <ProjectDir>/Source/ — no path-
+    // traversal escape.
+    struct WriteGeneratedSourceResult {
+        std::size_t bytesWritten = 0;
+        std::string path;            // canonicalized absolute path
+    };
+    virtual WriteGeneratedSourceResult WriteGeneratedSource(
+        std::string_view destPath, std::string_view content,
+        bool createDirs = true) = 0;
+
     // ----- Batch sentinels (A1) ------------------------------------------------
     // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
     // CompileBlueprint + SavePackage runs once per affected BP at EndBatch

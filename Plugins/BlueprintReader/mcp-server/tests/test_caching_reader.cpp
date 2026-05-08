@@ -123,6 +123,9 @@ public:
     DuplicateBlueprintResult DuplicateBlueprint(std::string_view s, std::string_view d) override {
         return inner_.DuplicateBlueprint(s, d);
     }
+    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view p, std::string_view c, bool cd) override {
+        return inner_.WriteGeneratedSource(p, c, cd);
+    }
 
 private:
     MockBlueprintReader inner_;
