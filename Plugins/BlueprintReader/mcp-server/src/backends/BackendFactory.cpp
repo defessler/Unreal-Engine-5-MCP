@@ -141,7 +141,12 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
         throw BlueprintReaderError(fmt::format(
             "unknown backend '{}': expected one of mock|commandlet|live", cfg.backend));
     };
-    return WrapWithCache(buildInner(), std::chrono::seconds(cfg.cacheTtlSeconds));
+    // C2: pass the .uproject path so the cache can resolve /Game/X to the
+    // on-disk .uasset and add mtime-based invalidation on top of TTL. The
+    // cache itself is no-op when projectDir is empty (mock backend, etc.).
+    return WrapWithCache(buildInner(),
+                         std::chrono::seconds(cfg.cacheTtlSeconds),
+                         cfg.uproject);
 }
 
 } // namespace bpr::backends

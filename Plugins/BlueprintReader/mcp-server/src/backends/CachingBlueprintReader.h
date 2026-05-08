@@ -32,6 +32,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -52,8 +53,14 @@ public:
     // TTL is stored in milliseconds internally so tests can use sub-second
     // values without losing precision. Production callers pass `seconds`
     // (from env vars) and rely on the implicit duration conversion.
+    //
+    // C2: when `projectDir` is non-empty, the cache also stamps each entry
+    // with the .uasset file's mtime at insert time and re-checks on lookup.
+    // External editor edits to the same asset invalidate the entry even if
+    // its TTL hasn't expired. Empty projectDir disables mtime checking.
     CachingBlueprintReader(std::unique_ptr<IBlueprintReader> inner,
-                           std::chrono::milliseconds ttl);
+                           std::chrono::milliseconds ttl,
+                           std::filesystem::path projectDir = {});
 
     // ----- read tools (cached) -----------------------------------------
     std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;
@@ -90,6 +97,18 @@ public:
     void DeleteFunction(std::string_view assetPath, std::string_view name) override;
     void SetVariableDefault(std::string_view assetPath, std::string_view name,
                             std::string_view newDefault) override;
+    CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
+                                          std::string_view parentClass) override;
+    void SetPinDefault(std::string_view assetPath, std::string_view graphName,
+                       std::string_view nodeId, std::string_view pinSpec,
+                       std::string_view value) override;
+
+    // Batch sentinels (A1) — forwards to inner and tracks depth so
+    // invalidations triggered by writes during a batch don't drop entries
+    // that subsequent ops in the same batch would re-fetch. Flushed by
+    // EndBatch's trailing call to InvalidateAsset for each pending entry.
+    void BeginBatch() override;
+    nlohmann::json EndBatch() override;
 
     // Drop everything for `assetPath`, plus the global ListBlueprints
     // cache. Public so callers / tests can force-clear.
@@ -107,6 +126,11 @@ private:
         // out — type-safety is enforced by *call site discipline*, not
         // by the cache itself.
         std::shared_ptr<const void> value;
+        // C2: mtime stamp captured at insert. Zero-time means "no source
+        // file resolved" (e.g. ListBlueprints across a directory) — those
+        // entries skip mtime checks.
+        std::filesystem::file_time_type sourceMtime{};
+        bool hasMtime = false;
     };
 
     // Look up (or compute) the entry for `key`. Pass the asset path so
@@ -119,6 +143,9 @@ private:
 
     std::unique_ptr<IBlueprintReader> inner_;
     std::chrono::milliseconds ttl_;
+    // C2: project root for resolving /Game/X → <root>/Content/X.uasset.
+    // Empty disables mtime checks.
+    std::filesystem::path projectDir_;
 
     mutable std::mutex mu_;
     std::map<std::string, Entry> entries_;
@@ -126,12 +153,21 @@ private:
     // mutated. The empty key "" gathers global keys (e.g. ListBlueprints).
     std::map<std::string, std::set<std::string>> byAsset_;
 
+    // Batch state (A1): depth counter so nested batches behave; pending
+    // asset invalidations recorded during the batch and flushed at the
+    // outermost EndBatch.
+    int batchDepth_ = 0;
+    std::set<std::string> pendingInvalidations_;
+    bool pendingGlobalInvalidation_ = false;
+
     Stats stats_;
 };
 
 // Convenience factory: matches the BackendFactory style. Takes ownership
 // of `inner`. If ttl <= 0 returns `inner` unwrapped (caching disabled).
+// `projectDir` enables mtime-based cache invalidation (C2) when set.
 std::unique_ptr<IBlueprintReader> WrapWithCache(
-    std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl);
+    std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl,
+    std::filesystem::path projectDir = {});
 
 } // namespace bpr::backends

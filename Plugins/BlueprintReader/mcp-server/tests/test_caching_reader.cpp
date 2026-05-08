@@ -10,6 +10,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <random>
+#include <string>
+#include <system_error>
 #include <thread>
 
 using namespace bpr;
@@ -101,6 +106,13 @@ public:
     void SetVariableDefault(std::string_view a, std::string_view n,
                             std::string_view d) override {
         inner_.SetVariableDefault(a, n, d);
+    }
+    CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p) override {
+        return inner_.CreateBlueprint(a, p);
+    }
+    void SetPinDefault(std::string_view a, std::string_view g, std::string_view n,
+                       std::string_view pin, std::string_view v) override {
+        inner_.SetPinDefault(a, g, n, pin, v);
     }
 
 private:
@@ -249,4 +261,54 @@ TEST_CASE("WrapWithCache(ttl>0) returns a CachingBlueprintReader") {
     auto wrapped = WrapWithCache(std::move(inner), 30s);
     auto* asCache = dynamic_cast<CachingBlueprintReader*>(wrapped.get());
     CHECK(asCache != nullptr);
+}
+
+// ===== C2: mtime-based invalidation ========================================
+
+TEST_CASE("Cache C2: external mtime bump evicts a cached entry") {
+    namespace fs = std::filesystem;
+    // Stage a fake project layout under a temp dir:
+    //   <tmp>/MyProj.uproject (placeholder, never read)
+    //   <tmp>/Content/AI/BP_Enemy.uasset (matches the mock fixture's
+    //                                     /Game/AI/BP_Enemy asset path)
+    auto tmpRoot = fs::temp_directory_path() /
+                   ("bpr_cache_c2_" + std::to_string(std::random_device{}()));
+    fs::create_directories(tmpRoot / "Content" / "AI");
+    fs::path uproject = tmpRoot / "MyProj.uproject";
+    { std::ofstream(uproject) << "{}"; }
+    fs::path uasset = tmpRoot / "Content" / "AI" / "BP_Enemy.uasset";
+    { std::ofstream(uasset) << "v1"; }
+
+    auto inner = std::make_unique<CountingReader>(
+        MockBlueprintReader(test::FixturesDir()));
+    auto* counter = inner.get();
+    CachingBlueprintReader cache(std::move(inner), 30s, uproject);
+
+    // First read primes the cache; mtime captured.
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");  // hit
+    CHECK(counter->readBlueprintCalls == 1);
+
+    // Bump the mtime explicitly so the comparison sees a delta.
+    std::this_thread::sleep_for(15ms);
+    auto bumped = fs::last_write_time(uasset) + 1s;
+    fs::last_write_time(uasset, bumped);
+
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");  // miss — evicted
+    CHECK(counter->readBlueprintCalls == 2);
+
+    std::error_code ec;
+    fs::remove_all(tmpRoot, ec);
+}
+
+TEST_CASE("Cache C2: empty projectDir disables mtime checking") {
+    auto inner = std::make_unique<CountingReader>(
+        MockBlueprintReader(test::FixturesDir()));
+    auto* counter = inner.get();
+    // Empty projectDir means mtime stamping is skipped — entries serve
+    // strictly by TTL like before.
+    CachingBlueprintReader cache(std::move(inner), 30s, std::filesystem::path{});
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");
+    cache.ReadBlueprint("/Game/AI/BP_Enemy");  // hit
+    CHECK(counter->readBlueprintCalls == 1);
 }

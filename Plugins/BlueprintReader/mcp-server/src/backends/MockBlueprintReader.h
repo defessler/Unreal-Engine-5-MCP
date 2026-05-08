@@ -50,6 +50,11 @@ public:
     void DeleteFunction(std::string_view assetPath, std::string_view name) override;
     void SetVariableDefault(std::string_view assetPath, std::string_view name,
                             std::string_view newDefault) override;
+    CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
+                                          std::string_view parentClass) override;
+    void SetPinDefault(std::string_view assetPath, std::string_view graphName,
+                       std::string_view nodeId, std::string_view pinSpec,
+                       std::string_view value) override;
 
     // Number of loaded fixtures — for diagnostics + tests.
     std::size_t FixtureCount() const { return assets_.size(); }

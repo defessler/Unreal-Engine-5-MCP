@@ -40,6 +40,8 @@ public:
     };
     std::vector<Call> calls;
     int nextGuidNum = 1;
+    int beginBatchCalls = 0;
+    int endBatchCalls = 0;
     bool failOnWrite = false;
     // For idempotency tests: synthesized "extra" variables/functions added
     // by writes appear here. Reads merge them in.
@@ -147,6 +149,29 @@ public:
     void SetVariableDefault(std::string_view a, std::string_view n, std::string_view) override {
         Note("SetVariableDefault", std::string(a), std::string(n));
     }
+    CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p) override {
+        Note("CreateBlueprint", std::string(a), std::string(p));
+        // Pretend it worked: return alreadyExisted=false, echo parent.
+        CreateBlueprintResult r;
+        r.alreadyExisted = false;
+        r.parentClass = std::string(p);
+        return r;
+    }
+    void SetPinDefault(std::string_view a, std::string_view, std::string_view,
+                       std::string_view pin, std::string_view value) override {
+        Note("SetPinDefault", std::string(a),
+             std::string(pin) + "=" + std::string(value));
+    }
+
+    // Batch sentinels — recorded but not forwarded; the inner mock has its
+    // own no-op default that's fine for unit tests. EndBatch can return
+    // a synthetic compile-diagnostics payload for C1 tests.
+    void BeginBatch() override { ++beginBatchCalls; }
+    nlohmann::json EndBatch() override {
+        ++endBatchCalls;
+        return endBatchAck;
+    }
+    nlohmann::json endBatchAck = nlohmann::json::object();
 
 private:
     MockBlueprintReader inner_;
@@ -288,4 +313,210 @@ TEST_CASE("apply_ops: type shorthand flows through") {
     auto out = bpr::tools::RunOps(r, ops, true);
     CHECK(out["ok"] == true);
     CHECK(out["results"][0]["already_existed"] == false);
+}
+
+// ===== Batch sentinels (A1) ================================================
+
+TEST_CASE("apply_ops: batches issue Begin/End once regardless of N ops") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V1"}, {"type","float"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V2"}, {"type","int"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V3"}, {"type","bool"}},
+        json{{"op","add_node"}, {"id","n1"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","Branch"}, {"x",0},{"y",0}},
+    });
+    bpr::tools::RunOps(r, ops, true);
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+}
+
+TEST_CASE("apply_ops: batch closes even on atomic failure mid-batch") {
+    FakeWritableReader r;
+    r.failOnWrite = true;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V1"}, {"type","float"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V2"}, {"type","int"}},
+    });
+    CHECK_THROWS(bpr::tools::RunOps(r, ops, /*atomic=*/true));
+    // Best-effort failure semantics: EndBatch still flushed.
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+}
+
+TEST_CASE("apply_ops: empty op list still opens+closes a batch (cheap no-op)") {
+    FakeWritableReader r;
+    bpr::tools::RunOps(r, json::array(), /*atomic=*/true);
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+}
+
+// ===== create_blueprint (A3) ===============================================
+
+TEST_CASE("apply_ops: create_blueprint forwards to backend with parent class") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","create_blueprint"},
+             {"asset_path","/Game/AI/BP_Generated"},
+             {"parent_class","Actor"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+    CHECK(out["ok"] == true);
+    REQUIRE(out["results"].size() == 1);
+    auto& res = out["results"][0];
+    CHECK(res["ok"] == true);
+    CHECK(res["asset_path"] == "/Game/AI/BP_Generated");
+    CHECK(res["parent_class"] == "Actor");
+    int creates = 0;
+    for (const auto& c : r.calls) if (c.op == "CreateBlueprint") ++creates;
+    CHECK(creates == 1);
+}
+
+TEST_CASE("apply_ops: create_blueprint then add_variable in one batch") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","create_blueprint"},
+             {"asset_path","/Game/AI/BP_New"},
+             {"parent_class","Actor"}},
+        // Same asset path — relies on AssetCreated registration so the
+        // follow-up op can load the BP. The fake reader doesn't enforce
+        // load order, but the call sequence is what we're asserting.
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_New"},
+             {"name","NewVar"},
+             {"type","float"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+    CHECK(out["succeeded"] == 2);
+    CHECK(r.beginBatchCalls == 1);
+    CHECK(r.endBatchCalls   == 1);
+}
+
+// ===== preview_ops (B2) ====================================================
+
+TEST_CASE("preview_ops: happy path doesn't touch the writable reader") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_node"}, {"id","n1"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","Branch"}, {"x",0},{"y",0}},
+        json{{"op","wire_pins"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"from_node","$n1"}, {"from_pin","then"},
+             {"to_node",  "$n1"}, {"to_pin",  "execute"}},
+    });
+    auto out = bpr::tools::ValidateOps(r, ops);
+    CHECK(out["ok"] == true);
+    CHECK(out["validated"] == 2);
+    CHECK(out["failed"] == 0);
+    REQUIRE(out["slots"].contains("n1"));
+    REQUIRE(out["would_compile"].is_array());
+    CHECK(out["would_compile"].size() == 1);
+    CHECK(out["would_compile"][0] == "/Game/AI/BP_Enemy");
+    // No write calls at all — preview is read-only.
+    int writeCalls = 0;
+    for (const auto& c : r.calls) {
+        if (c.op != "ListVariables" && c.op != "ReadBlueprint") ++writeCalls;
+    }
+    CHECK(writeCalls == 0);
+    CHECK(r.beginBatchCalls == 0);
+    CHECK(r.endBatchCalls   == 0);
+}
+
+TEST_CASE("preview_ops: rejects unbound slot reference") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","wire_pins"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"from_node","$nope"}, {"from_pin","exec"},
+             {"to_node",  "$alsonope"}, {"to_pin","exec"}},
+    });
+    auto out = bpr::tools::ValidateOps(r, ops);
+    CHECK(out["ok"] == false);
+    CHECK(out["failed"] == 1);
+    REQUIRE(out["results"].size() == 1);
+    CHECK(out["results"][0]["ok"] == false);
+    CHECK(out["results"][0].contains("error"));
+}
+
+TEST_CASE("preview_ops: rejects bad type shorthand") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V"}, {"type","totally_garbage"}},
+    });
+    auto out = bpr::tools::ValidateOps(r, ops);
+    CHECK(out["ok"] == false);
+    CHECK(out["results"][0]["ok"] == false);
+}
+
+TEST_CASE("preview_ops: collects all affected asset paths") {
+    FakeWritableReader r;
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V1"}, {"type","float"}},
+        json{{"op","add_variable"},
+             {"asset_path","/Game/Items/BP_Pickup"},
+             {"name","V2"}, {"type","int"}},
+    });
+    auto out = bpr::tools::ValidateOps(r, ops);
+    REQUIRE(out["would_compile"].is_array());
+    CHECK(out["would_compile"].size() == 2);
+}
+
+// ===== C1: compile diagnostics surface in apply_ops result ================
+
+TEST_CASE("apply_ops: surfaces diagnostics from EndBatch ack") {
+    FakeWritableReader r;
+    // Synthesize what the plugin's EndBatch would return after compiling
+    // a BP that has a wire-type warning. RunOps lifts these to the top
+    // level so the agent doesn't have to dig.
+    r.endBatchAck = json{
+        {"ok", true},
+        {"recompiled", json::array({"/Game/AI/BP_Enemy"})},
+        {"diagnostics", json::array({
+            json{{"severity","warning"},
+                 {"message","Implicit type conversion from int to bool"},
+                 {"asset_path","/Game/AI/BP_Enemy"}}
+        })},
+        {"error_count",   0},
+        {"warning_count", 1},
+    };
+    json ops = json::array({
+        json{{"op","add_variable"},
+             {"asset_path","/Game/AI/BP_Enemy"},
+             {"name","V1"}, {"type","float"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+    CHECK(out["ok"] == true);
+    REQUIRE(out.contains("diagnostics"));
+    REQUIRE(out["diagnostics"].is_array());
+    CHECK(out["diagnostics"].size() == 1);
+    CHECK(out["diagnostics"][0]["severity"] == "warning");
+    CHECK(out["compile_errors"]   == 0);
+    CHECK(out["compile_warnings"] == 1);
+    REQUIRE(out["recompiled"].is_array());
+    CHECK(out["recompiled"].size() == 1);
+}
+
+TEST_CASE("apply_ops: empty diagnostics array is omitted on backends without compile") {
+    FakeWritableReader r;
+    // Default endBatchAck = {} → no diagnostics field set.
+    auto out = bpr::tools::RunOps(r, json::array(), /*atomic=*/true);
+    CHECK(out["ok"] == true);
+    CHECK_FALSE(out.contains("diagnostics"));
+    CHECK_FALSE(out.contains("compile_errors"));
 }

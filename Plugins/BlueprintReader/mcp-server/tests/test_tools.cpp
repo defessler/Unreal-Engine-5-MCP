@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 27 tools (10 read + 13 write + 2 meta + 2 batch) with input schemas") {
+TEST_CASE("ToolRegistry exposes 29 tools (10 read + 14 write + 2 meta + 3 batch) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 27);
+    CHECK(spec.size() == 29);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
@@ -432,4 +432,120 @@ TEST_CASE("compile_function: rejects unknown statement form") {
         {"body", json::array({json{{"unknown_form", "nope"}}})},
         {"dry_run", true}}),
         std::invalid_argument);
+}
+
+// ===== B1: literals + math aliases + exec-tail merge =======================
+
+TEST_CASE("compile_function v2: lit expression emits set_pin_default") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({
+            json{{"set","Health"}, {"to", json{{"lit", 100}}}},
+        })},
+        {"dry_run", true}});
+    REQUIRE(out["ops"].is_array());
+    bool sawSetPinDefault = false;
+    bool sawWireFromLit = false;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "set_pin_default") sawSetPinDefault = true;
+        // The literal must NOT have produced a wire_pins from a __lit slot —
+        // the slot ref is consumed by set_pin_default's pin_name path.
+        if (op.value("op", "") == "wire_pins" &&
+            op.value("from_node", "").find("__lit") != std::string::npos) {
+            sawWireFromLit = true;
+        }
+    }
+    CHECK(sawSetPinDefault);
+    CHECK_FALSE(sawWireFromLit);
+}
+
+TEST_CASE("compile_function v2: math alias '+' resolves to Add_IntInt") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({
+            json{{"set","Health"},
+                 {"to", json{{"call","+"}, {"args", json{
+                     {"A", json{{"var","Health"}}},
+                     {"B", json{{"lit", 1}}}
+                 }}}}},
+        })},
+        {"dry_run", true}});
+    REQUIRE(out["ops"].is_array());
+    bool sawAddIntInt = false;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "add_node" &&
+            op.value("kind", "") == "CallFunction" &&
+            op.value("function", "") == "Add_IntInt" &&
+            op.value("function_owner", "") == "KismetMathLibrary") {
+            sawAddIntInt = true;
+        }
+    }
+    CHECK(sawAddIntInt);
+}
+
+TEST_CASE("compile_function v2: comparison '==' alias works") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({
+            json{{"if", json{{"call","=="}, {"args", json{
+                     {"A", json{{"var","Health"}}},
+                     {"B", json{{"lit", 0}}}
+                 }}}}, {"then", json::array()}, {"else", json::array()}},
+        })},
+        {"dry_run", true}});
+    bool sawEqualEqual = false;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "add_node" &&
+            op.value("function", "") == "EqualEqual_IntInt") {
+            sawEqualEqual = true;
+        }
+    }
+    CHECK(sawEqualEqual);
+}
+
+TEST_CASE("compile_function v2: if/else with following stmt fans both tails into next exec") {
+    Fixture f;
+    auto out = f.Call("compile_function", json{
+        {"asset_path","/Game/AI/BP_Enemy"},
+        {"function_name","NewFn"},
+        {"body", json::array({
+            json{{"if",   json{{"var","bAlive"}}},
+                 {"then", json::array({
+                     json{{"call","Foo"}}
+                 })},
+                 {"else", json::array({
+                     json{{"call","Bar"}}
+                 })}},
+            // The merge: this Baz call's exec input gets wired from BOTH
+            // the `then` chain's tail and the `else` chain's tail.
+            json{{"call","Baz"}},
+        })},
+        {"dry_run", true}});
+    REQUIRE(out["ops"].is_array());
+    // Find the Baz node's slot id.
+    std::string bazSlot;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "add_node" &&
+            op.value("function", "") == "Baz") {
+            bazSlot = op.value("id", "");
+        }
+    }
+    REQUIRE_FALSE(bazSlot.empty());
+    // Count exec-wires whose to_node is "$bazSlot" and to_pin is "execute".
+    int wiresToBaz = 0;
+    std::string toRef = std::string("$") + bazSlot;
+    for (auto& op : out["ops"]) {
+        if (op.value("op", "") == "wire_pins" &&
+            op.value("to_node", "") == toRef &&
+            op.value("to_pin", "")  == "execute") {
+            ++wiresToBaz;
+        }
+    }
+    CHECK(wiresToBaz == 2);
 }
