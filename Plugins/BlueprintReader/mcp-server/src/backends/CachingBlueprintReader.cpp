@@ -152,6 +152,13 @@ void CachingBlueprintReader::InvalidateAll() {
     stats_.invalidations.fetch_add(1, std::memory_order_relaxed);
 }
 
+nlohmann::json CachingBlueprintReader::ShutdownDaemon() {
+    // Drop the cache too — any cached entries point at a now-stale
+    // in-memory state that will be re-fetched fresh on next read.
+    InvalidateAll();
+    return inner_->ShutdownDaemon();
+}
+
 // ----- Batch sentinels (A1) ------------------------------------------------
 void CachingBlueprintReader::BeginBatch() {
     {

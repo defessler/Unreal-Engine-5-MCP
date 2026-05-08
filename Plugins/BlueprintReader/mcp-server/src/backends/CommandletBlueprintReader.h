@@ -106,6 +106,11 @@ public:
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;
 
+    // Tear down the daemon (sends QUIT, joins, closes pipes) so the user
+    // can release the project lock without restarting the MCP server.
+    // The next tool call auto-respawns via the existing fallback path.
+    nlohmann::json ShutdownDaemon() override;
+
     // Spin up the editor daemon now in a background thread. Tool calls that
     // arrive before the daemon is READY block on the same daemonMutex_ used
     // by RunOpDaemon, so this is racy-safe: a real call either completes the

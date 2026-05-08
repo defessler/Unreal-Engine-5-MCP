@@ -1180,6 +1180,31 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- shutdown_daemon -------------------------------------------------
+    // Tear down the editor daemon process so the project lock releases —
+    // useful when you want to open the full UE editor without daemon
+    // contention. Subsequent reads auto-respawn the daemon (cold-start
+    // cost on first call). No-op on backends that don't have a daemon
+    // (mock).
+    {
+        ToolDescriptor d;
+        d.name = "shutdown_daemon";
+        d.description =
+            "Tear down the backing editor daemon process. After this returns, "
+            "the project's file locks (DDC, asset registry, .uasset handles) "
+            "are released so you can launch the full UE editor. The next "
+            "read tool call auto-respawns the daemon — pay a one-time "
+            "cold-start cost (~5–30 s depending on project size). Pair with "
+            "BP_READER_READ_ONLY=1 if you want to keep the MCP server "
+            "running for queries while you work in the editor.\n\n"
+            "Returns {ok, was_running, hint}. Idempotent: calling when no "
+            "daemon is alive returns was_running:false without erroring.";
+        d.input_schema = {{"type", "object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            return reader.ShutdownDaemon();
+        });
+    }
+
     // ----- auto_layout_graph -----------------------------------------------
     // v1: a simple topological grid layout computed server-side. Walks the
     // exec edges from any FunctionEntry / Event node to produce columns,
