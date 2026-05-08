@@ -56,6 +56,9 @@ add_library(bp-reader-core STATIC
     src/tools/TypeShorthand.cpp
     src/tools/ApplyOps.cpp
     src/tools/CompileFunction.cpp
+    src/tools/Bpir.cpp
+    src/tools/Decompile.cpp
+    src/tools/codegen/CppEmit.cpp
     src/backends/MockBlueprintReader.cpp
     src/backends/CommandletBlueprintReader.cpp
     src/backends/CachingBlueprintReader.cpp
