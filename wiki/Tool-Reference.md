@@ -1,6 +1,6 @@
 # Tool Reference
 
-29 tools — 10 read, 14 write, 2 meta, 3 batch. All use snake_case JSON keys;
+30 tools — 10 read, 14 write, 3 meta, 3 batch. All use snake_case JSON keys;
 nullable string fields emit `null`; `BPNode.meta` is a real nested object
 (not a string-of-JSON). Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
@@ -515,6 +515,24 @@ separately — until then this keeps generated graphs from overlapping.
 Returns `{ok, placed, strategy: "grid"}`.
 
 ## Meta tools
+
+### `shutdown_daemon`
+Tear down the editor daemon process so the project's locks (DDC, asset
+registry, `.uasset` handles) release. Use when you want to launch the
+full UE editor without daemon contention. The next read tool call
+auto-respawns the daemon (cold-start cost on first call after).
+
+```json
+{}
+```
+
+Returns `{ok, was_running, hint}`. Idempotent: calling when no daemon
+is alive returns `was_running:false` without erroring.
+
+Pair with `BP_READER_READ_ONLY=1` if you want the MCP server to keep
+serving queries while you work in the editor —
+[Configuration → Read-only coexistence](Configuration#read-only-coexistence-with-the-open-editor)
+covers the workflow.
 
 ### `list_node_kinds`
 Enumerate the `kind` values `add_node` accepts plus their required extras.

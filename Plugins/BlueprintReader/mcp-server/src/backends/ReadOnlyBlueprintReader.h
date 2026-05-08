@@ -70,6 +70,10 @@ public:
     // ops still works correctly (preview-style batches).
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;
+    // ShutdownDaemon is allowed in read-only mode — releasing the daemon
+    // is the whole reason this mode exists ("let me work in the editor
+    // without daemon contention").
+    nlohmann::json ShutdownDaemon() override;
 
 private:
     std::unique_ptr<IBlueprintReader> inner_;

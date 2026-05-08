@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 29 tools (10 read + 14 write + 2 meta + 3 batch) with input schemas") {
+TEST_CASE("ToolRegistry exposes 30 tools (10 read + 14 write + 3 meta + 3 batch) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 29);
+    CHECK(spec.size() == 30);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }
@@ -390,6 +390,13 @@ TEST_CASE("add_variable accepts type shorthand string (still throws on mock writ
 }
 
 // ===== auto_layout_graph ===================================================
+
+TEST_CASE("shutdown_daemon on mock backend returns ok+was_running:false (no daemon to kill)") {
+    Fixture f;
+    auto out = f.Call("shutdown_daemon", json::object());
+    CHECK(out["ok"] == true);
+    CHECK(out["was_running"] == false);
+}
 
 TEST_CASE("auto_layout_graph: throws on read-only mock (records intent)") {
     // Tests that the dispatcher + topology pass at least exercises the

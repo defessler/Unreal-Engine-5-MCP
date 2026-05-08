@@ -1171,4 +1171,28 @@ nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile) {
     return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
+    // Hold the daemon mutex so a concurrent tool call can't half-spawn a
+    // new daemon while we're tearing the current one down. After we
+    // release, the next call's EnsureDaemon() spins up a fresh process.
+    std::lock_guard<std::mutex> lock(daemonMutex_);
+#if defined(_WIN32)
+    bool wasRunning = (daemonProcess_ != nullptr);
+    if (wasRunning) {
+        TerminateDaemon();  // sends QUIT, joins, closes pipes
+    }
+    return nlohmann::json{
+        {"ok", true},
+        {"was_running", wasRunning},
+        {"hint", "Next read tool call will auto-respawn the daemon."},
+    };
+#else
+    return nlohmann::json{
+        {"ok", true},
+        {"was_running", false},
+        {"hint", "Daemon mode is Windows-only; no-op on this platform."},
+    };
+#endif
+}
+
 } // namespace bpr::backends
