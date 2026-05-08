@@ -48,6 +48,11 @@ struct BackendConfig {
                                   // that user edits in the editor flush within
                                   // a turn or two. Set via
                                   // BP_READER_CACHE_TTL_SECONDS.
+    bool readOnly = false;        // Reject every write tool with a clear
+                                  // error pointing at this env var. Intended
+                                  // for coexistence with an open UE editor —
+                                  // see Troubleshooting wiki. Set via
+                                  // BP_READER_READ_ONLY.
 };
 
 // Read BP_READER_* from the environment, then auto-discover anything still

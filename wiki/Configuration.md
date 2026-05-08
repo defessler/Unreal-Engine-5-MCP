@@ -18,6 +18,7 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Most useful value: `-EnableAllPlugins` — makes plugin-module load failures non-fatal so the editor starts up even when binary marketplace plugins (DLSS, Wwise, etc.) aren't built. See [Troubleshooting](Troubleshooting). |
 | `BP_READER_EDITOR_CONFIG`   | (empty → `Development`)                | Picks which `UnrealEditor-Cmd[-Win64-Config].exe` the daemon launches. Default unsets to `Development` (suffix-less). Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your `BlueprintReaderEditor` module is built in that config — UE only loads plugin DLLs whose suffix matches the running editor process. |
 | `BP_READER_CACHE_TTL_SECONDS` | `30`                                 | How long the server memoizes read-tool responses for (per (operation, asset) key). Set to `0` to disable. See [Response caching](#response-caching) below. |
+| `BP_READER_READ_ONLY`       | `0` (off)                              | `1`/`true`/`yes`/`on` rejects every write tool with a structured error. Use this when running the MCP server alongside an open UE editor (concurrent writes to the same `.uasset` corrupt state). Reads pass through normally; the cache's mtime invalidation (C2) keeps responses fresh as the editor saves. |
 
 ## Pre-warm
 
@@ -184,6 +185,40 @@ Trade-off: TTL alone is the conservative-but-stale strategy; mtime adds
 a freshness check on top. The two combined catch both AI-induced edits
 (via the cache's own write-invalidation) and human-induced editor edits
 (via mtime).
+
+## Read-only coexistence with the open editor
+
+Running the MCP daemon at the same time you have the full UE editor
+open is *fragile by default*. Both processes hold the same `.uasset`
+files, the same DDC, and the same asset-registry caches. Concurrent
+writes can:
+
+- Drop edits (last-write-wins on `.uasset` saves).
+- Diverge in-memory state from disk (editor's loaded BP doesn't see
+  daemon's changes; daemon's reads don't see editor's unsaved buffer).
+- Corrupt the DDC (rare, but possible under shader/material thrash).
+
+**`BP_READER_READ_ONLY=1` is the safe coexistence mode.** With it:
+
+- Read tools (`list_blueprints`, `read_blueprint`, `get_graph`, etc.)
+  work normally and return the on-disk state. The C2 mtime cache
+  evicts stale entries on the next read after the editor saves —
+  responses stay fresh within seconds of the editor's save.
+- Every write tool fails fast with a structured error pointing at
+  this env var. `apply_ops` / `compile_function` fail too because
+  their first mutation op throws.
+
+```jsonc
+// .mcp.json snippet for "editor open, agent reads only"
+"env": {
+  "BP_READER_BACKEND":   "commandlet",
+  "BP_READER_READ_ONLY": "1",
+  "BP_READER_PREWARM":   "0"
+}
+```
+
+To switch to read-write mode: close the editor, unset
+`BP_READER_READ_ONLY` (or set to `0`), restart the MCP server.
 
 ## Mock backend fixtures
 

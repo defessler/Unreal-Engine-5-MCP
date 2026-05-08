@@ -2,6 +2,7 @@
 #include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
+#include "backends/ReadOnlyBlueprintReader.h"
 #include "Env.h"
 
 #include <iostream>
@@ -37,6 +38,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
     cfg.useDaemon             = env::BoolOrDefault("BP_READER_DAEMON", true, log);
     cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
     cfg.cacheTtlSeconds       = env::IntOrDefault("BP_READER_CACHE_TTL_SECONDS", 30);
+    cfg.readOnly              = env::BoolOrDefault("BP_READER_READ_ONLY", false, log);
 
     // ----- auto-discovery (Tier 1 UX) ---------------------------------
     //
@@ -144,9 +146,12 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
     // C2: pass the .uproject path so the cache can resolve /Game/X to the
     // on-disk .uasset and add mtime-based invalidation on top of TTL. The
     // cache itself is no-op when projectDir is empty (mock backend, etc.).
-    return WrapWithCache(buildInner(),
-                         std::chrono::seconds(cfg.cacheTtlSeconds),
-                         cfg.uproject);
+    auto cached = WrapWithCache(buildInner(),
+                                std::chrono::seconds(cfg.cacheTtlSeconds),
+                                cfg.uproject);
+    // ReadOnly wraps outermost so writes are rejected before any caching
+    // or commandlet round-trip happens — fast-fail with a clear error.
+    return MaybeWrapReadOnly(std::move(cached), cfg.readOnly);
 }
 
 } // namespace bpr::backends
