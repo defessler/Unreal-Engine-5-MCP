@@ -1559,7 +1559,30 @@ int32 RunOneOp(const FString& Params)
 		return 1;
 	}
 }
+} // anonymous namespace
 
+// Live-server entry point. The TCP listener in BlueprintReaderLiveServer.cpp
+// shells op-args through here on the game thread — same dispatch path the
+// daemon uses for its stdin lines. Defined at file scope (not in the anon
+// namespace) so the symbol has external linkage; the body uses unqualified
+// name lookup to find RunOneOp in the anonymous namespace below.
+namespace BlueprintReader
+{
+    // Forward decl of the anon-ns helper, hoisted to the same namespace
+    // as our bridge so name lookup picks it up.
+    int32 RunOneOpFromLiveServer(const FString& Params);
+}
+namespace
+{
+int32 RunOneOp(const FString& Params);  // forward decl from earlier defn
+}
+int32 BlueprintReader::RunOneOpFromLiveServer(const FString& Params)
+{
+    return RunOneOp(Params);
+}
+
+namespace
+{
 int32 RunDaemon()
 {
 	UE_LOG(LogBlueprintReader, Display,
