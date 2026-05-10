@@ -1954,6 +1954,296 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Live editor ops =================================================
+    // These work best with the live backend (open editor); they also
+    // route through commandlet daemon mode but PIE / live-coding don't
+    // make semantic sense in a headless editor.
+
+    // ----- console_command -----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "console_command";
+        d.description =
+            "Execute a UE console command (e.g. `stat unit`, `showflag.bones 1`, "
+            "`r.ScreenPercentage 75`). Returns whatever the command echoed to "
+            "the log.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"command", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"command"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string cmd = RequireString(args, "command");
+            auto r = reader.ConsoleCommand(cmd);
+            return nlohmann::json{{"ok", true}, {"output", r.output}};
+        });
+    }
+
+    // ----- get_cvar -------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "get_cvar";
+        d.description =
+            "Read a console variable's current value. Returns "
+            "`{exists, value, help}` — `exists:false` if the CVar isn't "
+            "registered.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"name", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string name = RequireString(args, "name");
+            auto v = reader.GetCVar(name);
+            return nlohmann::json{
+                {"ok", true},
+                {"name",   v.name}, {"value", v.value},
+                {"help",   v.help}, {"exists", v.exists},
+            };
+        });
+    }
+
+    // ----- set_cvar -------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_cvar";
+        d.description =
+            "Set a console variable. Forces `ECVF_SetByCode` priority — "
+            "overrides values set from ini files / scalability settings.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"name",  {{"type","string"}}},
+                {"value", {{"type","string"}, {"description","Stringified value; UE coerces to the CVar's type."}}},
+            }},
+            {"required", nlohmann::json::array({"name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string name  = RequireString(args, "name");
+            std::string value = RequireString(args, "value");
+            auto v = reader.SetCVar(name, value);
+            return nlohmann::json{
+                {"ok", true},
+                {"name", v.name}, {"value", v.value}, {"exists", v.exists},
+            };
+        });
+    }
+
+    // ----- pie_start / pie_stop ------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "pie_start";
+        d.description =
+            "Start a Play-In-Editor session. `mode` is one of "
+            "`selected_viewport` (default), `new_editor_window`, "
+            "`standalone`, `vr_preview`. Most useful with the live backend.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"mode", {{"type","string"},
+                {"enum", nlohmann::json::array({"selected_viewport","new_editor_window","standalone","vr_preview"})}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string mode = OptString(args, "mode", "selected_viewport");
+            auto r = reader.PieStart(mode);
+            return nlohmann::json{{"ok", true},
+                                  {"started", r.started}, {"mode", r.mode}};
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "pie_stop";
+        d.description =
+            "End the active PIE session. No-op when PIE isn't running.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            auto r = reader.PieStop();
+            return nlohmann::json{{"ok", true}, {"stopped", r.stopped}};
+        });
+    }
+
+    // ----- live_coding_compile -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "live_coding_compile";
+        d.description =
+            "Trigger UE's Live Coding compile + patch. The compile runs "
+            "asynchronously; Live Coding emits its own progress + result "
+            "to the editor log (use `read_output_log` to follow).";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            auto r = reader.LiveCodingCompile();
+            return nlohmann::json{{"ok", true},
+                                  {"queued", r.queued}, {"message", r.message}};
+        });
+    }
+
+    // ----- get_selected_actors -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "get_selected_actors";
+        d.description =
+            "List the names of currently-selected actors in the level editor. "
+            "Names are the stable in-package names (not display labels). "
+            "Empty array when nothing is selected.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            auto r = reader.GetSelectedActors();
+            return nlohmann::json{{"ok", true}, {"actor_names", r.actorNames}};
+        });
+    }
+
+    // ----- set_selection --------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_selection";
+        d.description =
+            "Replace (or extend) the editor's selection. `replace:true` "
+            "(default) clears existing selection first; `false` adds to it. "
+            "Returns the post-call selected names so the caller can verify.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"actor_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+                {"replace",     {{"type","boolean"}}},
+            }},
+            {"required", nlohmann::json::array({"actor_names"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::vector<std::string> names;
+            if (auto it = args.find("actor_names"); it != args.end() && it->is_array()) {
+                for (const auto& v : *it) {
+                    if (v.is_string()) names.push_back(v.get<std::string>());
+                }
+            }
+            bool replace = args.value("replace", true);
+            auto r = reader.SetSelection(names, replace);
+            return nlohmann::json{{"ok", true}, {"actor_names", r.actorNames}};
+        });
+    }
+
+    // ----- spawn_actor ----------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "spawn_actor";
+        d.description =
+            "Spawn an actor of the given UClass in the current level. "
+            "`class_path` is the full path (e.g. `/Script/Engine.StaticMeshActor` "
+            "or a BP class like `/Game/AI/BP_Enemy.BP_Enemy_C`). All transform "
+            "fields are optional and default to identity.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"class_path", {{"type","string"}}},
+                {"location",   {{"type","object"}, {"properties", {
+                    {"x",{{"type","number"}}}, {"y",{{"type","number"}}}, {"z",{{"type","number"}}}}}}},
+                {"rotation",   {{"type","object"}, {"properties", {
+                    {"pitch",{{"type","number"}}}, {"yaw",{{"type","number"}}}, {"roll",{{"type","number"}}}}}}},
+                {"scale",      {{"type","object"}, {"properties", {
+                    {"x",{{"type","number"}}}, {"y",{{"type","number"}}}, {"z",{{"type","number"}}}}}}},
+            }},
+            {"required", nlohmann::json::array({"class_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string cls = RequireString(args, "class_path");
+            auto loc   = args.value("location", nlohmann::json::object());
+            auto rot   = args.value("rotation", nlohmann::json::object());
+            auto scl   = args.value("scale",    nlohmann::json::object());
+            auto r = reader.SpawnActor(cls,
+                loc.value("x", 0.0), loc.value("y", 0.0), loc.value("z", 0.0),
+                rot.value("pitch", 0.0), rot.value("yaw", 0.0), rot.value("roll", 0.0),
+                scl.value("x", 1.0), scl.value("y", 1.0), scl.value("z", 1.0));
+            return nlohmann::json{{"ok", true},
+                                  {"actor_name",  r.actorName},
+                                  {"actor_label", r.actorLabel}};
+        });
+    }
+
+    // ----- set_actor_transform -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_actor_transform";
+        d.description =
+            "Update an actor's world transform. `actor_name` is from "
+            "`get_selected_actors` or `spawn_actor`'s response. All transform "
+            "fields are absolute (not delta).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"actor_name", {{"type","string"}}},
+                {"location",   {{"type","object"}}},
+                {"rotation",   {{"type","object"}}},
+                {"scale",      {{"type","object"}}},
+            }},
+            {"required", nlohmann::json::array({"actor_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string name = RequireString(args, "actor_name");
+            auto loc = args.value("location", nlohmann::json::object());
+            auto rot = args.value("rotation", nlohmann::json::object());
+            auto scl = args.value("scale",    nlohmann::json::object());
+            reader.SetActorTransform(name,
+                loc.value("x", 0.0), loc.value("y", 0.0), loc.value("z", 0.0),
+                rot.value("pitch", 0.0), rot.value("yaw", 0.0), rot.value("roll", 0.0),
+                scl.value("x", 1.0), scl.value("y", 1.0), scl.value("z", 1.0));
+            return nlohmann::json{{"ok", true}, {"actor_name", name}};
+        });
+    }
+
+    // ----- delete_actor --------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "delete_actor";
+        d.description =
+            "Destroy an actor by name. Returns `{deleted: false}` if the "
+            "actor wasn't found.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"actor_name", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"actor_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string name = RequireString(args, "actor_name");
+            auto r = reader.DeleteActor(name);
+            return nlohmann::json{{"ok", true},
+                                  {"actor_name", name}, {"deleted", r.deleted}};
+        });
+    }
+
+    // ----- read_output_log -----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "read_output_log";
+        d.description =
+            "Read recent entries from the editor's output log. The plugin "
+            "module installs a ring-buffer log sink at startup; this returns "
+            "up to `limit` of the most recent entries (default 200), "
+            "optionally filtered by `min_severity` (Display / Log / Warning "
+            "/ Error / Fatal).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"limit",         {{"type","integer"}}},
+                {"min_severity",  {{"type","string"},
+                    {"enum", nlohmann::json::array({"Display","Log","Warning","Error","Fatal"})}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            int limit = OptInt(args, "limit", 200);
+            std::string minSev = OptString(args, "min_severity", "");
+            auto r = reader.ReadOutputLog(limit, minSev);
+            nlohmann::json entries = nlohmann::json::array();
+            for (const auto& e : r.entries) {
+                entries.push_back(nlohmann::json{
+                    {"severity",  e.severity},
+                    {"category",  e.category},
+                    {"message",   e.message},
+                    {"timestamp", e.timestamp},
+                });
+            }
+            return nlohmann::json{{"ok", true}, {"entries", entries}};
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.

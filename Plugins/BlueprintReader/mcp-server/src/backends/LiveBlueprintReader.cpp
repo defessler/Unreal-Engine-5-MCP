@@ -689,6 +689,190 @@ LiveBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return out;
 }
 
+// ----- Live editor ops ---------------------------------------------------
+
+IBlueprintReader::ConsoleCommandResult
+LiveBlueprintReader::ConsoleCommand(std::string_view command) {
+    auto j = RunOp({"-Op=ConsoleCommand",
+                    "-Command=" + std::string(command)});
+    ConsoleCommandResult out;
+    if (j.is_object()) out.output = j.value("output", std::string{});
+    return out;
+}
+
+IBlueprintReader::CVarValue
+LiveBlueprintReader::GetCVar(std::string_view name) {
+    auto j = RunOp({"-Op=GetCVar", "-Name=" + std::string(name)});
+    CVarValue out;
+    out.name = std::string(name);
+    if (j.is_object()) {
+        out.value  = j.value("value",  std::string{});
+        out.help   = j.value("help",   std::string{});
+        out.exists = j.value("exists", false);
+    }
+    return out;
+}
+
+IBlueprintReader::CVarValue
+LiveBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
+    auto j = RunOp({"-Op=SetCVar",
+                    "-Name="  + std::string(name),
+                    "-Value=" + std::string(value)});
+    CVarValue out;
+    out.name = std::string(name);
+    if (j.is_object()) {
+        out.value  = j.value("value",  std::string{});
+        out.help   = j.value("help",   std::string{});
+        out.exists = j.value("exists", false);
+    }
+    return out;
+}
+
+IBlueprintReader::PieResult
+LiveBlueprintReader::PieStart(std::string_view mode) {
+    std::vector<std::string> args = {"-Op=PieStart"};
+    if (!mode.empty()) args.push_back("-Mode=" + std::string(mode));
+    auto j = RunOp(args);
+    PieResult out;
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.mode    = j.value("mode",    std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::PieResult LiveBlueprintReader::PieStop() {
+    auto j = RunOp({"-Op=PieStop"});
+    PieResult out;
+    if (j.is_object()) out.stopped = j.value("stopped", false);
+    return out;
+}
+
+IBlueprintReader::LiveCodingResult
+LiveBlueprintReader::LiveCodingCompile() {
+    auto j = RunOp({"-Op=LiveCodingCompile"});
+    LiveCodingResult out;
+    if (j.is_object()) {
+        out.queued  = j.value("queued",  false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SelectionResult
+LiveBlueprintReader::GetSelectedActors() {
+    auto j = RunOp({"-Op=GetSelectedActors"});
+    SelectionResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::SelectionResult
+LiveBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
+                                  bool replace) {
+    std::string joined;
+    for (std::size_t i = 0; i < actorNames.size(); ++i) {
+        if (i) joined += ",";
+        joined += actorNames[i];
+    }
+    std::vector<std::string> args = {"-Op=SetSelection", "-Names=" + joined};
+    if (!replace) args.push_back("-Add");
+    auto j = RunOp(args);
+    SelectionResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::SpawnActorResult
+LiveBlueprintReader::SpawnActor(std::string_view classPath,
+    double locX, double locY, double locZ,
+    double rotPitch, double rotYaw, double rotRoll,
+    double scaleX, double scaleY, double scaleZ) {
+    auto j = RunOp({
+        "-Op=SpawnActor",
+        "-Class=" + std::string(classPath),
+        "-LocX=" + std::to_string(locX),
+        "-LocY=" + std::to_string(locY),
+        "-LocZ=" + std::to_string(locZ),
+        "-RotPitch=" + std::to_string(rotPitch),
+        "-RotYaw="   + std::to_string(rotYaw),
+        "-RotRoll="  + std::to_string(rotRoll),
+        "-ScaleX=" + std::to_string(scaleX),
+        "-ScaleY=" + std::to_string(scaleY),
+        "-ScaleZ=" + std::to_string(scaleZ),
+    });
+    SpawnActorResult out;
+    if (j.is_object()) {
+        out.actorName  = j.value("actor_name",  std::string{});
+        out.actorLabel = j.value("actor_label", std::string{});
+    }
+    return out;
+}
+
+void LiveBlueprintReader::SetActorTransform(std::string_view actorName,
+    double locX, double locY, double locZ,
+    double rotPitch, double rotYaw, double rotRoll,
+    double scaleX, double scaleY, double scaleZ) {
+    (void)RunOp({
+        "-Op=SetActorTransform",
+        "-Name=" + std::string(actorName),
+        "-LocX=" + std::to_string(locX),
+        "-LocY=" + std::to_string(locY),
+        "-LocZ=" + std::to_string(locZ),
+        "-RotPitch=" + std::to_string(rotPitch),
+        "-RotYaw="   + std::to_string(rotYaw),
+        "-RotRoll="  + std::to_string(rotRoll),
+        "-ScaleX=" + std::to_string(scaleX),
+        "-ScaleY=" + std::to_string(scaleY),
+        "-ScaleZ=" + std::to_string(scaleZ),
+    });
+}
+
+IBlueprintReader::DeleteActorResult
+LiveBlueprintReader::DeleteActor(std::string_view actorName) {
+    auto j = RunOp({"-Op=DeleteActor", "-Name=" + std::string(actorName)});
+    DeleteActorResult out;
+    if (j.is_object()) out.deleted = j.value("deleted", false);
+    return out;
+}
+
+IBlueprintReader::OutputLogResult
+LiveBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
+    std::vector<std::string> args = {"-Op=ReadOutputLog",
+                                      "-Limit=" + std::to_string(limit)};
+    if (!minSeverity.empty()) {
+        args.push_back("-MinSeverity=" + std::string(minSeverity));
+    }
+    auto j = RunOp(args);
+    OutputLogResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("entries"); it != j.end() && it->is_array()) {
+            for (const auto& e : *it) {
+                if (!e.is_object()) continue;
+                LogEntry entry;
+                entry.severity  = e.value("severity",  std::string{});
+                entry.category  = e.value("category",  std::string{});
+                entry.message   = e.value("message",   std::string{});
+                entry.timestamp = e.value("timestamp", std::string{});
+                out.entries.push_back(std::move(entry));
+            }
+        }
+    }
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }
