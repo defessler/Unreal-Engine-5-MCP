@@ -3,13 +3,15 @@
 #include "Async/Async.h"
 #include "Common/TcpListener.h"
 #include "Dom/JsonObject.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/RunnableThread.h"
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
-#include "Misc/Paths.h"
-#include "Misc/Guid.h"
+#include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -286,56 +288,114 @@ bool FLiveServer::Start(int32 Port)
         return true;
     }
 
-    // Resolve port: explicit arg > env var > disabled.
-    int32 ResolvedPort = Port;
-    if (ResolvedPort == 0)
+    // Hard opt-out short-circuit before any work.
     {
-        FString EnvPort = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_PORT"));
-        if (!EnvPort.IsEmpty()) ResolvedPort = FCString::Atoi(*EnvPort);
-    }
-    if (ResolvedPort <= 0)
-    {
-        UE_LOG(LogBlueprintReaderLive, Display,
-            TEXT("BP_READER_LIVE_PORT not set; live server disabled"));
-        return false;
+        FString Disabled = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_DISABLED"));
+        if (Disabled == TEXT("1") || Disabled.Equals(TEXT("true"), ESearchCase::IgnoreCase))
+        {
+            UE_LOG(LogBlueprintReaderLive, Display,
+                TEXT("BP_READER_LIVE_DISABLED=1; live server skipped"));
+            return false;
+        }
     }
 
+    // Resolve port: explicit arg > env var > 0 (kernel picks ephemeral).
+    int32 RequestedPort = Port;
+    if (RequestedPort == 0)
+    {
+        FString EnvPort = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_PORT"));
+        if (!EnvPort.IsEmpty()) RequestedPort = FCString::Atoi(*EnvPort);
+    }
+    // RequestedPort 0 means "let the kernel pick a free port" — no longer
+    // a "disabled" sentinel.
+
+    // Resolve token: env var override > random 128-bit GUID.
     ExpectedToken = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_TOKEN"));
     if (ExpectedToken.IsEmpty())
     {
-        UE_LOG(LogBlueprintReaderLive, Error,
-            TEXT("BP_READER_LIVE_TOKEN not set — refusing to start live server "
-                 "(unauthenticated localhost write access is unsafe). Pick a "
-                 "random string, set the env var in BOTH the editor process "
-                 "and the MCP server's process before launch."));
-        return false;
+        // Two GUIDs concatenated → 256 bits. Overkill for an auth token
+        // on a localhost-only socket, but the cost is zero and it makes
+        // brute-force not even worth thinking about.
+        ExpectedToken = FGuid::NewGuid().ToString(EGuidFormats::Digits)
+                      + FGuid::NewGuid().ToString(EGuidFormats::Digits);
     }
 
-    // Loopback-only bind.
-    FIPv4Endpoint Endpoint(FIPv4Address(127, 0, 0, 1), (uint16)ResolvedPort);
-    Listener = MakeUnique<FTcpListener>(Endpoint);
-    if (!Listener->Init())
+    // Loopback-only bind. We bind the socket ourselves (rather than
+    // using FTcpListener's FIPv4Endpoint constructor) so we can pass
+    // port 0 and discover the kernel-picked port via GetAddress.
+    ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+    if (!SocketSubsystem)
     {
-        UE_LOG(LogBlueprintReaderLive, Error,
-            TEXT("FLiveServer: failed to bind 127.0.0.1:%d (port in use?)"), ResolvedPort);
-        Listener.Reset();
+        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: no socket subsystem"));
         return false;
     }
+    ListenerSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("BPRLive"),
+                                                   FNetworkProtocolTypes::IPv4);
+    if (!ListenerSocket)
+    {
+        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: CreateSocket failed"));
+        return false;
+    }
+    TSharedRef<FInternetAddr> BindAddr = SocketSubsystem->CreateInternetAddr();
+    BindAddr->SetIp(0x7F000001);  // 127.0.0.1 in network-order-agnostic form
+    BindAddr->SetPort(FMath::Max(0, RequestedPort));
+    if (!ListenerSocket->Bind(*BindAddr))
+    {
+        UE_LOG(LogBlueprintReaderLive, Error,
+            TEXT("FLiveServer: bind to 127.0.0.1:%d failed (port in use?)"), RequestedPort);
+        SocketSubsystem->DestroySocket(ListenerSocket);
+        ListenerSocket = nullptr;
+        return false;
+    }
+    if (!ListenerSocket->Listen(8))
+    {
+        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: listen() failed"));
+        SocketSubsystem->DestroySocket(ListenerSocket);
+        ListenerSocket = nullptr;
+        return false;
+    }
+    // Discover the actual bound port — needed when RequestedPort was 0.
+    TSharedRef<FInternetAddr> BoundAddr = SocketSubsystem->CreateInternetAddr();
+    ListenerSocket->GetAddress(*BoundAddr);
+    BoundPort = BoundAddr->GetPort();
+
+    // Hand the prebound socket to FTcpListener. Note: FSocket& ctor
+    // does NOT take ownership — we destroy ListenerSocket in Stop().
+    Listener = MakeUnique<FTcpListener>(*ListenerSocket);
     Listener->OnConnectionAccepted().BindRaw(this, &FLiveServer::OnIncomingConnection);
-    BoundPort = ResolvedPort;
 
     GState = MakeUnique<FServerState>();
     UE_LOG(LogBlueprintReaderLive, Display,
-        TEXT("FLiveServer listening on 127.0.0.1:%d"), ResolvedPort);
+        TEXT("FLiveServer listening on 127.0.0.1:%d"), BoundPort);
+
+    // Drop the handshake file so the MCP server can discover port +
+    // token automatically. Failure here is non-fatal — explicit env-var
+    // configuration still works.
+    HandshakeWritten = WriteHandshakeFile();
     return true;
 }
 
 void FLiveServer::Stop()
 {
+    // Drop the handshake file FIRST so MCP-server probes immediately
+    // start failing rather than racing the listener teardown.
+    if (HandshakeWritten)
+    {
+        DeleteHandshakeFile();
+        HandshakeWritten = false;
+    }
     if (Listener.IsValid())
     {
         Listener->Stop();
         Listener.Reset();
+    }
+    if (ListenerSocket)
+    {
+        if (ISocketSubsystem* Sub = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM))
+        {
+            Sub->DestroySocket(ListenerSocket);
+        }
+        ListenerSocket = nullptr;
     }
     if (GState.IsValid())
     {
@@ -352,6 +412,64 @@ void FLiveServer::Stop()
         GState.Reset();
     }
     BoundPort = 0;
+    ExpectedToken.Reset();
+}
+
+FString FLiveServer::HandshakeFilePath()
+{
+    // <ProjectDir>/Saved/bp-reader-live.json — colocated with UE's
+    // existing Saved/ tree which is gitignored by default. The MCP
+    // server walks up from the .uproject to find this same file.
+    return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("bp-reader-live.json"));
+}
+
+bool FLiveServer::WriteHandshakeFile()
+{
+    const FString Path = HandshakeFilePath();
+    // Ensure Saved/ exists (it almost always does, but the editor can
+    // be launched against a project where it's been wiped).
+    const FString Dir = FPaths::GetPath(Path);
+    IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+
+    // Serialize a compact JSON line. fmt-style printf: BoundPort and
+    // process id are ints; ExpectedToken is the GUID hex string we
+    // generated. ISO-8601 UTC timestamp for diagnostics.
+    const FDateTime Now = FDateTime::UtcNow();
+    const uint32 Pid = FPlatformProcess::GetCurrentProcessId();
+    const FString Json = FString::Printf(
+        TEXT("{\"version\":1,\"host\":\"127.0.0.1\",\"port\":%d,")
+        TEXT("\"token\":\"%s\",\"pid\":%u,\"started_at\":\"%s\"}\n"),
+        BoundPort, *ExpectedToken, Pid, *Now.ToIso8601());
+
+    if (!FFileHelper::SaveStringToFile(Json, *Path,
+            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+            &IFileManager::Get(),
+            FILEWRITE_EvenIfReadOnly))
+    {
+        UE_LOG(LogBlueprintReaderLive, Warning,
+            TEXT("Failed to write handshake file %s — MCP server will need "
+                 "BP_READER_LIVE_PORT/TOKEN env vars set explicitly"),
+            *Path);
+        return false;
+    }
+    UE_LOG(LogBlueprintReaderLive, Display,
+        TEXT("Wrote live-handshake file: %s (port=%d)"), *Path, BoundPort);
+    return true;
+}
+
+void FLiveServer::DeleteHandshakeFile()
+{
+    const FString Path = HandshakeFilePath();
+    if (!IFileManager::Get().FileExists(*Path)) return;
+    if (!IFileManager::Get().Delete(*Path, /*RequireExists=*/false,
+                                    /*EvenReadOnly=*/true,
+                                    /*Quiet=*/true))
+    {
+        UE_LOG(LogBlueprintReaderLive, Warning,
+            TEXT("Failed to delete handshake file %s; the MCP server may "
+                 "see stale port/token until the file is removed."),
+            *Path);
+    }
 }
 
 bool FLiveServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& Endpoint)

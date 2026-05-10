@@ -1,4 +1,5 @@
 #include "backends/BackendFactory.h"
+#include "backends/AutoBlueprintReader.h"
 #include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
 #include "backends/LiveBlueprintReader.h"
@@ -6,11 +7,68 @@
 #include "backends/ReadOnlyBlueprintReader.h"
 #include "Env.h"
 
+#include <fstream>
 #include <iostream>
+#include <optional>
+#include <sstream>
 
 #include <fmt/core.h>
+#include <nlohmann/json.hpp>
 
 namespace bpr::backends {
+
+namespace {
+
+// Look for `<projectDir>/Saved/bp-reader-live.json`, the file the
+// editor's BlueprintReaderLiveServer drops on StartupModule. Returns
+// an empty optional if missing / malformed; caller falls back to env
+// vars or commandlet.
+//
+// Schema: { "version": 1, "host": "127.0.0.1", "port": <int>,
+//           "token": "<hex>", "pid": <int>, "started_at": "..." }
+struct HandshakeFile {
+    std::string host;
+    int         port = 0;
+    std::string token;
+    int         pid  = 0;
+};
+std::optional<HandshakeFile> ReadHandshakeFile(
+    const std::filesystem::path& uproject, std::ostream& log) {
+    if (uproject.empty()) return std::nullopt;
+    std::filesystem::path path =
+        uproject.parent_path() / "Saved" / "bp-reader-live.json";
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return std::nullopt;
+    std::ifstream f(path);
+    if (!f) {
+        log << "[bp-reader-mcp] live handshake file exists but is unreadable: "
+            << path.string() << "\n";
+        return std::nullopt;
+    }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(ss.str());
+    } catch (const std::exception& e) {
+        log << "[bp-reader-mcp] live handshake file is malformed JSON ("
+            << e.what() << "); ignoring\n";
+        return std::nullopt;
+    }
+    HandshakeFile hf;
+    hf.host  = j.value("host",  std::string("127.0.0.1"));
+    hf.port  = j.value("port",  0);
+    hf.token = j.value("token", std::string());
+    hf.pid   = j.value("pid",   0);
+    if (hf.port <= 0 || hf.token.empty()) {
+        log << "[bp-reader-mcp] live handshake file present but missing "
+               "port/token; ignoring\n";
+        return std::nullopt;
+    }
+    return hf;
+}
+
+} // namespace
 
 BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
                             std::ostream& log) {
@@ -109,11 +167,27 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
         }
     }
 
-    // Backend default — if we found a uproject, switch to commandlet.
-    // Mock is only the right default when there's nothing project-shaped
-    // around the exe.
+    // Auto-discover live host/port/token from the editor's handshake
+    // file when env vars haven't supplied them. The plugin's
+    // BlueprintReaderLiveServer drops this file on StartupModule, so
+    // an open editor "publishes" its credentials for the MCP server.
+    if (auto hf = ReadHandshakeFile(cfg.uproject, log)) {
+        if (cfg.liveHost.empty() || cfg.liveHost == "127.0.0.1") {
+            cfg.liveHost = hf->host;
+        }
+        if (cfg.liveProcPort == 0) cfg.liveProcPort = hf->port;
+        if (cfg.liveToken.empty()) cfg.liveToken = hf->token;
+        log << "[bp-reader-mcp] discovered live editor on "
+            << cfg.liveHost << ":" << cfg.liveProcPort
+            << " (pid=" << hf->pid << ")\n";
+    }
+
+    // Backend default — if we found a uproject, default to `auto` so
+    // we transparently pick live (when an editor is up) or commandlet
+    // (when not). Explicit BP_READER_BACKEND=commandlet|live still wins
+    // for users who want the old, deterministic behavior.
     if (cfg.backend.empty()) {
-        cfg.backend = cfg.uproject.empty() ? "mock" : "commandlet";
+        cfg.backend = cfg.uproject.empty() ? "mock" : "auto";
     }
 
     return cfg;
@@ -146,8 +220,31 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
             lc.token = cfg.liveToken;
             return std::make_unique<LiveBlueprintReader>(std::move(lc));
         }
+        if (cfg.backend == "auto") {
+            // Auto-routes per call: probe the live handshake; if the
+            // editor responds, use Live, else Commandlet. Live config
+            // may be empty (no editor running yet) — the wrapper
+            // re-reads the handshake file on each probe so it picks
+            // up an editor that launched mid-session.
+            AutoBlueprintReader::Config ac;
+            ac.uproject = cfg.uproject;
+            ac.liveHost = cfg.liveHost.empty() ? "127.0.0.1" : cfg.liveHost;
+            ac.livePort = cfg.liveProcPort;
+            ac.liveToken = cfg.liveToken;
+            CommandletBlueprintReader::Config cc;
+            cc.engineDir       = cfg.engineDir;
+            cc.uproject        = cfg.uproject;
+            cc.timeout         = std::chrono::seconds(cfg.timeoutSeconds);
+            cc.startupTimeout  = std::chrono::seconds(cfg.startupTimeoutSeconds);
+            cc.useDaemon       = cfg.useDaemon;
+            cc.editorConfig    = cfg.editorConfig;
+            cc.editorExtraArgs = cfg.editorExtraArgs;
+            ac.commandletConfig = std::move(cc);
+            ac.prewarmCommandlet = cfg.prewarm && cfg.useDaemon;
+            return std::make_unique<AutoBlueprintReader>(std::move(ac));
+        }
         throw BlueprintReaderError(fmt::format(
-            "unknown backend '{}': expected one of mock|commandlet|live", cfg.backend));
+            "unknown backend '{}': expected one of mock|commandlet|live|auto", cfg.backend));
     };
     // C2: pass the .uproject path so the cache can resolve /Game/X to the
     // on-disk .uasset and add mtime-based invalidation on top of TTL. The
