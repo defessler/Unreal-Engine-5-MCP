@@ -261,10 +261,12 @@ isn't running yet. The first tool call returns a clear error pointing at
 
 ### What works in v1
 
-All 30 tools route over the same wire: reads, writes, batch ops,
-`compile_function`, `preview_ops`. The editor's existing `RunOneOp`
-dispatcher handles them on the game thread — same code as the
-commandlet daemon.
+All 39 tools route over the same wire: reads, writes, batch ops,
+`compile_function` / `preview_ops`, plus the BP↔C++ transpile group
+(`decompile_function`, `decompile_blueprint`, `transpile_function`,
+`transpile_blueprint`, `write_generated_source`, `parse_cpp_function`).
+The editor's existing `RunOneOp` dispatcher handles them on the game
+thread — same code as the commandlet daemon.
 
 ### What's deferred
 
