@@ -27,16 +27,6 @@ TEST_CASE("Treatment: K2Node_Timeline → todo_comment with explicit guidance") 
     CHECK(Contains(cls.note, "UTimelineComponent"));
 }
 
-TEST_CASE("Treatment: SpawnActorFromClass → approximation with stub snippet") {
-    auto cls = ClassifyUnsupported(json{
-        {"node_class", "K2Node_SpawnActorFromClass"}, {"guid", "spawn-1"}});
-    CHECK(cls.kind == UnsupportedClassification::Kind::Approximation);
-    CHECK(Contains(cls.snippet, "GetWorld()->SpawnActor"));
-    // GUID gets substituted into the snippet.
-    CHECK(Contains(cls.snippet, "spawn-1"));
-    CHECK(Contains(cls.note, "FActorSpawnParameters"));
-}
-
 TEST_CASE("Treatment: AnimNode_* uses prefix substring match (one entry covers many)") {
     auto cls1 = ClassifyUnsupported(json{
         {"node_class", "K2Node_AnimNode_BlendListByEnum"}});
@@ -48,13 +38,11 @@ TEST_CASE("Treatment: AnimNode_* uses prefix substring match (one entry covers m
     CHECK(Contains(cls2.note, "AnimGraph"));
 }
 
-TEST_CASE("Treatment: AddComponent → approximation with NewObject stub") {
-    auto cls = ClassifyUnsupported(json{
-        {"node_class", "K2Node_AddComponent"}, {"guid","comp-1"}});
-    CHECK(cls.kind == UnsupportedClassification::Kind::Approximation);
-    CHECK(Contains(cls.snippet, "NewObject"));
-    CHECK(Contains(cls.snippet, "RegisterComponent"));
-}
+// SpawnActorFromClass and AddComponent used to live here as
+// "approximation" entries. They've been promoted: Decompile recognizes
+// them as structured BPIR calls and CppEmit renders them as real
+// `GetWorld()->SpawnActor<T>(...)` / `NewObject + RegisterComponent`
+// blocks. Tests for the new rendering live in test_cpp_codegen.cpp.
 
 TEST_CASE("Treatment: unknown class falls back to generic todo + helpful note") {
     auto cls = ClassifyUnsupported(json{
@@ -92,18 +80,20 @@ TEST_CASE("BuildSidecar: empty notes still produces a valid sidecar shell") {
 }
 
 TEST_CASE("BuildSidecar: notes split into unsupported vs. approximations") {
+    // After SpawnActorFromClass + AddComponent moved to structured
+    // codegen, no remaining table entries are "approximations" — they
+    // all classify as todo_comment. The split logic still works; this
+    // test pins it for the day a new approximation entry lands.
     json notes = json::array({
         json{{"node_class","K2Node_Timeline"},{"guid","tl-1"}},
-        json{{"node_class","K2Node_SpawnActorFromClass"},{"guid","sp-1"}},
-        json{{"node_class","K2Node_AddComponent"},{"guid","ac-1"}},
+        json{{"node_class","K2Node_LatentAbilityCall"},{"guid","la-1"}},
         json{{"node_class","K2Node_TotallyUnknown"},{"guid","unk-1"}},
     });
     auto sidecar = BuildSidecar("/Game/AI/BP_X", {"BP_X_Generated.h"}, notes);
     REQUIRE(sidecar["unsupported_nodes"].is_array());
     REQUIRE(sidecar["approximations"].is_array());
-    // Timeline + Unknown → todo; SpawnActor + AddComponent → approximations.
-    CHECK(sidecar["unsupported_nodes"].size() == 2);
-    CHECK(sidecar["approximations"].size()    == 2);
+    CHECK(sidecar["unsupported_nodes"].size() == 3);
+    CHECK(sidecar["approximations"].size()    == 0);
 }
 
 TEST_CASE("BuildSidecar: each entry carries treatment_kind + manual_steps") {

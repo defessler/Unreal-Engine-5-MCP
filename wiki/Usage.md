@@ -211,16 +211,28 @@ pair — same IR, no plumbing changes elsewhere.
 UE has constructs that don't map 1:1 to plain C++:
 
 - **Timelines** (`K2Node_Timeline`) — emitted as a stub `UTimelineComponent*`
-  member with a TODO comment.
-- **Latent ability calls** (`UAbilityTask_*`) — emitted as the closest
-  static-create call; the named exec outputs (`Completed`, `Cancelled`,
-  ...) need manual delegate binding.
-- **Async actions, anim graphs, Niagara** — placeholder stubs +
-  sidecar entries.
+  member with a TODO comment. Manually configure the timeline's curve
+  assets in the editor.
+- **Latent ability calls / async actions** — emitted as a TODO with
+  the offending node class. The named exec outputs
+  (`Completed`, `Cancelled`, ...) need manual delegate binding code.
+- **Anim graph / Niagara module-graph nodes** — domain-specific; not
+  portable to actor-side C++. Move the logic to a `UAnimInstance`
+  subclass / Niagara emitter as appropriate.
+
+What *does* port automatically:
+
+- Standard control flow (if/else, for, while, switch).
+- Variable get/set, function call, cast, return.
+- `K2Node_SpawnActorFromClass` → `GetWorld()->SpawnActor<T>(...)`
+  with full `FActorSpawnParameters` wiring.
+- `K2Node_AddComponent` → `NewObject + SetRelativeTransform +
+  RegisterComponent` block.
 
 `transpile_blueprint` writes a `<Class>_Generated.transpile-notes.json`
-sidecar listing every approximation + manual step. Use it as a triage
-list when you take the generated source past the "compiles" line.
+sidecar listing every unsupported node + manual step. Use it as a
+triage list when you take the generated source past the "compiles"
+line.
 
 ## Things to know
 

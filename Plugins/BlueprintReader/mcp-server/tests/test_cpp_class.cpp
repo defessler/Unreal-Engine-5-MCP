@@ -67,8 +67,12 @@ TEST_CASE("ParentClassToHeader: dotted long-form path strips the dot prefix") {
     CHECK(ParentClassToHeader("/Script/Engine.ACharacter") == "GameFramework/Character.h");
 }
 
-TEST_CASE("ParentClassToHeader: unknown returns empty so caller emits TODO") {
-    CHECK(ParentClassToHeader("MyGameSpecificBase") == "");
+TEST_CASE("ParentClassToHeader: unknown falls back to a project-local include") {
+    // Strips A/U prefix per UE convention (file naming = unprefixed).
+    CHECK(ParentClassToHeader("AMyGameSpecificBase") == "MyGameSpecificBase.h");
+    CHECK(ParentClassToHeader("UMyGameSpecificBase") == "MyGameSpecificBase.h");
+    // Unprefixed identifiers pass through unchanged.
+    CHECK(ParentClassToHeader("MyBase") == "MyBase.h");
 }
 
 // ===== UPROPERTY inference ================================================
@@ -206,11 +210,13 @@ TEST_CASE("EmitCppClass: classNameSuffix=\"\" drops in place of the BP") {
     CHECK(out.headerFileName == "BP_Enemy.h");
 }
 
-TEST_CASE("EmitCppClass: unknown parent class emits TODO include") {
+TEST_CASE("EmitCppClass: unknown parent class falls back to a project-local include") {
     auto cls = MakeMinimalClass("UMyGameSpecificBase");
     auto out = EmitCppClass(cls);
-    CHECK(Contains(out.headerSource, "TODO[bpr-include]"));
-    CHECK(Contains(out.headerSource, "UMyGameSpecificBase"));
+    // Strips the U prefix per UE file-naming convention.
+    CHECK(Contains(out.headerSource, "#include \"MyGameSpecificBase.h\""));
+    // Doesn't emit the old TODO marker — the include is enough for UBT.
+    CHECK_FALSE(Contains(out.headerSource, "TODO[bpr-include]"));
 }
 
 TEST_CASE("EmitCppClass: function body unsupported nodes propagate to top-level notes") {
