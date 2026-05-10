@@ -262,7 +262,6 @@ UE5_MCP\
 ├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset
                                            (engine source lives outside this repo
                                             at D:\Projects\Unreal Engine 5\)
-├── PLAN.md
 └── README.md
 ```
 
@@ -342,8 +341,9 @@ with the freshly-generated `.h`/`.cpp` and confirm it links.
 
 ## Plugin-driven build
 
-Once the engine and project are set up (next section), building the editor
-target rebuilds the MCP server automatically:
+Building the editor target rebuilds the MCP server automatically — the
+plugin's `PreBuildStep` runs `Scripts/Build-MCPServer.ps1`, which
+no-ops if the exe is already fresher than every `src/` file:
 
 ```
 UBT
@@ -353,19 +353,6 @@ UBT
  │     └── cmake --build <plugin>/mcp-server/build --config Release
  └── BlueprintReader.uplugin → BlueprintReaderEditor.dll
 ```
-
-Wired in `BlueprintReader.uplugin`:
-
-```json
-"PreBuildSteps": {
-  "Win64": [
-    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(PluginDir)/Scripts/Build-MCPServer.ps1\" -ProjectDir \"$(ProjectDir)\" -PluginDir \"$(PluginDir)\""
-  ]
-}
-```
-
-The script no-ops when used standalone (plugin dropped into a project that
-doesn't ship `mcp-server/`), so the plugin remains portable.
 
 ## Engine setup (only needed for the `commandlet` backend)
 
@@ -474,7 +461,3 @@ commandlet tests skip automatically when `BP_READER_ENGINE_DIR` /
 `BP_READER_PROJECT` aren't set, so CI runs in under a minute against the
 vendored deps.
 
-## Layout / phases
-
-See [PLAN.md](PLAN.md) for the roadmap (Phase 0 mock, Phase 1 commandlet,
-Phase 1.5 polish + daemon, Phase 2 live backend).

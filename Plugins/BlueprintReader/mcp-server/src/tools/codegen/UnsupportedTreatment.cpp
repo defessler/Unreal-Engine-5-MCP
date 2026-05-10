@@ -27,9 +27,9 @@ const std::vector<Treatment>& Table() {
     static const std::vector<Treatment> t = {
         // ----- Timelines -----
         // No clean function-body C++ equivalent — timelines are
-        // stateful UTimelineComponent instances on the actor. Phase 3
-        // could plumb this into the constructor codegen; v1 surfaces
-        // a TODO + note.
+        // stateful UTimelineComponent instances on the actor. Future
+        // work could plumb this into the constructor codegen; today
+        // we surface a TODO + note.
         {"K2Node_Timeline",
          UnsupportedClassification::Kind::TodoComment,
          "",

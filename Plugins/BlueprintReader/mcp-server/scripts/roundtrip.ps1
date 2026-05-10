@@ -1,5 +1,5 @@
 # Roundtrip a 4-step JSON-RPC sequence through bp-reader-mcp.exe and capture
-# each response. Used to verify Phase 1 end-to-end with a real
+# each response. Used to verify the read pipeline end-to-end with a real
 # UnrealEditor-Cmd commandlet backend.
 #
 # Usage:

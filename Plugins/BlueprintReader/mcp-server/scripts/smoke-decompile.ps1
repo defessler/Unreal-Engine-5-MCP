@@ -1,4 +1,4 @@
-# Live smoke test for Phase 1 (BPIR + decompile + readable C++).
+# Live smoke test for BPIR + decompile + readable C++ (BP → BPIR → C++).
 # Drives decompile_function + transpile_function through a real
 # UnrealEditor-Cmd commandlet daemon against a fixture BP, asserting:
 #   - decompile produces a non-empty BPIR doc

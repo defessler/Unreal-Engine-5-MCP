@@ -7,42 +7,27 @@ Common failure modes I've actually hit, with fixes that worked.
 You'll see something like:
 
 ```
-MCP server 'UE5': tool error: commandlet exit=3; tail:
-  LogWindows: Error: [Callstack] ... UnrealEditor-Niagara.dll!FNiagaraDataChannelLayoutInfo::FNiagaraDataChannelLayoutInfo()
-  ...
-  UnrealEditor-NiagaraEditor.dll!FNiagaraEditorModule::OnAssetRegistryLoadComplete()
-  ...
-  UnrealEditor-AssetRegistry.dll!UAssetRegistryImpl::SearchAllAssets()
-  UnrealEditor-BlueprintReaderEditor-Win64-...dll!RunListOp()
+commandlet exit=3; tail:
+  ... UnrealEditor-Niagara.dll!FNiagaraDataChannelLayoutInfo::...
+  ... UnrealEditor-NiagaraEditor.dll!FNiagaraEditorModule::OnAssetRegistryLoadComplete()
+  ... UnrealEditor-AssetRegistry.dll!UAssetRegistryImpl::SearchAllAssets()
+  UnrealEditor-BlueprintReaderEditor-...dll!RunListOp()
 ```
 
-The bottom of the stack is *us*, but the actual crash is inside
-Niagara's `OnAssetRegistryLoadComplete` handler — it tries to load a
-NiagaraDataChannel asset that has a bug in its `PostLoad` (project-
-specific). Same shape applies to other plugins (Animation, Substance,
-Wwise, etc.) — anything whose load handler can fault on bad asset data.
+The bottom is us, but the crash is inside another plugin's
+`OnAssetRegistryLoadComplete` handler (Niagara, Animation, Substance,
+Wwise — anything that faults loading a particular asset).
 
-**Cause** (pre-fix): `RunListOp` called
-`AR.SearchAllAssets(bSync=true)`, which forces a full project-wide
-asset registry scan and fires the global
-`OnAssetRegistryLoadComplete` broadcast. Every plugin's load handler
-runs; one bad handler crashes the commandlet. The path you queried
-doesn't matter — `SearchAllAssets` ignores the filter.
+**Fix**: ensure you're on a current build. `list_blueprints` now uses
+`AR.ScanPathsSynchronous({pathFilter})` instead of `SearchAllAssets`, so
+it only scans the path you asked about and doesn't trigger the global
+broadcast that wakes up other plugins' load handlers.
 
-**Fix (shipping in current versions)**: `list_blueprints` now uses
-`AR.ScanPathsSynchronous({pathFilter})` — only scans the path you
-asked about, doesn't fire the global broadcast, doesn't load asset
-payloads. Niagara's handler never runs, so its bug doesn't matter.
-
-**If you're on an older build**: rebuild the editor target after
-pulling, or as a quick diagnostic, narrow the `path` argument to a
-content folder you know doesn't reference the offending plugin's
-assets.
-
-If the crash still happens after pulling and rebuilding, the issue
-isn't the broadcast — it's a `LoadObject` from somewhere else in the
-read path. Open an issue with the full stack and the asset path that
-reproduces.
+**Workaround if rebuilding isn't possible**: narrow the `path` argument
+to a content folder that doesn't reference the offending plugin's
+assets. If the crash persists after rebuilding, it's a `LoadObject`
+elsewhere in the read path — open an issue with the full stack and the
+asset path that reproduces.
 
 ## "Failed to locate Unreal Engine associated with the project file"
 

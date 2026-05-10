@@ -1,7 +1,7 @@
-// CppParse — C++ subset → BPIR. Phase 3 of the BP↔C++ plan.
+// CppParse — C++ subset → BPIR.
 //
 // Closes the loop: source language → BPIR → BP graph (via the existing
-// compile_function tool). Pairs with CppEmit (Phase 1C/2A) to give a
+// compile_function tool). Pairs with CppEmit (BPIR → C++) to give a
 // round-trip BPIR → C++ → BPIR identity for the patterns CppEmit
 // produces.
 //
@@ -18,7 +18,7 @@
 //                  (arithmetic / comparison / logical / assign).
 //   Operator precedence: standard C++ subset.
 //
-// What's intentionally out of scope (parser throws with a clear error):
+// Out of scope (parser throws with a clear error):
 //   - The C preprocessor — caller passes a bare function body, no
 //     #include / #define / #if.
 //   - Templates beyond Cast<T>.
@@ -28,11 +28,9 @@
 // Output: a BPIR `{kind:"function", ...}` document that ValidateBpir
 // accepts. Pipe through compile_function to materialize a BP.
 //
-// Plan upgrade path: this module's interface is `ParseCppFunction` —
-// when libclang vendoring becomes worth it (UE-header awareness, full
-// C++ parsing), the implementation is swapped without touching any
-// caller. ParseCppExpression / ParseCppStatement are the recursive
-// internals; not exposed for now.
+// The interface is `ParseCppFunction` — if libclang vendoring becomes
+// worth it later (UE-header awareness, full C++ parsing), the
+// implementation can be swapped without touching any caller.
 
 #pragma once
 

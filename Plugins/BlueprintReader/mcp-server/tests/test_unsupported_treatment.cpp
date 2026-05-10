@@ -1,6 +1,6 @@
 // Tests for the unsupported-node treatment table + sidecar emission.
-// Phase 2B closes the loop on "what happens when a BP construct can't
-// map cleanly to compilable C++" — every entry has a recipe, every
+// Closes the loop on "what happens when a BP construct can't map
+// cleanly to compilable C++" — every entry has a recipe, every
 // encounter logs a structured sidecar entry.
 
 #include <doctest/doctest.h>
