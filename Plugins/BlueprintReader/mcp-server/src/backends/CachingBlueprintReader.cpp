@@ -461,6 +461,48 @@ CachingBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return inner_->ReadDataTable(assetPath);
 }
 
+// ----- Live editor ops (pass-through) ------------------------------------
+
+IBlueprintReader::ConsoleCommandResult
+CachingBlueprintReader::ConsoleCommand(std::string_view c) { return inner_->ConsoleCommand(c); }
+IBlueprintReader::CVarValue
+CachingBlueprintReader::GetCVar(std::string_view n) { return inner_->GetCVar(n); }
+IBlueprintReader::CVarValue
+CachingBlueprintReader::SetCVar(std::string_view n, std::string_view v) {
+    return inner_->SetCVar(n, v);
+}
+IBlueprintReader::PieResult
+CachingBlueprintReader::PieStart(std::string_view m) { return inner_->PieStart(m); }
+IBlueprintReader::PieResult
+CachingBlueprintReader::PieStop() { return inner_->PieStop(); }
+IBlueprintReader::LiveCodingResult
+CachingBlueprintReader::LiveCodingCompile() { return inner_->LiveCodingCompile(); }
+IBlueprintReader::SelectionResult
+CachingBlueprintReader::GetSelectedActors() { return inner_->GetSelectedActors(); }
+IBlueprintReader::SelectionResult
+CachingBlueprintReader::SetSelection(const std::vector<std::string>& names, bool replace) {
+    return inner_->SetSelection(names, replace);
+}
+IBlueprintReader::SpawnActorResult
+CachingBlueprintReader::SpawnActor(std::string_view cp,
+    double lx, double ly, double lz,
+    double rp, double ry, double rr,
+    double sx, double sy, double sz) {
+    return inner_->SpawnActor(cp, lx, ly, lz, rp, ry, rr, sx, sy, sz);
+}
+void CachingBlueprintReader::SetActorTransform(std::string_view n,
+    double lx, double ly, double lz,
+    double rp, double ry, double rr,
+    double sx, double sy, double sz) {
+    inner_->SetActorTransform(n, lx, ly, lz, rp, ry, rr, sx, sy, sz);
+}
+IBlueprintReader::DeleteActorResult
+CachingBlueprintReader::DeleteActor(std::string_view n) { return inner_->DeleteActor(n); }
+IBlueprintReader::OutputLogResult
+CachingBlueprintReader::ReadOutputLog(int limit, std::string_view minSev) {
+    return inner_->ReadOutputLog(limit, minSev);
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

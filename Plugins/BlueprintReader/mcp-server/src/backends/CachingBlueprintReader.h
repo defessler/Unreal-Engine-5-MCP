@@ -126,6 +126,29 @@ public:
     std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
     DataTableInfo ReadDataTable(std::string_view assetPath) override;
 
+    // ----- Live editor ops (pass-through; no caching) -------------------
+    // Editor state is too volatile for the TTL cache. CVars change at
+    // runtime; selection / actors / log all turn over constantly.
+    ConsoleCommandResult ConsoleCommand(std::string_view command) override;
+    CVarValue GetCVar(std::string_view name) override;
+    CVarValue SetCVar(std::string_view name, std::string_view value) override;
+    PieResult PieStart(std::string_view mode) override;
+    PieResult PieStop() override;
+    LiveCodingResult LiveCodingCompile() override;
+    SelectionResult GetSelectedActors() override;
+    SelectionResult SetSelection(const std::vector<std::string>& actorNames,
+                                 bool replace) override;
+    SpawnActorResult SpawnActor(std::string_view classPath,
+        double locX, double locY, double locZ,
+        double rotPitch, double rotYaw, double rotRoll,
+        double scaleX, double scaleY, double scaleZ) override;
+    void SetActorTransform(std::string_view actorName,
+        double locX, double locY, double locZ,
+        double rotPitch, double rotYaw, double rotRoll,
+        double scaleX, double scaleY, double scaleZ) override;
+    DeleteActorResult DeleteActor(std::string_view actorName) override;
+    OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
+
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries
     // that subsequent ops in the same batch would re-fetch. Flushed by

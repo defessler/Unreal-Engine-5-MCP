@@ -181,6 +181,42 @@ ReadOnlyBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return inner_->ReadDataTable(assetPath);
 }
 
+// ----- Live editor ops ----------------------------------------------------
+
+// Reads through.
+IBlueprintReader::ConsoleCommandResult
+ReadOnlyBlueprintReader::ConsoleCommand(std::string_view c) {
+    return inner_->ConsoleCommand(c);
+}
+IBlueprintReader::CVarValue
+ReadOnlyBlueprintReader::GetCVar(std::string_view n) { return inner_->GetCVar(n); }
+IBlueprintReader::SelectionResult
+ReadOnlyBlueprintReader::GetSelectedActors() { return inner_->GetSelectedActors(); }
+IBlueprintReader::OutputLogResult
+ReadOnlyBlueprintReader::ReadOutputLog(int limit, std::string_view minSev) {
+    return inner_->ReadOutputLog(limit, minSev);
+}
+IBlueprintReader::PieResult
+ReadOnlyBlueprintReader::PieStart(std::string_view m) { return inner_->PieStart(m); }
+IBlueprintReader::LiveCodingResult
+ReadOnlyBlueprintReader::LiveCodingCompile() { return inner_->LiveCodingCompile(); }
+
+// Writes reject.
+IBlueprintReader::CVarValue
+ReadOnlyBlueprintReader::SetCVar(std::string_view, std::string_view) { Reject("set_cvar"); }
+IBlueprintReader::SelectionResult
+ReadOnlyBlueprintReader::SetSelection(const std::vector<std::string>&, bool) { Reject("set_selection"); }
+IBlueprintReader::SpawnActorResult
+ReadOnlyBlueprintReader::SpawnActor(std::string_view,
+    double, double, double, double, double, double,
+    double, double, double) { Reject("spawn_actor"); }
+void ReadOnlyBlueprintReader::SetActorTransform(std::string_view,
+    double, double, double, double, double, double,
+    double, double, double) { Reject("set_actor_transform"); }
+IBlueprintReader::DeleteActorResult
+ReadOnlyBlueprintReader::DeleteActor(std::string_view) { Reject("delete_actor"); }
+IBlueprintReader::PieResult ReadOnlyBlueprintReader::PieStop() { Reject("pie_stop"); }
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
