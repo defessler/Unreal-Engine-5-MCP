@@ -1564,6 +1564,19 @@ CommandletBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity
     return out;
 }
 
+IBlueprintReader::AutomationRunResult
+CommandletBlueprintReader::RunAutomationTests(std::string_view pattern) {
+    std::vector<std::wstring> args = {L"-Op=RunAutomationTests"};
+    if (!pattern.empty()) args.push_back(L"-Pattern=" + Widen(pattern));
+    auto j = RunOp(args);
+    AutomationRunResult out;
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
 // ----- Batch sentinels (A1) -------------------------------------------------
 void CommandletBlueprintReader::BeginBatch() {
     std::vector<std::wstring> args;
