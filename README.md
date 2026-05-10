@@ -189,7 +189,7 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 
 | Variable                      | Default                                | Purpose                                                                  |
 |-------------------------------|----------------------------------------|--------------------------------------------------------------------------|
-| `BP_READER_BACKEND`           | `mock`                                 | `mock` \| `commandlet` \| `live` (talks to a running editor over TCP — see [Configuration → Live backend](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Configuration#live-backend--talk-to-a-running-editor-over-tcp)) |
+| `BP_READER_BACKEND`           | `auto` (when uproject found), else `mock` | `mock` \| `commandlet` \| `live` \| `auto`. Auto probes the editor's handshake file each call and routes to live (editor open) or commandlet (editor closed) — no manual flipping when the editor opens / closes mid-session. See [Configuration → Live backend](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Configuration#live-backend--talk-to-a-running-editor-over-tcp). |
 | `BP_READER_FIXTURES_DIR`      | `<exe>/fixtures`                       | Mock backend's fixture dir.                                              |
 | `BP_READER_ENGINE_DIR`        | (unset → fail-fast for `commandlet`)   | Path to the source-built engine (`...\UnrealEngine`).                    |
 | `BP_READER_PROJECT`           | (unset → fail-fast for `commandlet`)   | Path to the `.uproject`.                                                 |
@@ -201,8 +201,9 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_PREWARM`           | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost behind whatever Claude is doing. |
 | `BP_READER_CACHE_TTL_SECONDS` | `30`                                   | How long the server memoizes read-tool responses for. AI clients flurry repeated reads on the same BP — caching short-circuits the duplicates. `0` disables. Writes invalidate the affected asset's entries. |
 | `BP_READER_READ_ONLY`         | `0` (off)                              | `1`/`true`/`yes`/`on` to reject every write tool. Use when running the daemon alongside an open editor — concurrent writes to the same `.uasset` corrupt state. |
-| `BP_READER_LIVE_PORT`         | (unset → live disabled)                | TCP port for the `live` backend. Set in BOTH the editor's process env AND the MCP server's env. |
-| `BP_READER_LIVE_TOKEN`        | (unset → live refuses)                 | Shared secret for live-backend auth. Set in both processes; values must match. |
+| `BP_READER_LIVE_PORT`         | auto (kernel-picked ephemeral)         | TCP port for the `live` backend. **Plugin defaults to picking an ephemeral port and publishing it via `<Project>/Saved/bp-reader-live.json`**, which the MCP server auto-discovers — no manual env-var plumbing in the typical case. Set explicitly in BOTH processes only if you need a fixed port. |
+| `BP_READER_LIVE_TOKEN`        | auto (random GUID per editor session)  | Shared secret for live-backend auth. **Plugin defaults to a random 256-bit token written to the handshake file**; MCP server reads it from there. Set explicitly only when the env-var route is preferred (e.g. CI). |
+| `BP_READER_LIVE_DISABLED`     | `0` (off)                              | `1` to skip starting the editor's TCP listener entirely (opt-out for users who want the daemon-only flow). |
 
 ## Performance
 
