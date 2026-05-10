@@ -24,7 +24,7 @@ using nlohmann::json;
 namespace {
 
 json DriveInitialize(const json& clientProtocolVersion) {
-    backends::MockBlueprintReader reader(test::FixturesDir());
+    auto reader = test::MakeMockReader();
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, reader);
     Server server;

@@ -16,7 +16,7 @@ using namespace bpr::backends;
 namespace {
 
 std::unique_ptr<IBlueprintReader> MakeReadOnly() {
-    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto inner = test::MakeMockReaderUnique();
     return std::make_unique<ReadOnlyBlueprintReader>(std::move(inner));
 }
 
@@ -96,14 +96,14 @@ TEST_CASE("ReadOnly: BeginBatch/EndBatch pass through (apply_ops with all-read o
 }
 
 TEST_CASE("MaybeWrapReadOnly: false returns the inner unchanged") {
-    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto inner = test::MakeMockReaderUnique();
     auto* rawInner = inner.get();
     auto wrapped = MaybeWrapReadOnly(std::move(inner), /*readOnly=*/false);
     CHECK(wrapped.get() == rawInner);
 }
 
 TEST_CASE("MaybeWrapReadOnly: true returns a ReadOnly wrapper") {
-    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto inner = test::MakeMockReaderUnique();
     auto wrapped = MaybeWrapReadOnly(std::move(inner), /*readOnly=*/true);
     auto* asReadOnly = dynamic_cast<ReadOnlyBlueprintReader*>(wrapped.get());
     CHECK(asReadOnly != nullptr);
