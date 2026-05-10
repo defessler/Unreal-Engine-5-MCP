@@ -1,23 +1,19 @@
 // BlueprintReaderTypes.h
 //
-// Shared POD types between the standalone MCP server (Phase 0) and the
-// in-engine BlueprintReader plugin (Phase 1+). One header, two compile modes:
+// Shared POD types between the standalone MCP server and the in-engine
+// BlueprintReader plugin. One header, two compile modes:
 //
 //   * Standalone path: plain C++ structs + nlohmann/json round-trip.
-//   * UE path: USTRUCT/UPROPERTY-decorated mirrors for FJsonObjectConverter.
+//   * UE path: USTRUCT/UPROPERTY-decorated mirrors for FJsonObjectConverter,
+//     activated by `#define WITH_UE` before include.
 //
-// Wire format is identical on both sides: snake_case JSON keys, exact field
-// shapes from PLAN.md.
+// Wire format is identical on both sides: snake_case JSON keys.
 //
-// Phase 0 only needs the standalone branch. The UE branch is laid out so the
-// plugin task can drop it into a UE module by defining WITH_UE before include.
-//
-// Notes for the UE branch:
-//   * Pin meta is a free-form JSON object in the wire format. The standalone
-//     branch holds it as `nlohmann::json`. The UE branch stores it as an FString
-//     containing serialized JSON; the plugin's FJsonObjectConverter wrapper is
-//     responsible for emitting/parsing that field as an inline object so the
-//     two sides agree on the wire.
+// Pin meta is a free-form JSON object in the wire format. The standalone
+// branch holds it as `nlohmann::json`. The UE branch stores it as an
+// FString containing serialized JSON; the plugin's FJsonObjectConverter
+// wrapper emits/parses that field as an inline object so the two sides
+// agree on the wire.
 
 #pragma once
 
@@ -343,7 +339,7 @@ struct BPMetadata
 
 // ============================================================================
 // Standalone-only nlohmann/json adapters.
-// Wire keys are snake_case to match PLAN.md's canonical shape.
+// Wire keys are snake_case (canonical wire shape).
 // Optional<string> serializes to null when empty.
 // ============================================================================
 
