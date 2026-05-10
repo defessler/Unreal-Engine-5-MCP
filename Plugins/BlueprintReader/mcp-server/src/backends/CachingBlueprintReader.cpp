@@ -410,6 +410,57 @@ CachingBlueprintReader::WriteGeneratedSource(std::string_view destPath,
     return inner_->WriteGeneratedSource(destPath, content, createDirs);
 }
 
+// ----- Project + Content Browser ops (pass-through with invalidation) ----
+
+IBlueprintReader::ProjectMetadata
+CachingBlueprintReader::GetProjectMetadata() {
+    return inner_->GetProjectMetadata();
+}
+
+IBlueprintReader::SaveAllResult
+CachingBlueprintReader::SaveAll(bool dirtyOnly) {
+    // SaveAll doesn't change in-memory asset state, just persists it —
+    // no invalidation needed.
+    return inner_->SaveAll(dirtyOnly);
+}
+
+IBlueprintReader::MoveAssetResult
+CachingBlueprintReader::MoveAsset(std::string_view sourcePath,
+                                  std::string_view destPath) {
+    auto out = inner_->MoveAsset(sourcePath, destPath);
+    // Both ends of the move can affect cached entries; drop the global
+    // list cache and any per-asset entries on either side.
+    InvalidateAsset(sourcePath);
+    InvalidateAsset(destPath);
+    return out;
+}
+
+IBlueprintReader::DeleteAssetResult
+CachingBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
+    auto out = inner_->DeleteAsset(assetPath, force);
+    if (out.deleted) InvalidateAsset(assetPath);
+    return out;
+}
+
+IBlueprintReader::CreateFolderResult
+CachingBlueprintReader::CreateFolder(std::string_view folderPath) {
+    auto out = inner_->CreateFolder(folderPath);
+    // List cache may now show the new folder; drop the global key.
+    InvalidateAsset("");
+    return out;
+}
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListDataTables(std::string_view path) {
+    // Pass through (no caching for this minor surface; can add later).
+    return inner_->ListDataTables(path);
+}
+
+IBlueprintReader::DataTableInfo
+CachingBlueprintReader::ReadDataTable(std::string_view assetPath) {
+    return inner_->ReadDataTable(assetPath);
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

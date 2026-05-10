@@ -109,6 +109,17 @@ public:
                                                     std::string_view content,
                                                     bool createDirs) override;
 
+    // ----- Project + Content Browser ops --------------------------------
+    ProjectMetadata GetProjectMetadata() override;
+    SaveAllResult SaveAll(bool dirtyOnly) override;
+    MoveAssetResult MoveAsset(std::string_view sourcePath,
+                              std::string_view destPath) override;
+    DeleteAssetResult DeleteAsset(std::string_view assetPath,
+                                  bool force) override;
+    CreateFolderResult CreateFolder(std::string_view folderPath) override;
+    std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
+    DataTableInfo ReadDataTable(std::string_view assetPath) override;
+
     // ----- batch sentinels ------------------------------------------
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;

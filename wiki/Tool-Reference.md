@@ -1,6 +1,7 @@
 # Tool Reference
 
-39 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile. All use
+46 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile, 7 project /
+content-browser. All use
 snake_case JSON keys; nullable string fields emit `null`; `BPNode.meta`
 is a real nested object (not a string-of-JSON). Wire shapes are pinned
 in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.

@@ -72,6 +72,17 @@ public:
                                                     std::string_view,
                                                     bool) override;
 
+    // ----- Project + Content Browser ops --------------------------------
+    // Reads pass through; writes (save/move/delete/create) throw the
+    // read-only error.
+    ProjectMetadata GetProjectMetadata() override;
+    SaveAllResult SaveAll(bool) override;
+    MoveAssetResult MoveAsset(std::string_view, std::string_view) override;
+    DeleteAssetResult DeleteAsset(std::string_view, bool) override;
+    CreateFolderResult CreateFolder(std::string_view) override;
+    std::vector<BPAssetSummary> ListDataTables(std::string_view) override;
+    DataTableInfo ReadDataTable(std::string_view) override;
+
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in
     // read-only mode they're still no-ops because no writes can happen

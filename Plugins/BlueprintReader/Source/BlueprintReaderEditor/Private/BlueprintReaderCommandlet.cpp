@@ -7,7 +7,14 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
+#include "AssetRenameData.h"
+#include "Editor.h"
+#include "Engine/DataTable.h"
+#include "FileHelpers.h"
 #include "IAssetTools.h"
+#include "JsonObjectConverter.h"
+#include "ObjectTools.h"
+#include "UObject/UObjectIterator.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EdGraph/EdGraph.h"
@@ -102,6 +109,13 @@ namespace
 		DuplicateBlueprint,     // file-level duplicate (BP-5)
 		// Write transpiled source into the project tree.
 		WriteGeneratedSource,
+		// Project + Content Browser ops.
+		SaveAll,
+		MoveAsset,
+		DeleteAsset,
+		CreateFolder,
+		ListDataTables,
+		ReadDataTable,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -139,6 +153,12 @@ namespace
 		if (OpStr.Equals(TEXT("SetVariableCategory"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetVariableCategory; return true; }
 		if (OpStr.Equals(TEXT("DuplicateBlueprint"), ESearchCase::IgnoreCase)) { OutOp = EOp::DuplicateBlueprint; return true; }
 		if (OpStr.Equals(TEXT("WriteGeneratedSource"), ESearchCase::IgnoreCase)) { OutOp = EOp::WriteGeneratedSource; return true; }
+		if (OpStr.Equals(TEXT("SaveAll"), ESearchCase::IgnoreCase))             { OutOp = EOp::SaveAll; return true; }
+		if (OpStr.Equals(TEXT("MoveAsset"), ESearchCase::IgnoreCase))           { OutOp = EOp::MoveAsset; return true; }
+		if (OpStr.Equals(TEXT("DeleteAsset"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteAsset; return true; }
+		if (OpStr.Equals(TEXT("CreateFolder"), ESearchCase::IgnoreCase))        { OutOp = EOp::CreateFolder; return true; }
+		if (OpStr.Equals(TEXT("ListDataTables"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListDataTables; return true; }
+		if (OpStr.Equals(TEXT("ReadDataTable"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadDataTable; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -717,6 +737,344 @@ namespace
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetStringField(TEXT("path"), DestAbs);
 		Obj->SetNumberField(TEXT("bytes_written"), Content.Len());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- SaveAll -----------------------------------------------------
+	// Save every dirty package the editor has loaded. With `bDirtyOnly`
+	// (default true), clean packages are skipped. Uses
+	// UEditorLoadingAndSavingUtils which is the public save path.
+	int32 RunSaveAllOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const bool bIncludeClean = FParse::Param(*Params, TEXT("IncludeClean"));
+		(void)bIncludeClean;  // SaveDirtyPackages saves dirty-only by design;
+		                       // IncludeClean is reserved for a future "save
+		                       // every loaded package" path via FEditorFileUtils.
+
+		// Capture dirty packages BEFORE the save so we can report what we
+		// touched. Walk the loaded-packages set; UE doesn't expose a "list
+		// dirty packages" helper directly.
+		TArray<UPackage*> DirtyBefore;
+		for (TObjectIterator<UPackage> It; It; ++It)
+		{
+			UPackage* Pkg = *It;
+			if (Pkg && Pkg->IsDirty()) DirtyBefore.Add(Pkg);
+		}
+
+		// UEditorLoadingAndSavingUtils::SaveDirtyPackages(bSaveMapPackages,
+		// bSaveContentPackages) handles the actual save loop with proper
+		// SCC + checkpoint awareness.
+		const bool bSaved = UEditorLoadingAndSavingUtils::SaveDirtyPackages(
+			/*bSaveMapPackages=*/true, /*bSaveContentPackages=*/true);
+		(void)bSaved;
+
+		TArray<TSharedPtr<FJsonValue>> FailedJson;
+		int32 SavedCount = 0;
+		for (UPackage* Pkg : DirtyBefore)
+		{
+			if (!Pkg) continue;
+			if (Pkg->IsDirty())
+			{
+				FailedJson.Add(MakeShared<FJsonValueString>(Pkg->GetName()));
+			}
+			else
+			{
+				++SavedCount;
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetNumberField(TEXT("saved_count"), SavedCount);
+		Obj->SetArrayField(TEXT("failed_assets"), FailedJson);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- MoveAsset ----------------------------------------------------
+	// Move or rename an asset. Both -Asset and -Dest are package paths
+	// under /Game/. Delegates to IAssetTools::RenameAssets which handles
+	// reference fix-ups + redirectors.
+	int32 RunMoveAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString SourceAsset, DestAsset;
+		FParse::Value(*Params, TEXT("Asset="), SourceAsset);
+		FParse::Value(*Params, TEXT("Dest="),  DestAsset);
+		if (SourceAsset.IsEmpty() || DestAsset.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("MoveAsset requires -Asset=/Game/X -Dest=/Game/Y"));
+			return 1;
+		}
+		if (!DestAsset.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("MoveAsset: -Dest must be under /Game/ (got: %s)"), *DestAsset);
+			return 1;
+		}
+
+		// Load the source via the asset registry — works for any UObject,
+		// not just Blueprints.
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		FAssetData SourceData = AR.GetAssetByObjectPath(FSoftObjectPath(SourceAsset));
+		if (!SourceData.IsValid())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("MoveAsset: source asset not found: %s"), *SourceAsset);
+			return 4;
+		}
+		UObject* SourceObj = SourceData.GetAsset();
+		if (!SourceObj)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("MoveAsset: failed to load source: %s"), *SourceAsset);
+			return 4;
+		}
+
+		// Split destination into PackagePath + AssetName.
+		FString DestPackagePath, DestName;
+		{
+			int32 LastSlash;
+			if (!DestAsset.FindLastChar(TEXT('/'), LastSlash) || LastSlash <= 0)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("MoveAsset: -Dest='%s' is malformed"), *DestAsset);
+				return 1;
+			}
+			DestPackagePath = DestAsset.Left(LastSlash);
+			DestName        = DestAsset.RightChop(LastSlash + 1);
+		}
+
+		TArray<FAssetRenameData> RenameList;
+		RenameList.Emplace(SourceObj, DestPackagePath, DestName);
+
+		FAssetToolsModule& AssetToolsModule =
+			FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+		IAssetTools& AssetTools = AssetToolsModule.Get();
+		const bool bOk = AssetTools.RenameAssets(RenameList);
+		if (!bOk)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("MoveAsset: RenameAssets failed for %s -> %s"),
+				*SourceAsset, *DestAsset);
+			return 5;
+		}
+
+		// Count redirectors created at the source path. UE creates a
+		// UObjectRedirector when moving across folders.
+		int32 RedirectorCount = 0;
+		{
+			TArray<FAssetData> AtSource;
+			AR.GetAssetsByPackageName(*SourceData.PackageName.ToString(), AtSource);
+			for (const FAssetData& A : AtSource)
+			{
+				if (A.AssetClassPath.GetAssetName() == TEXT("ObjectRedirector"))
+				{
+					++RedirectorCount;
+				}
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("source_path"), SourceAsset);
+		Obj->SetStringField(TEXT("dest_path"),   DestAsset);
+		Obj->SetNumberField(TEXT("redirectors_created"), RedirectorCount);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- DeleteAsset --------------------------------------------------
+	// Delete an asset. Refuses by default if other assets reference it;
+	// -Force overrides. Returns the list of references found.
+	int32 RunDeleteAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DeleteAsset requires -Asset=/Game/X"));
+			return 1;
+		}
+		const bool bForce = FParse::Param(*Params, TEXT("Force"));
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		FAssetData AssetData = AR.GetAssetByObjectPath(FSoftObjectPath(AssetPath));
+		if (!AssetData.IsValid())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DeleteAsset: asset not found: %s"), *AssetPath);
+			return 4;
+		}
+
+		// Find referencers via the asset registry. If any exist and -Force
+		// isn't set, refuse + return the list so the caller can decide.
+		TArray<FName> Referencers;
+		AR.GetReferencers(AssetData.PackageName, Referencers,
+			UE::AssetRegistry::EDependencyCategory::Package,
+			UE::AssetRegistry::EDependencyQuery::Hard);
+
+		TArray<TSharedPtr<FJsonValue>> RefsJson;
+		for (FName Ref : Referencers)
+		{
+			RefsJson.Add(MakeShared<FJsonValueString>(Ref.ToString()));
+		}
+
+		bool bDeleted = false;
+		if (Referencers.Num() == 0 || bForce)
+		{
+			UObject* Obj = AssetData.GetAsset();
+			if (Obj)
+			{
+				TArray<UObject*> ToDelete = { Obj };
+				const int32 NumDeleted = ObjectTools::ForceDeleteObjects(
+					ToDelete, /*bShowConfirmation=*/false);
+				bDeleted = NumDeleted > 0;
+			}
+		}
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("path"), AssetPath);
+		Out->SetBoolField(TEXT("deleted"), bDeleted);
+		Out->SetArrayField(TEXT("referencing_assets"), RefsJson);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// ----- CreateFolder -------------------------------------------------
+	// Folders in UE are implicit (a long-package-path that holds at least
+	// one asset registers as a folder). We register the path with the
+	// asset registry so the Content Browser shows it; idempotent on
+	// re-runs because AddPath is a no-op for known paths.
+	int32 RunCreateFolderOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString FolderPath;
+		FParse::Value(*Params, TEXT("Path="), FolderPath);
+		if (FolderPath.IsEmpty() || !FolderPath.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CreateFolder requires -Path=/Game/<subpath>"));
+			return 1;
+		}
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+
+		const bool bAlreadyExisted = AR.HasAssets(*FolderPath, /*bRecursive=*/false);
+		if (!bAlreadyExisted)
+		{
+			AR.AddPath(FolderPath);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("path"), FolderPath);
+		Obj->SetBoolField(TEXT("already_existed"), bAlreadyExisted);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- ListDataTables ----------------------------------------------
+	// Asset Registry filter for UDataTable. Mirrors RunListOp's shape.
+	int32 RunListDataTablesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+
+		// Narrow scan to the requested path.
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		Filter.ClassPaths.Add(UDataTable::StaticClass()->GetClassPathName());
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"), A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),       A.AssetName.ToString());
+			Item->SetStringField(TEXT("parent_class"), TEXT("/Script/Engine.DataTable"));
+			// modified_iso is omitted — DataTables don't carry a reliable
+			// mtime in the asset tags. Could derive from on-disk stat if
+			// needed.
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+
+		return EmitJson(
+			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			OutputPath);
+	}
+
+	// ----- ReadDataTable -----------------------------------------------
+	// Load a DataTable and serialize its row-struct fields + all rows.
+	int32 RunReadDataTableOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("ReadDataTable requires -Asset=/Game/X"));
+			return 1;
+		}
+
+		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
+		if (!DT)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("ReadDataTable: failed to load: %s"), *AssetPath);
+			return 4;
+		}
+
+		const UScriptStruct* RowStruct = DT->GetRowStruct();
+		FString RowStructPath;
+		TArray<TSharedPtr<FJsonValue>> Columns;
+		if (RowStruct)
+		{
+			RowStructPath = RowStruct->GetPathName();
+			for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+			{
+				Columns.Add(MakeShared<FJsonValueString>(It->GetName()));
+			}
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		for (const auto& Pair : DT->GetRowMap())
+		{
+			auto RowJson = MakeShared<FJsonObject>();
+			RowJson->SetStringField(TEXT("row_name"), Pair.Key.ToString());
+			if (RowStruct && Pair.Value)
+			{
+				// Use FJsonObjectConverter to serialize the row struct.
+				auto Fields = MakeShared<FJsonObject>();
+				FJsonObjectConverter::UStructToJsonObject(
+					RowStruct, Pair.Value, Fields.ToSharedRef(), 0, 0);
+				for (const auto& F : Fields->Values)
+				{
+					RowJson->SetField(F.Key, F.Value);
+				}
+			}
+			Rows.Add(MakeShared<FJsonValueObject>(RowJson));
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("row_struct"), RowStructPath);
+		Obj->SetArrayField(TEXT("columns"), Columns);
+		Obj->SetArrayField(TEXT("rows"), Rows);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -1705,6 +2063,12 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::SetVariableCategory)return RunSetVariableCategoryOp(Params, OutputPath, bPretty);
 	if (Op == EOp::DuplicateBlueprint) return RunDuplicateBlueprintOp(Params, OutputPath, bPretty);
 	if (Op == EOp::WriteGeneratedSource) return RunWriteGeneratedSourceOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SaveAll)            return RunSaveAllOp(Params, OutputPath, bPretty);
+	if (Op == EOp::MoveAsset)          return RunMoveAssetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteAsset)        return RunDeleteAssetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CreateFolder)       return RunCreateFolderOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListDataTables)     return RunListDataTablesOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadDataTable)      return RunReadDataTableOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
