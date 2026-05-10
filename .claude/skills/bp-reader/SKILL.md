@@ -5,7 +5,7 @@ description: Use this skill when the user asks to inspect, edit, build, or trans
 
 # bp-reader — using the Blueprint MCP tools
 
-The `bp-reader` MCP server exposes **58 tools** that read, mutate, and
+The `bp-reader` MCP server exposes **59 tools** that read, mutate, and
 round-trip-to-C++ `.uasset` Blueprint files in a UE 5.7.4 project.
 This skill covers *how to use them well* — the wire format, common
 patterns, when to prefer one tool over another. For *building or

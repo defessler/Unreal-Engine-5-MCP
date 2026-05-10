@@ -399,6 +399,21 @@ public:
         throw BlueprintReaderError("ReadOutputLog not supported by this backend");
     }
 
+    // ----- Automation tests ---------------------------------------------
+    //
+    // Trigger UE's automation test framework. `pattern` is the test-name
+    // wildcard (e.g. "BlueprintReader.*", "*Smoke*"); empty means "every
+    // registered test". Results land in the output log; this tool kicks
+    // off the run and returns immediately.
+    struct AutomationRunResult {
+        bool started = false;
+        std::string message;
+    };
+    virtual AutomationRunResult RunAutomationTests(std::string_view pattern) {
+        (void)pattern;
+        throw BlueprintReaderError("RunAutomationTests not supported by this backend");
+    }
+
     // ----- Batch sentinels (A1) ------------------------------------------------
     // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
     // CompileBlueprint + SavePackage runs once per affected BP at EndBatch
