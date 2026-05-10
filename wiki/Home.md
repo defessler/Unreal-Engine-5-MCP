@@ -1,8 +1,8 @@
 # UE5_MCP Wiki
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
-client) read and edit Blueprint assets — variables, graphs, nodes,
-connections, K2 metadata — through 21 tools.
+client) read, edit, **and round-trip BPs to/from C++** — variables,
+graphs, nodes, connections, K2 metadata — through 39 tools.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -19,6 +19,10 @@ connections, K2 metadata — through 21 tools.
   ChatGPT (with the bridge required for ChatGPT).
 - **[Usage](Usage)** — what your AI of choice can do once it's wired up.
 - **[Tool Reference](Tool-Reference)** — every tool, its inputs, what it returns.
+- **[BPIR](BPIR)** — the Blueprint Intermediate Representation schema
+  that powers `decompile_function` / `transpile_function` /
+  `parse_cpp_function`. Versioned JSON AST; pivot for BP ↔ C++ (and
+  future Lua / Python / JS).
 - **[Configuration](Configuration)** — env vars, daemon mode, timeouts.
 - **[Troubleshooting](Troubleshooting)** — common failure modes + fixes.
 
@@ -39,6 +43,23 @@ If you just want Claude to read your Blueprints:
 Want to skip UE and just kick the tires? [Build the MCP server
 standalone](Installation#1-build-the-mcp-server) and use the mock backend
 (3 fixture BPs, 5 min, no UE needed).
+
+## BP ↔ C++
+
+A versioned JSON AST ([BPIR](BPIR)) sits between BPs and source
+languages. C++ ships today; Lua / Python / JS drop in as additional
+codegen + parser pairs without touching the IR.
+
+- **BP → C++** — `transpile_function` / `transpile_blueprint`
+  (UCLASS scaffolding + UPROPERTY/UFUNCTION decoration +
+  `GetLifetimeReplicatedProps`); pair with `write_generated_source` to
+  drop `.h`/`.cpp` into `<Project>/Source/<Module>/Generated/`.
+- **C++ → BP** — `parse_cpp_function` produces BPIR; pipe through
+  `compile_function` to materialize the BP graph.
+
+Round-trip identity (BPIR → C++ → BPIR) is pinned by tests for the
+patterns the codegen emits. See
+[Tool Reference → Transpile tools](Tool-Reference#transpile-tools).
 
 ## Backends
 

@@ -1,8 +1,9 @@
 # UE5_MCP — Blueprint Reader MCP
 
-A standalone MCP server that lets Claude (or any MCP client) read Unreal Engine
-5 Blueprint assets — variables, graphs, nodes, connections, K2 metadata — via
-six tools backed by the bundled `BlueprintReader` UE plugin.
+A standalone MCP server that lets Claude (or any MCP client) read **and edit**
+Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
+metadata — and **round-trip BPs to/from C++** via 39 tools backed by the
+bundled `BlueprintReader` UE plugin.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -56,6 +57,12 @@ Two backends:
 | `preview_ops`       | **batch** | Validate an apply_ops batch without mutating anything. Useful for agent self-checks and human-in-the-loop confirmation. |
 | `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var/lit` + math/comparison aliases) into nodes+wires+literals. Lets the agent generate BPs the way it generates code. |
 | `auto_layout_graph` | **write** | Reposition every node in a graph using a column-grid layout based on exec connectivity. |
+| `decompile_function` | **transpile** | Walk a BP function's graph and reconstruct a structured BPIR (Blueprint Intermediate Representation) tree — the inverse of `compile_function`. |
+| `decompile_blueprint` | **transpile** | Whole-class extraction: parent class, variables, interfaces, every function as BPIR. |
+| `transpile_function` | **transpile** | BP function → readable C++ source. Composes decompile + codegen with operator-alias rendering (Add_IntInt → `a + b`). |
+| `transpile_blueprint` | **transpile** | Whole BP class → compilable UE C++ `.h`/`.cpp` pair with UCLASS / UFUNCTION / UPROPERTY decoration + `GetLifetimeReplicatedProps` registration. Sidecar JSON tracks unsupported nodes. |
+| `write_generated_source` | **transpile** | Write a transpiled `.h`/`.cpp` into `<Project>/Source/`, path-confined by the plugin. |
+| `parse_cpp_function` | **transpile** | C++ → BPIR. Closes the round-trip: hand-written C++ feeds straight to `compile_function` to materialize a BP graph. Hand-rolled lexer + recursive-descent parser; libclang is a future swap. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
@@ -81,6 +88,40 @@ and materializes the graph. `preview_ops` validates a batch without
 mutating, and `create_blueprint` generates whole new BP assets from
 scratch. See [Tool Reference → Batch tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#batch-tools).
 
+## BP ↔ C++ round-trip
+
+A versioned **Blueprint Intermediate Representation (BPIR)** sits between
+the BP graph and any source language. C++ ships today; Lua / Python / JS
+drop in as additional codegen + parser pairs without touching the IR.
+
+```
+                        ┌──────────────┐
+       BP graph  ⇄     │     BPIR     │   ⇄  C++ source
+                        └──────────────┘
+                              ▲
+                              │
+              compile_function (BPIR → BP, already shipping)
+```
+
+- **BP → C++** — `transpile_function` (single function) or
+  `transpile_blueprint` (whole class with UCLASS scaffolding +
+  UPROPERTY/UFUNCTION decoration + `GetLifetimeReplicatedProps`). Pair
+  with `write_generated_source` to drop `.h`/`.cpp` into
+  `<Project>/Source/<Module>/Generated/`.
+- **C++ → BP** — `parse_cpp_function` produces BPIR; pipe through
+  `compile_function` to materialize the BP graph.
+- **Round-trip identity** — for the patterns `transpile_function` emits,
+  `parse_cpp_function` recovers an equivalent BPIR (pinned by 12
+  round-trip test cases).
+
+Subset accepted by the parser: if/else, range-based for, while, switch,
+return, break, continue, calls, member access, `Cast<T>()`, unary +
+binary operators with full C++ precedence. Anything outside the subset
+(timelines, latent actions, anim graphs, raw pointer arithmetic) is
+flagged in a sidecar JSON for manual port. See
+[Tool Reference → Transpile tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#transpile-tools)
+and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
+
 ## Quick start: hooking it up to Claude
 
 ### 1. Build the MCP server (no UE required for the mock backend)
@@ -89,7 +130,7 @@ scratch. See [Tool Reference → Batch tools](https://github.com/defessler/Unrea
 cd Plugins\BlueprintReader\mcp-server
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe   # 45 mock + 12 live (live skip without UE)
+build\tests\Release\bp-reader-tests.exe   # 344 cases (live skip without UE)
 ```
 
 The exe is at `Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe`.
@@ -202,10 +243,17 @@ UE5_MCP\
 │       ├── src\
 │       │   ├── BlueprintReaderTypes.h    POD/USTRUCT dual-mode wire types
 │       │   ├── jsonrpc\                  Server, Mcp (initialize/tools/call/...)
-│       │   ├── tools\                     ToolRegistry, BlueprintTools
+│       │   ├── tools\                     ToolRegistry, BlueprintTools, Bpir, Decompile
+│       │   │   ├── codegen\               CppEmit, CppClassEmit, UnsupportedTreatment
+│       │   │   └── parse\                 CppLex, CppParse (C++ → BPIR)
 │       │   └── backends\                  IBlueprintReader, MockReader, CommandletReader
-│       ├── tests\                         doctest cases (mock + live commandlet)
-│       ├── scripts\roundtrip.ps1          JSON-RPC smoke test
+│       ├── tests\                         doctest cases (mock + live commandlet, 344 total)
+│       ├── scripts\
+│       │   ├── roundtrip.ps1              JSON-RPC handshake + read smoke
+│       │   ├── smoke-batch-ops.ps1        apply_ops / preview_ops smoke
+│       │   ├── smoke-decompile.ps1        BP → BPIR → readable C++ smoke
+│       │   ├── smoke-transpile-cpp.ps1    BP → compilable .h/.cpp (-RunUbt)
+│       │   └── smoke-cpp-roundtrip.ps1    C++ → BPIR → compile_function → BP
 │       ├── fixtures\                      BP_Enemy / BP_Pickup / BP_PlayerController
 │       ├── third_party\                   vendored deps: nlohmann_json, fmt, doctest
 │       ├── CMakeLists.txt
@@ -265,11 +313,23 @@ $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 
-Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe   # all 57 cases
+Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe   # all 344 cases
 pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
     -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
     -Asset /Game/AI/BP_TestEnemy
 ```
+
+End-to-end smoke for the BP↔C++ pipeline (Phases 1–3):
+
+```pwsh
+$exe = "Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe"
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-decompile.ps1     -Exe $exe
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-transpile-cpp.ps1 -Exe $exe
+pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-cpp-roundtrip.ps1 -Exe $exe
+```
+
+Add `-RunUbt` to `smoke-transpile-cpp.ps1` to rebuild the editor target
+with the freshly-generated `.h`/`.cpp` and confirm it links.
 
 (Re)seed the test BPs:
 
