@@ -1,9 +1,9 @@
 # Tool Reference
 
-33 tools — 10 read, 17 write, 3 meta, 3 batch. All use snake_case JSON keys;
-nullable string fields emit `null`; `BPNode.meta` is a real nested object
-(not a string-of-JSON). Wire shapes are pinned in
-`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
+39 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile. All use
+snake_case JSON keys; nullable string fields emit `null`; `BPNode.meta`
+is a real nested object (not a string-of-JSON). Wire shapes are pinned
+in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Type shorthand (write tools)
 
@@ -554,6 +554,158 @@ separately — until then this keeps generated graphs from overlapping.
 ```
 
 Returns `{ok, placed, strategy: "grid"}`.
+
+## Transpile tools
+
+The BP↔C++ pipeline. A versioned **Blueprint Intermediate Representation
+(BPIR)** sits in the middle — a JSON AST that BPs lower into and that
+source languages emit / consume. Today only C++ ships; Lua/Python/JS
+are future work that drops in as additional codegen + parser pairs
+without touching the IR. Schema docs: [BPIR.md](BPIR.md).
+
+```
+                        ┌──────────────┐
+       BP graph  ⇄     │     BPIR     │   ⇄  C++ source
+                        └──────────────┘
+                              ▲
+                              │
+              compile_function (BPIR → BP, already shipping)
+```
+
+### `decompile_function`
+Walk a BP function's graph and reconstruct a structured BPIR tree —
+the inverse of `compile_function`. No editor work needed; pure
+server-side traversal of the JSON `get_function` already returns. Pair
+with `transpile_function` (BPIR → C++) for the full pipeline, or feed
+the BPIR through your own analysis.
+
+```json
+{ "asset_path":    "/Game/AI/BP_TestEnemy",
+  "function_name": "TakeDamage" }
+```
+
+Returns `{ok, bpir, unsupported_count}`. The `bpir` doc validates
+against the BPIR schema; any K2 nodes that don't pattern-match a known
+control structure (timelines, latent ability calls, anim graphs, etc.)
+appear in the body as `{unsupported: {...}}` statements with the
+offending node's class + GUID + reason for triage.
+
+### `decompile_blueprint`
+Whole-class extraction: parent class, variables (with replicated /
+editable / category metadata), interfaces, every function as a BPIR
+function-doc. Top-level `{kind: "class"}` BPIR.
+
+```json
+{ "asset_path": "/Game/AI/BP_TestEnemy" }
+```
+
+Returns `{ok, bpir, unsupported_count}`. Use as the input to
+`transpile_blueprint` for end-to-end BP → C++ class generation.
+
+### `transpile_function`
+BP function → C++ source. Composes `decompile_function` (BP → BPIR) +
+the C++ codegen (BPIR → source). Phase 1 ships **readable** mode:
+syntactically valid blocks with real type names + UE prefix conventions,
+but UCLASS/UFUNCTION scaffolding is comments rather than full
+decoration — use `transpile_blueprint` for the compilable pair.
+
+```json
+{ "asset_path":    "/Game/AI/BP_TestEnemy",
+  "function_name": "TakeDamage",
+  "target_lang":   "cpp",
+  "mode":          "readable",
+  "use_operator_aliases": true }
+```
+
+Returns:
+
+```jsonc
+{ "ok": true,
+  "asset_path": "/Game/AI/BP_TestEnemy",
+  "function_name": "TakeDamage",
+  "target_lang":   "cpp",
+  "mode":          "readable",
+  "source": "void TakeDamage(float Amount) {\n    if (bIsAlive) {\n        Health = (Health - Amount);\n    }\n    return;\n}\n",
+  "notes":  [],          // unsupported / approximation entries
+  "unsupported_count": 0
+}
+```
+
+`use_operator_aliases` (default `true`) inverts `compile_function`'s
+operator alias map: `KismetMathLibrary::Add_IntInt` renders as `a + b`,
+`EqualEqual_IntInt` as `a == b`, etc. Set `false` to keep canonical
+qualified-name calls.
+
+### `transpile_blueprint`
+Whole BP class → compilable UE C++ `.h`/`.cpp` pair. Composes
+`decompile_blueprint` + class-emit: emits a `UCLASS()` decl with
+`UPROPERTY()` decoration (Replicated / EditAnywhere / Category specifiers
+inferred from BP variable metadata), `UFUNCTION()` decls, function
+bodies, and `GetLifetimeReplicatedProps()` registration when any
+variable is Replicated.
+
+```json
+{ "asset_path":         "/Game/AI/BP_Enemy",
+  "target_lang":        "cpp",
+  "module_api_macro":   "MYGAME_API",
+  "class_name_suffix":  "_Generated",
+  "use_operator_aliases": true }
+```
+
+Class name follows UE convention: a BP `BP_Enemy` extending `ACharacter`
+becomes `ABP_Enemy_Generated`. Pass `class_name_suffix: ""` to drop in
+place of the BP entirely.
+
+Returns `{ok, class_name, header_file, impl_file, header_source,
+impl_source, notes, sidecar, sidecar_file, unsupported_count}`. The
+**sidecar** is JSON describing every unsupported / approximated node
+(timelines, latent actions, async actions, anim/Niagara graphs) plus
+`manual_steps` for triage; write it next to the `.h/.cpp` so the agent
+can iterate over what's left to port.
+
+### `write_generated_source`
+Write a transpiled `.h` / `.cpp` into the project's `Source/` tree.
+Path-confined by the plugin to `<ProjectDir>/Source/` — anything else
+is rejected. Pair with `transpile_blueprint`: pass back the
+`header_source` / `impl_source` strings the transpile returned, plus
+the destination paths under your game module.
+
+```json
+{ "path":        "D:/Projects/MyGame/Source/MyGame/Generated/BP_Enemy_Generated.h",
+  "content":    "<source string>",
+  "create_dirs": true }
+```
+
+After all files are written, run UBT (or use the editor's Live Coding)
+to compile the new class — the BP can then reparent to the C++ class
+for hybrid workflows.
+
+### `parse_cpp_function`
+C++ → BPIR — the inverse of `transpile_function`. Closes the BP↔C++
+loop: source language → BPIR → BP graph (via `compile_function`). The
+parser accepts a controlled subset (if/else, range-based for, while,
+switch, return, break, continue, calls, member access, `Cast<T>()`,
+unary + binary operators with C++ precedence) — enough to round-trip
+what `transpile_function` emits, plus reasonable hand-written extensions.
+
+```jsonc
+{ "source": "bool TakeDamage(float Damage) { if (bIsAlive) { Health -= Damage; } return true; }" }
+
+// or with an out-of-band signature for a bare body:
+{ "source":    "{ if (bIsAlive) { Health -= Damage; } return true; }",
+  "signature": { "version": 1, "kind": "function", "name": "TakeDamage",
+                 "inputs": [{"name":"Damage","type":"float"}],
+                 "outputs": [{"name":"ReturnValue","type":"bool"}] } }
+```
+
+Returns `{ok, bpir}`. The BPIR validates against the schema; feed it
+straight to `compile_function` to materialize the BP graph.
+
+Out of scope (parser throws with `<line>:<col>: <message>`): the C
+preprocessor (`#include` / `#define` / `#ifdef`), templates beyond
+`Cast<T>`, lambdas, `decltype`, exceptions, raw pointer arithmetic.
+The interface is implementation-decoupled — swapping in libclang for
+fuller C++ support stays a future phase that touches no callers.
 
 ## Meta tools
 
