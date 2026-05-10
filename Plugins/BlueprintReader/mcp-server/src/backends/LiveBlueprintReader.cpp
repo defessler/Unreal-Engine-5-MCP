@@ -565,6 +565,130 @@ LiveBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_vie
 }
 
 // ----- batch sentinels ---------------------------------------------------
+// ----- Project + Content Browser ops ---------------------------------
+
+IBlueprintReader::ProjectMetadata
+LiveBlueprintReader::GetProjectMetadata() {
+    auto j = RunOp({"-Op=GetProjectMetadata"});
+    ProjectMetadata out;
+    if (j.is_object()) {
+        out.projectName       = j.value("project_name",       std::string{});
+        out.projectPath       = j.value("project_path",       std::string{});
+        out.engineAssociation = j.value("engine_association", std::string{});
+        out.category          = j.value("category",           std::string{});
+        out.description       = j.value("description",        std::string{});
+        if (auto it = j.find("raw"); it != j.end()) out.raw = *it;
+    }
+    return out;
+}
+
+IBlueprintReader::SaveAllResult
+LiveBlueprintReader::SaveAll(bool dirtyOnly) {
+    std::vector<std::string> args = {"-Op=SaveAll"};
+    if (!dirtyOnly) args.push_back("-IncludeClean");
+    auto j = RunOp(args);
+    SaveAllResult out;
+    if (j.is_object()) {
+        out.savedCount = j.value("saved_count", 0);
+        if (auto it = j.find("failed_assets"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.failedAssets.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::MoveAssetResult
+LiveBlueprintReader::MoveAsset(std::string_view sourcePath,
+                               std::string_view destPath) {
+    auto j = RunOp({
+        "-Op=MoveAsset",
+        "-Asset=" + std::string(sourcePath),
+        "-Dest="  + std::string(destPath),
+    });
+    MoveAssetResult out;
+    out.sourcePath = std::string(sourcePath);
+    out.destPath   = std::string(destPath);
+    if (j.is_object()) {
+        out.redirectorsCreated = j.value("redirectors_created", 0);
+    }
+    return out;
+}
+
+IBlueprintReader::DeleteAssetResult
+LiveBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
+    std::vector<std::string> args = {
+        "-Op=DeleteAsset",
+        "-Asset=" + std::string(assetPath),
+    };
+    if (force) args.push_back("-Force");
+    auto j = RunOp(args);
+    DeleteAssetResult out;
+    out.path = std::string(assetPath);
+    if (j.is_object()) {
+        out.deleted = j.value("deleted", false);
+        if (auto it = j.find("referencing_assets"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.referencingAssets.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::CreateFolderResult
+LiveBlueprintReader::CreateFolder(std::string_view folderPath) {
+    auto j = RunOp({
+        "-Op=CreateFolder",
+        "-Path=" + std::string(folderPath),
+    });
+    CreateFolderResult out;
+    out.path = std::string(folderPath);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+    }
+    return out;
+}
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListDataTables(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListDataTables"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s;
+            from_json(v, s);
+            out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::DataTableInfo
+LiveBlueprintReader::ReadDataTable(std::string_view assetPath) {
+    auto j = RunOp({
+        "-Op=ReadDataTable",
+        "-Asset=" + std::string(assetPath),
+    });
+    DataTableInfo out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.rowStruct = j.value("row_struct", std::string{});
+        if (auto it = j.find("columns"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.columns.push_back(v.get<std::string>());
+            }
+        }
+        if (auto it = j.find("rows"); it != j.end() && it->is_array()) {
+            out.rows = *it;
+        }
+    }
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

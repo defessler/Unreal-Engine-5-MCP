@@ -1233,6 +1233,150 @@ CommandletBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
     return out;
 }
 
+// ----- Project + Content Browser ops -------------------------------------
+
+IBlueprintReader::ProjectMetadata
+CommandletBlueprintReader::GetProjectMetadata() {
+    // Pure local read — no daemon round-trip. The .uproject is already
+    // resolved in cfg_.
+    ProjectMetadata out;
+    if (cfg_.uproject.empty()) {
+        throw BlueprintReaderError("BP_READER_PROJECT is not set");
+    }
+    out.projectPath = cfg_.uproject.string();
+    // Derive name from the filename stem.
+    out.projectName = cfg_.uproject.stem().string();
+
+    std::ifstream f(cfg_.uproject);
+    if (!f) {
+        throw BlueprintReaderError(fmt::format(
+            "GetProjectMetadata: cannot read {}", out.projectPath));
+    }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    try {
+        out.raw = nlohmann::json::parse(ss.str());
+    } catch (const std::exception& e) {
+        throw BlueprintReaderError(fmt::format(
+            "GetProjectMetadata: {} is not valid JSON ({})",
+            out.projectPath, e.what()));
+    }
+    if (out.raw.is_object()) {
+        out.engineAssociation = out.raw.value("EngineAssociation", std::string{});
+        out.category          = out.raw.value("Category",          std::string{});
+        out.description       = out.raw.value("Description",       std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SaveAllResult
+CommandletBlueprintReader::SaveAll(bool dirtyOnly) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=SaveAll");
+    if (!dirtyOnly) args.push_back(L"-IncludeClean");
+    auto j = RunOp(args);
+    SaveAllResult out;
+    if (j.is_object()) {
+        out.savedCount = j.value("saved_count", 0);
+        if (auto it = j.find("failed_assets"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.failedAssets.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::MoveAssetResult
+CommandletBlueprintReader::MoveAsset(std::string_view sourcePath,
+                                     std::string_view destPath) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=MoveAsset");
+    args.push_back(L"-Asset=" + Widen(sourcePath));
+    args.push_back(L"-Dest="  + Widen(destPath));
+    auto j = RunOp(args);
+    MoveAssetResult out;
+    out.sourcePath = std::string(sourcePath);
+    out.destPath   = std::string(destPath);
+    if (j.is_object()) {
+        out.redirectorsCreated = j.value("redirectors_created", 0);
+    }
+    return out;
+}
+
+IBlueprintReader::DeleteAssetResult
+CommandletBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=DeleteAsset");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    if (force) args.push_back(L"-Force");
+    auto j = RunOp(args);
+    DeleteAssetResult out;
+    out.path = std::string(assetPath);
+    if (j.is_object()) {
+        out.deleted = j.value("deleted", false);
+        if (auto it = j.find("referencing_assets"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.referencingAssets.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::CreateFolderResult
+CommandletBlueprintReader::CreateFolder(std::string_view folderPath) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=CreateFolder");
+    args.push_back(L"-Path=" + Widen(folderPath));
+    auto j = RunOp(args);
+    CreateFolderResult out;
+    out.path = std::string(folderPath);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+    }
+    return out;
+}
+
+std::vector<BPAssetSummary>
+CommandletBlueprintReader::ListDataTables(std::string_view path) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=ListDataTables");
+    if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s;
+            from_json(v, s);
+            out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::DataTableInfo
+CommandletBlueprintReader::ReadDataTable(std::string_view assetPath) {
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=ReadDataTable");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    auto j = RunOp(args);
+    DataTableInfo out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.rowStruct = j.value("row_struct", std::string{});
+        if (auto it = j.find("columns"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.columns.push_back(v.get<std::string>());
+            }
+        }
+        if (auto it = j.find("rows"); it != j.end() && it->is_array()) {
+            out.rows = *it;
+        }
+    }
+    return out;
+}
+
 // ----- Batch sentinels (A1) -------------------------------------------------
 void CommandletBlueprintReader::BeginBatch() {
     std::vector<std::wstring> args;

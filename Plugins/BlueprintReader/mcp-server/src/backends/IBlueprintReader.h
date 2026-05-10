@@ -168,6 +168,101 @@ public:
         std::string_view destPath, std::string_view content,
         bool createDirs = true) = 0;
 
+    // ----- Project + Content Browser ops ---------------------------------
+    //
+    // Project-level introspection + asset-browser operations that complement
+    // the per-Blueprint surface. These are surface-level ops users expect
+    // when working with a UE project as a whole.
+
+    // Read the project's metadata (`.uproject` JSON + a normalized view of
+    // the most-asked-for fields). Backends override; default throws.
+    struct ProjectMetadata {
+        std::string projectName;        // derived from .uproject filename
+        std::string projectPath;        // absolute path to the .uproject
+        std::string engineAssociation;  // .uproject "EngineAssociation"
+        std::string category;
+        std::string description;
+        nlohmann::json raw;             // full .uproject JSON for anything else
+    };
+    virtual ProjectMetadata GetProjectMetadata() {
+        throw BlueprintReaderError("GetProjectMetadata not supported by this backend");
+    }
+
+    // Save every dirty package the editor has loaded. With `dirtyOnly=true`
+    // (default), packages that aren't marked dirty are skipped — fast no-op
+    // when nothing's changed. Live backend hits the editor's save path;
+    // commandlet daemon walks loaded packages.
+    struct SaveAllResult {
+        int savedCount = 0;
+        std::vector<std::string> failedAssets;
+    };
+    virtual SaveAllResult SaveAll(bool dirtyOnly = true) {
+        (void)dirtyOnly;
+        throw BlueprintReaderError("SaveAll not supported by this backend");
+    }
+
+    // Move (or rename) an asset. `dest` is the full destination package
+    // path — pass the same folder with a different leaf for a rename, or
+    // a different folder to move. Both must be under `/Game/`. Updates
+    // the asset registry, fixes up references in other assets.
+    struct MoveAssetResult {
+        std::string sourcePath;
+        std::string destPath;
+        int redirectorsCreated = 0;
+    };
+    virtual MoveAssetResult MoveAsset(std::string_view sourcePath,
+                                      std::string_view destPath) {
+        (void)sourcePath; (void)destPath;
+        throw BlueprintReaderError("MoveAsset not supported by this backend");
+    }
+
+    // Delete an asset. Refuses if other assets reference it (default;
+    // override with `force=true`). Returns the list of references found so
+    // the caller can act on them — fix-up or force.
+    struct DeleteAssetResult {
+        std::string path;
+        bool deleted = false;
+        std::vector<std::string> referencingAssets;
+    };
+    virtual DeleteAssetResult DeleteAsset(std::string_view assetPath,
+                                          bool force = false) {
+        (void)assetPath; (void)force;
+        throw BlueprintReaderError("DeleteAsset not supported by this backend");
+    }
+
+    // Create a folder under `/Game/`. Idempotent — returns
+    // {already_existed:true} if the folder is already present. UE folders
+    // are just package paths with a stub asset; we use
+    // `IAssetTools::CreateUniqueAssetName` semantics indirectly.
+    struct CreateFolderResult {
+        std::string path;
+        bool alreadyExisted = false;
+    };
+    virtual CreateFolderResult CreateFolder(std::string_view folderPath) {
+        (void)folderPath;
+        throw BlueprintReaderError("CreateFolder not supported by this backend");
+    }
+
+    // List all UDataTable assets under a content path (mirrors
+    // ListBlueprints but for the DataTable type).
+    virtual std::vector<BPAssetSummary> ListDataTables(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListDataTables not supported by this backend");
+    }
+
+    // Read a single DataTable's row structure + every row's field values.
+    struct DataTableInfo {
+        std::string assetPath;
+        std::string rowStruct;          // e.g. "/Game/Data/ST_Item"
+        std::vector<std::string> columns;
+        // Each row: { "row_name": <FName>, "<col>": <serialized-string>, ... }
+        nlohmann::json rows = nlohmann::json::array();
+    };
+    virtual DataTableInfo ReadDataTable(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadDataTable not supported by this backend");
+    }
+
     // ----- Batch sentinels (A1) ------------------------------------------------
     // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
     // CompileBlueprint + SavePackage runs once per affected BP at EndBatch
