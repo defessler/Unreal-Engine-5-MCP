@@ -1762,6 +1762,198 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Project + Content Browser ops ===================================
+
+    // ----- get_project_metadata -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "get_project_metadata";
+        d.description =
+            "Read the project's `.uproject` file and return parsed metadata "
+            "(project name, EngineAssociation, category, description, plus "
+            "the raw JSON for anything else). Useful for orienting an agent "
+            "to which project + engine version it's working against.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            auto m = reader.GetProjectMetadata();
+            return nlohmann::json{
+                {"ok", true},
+                {"project_name",       m.projectName},
+                {"project_path",       m.projectPath},
+                {"engine_association", m.engineAssociation},
+                {"category",           m.category},
+                {"description",        m.description},
+                {"raw",                m.raw},
+            };
+        });
+    }
+
+    // ----- save_all -------------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "save_all";
+        d.description =
+            "Save every dirty package the editor has loaded. With "
+            "`dirty_only=true` (default), clean packages are skipped — fast "
+            "no-op when nothing's changed. Returns count saved + any failed "
+            "asset paths.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"dirty_only", {{"type","boolean"},
+                                {"description","Default true. Set false to save every loaded package, dirty or not."}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            bool dirtyOnly = args.value("dirty_only", true);
+            auto r = reader.SaveAll(dirtyOnly);
+            return nlohmann::json{
+                {"ok", true},
+                {"saved_count",    r.savedCount},
+                {"failed_assets",  r.failedAssets},
+            };
+        });
+    }
+
+    // ----- move_asset (covers both move and rename) ----------------------
+    {
+        ToolDescriptor d;
+        d.name = "move_asset";
+        d.description =
+            "Move or rename an asset. `dest_asset_path` is the full destination "
+            "package path — pass the same folder with a different leaf for a "
+            "rename, or a different folder to move. Both must be under "
+            "`/Game/`. Updates the asset registry and fixes references in "
+            "other assets. Returns the redirector count if UE created any.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",      {{"type","string"}}},
+                {"dest_asset_path", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","dest_asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string src  = RequireString(args, "asset_path");
+            std::string dest = RequireString(args, "dest_asset_path");
+            auto r = reader.MoveAsset(src, dest);
+            return nlohmann::json{
+                {"ok", true},
+                {"source_path",          r.sourcePath},
+                {"dest_path",            r.destPath},
+                {"redirectors_created",  r.redirectorsCreated},
+            };
+        });
+    }
+
+    // ----- delete_asset ---------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "delete_asset";
+        d.description =
+            "Delete an asset. Refuses by default if other assets reference "
+            "it; set `force=true` to delete anyway (leaves dangling references "
+            "as null objects). Returns the list of referencing assets when "
+            "the refusal fires so the caller can act on them.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"force",      {{"type","boolean"},
+                                {"description","Default false. Set true to delete even when references exist."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = RequireString(args, "asset_path");
+            bool force = args.value("force", false);
+            auto r = reader.DeleteAsset(path, force);
+            return nlohmann::json{
+                {"ok", true},
+                {"path",                r.path},
+                {"deleted",             r.deleted},
+                {"referencing_assets",  r.referencingAssets},
+            };
+        });
+    }
+
+    // ----- create_folder --------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "create_folder";
+        d.description =
+            "Create a folder under `/Game/`. Idempotent — returns "
+            "`{already_existed:true}` when the folder is already present.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"folder_path", {{"type","string"},
+                                 {"description","Package path of the folder to create, e.g. /Game/AI/Boss."}}},
+            }},
+            {"required", nlohmann::json::array({"folder_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string folderPath = RequireString(args, "folder_path");
+            auto r = reader.CreateFolder(folderPath);
+            return nlohmann::json{
+                {"ok", true},
+                {"path",            r.path},
+                {"already_existed", r.alreadyExisted},
+            };
+        });
+    }
+
+    // ----- list_data_tables -----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "list_data_tables";
+        d.description =
+            "List all UDataTable assets under a content path. Mirrors "
+            "`list_blueprints` but filters for UDataTable. Defaults to "
+            "`/Game`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"path", {{"type","string"}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto summaries = reader.ListDataTables(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : summaries) arr.push_back(s);
+            return arr;
+        });
+    }
+
+    // ----- read_data_table ------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "read_data_table";
+        d.description =
+            "Load a DataTable and return its row-struct type, column names, "
+            "and every row's field values. Useful for orienting an agent to "
+            "an existing data table before mutating it.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto dt = reader.ReadDataTable(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", dt.assetPath},
+                {"row_struct", dt.rowStruct},
+                {"columns",    dt.columns},
+                {"rows",       dt.rows},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.
