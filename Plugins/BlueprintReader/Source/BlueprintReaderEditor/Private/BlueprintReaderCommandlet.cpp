@@ -74,7 +74,7 @@ namespace
 		Variables,
 		Components,
 		Find,
-		// Write ops (Phase 1.5):
+		// Write ops:
 		AddVariable,
 		SetNodePosition,
 		DeleteNode,
@@ -100,7 +100,7 @@ namespace
 		RetypeVariable,         // change a var's type without delete+re-add (preserves nodes)
 		SetVariableCategory,    // change a var's My-Blueprint-panel category label
 		DuplicateBlueprint,     // file-level duplicate (BP-5)
-		// Phase 2C — write transpiled source into the project tree.
+		// Write transpiled source into the project tree.
 		WriteGeneratedSource,
 	};
 
@@ -651,7 +651,7 @@ namespace
 		return EmitOk(OutputPath, bPretty);
 	}
 
-	// ----- WriteGeneratedSource (Phase 2C of BP↔C++) ---------------------
+	// ----- WriteGeneratedSource (drop transpiled C++ into Source/) -------
 	// Write a generated .h/.cpp file into the project's Source/ tree.
 	// Args: -Path=<absolute dest> -ContentFile=<absolute source temp>
 	//       [-CreateDirs]

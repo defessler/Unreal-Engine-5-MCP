@@ -284,7 +284,7 @@ struct ProcResult {
 
 ProcResult RunChild(const std::wstring&, const std::vector<std::wstring>&, std::chrono::seconds) {
     ProcResult r;
-    r.failureReason = "CommandletBlueprintReader is Windows-only in Phase 1.";
+    r.failureReason = "CommandletBlueprintReader is Windows-only.";
     return r;
 }
 
@@ -835,16 +835,16 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
 
 void CommandletBlueprintReader::TerminateDaemon() {}
 void CommandletBlueprintReader::EnsureDaemon() {
-    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+    throw BlueprintReaderError("daemon mode is Windows-only");
 }
 void CommandletBlueprintReader::Prewarm() {
     // No-op on non-Windows; daemon mode is unsupported there.
 }
 std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&, std::chrono::seconds) {
-    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+    throw BlueprintReaderError("daemon mode is Windows-only");
 }
 nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>&) {
-    throw BlueprintReaderError("daemon mode is Windows-only in Phase 1.5");
+    throw BlueprintReaderError("daemon mode is Windows-only");
 }
 
 #endif

@@ -1,14 +1,11 @@
-// CppEmit — BPIR → C++ source code generation (Phase 1C).
+// CppEmit — BPIR → C++ source code generation.
 //
-// Walks a BPIR function/class document and emits annotated C++. Phase 1
-// emits "readable" mode: syntactically valid-looking C++ with real type
-// names and indentation, but not necessarily compilable as-is — UFUNCTION
-// / UPROPERTY decoration markers appear as comments, and complex
-// scaffolding (UCLASS body, GENERATED_BODY(), constructor, replication
-// registration) is added by Phase 2's CppClassEmit.
-//
-// Phase 2 layers on top: same AST walker, "compilable" mode flips on
-// the scaffolding generators.
+// Walks a BPIR function/class document and emits annotated C++. The
+// "readable" mode emits syntactically valid C++ with real type names
+// and indentation; UFUNCTION / UPROPERTY decoration appears as comments,
+// and complex scaffolding (UCLASS body, GENERATED_BODY(), constructor,
+// replication registration) is added by CppClassEmit's whole-class
+// pipeline.
 
 #pragma once
 
@@ -32,8 +29,8 @@ struct CppEmitOptions {
 
 struct CppEmitResult {
     std::string source;
-    // Each unsupported / approximation node encountered. Phase 2's
-    // sidecar JSON is built from this.
+    // Each unsupported / approximation node encountered. Whole-class
+    // codegen builds a sidecar JSON from this for triage.
     nlohmann::json notes = nlohmann::json::array();
 };
 

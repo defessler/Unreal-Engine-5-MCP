@@ -359,9 +359,8 @@ void ValidateBpir(const nlohmann::json& doc) {
 }
 
 nlohmann::json MigrateToCurrent(const nlohmann::json& doc) {
-    // v1 is the only schema we know. When v2 lands, the migrator path
-    // will accept v1 docs and synthesize the new fields with defaults
-    // before running validation.
+    // No-op until a breaking schema change lands. The seam is here so
+    // adding a v2 path doesn't require touching every consumer.
     return doc;
 }
 
