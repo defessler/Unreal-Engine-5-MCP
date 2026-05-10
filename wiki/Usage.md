@@ -162,6 +162,66 @@ Two meta tools tell you what the schema accepts:
 
 Claude calls these on its own when it's unsure — you don't need to.
 
+## BP ↔ C++
+
+Convert blueprints to or from C++. Useful for code review (a 50-node
+graph as a 30-line function diffs cleanly), promoting a prototype BP
+to native for perf, or writing logic in your editor of choice and
+materializing the BP graph from source.
+
+```
+You: Show me ApplyDamage on BP_TestEnemy as C++.
+Claude: [calls transpile_function]
+        bool ApplyDamage(float Amount) {
+            if (bIsAlive) {
+                Health = (Health - Amount);
+                if (Health <= 0) {
+                    OnDeath();
+                    return true;
+                }
+            }
+            return false;
+        }
+```
+
+```
+You: I wrote a Tick() function in pseudocode — turn it into a BP.
+You: void Tick(float DeltaSeconds) { Energy = Energy + (DeltaSeconds * 10); }
+Claude: [calls parse_cpp_function → compile_function]
+        Created Tick on /Game/AI/BP_TestEnemy with the body wired up.
+```
+
+Common patterns:
+
+| Goal                                          | Tool sequence                                          |
+|-----------------------------------------------|--------------------------------------------------------|
+| BP function as readable C++                   | `transpile_function`                                   |
+| Whole BP class as compilable `.h`/`.cpp`      | `transpile_blueprint` → `write_generated_source` (×2)  |
+| Hand-written C++ → BP graph                   | `parse_cpp_function` → `compile_function`              |
+| BP as analyzable JSON AST (BPIR)              | `decompile_function`                                   |
+| Round-trip a BP through C++ for review        | `transpile_function`, edit the source, `parse_cpp_function` → `compile_function` |
+
+The transpile pipeline pivots on a versioned JSON AST called BPIR (see
+the [BPIR](BPIR) page). Every transpile tool is just BP ↔ BPIR ↔ C++,
+so adding Lua / Python / JS support is "just" another codegen + parser
+pair — same IR, no plumbing changes elsewhere.
+
+### Where the C++ won't compile cleanly
+
+UE has constructs that don't map 1:1 to plain C++:
+
+- **Timelines** (`K2Node_Timeline`) — emitted as a stub `UTimelineComponent*`
+  member with a TODO comment.
+- **Latent ability calls** (`UAbilityTask_*`) — emitted as the closest
+  static-create call; the named exec outputs (`Completed`, `Cancelled`,
+  ...) need manual delegate binding.
+- **Async actions, anim graphs, Niagara** — placeholder stubs +
+  sidecar entries.
+
+`transpile_blueprint` writes a `<Class>_Generated.transpile-notes.json`
+sidecar listing every approximation + manual step. Use it as a triage
+list when you take the generated source past the "compiles" line.
+
 ## Things to know
 
 ### Daemon mode
