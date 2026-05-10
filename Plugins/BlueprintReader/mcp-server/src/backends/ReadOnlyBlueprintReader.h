@@ -83,6 +83,30 @@ public:
     std::vector<BPAssetSummary> ListDataTables(std::string_view) override;
     DataTableInfo ReadDataTable(std::string_view) override;
 
+    // ----- Live editor ops ----------------------------------------------
+    // Reads (GetCVar, GetSelectedActors, ReadOutputLog, ConsoleCommand,
+    // PieStart, LiveCodingCompile) pass through — they don't mutate
+    // .uasset files which is what read-only mode is protecting. Real
+    // mutations (SetCVar, SetSelection, SpawnActor, SetActorTransform,
+    // DeleteActor, PieStop) reject. PieStart/Stop are debatable; we
+    // gate Stop only since Start is "trigger an editor mode" not a write.
+    ConsoleCommandResult ConsoleCommand(std::string_view) override;
+    CVarValue GetCVar(std::string_view) override;
+    CVarValue SetCVar(std::string_view, std::string_view) override;
+    PieResult PieStart(std::string_view) override;
+    PieResult PieStop() override;
+    LiveCodingResult LiveCodingCompile() override;
+    SelectionResult GetSelectedActors() override;
+    SelectionResult SetSelection(const std::vector<std::string>&, bool) override;
+    SpawnActorResult SpawnActor(std::string_view,
+        double, double, double, double, double, double,
+        double, double, double) override;
+    void SetActorTransform(std::string_view,
+        double, double, double, double, double, double,
+        double, double, double) override;
+    DeleteActorResult DeleteActor(std::string_view) override;
+    OutputLogResult ReadOutputLog(int, std::string_view) override;
+
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in
     // read-only mode they're still no-ops because no writes can happen

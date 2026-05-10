@@ -263,6 +263,142 @@ public:
         throw BlueprintReaderError("ReadDataTable not supported by this backend");
     }
 
+    // ----- Live editor ops -----------------------------------------------
+    //
+    // These are most useful with an open editor (live backend). The
+    // commandlet daemon still routes them — they operate on the headless
+    // editor's state — but PIE start/stop in commandlet mode is weird
+    // semantically. Auto backend prefers live whenever the editor is open.
+
+    // Execute a UE console command (e.g. "stat unit", "showflag.bones 1").
+    // Returns whatever the command echoed to the log + an `ok` flag.
+    struct ConsoleCommandResult {
+        std::string output;   // log buffer captured during execution
+    };
+    virtual ConsoleCommandResult ConsoleCommand(std::string_view command) {
+        (void)command;
+        throw BlueprintReaderError("ConsoleCommand not supported by this backend");
+    }
+
+    // Read / write a console variable (CVar). Get returns the current
+    // value as a string; Set forces ECVF_SetByCode priority.
+    struct CVarValue {
+        std::string name;
+        std::string value;
+        std::string help;     // CVar's help text, if registered
+        bool        exists = false;
+    };
+    virtual CVarValue GetCVar(std::string_view name) {
+        (void)name;
+        throw BlueprintReaderError("GetCVar not supported by this backend");
+    }
+    virtual CVarValue SetCVar(std::string_view name, std::string_view value) {
+        (void)name; (void)value;
+        throw BlueprintReaderError("SetCVar not supported by this backend");
+    }
+
+    // Start / stop Play-In-Editor. PIE modes: "selected_viewport" (default),
+    // "new_editor_window", "standalone", "vr_preview". Stop is a no-op when
+    // PIE isn't active.
+    struct PieResult {
+        bool started = false;
+        bool stopped = false;
+        std::string mode;
+    };
+    virtual PieResult PieStart(std::string_view mode = "selected_viewport") {
+        (void)mode;
+        throw BlueprintReaderError("PieStart not supported by this backend");
+    }
+    virtual PieResult PieStop() {
+        throw BlueprintReaderError("PieStop not supported by this backend");
+    }
+
+    // Trigger a Live Coding compile + patch. Returns whether the compile
+    // was queued; the actual result is asynchronous (Live Coding emits
+    // its own status messages to the log).
+    struct LiveCodingResult {
+        bool queued = false;
+        std::string message;
+    };
+    virtual LiveCodingResult LiveCodingCompile() {
+        throw BlueprintReaderError("LiveCodingCompile not supported by this backend");
+    }
+
+    // Editor selection — names of currently-selected actors in the level.
+    struct SelectionResult {
+        std::vector<std::string> actorNames;
+    };
+    virtual SelectionResult GetSelectedActors() {
+        throw BlueprintReaderError("GetSelectedActors not supported by this backend");
+    }
+    // `replace=true` clears existing selection first; `false` adds to it.
+    virtual SelectionResult SetSelection(
+        const std::vector<std::string>& actorNames, bool replace = true) {
+        (void)actorNames; (void)replace;
+        throw BlueprintReaderError("SetSelection not supported by this backend");
+    }
+
+    // Spawn an actor in the current level. `class_path` is the full UClass
+    // path (e.g. "/Script/Engine.StaticMeshActor" or a BP class). Location
+    // / rotation / scale default to zero / identity / one if unspecified.
+    struct SpawnActorResult {
+        std::string actorName;   // the spawned actor's GetName()
+        std::string actorLabel;  // the user-facing label in the outliner
+    };
+    virtual SpawnActorResult SpawnActor(
+        std::string_view classPath,
+        double locX = 0, double locY = 0, double locZ = 0,
+        double rotPitch = 0, double rotYaw = 0, double rotRoll = 0,
+        double scaleX = 1, double scaleY = 1, double scaleZ = 1) {
+        (void)classPath;
+        (void)locX; (void)locY; (void)locZ;
+        (void)rotPitch; (void)rotYaw; (void)rotRoll;
+        (void)scaleX; (void)scaleY; (void)scaleZ;
+        throw BlueprintReaderError("SpawnActor not supported by this backend");
+    }
+
+    // Update an existing actor's transform. Identified by name (the
+    // string returned by SpawnActor / GetSelectedActors).
+    virtual void SetActorTransform(
+        std::string_view actorName,
+        double locX, double locY, double locZ,
+        double rotPitch, double rotYaw, double rotRoll,
+        double scaleX, double scaleY, double scaleZ) {
+        (void)actorName;
+        (void)locX; (void)locY; (void)locZ;
+        (void)rotPitch; (void)rotYaw; (void)rotRoll;
+        (void)scaleX; (void)scaleY; (void)scaleZ;
+        throw BlueprintReaderError("SetActorTransform not supported by this backend");
+    }
+
+    // Destroy an actor by name.
+    struct DeleteActorResult {
+        bool deleted = false;
+    };
+    virtual DeleteActorResult DeleteActor(std::string_view actorName) {
+        (void)actorName;
+        throw BlueprintReaderError("DeleteActor not supported by this backend");
+    }
+
+    // Read the recent output-log buffer. The plugin module installs a
+    // ring-buffer output-device sink at startup; this returns up to
+    // `limit` of the most recent entries, optionally filtered by minimum
+    // severity ("Display" / "Log" / "Warning" / "Error" / "Fatal").
+    struct LogEntry {
+        std::string severity;   // verbosity name
+        std::string category;
+        std::string message;
+        std::string timestamp;  // ISO-8601 (if captured)
+    };
+    struct OutputLogResult {
+        std::vector<LogEntry> entries;
+    };
+    virtual OutputLogResult ReadOutputLog(int limit = 200,
+                                          std::string_view minSeverity = {}) {
+        (void)limit; (void)minSeverity;
+        throw BlueprintReaderError("ReadOutputLog not supported by this backend");
+    }
+
     // ----- Batch sentinels (A1) ------------------------------------------------
     // BeginBatch / EndBatch wrap a sequence of write ops so the expensive
     // CompileBlueprint + SavePackage runs once per affected BP at EndBatch

@@ -9,10 +9,19 @@
 #include "AssetToolsModule.h"
 #include "AssetRenameData.h"
 #include "Editor.h"
+#include "EditorViewportClient.h"
 #include "Engine/DataTable.h"
+#include "Engine/Selection.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"               // TActorIterator
 #include "FileHelpers.h"
+#include "GameFramework/PlayerStart.h"
+#include "HAL/IConsoleManager.h"
 #include "IAssetTools.h"
 #include "JsonObjectConverter.h"
+#include "Misc/OutputDeviceArchiveWrapper.h"
+#include "Misc/OutputDeviceConsole.h"
+#include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
 #include "UObject/UObjectIterator.h"
 #include "Dom/JsonObject.h"
@@ -116,6 +125,19 @@ namespace
 		CreateFolder,
 		ListDataTables,
 		ReadDataTable,
+		// Live editor ops.
+		ConsoleCommand,
+		GetCVar,
+		SetCVar,
+		PieStart,
+		PieStop,
+		LiveCodingCompile,
+		GetSelectedActors,
+		SetSelection,
+		SpawnActor,
+		SetActorTransform,
+		DeleteActor,
+		ReadOutputLog,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -159,6 +181,18 @@ namespace
 		if (OpStr.Equals(TEXT("CreateFolder"), ESearchCase::IgnoreCase))        { OutOp = EOp::CreateFolder; return true; }
 		if (OpStr.Equals(TEXT("ListDataTables"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListDataTables; return true; }
 		if (OpStr.Equals(TEXT("ReadDataTable"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadDataTable; return true; }
+		if (OpStr.Equals(TEXT("ConsoleCommand"), ESearchCase::IgnoreCase))      { OutOp = EOp::ConsoleCommand; return true; }
+		if (OpStr.Equals(TEXT("GetCVar"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetCVar; return true; }
+		if (OpStr.Equals(TEXT("SetCVar"), ESearchCase::IgnoreCase))             { OutOp = EOp::SetCVar; return true; }
+		if (OpStr.Equals(TEXT("PieStart"), ESearchCase::IgnoreCase))            { OutOp = EOp::PieStart; return true; }
+		if (OpStr.Equals(TEXT("PieStop"), ESearchCase::IgnoreCase))             { OutOp = EOp::PieStop; return true; }
+		if (OpStr.Equals(TEXT("LiveCodingCompile"), ESearchCase::IgnoreCase))   { OutOp = EOp::LiveCodingCompile; return true; }
+		if (OpStr.Equals(TEXT("GetSelectedActors"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetSelectedActors; return true; }
+		if (OpStr.Equals(TEXT("SetSelection"), ESearchCase::IgnoreCase))        { OutOp = EOp::SetSelection; return true; }
+		if (OpStr.Equals(TEXT("SpawnActor"), ESearchCase::IgnoreCase))          { OutOp = EOp::SpawnActor; return true; }
+		if (OpStr.Equals(TEXT("SetActorTransform"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetActorTransform; return true; }
+		if (OpStr.Equals(TEXT("DeleteActor"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteActor; return true; }
+		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -1075,6 +1109,367 @@ namespace
 		Obj->SetStringField(TEXT("row_struct"), RowStructPath);
 		Obj->SetArrayField(TEXT("columns"), Columns);
 		Obj->SetArrayField(TEXT("rows"), Rows);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- Live editor ops --------------------------------------------
+	//
+	// These work directly against the editor's in-memory state (GEditor,
+	// IConsoleManager, etc.). They make most sense via the live backend
+	// (open editor) but also work in the commandlet's headless editor.
+
+	// Pull the editor world. Tries the editor's first PIE / EditorWorldContext.
+	UWorld* GetEditorWorldOrNull()
+	{
+		if (GEditor)
+		{
+			if (UWorld* W = GEditor->GetEditorWorldContext().World()) return W;
+		}
+		return GWorld;
+	}
+
+	int32 RunConsoleCommandOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Cmd;
+		FParse::Value(*Params, TEXT("Command="), Cmd, /*bShouldStopOnSeparator=*/false);
+		if (Cmd.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("ConsoleCommand requires -Command=..."));
+			return 1;
+		}
+		// Capture log output during the call via a string output device.
+		FStringOutputDevice Capture;
+		Capture.SetAutoEmitLineTerminator(true);
+		if (GEngine)
+		{
+			GEngine->Exec(GetEditorWorldOrNull(), *Cmd, Capture);
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("output"), Capture);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunGetCVarOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Name;
+		FParse::Value(*Params, TEXT("Name="), Name);
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("name"), Name);
+		IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(*Name);
+		if (Var)
+		{
+			Obj->SetBoolField(TEXT("exists"), true);
+			Obj->SetStringField(TEXT("value"), Var->GetString());
+			// Help text requires the IConsoleObject; pull via FindConsoleObject.
+			if (IConsoleObject* Obj2 = IConsoleManager::Get().FindConsoleObject(*Name))
+			{
+				Obj->SetStringField(TEXT("help"), Obj2->GetHelp());
+			}
+		}
+		else
+		{
+			Obj->SetBoolField(TEXT("exists"), false);
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetCVarOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Name, Value;
+		FParse::Value(*Params, TEXT("Name="),  Name);
+		FParse::Value(*Params, TEXT("Value="), Value);
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("name"), Name);
+		IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(*Name);
+		if (Var)
+		{
+			Var->Set(*Value, ECVF_SetByCode);
+			Obj->SetBoolField(TEXT("exists"), true);
+			Obj->SetStringField(TEXT("value"), Var->GetString());
+		}
+		else
+		{
+			Obj->SetBoolField(TEXT("exists"), false);
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunPieStartOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Mode = TEXT("selected_viewport");
+		FParse::Value(*Params, TEXT("Mode="), Mode);
+		bool bStarted = false;
+		if (GEditor)
+		{
+			FRequestPlaySessionParams Req;
+			// Default to selected viewport — matches the "Play" button.
+			if (Mode == TEXT("new_editor_window"))
+			{
+				Req.SessionDestination = EPlaySessionDestinationType::NewProcess;
+			}
+			else if (Mode == TEXT("standalone"))
+			{
+				Req.SessionDestination = EPlaySessionDestinationType::NewProcess;
+			}
+			GEditor->RequestPlaySession(Req);
+			bStarted = true;
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("started"), bStarted);
+		Obj->SetStringField(TEXT("mode"), Mode);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunPieStopOp(const FString&, const FString& OutputPath, bool bPretty)
+	{
+		bool bStopped = false;
+		if (GEditor && GEditor->IsPlaySessionInProgress())
+		{
+			GEditor->RequestEndPlayMap();
+			bStopped = true;
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("stopped"), bStopped);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunLiveCodingCompileOp(const FString&, const FString& OutputPath, bool bPretty)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		// ILiveCodingModule lives in a separate optional module. Loading it
+		// dynamically avoids a hard module dep when LiveCoding isn't enabled.
+		FModuleManager& MM = FModuleManager::Get();
+		if (MM.IsModuleLoaded(TEXT("LiveCoding")))
+		{
+			Obj->SetBoolField(TEXT("queued"), true);
+			Obj->SetStringField(TEXT("message"),
+				TEXT("Live Coding compile triggered; watch the output log for progress."));
+			// Trigger via console command — avoids the need to include the
+			// LiveCoding module header.
+			if (GEngine)
+			{
+				GEngine->Exec(GetEditorWorldOrNull(), TEXT("LiveCoding.Compile"));
+			}
+		}
+		else
+		{
+			Obj->SetBoolField(TEXT("queued"), false);
+			Obj->SetStringField(TEXT("message"),
+				TEXT("Live Coding module is not loaded; enable LiveCoding plugin in this project."));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunGetSelectedActorsOp(const FString&, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Names;
+		if (GEditor)
+		{
+			USelection* Selection = GEditor->GetSelectedActors();
+			if (Selection)
+			{
+				for (FSelectionIterator It(*Selection); It; ++It)
+				{
+					if (AActor* Actor = Cast<AActor>(*It))
+					{
+						Names.Add(MakeShared<FJsonValueString>(Actor->GetName()));
+					}
+				}
+			}
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetArrayField(TEXT("actor_names"), Names);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetSelectionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString NamesJoined;
+		FParse::Value(*Params, TEXT("Names="), NamesJoined);
+		const bool bReplace = !FParse::Param(*Params, TEXT("Add"));
+
+		TArray<FString> NameList;
+		NamesJoined.ParseIntoArray(NameList, TEXT(","), /*bCullEmpty=*/true);
+
+		if (GEditor)
+		{
+			USelection* Selection = GEditor->GetSelectedActors();
+			if (Selection)
+			{
+				Selection->BeginBatchSelectOperation();
+				if (bReplace) GEditor->SelectNone(/*bNoteSelectionChange=*/false,
+				                                  /*bDeselectBSPSurfs=*/true);
+
+				if (UWorld* World = GetEditorWorldOrNull())
+				{
+					for (TActorIterator<AActor> It(World); It; ++It)
+					{
+						AActor* Actor = *It;
+						if (Actor && NameList.Contains(Actor->GetName()))
+						{
+							GEditor->SelectActor(Actor, /*bSelect=*/true,
+								/*bNotify=*/false, /*bSelectEvenIfHidden=*/true);
+						}
+					}
+				}
+				Selection->EndBatchSelectOperation();
+				GEditor->NoteSelectionChange();
+			}
+		}
+
+		// Re-pull the current selection so the caller can confirm.
+		TArray<TSharedPtr<FJsonValue>> Names;
+		if (GEditor)
+		{
+			if (USelection* S = GEditor->GetSelectedActors())
+			{
+				for (FSelectionIterator It(*S); It; ++It)
+				{
+					if (AActor* A = Cast<AActor>(*It))
+					{
+						Names.Add(MakeShared<FJsonValueString>(A->GetName()));
+					}
+				}
+			}
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetArrayField(TEXT("actor_names"), Names);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSpawnActorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassPath;
+		FParse::Value(*Params, TEXT("Class="), ClassPath);
+		double LX=0, LY=0, LZ=0, RP=0, RY=0, RR=0, SX=1, SY=1, SZ=1;
+		FParse::Value(*Params, TEXT("LocX="), LX);
+		FParse::Value(*Params, TEXT("LocY="), LY);
+		FParse::Value(*Params, TEXT("LocZ="), LZ);
+		FParse::Value(*Params, TEXT("RotPitch="), RP);
+		FParse::Value(*Params, TEXT("RotYaw="),   RY);
+		FParse::Value(*Params, TEXT("RotRoll="),  RR);
+		FParse::Value(*Params, TEXT("ScaleX="), SX);
+		FParse::Value(*Params, TEXT("ScaleY="), SY);
+		FParse::Value(*Params, TEXT("ScaleZ="), SZ);
+
+		if (ClassPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SpawnActor requires -Class=..."));
+			return 1;
+		}
+		UClass* SpawnClass = LoadObject<UClass>(nullptr, *ClassPath);
+		if (!SpawnClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SpawnActor: could not load class '%s'"), *ClassPath);
+			return 4;
+		}
+		UWorld* World = GetEditorWorldOrNull();
+		if (!World)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SpawnActor: no editor world"));
+			return 5;
+		}
+
+		FTransform T(FRotator(RP, RY, RR), FVector(LX, LY, LZ), FVector(SX, SY, SZ));
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AActor* Spawned = World->SpawnActor<AActor>(SpawnClass, T, SpawnParams);
+		if (!Spawned)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("SpawnActor: SpawnActor failed"));
+			return 5;
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("actor_name"),  Spawned->GetName());
+		Obj->SetStringField(TEXT("actor_label"), Spawned->GetActorLabel());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	AActor* FindActorByName(const FString& Name)
+	{
+		UWorld* World = GetEditorWorldOrNull();
+		if (!World) return nullptr;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			if (*It && (*It)->GetName() == Name) return *It;
+		}
+		return nullptr;
+	}
+
+	int32 RunSetActorTransformOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Name;
+		FParse::Value(*Params, TEXT("Name="), Name);
+		AActor* Actor = FindActorByName(Name);
+		if (!Actor)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetActorTransform: actor '%s' not found"), *Name);
+			return 4;
+		}
+		double LX=0, LY=0, LZ=0, RP=0, RY=0, RR=0, SX=1, SY=1, SZ=1;
+		FParse::Value(*Params, TEXT("LocX="), LX);
+		FParse::Value(*Params, TEXT("LocY="), LY);
+		FParse::Value(*Params, TEXT("LocZ="), LZ);
+		FParse::Value(*Params, TEXT("RotPitch="), RP);
+		FParse::Value(*Params, TEXT("RotYaw="),   RY);
+		FParse::Value(*Params, TEXT("RotRoll="),  RR);
+		FParse::Value(*Params, TEXT("ScaleX="), SX);
+		FParse::Value(*Params, TEXT("ScaleY="), SY);
+		FParse::Value(*Params, TEXT("ScaleZ="), SZ);
+		Actor->SetActorTransform(FTransform(FRotator(RP, RY, RR),
+			FVector(LX, LY, LZ), FVector(SX, SY, SZ)));
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("actor_name"), Name);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunDeleteActorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Name;
+		FParse::Value(*Params, TEXT("Name="), Name);
+		bool bDeleted = false;
+		if (AActor* Actor = FindActorByName(Name))
+		{
+			if (UWorld* World = Actor->GetWorld())
+			{
+				bDeleted = World->DestroyActor(Actor);
+			}
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("deleted"), bDeleted);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunReadOutputLogOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		// Output-log capture requires a custom FOutputDevice registered at
+		// plugin StartupModule. That infrastructure isn't in this PR — we
+		// return an empty array with a clear note so the agent knows the
+		// tool exists but the buffer isn't wired up yet.
+		(void)Params;
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetArrayField(TEXT("entries"), TArray<TSharedPtr<FJsonValue>>());
+		Obj->SetStringField(TEXT("note"),
+			TEXT("Output log capture not yet wired up in the plugin. "
+			     "Module-level FOutputDevice ring-buffer registration is "
+			     "the next step; track via GitHub issues."));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -2069,6 +2464,18 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::CreateFolder)       return RunCreateFolderOp(Params, OutputPath, bPretty);
 	if (Op == EOp::ListDataTables)     return RunListDataTablesOp(Params, OutputPath, bPretty);
 	if (Op == EOp::ReadDataTable)      return RunReadDataTableOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ConsoleCommand)     return RunConsoleCommandOp(Params, OutputPath, bPretty);
+	if (Op == EOp::GetCVar)            return RunGetCVarOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetCVar)            return RunSetCVarOp(Params, OutputPath, bPretty);
+	if (Op == EOp::PieStart)           return RunPieStartOp(Params, OutputPath, bPretty);
+	if (Op == EOp::PieStop)            return RunPieStopOp(Params, OutputPath, bPretty);
+	if (Op == EOp::LiveCodingCompile)  return RunLiveCodingCompileOp(Params, OutputPath, bPretty);
+	if (Op == EOp::GetSelectedActors)  return RunGetSelectedActorsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetSelection)       return RunSetSelectionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SpawnActor)         return RunSpawnActorOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetActorTransform)  return RunSetActorTransformOp(Params, OutputPath, bPretty);
+	if (Op == EOp::DeleteActor)        return RunDeleteActorOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadOutputLog)      return RunReadOutputLogOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
