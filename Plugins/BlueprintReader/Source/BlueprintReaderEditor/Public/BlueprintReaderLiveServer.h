@@ -20,16 +20,26 @@
 // commandlet daemon accepts. We dispatch to the existing RunOneOp on
 // the game thread and ship its EmitJson output back as `json`.
 //
-// Lifecycle: the listener starts at editor module init (gated by env
-// var BP_READER_LIVE_PORT — when 0 or unset, the listener is disabled
-// and the editor module behaves exactly as before). Stops at module
-// shutdown. Localhost-only — refuses any non-loopback connection.
+// Lifecycle: the listener starts at editor module init by default —
+// it picks an ephemeral port + random token and writes them to
+// `<ProjectDir>/Saved/bp-reader-live.json` for the MCP server to
+// discover. Set `BP_READER_LIVE_DISABLED=1` to opt out entirely;
+// `BP_READER_LIVE_PORT` and `BP_READER_LIVE_TOKEN` still override the
+// auto-generated values. Stops + cleans up the handshake file at
+// module shutdown. Localhost-only — refuses any non-loopback
+// connection.
 //
-// Auth: BP_READER_LIVE_TOKEN must be set in the editor process's env
-// before launch. Connections that don't present the matching token in
-// their `auth` frame are dropped before any op runs. Token is also
-// the only thing protecting writes — anyone with localhost access who
-// can read your env vars can mutate BPs.
+// Handshake file shape:
+//   { "version": 1, "host": "127.0.0.1", "port": <ephemeral>,
+//     "token": "<32 hex chars>", "pid": <editor pid>,
+//     "started_at": "2026-05-09T..." }
+//
+// Auth: a 128-bit random token (FGuid) is the default; the env var
+// override is still honored. The MCP server reads the token from the
+// handshake file unless `BP_READER_LIVE_TOKEN` is set explicitly.
+// Anyone with read access to the file can talk to the listener — the
+// file inherits the project directory's NTFS ACLs, so don't widen
+// project permissions if you don't want to widen this.
 
 #pragma once
 
@@ -49,11 +59,17 @@ public:
     FLiveServer();
     ~FLiveServer();
 
-    // Starts the listener on `Port` (or BP_READER_LIVE_PORT env var if
-    // Port is 0). Returns true if the listener bound successfully. False
-    // if disabled (port 0 / no env), or if the bind failed (port in use,
-    // perms, etc.). Failure is logged but doesn't fail the editor module
-    // — daemon mode still works as a fallback.
+    // Starts the listener. Resolution order for the bind port:
+    //   1. `Port` arg (non-zero)
+    //   2. `BP_READER_LIVE_PORT` env var (non-zero)
+    //   3. ephemeral (kernel picks a free port)
+    // Token resolution:
+    //   1. `BP_READER_LIVE_TOKEN` env var if set
+    //   2. random 128-bit GUID (default)
+    // Returns true if the listener bound + the handshake file was
+    // written. Returns false if `BP_READER_LIVE_DISABLED=1` is set, or
+    // if the bind failed (port in use, perms). Failure is logged but
+    // doesn't fail the editor module — daemon mode still works.
     bool Start(int32 Port = 0);
 
     // Tears down the listener and any active connection threads. Called
@@ -70,9 +86,31 @@ private:
     // worker takes ownership of the socket).
     bool OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& Endpoint);
 
+    // Write `<ProjectDir>/Saved/bp-reader-live.json` so the MCP server
+    // can discover port + token without the user having to plumb env
+    // vars through their MCP client config. Idempotent (overwrites any
+    // stale file from a prior crashed editor session). Returns true on
+    // success; logs a warning and returns false on I/O failure (the
+    // listener still works for callers who already know the port +
+    // token via env var).
+    bool WriteHandshakeFile();
+
+    // Delete the handshake file written by WriteHandshakeFile. Called
+    // from Stop(). Best-effort — missing file is fine.
+    void DeleteHandshakeFile();
+
+    // Path the handshake file is written to. Encapsulated so tests +
+    // the delete path agree.
+    static FString HandshakeFilePath();
+
     TUniquePtr<FTcpListener> Listener;
-    FString ExpectedToken;        // BP_READER_LIVE_TOKEN at module init
+    // FSocket pre-bound (so port 0 → kernel-picks-port works AND we can
+    // see the actual port). Listener takes a reference; we own the
+    // lifetime and destroy in Stop(). Null when Listener is null.
+    FSocket* ListenerSocket = nullptr;
+    FString ExpectedToken;        // env-var override OR random GUID
     int32 BoundPort = 0;
+    bool  HandshakeWritten = false;
 };
 
 // Module-level singleton accessor. The editor module owns one instance

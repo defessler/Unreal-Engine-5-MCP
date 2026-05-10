@@ -1,0 +1,173 @@
+// AutoBlueprintReader — routes each call to live or commandlet based
+// on whether an editor is currently running.
+//
+// Why this exists: users would otherwise flip BP_READER_BACKEND between
+// `commandlet` (no editor open) and `live` (editor open) by hand. Auto
+// mode probes the editor's BlueprintReaderLiveServer handshake file +
+// TCP listener on each call (with a short cache) and picks the right
+// backend transparently. Editor opens mid-session → calls start
+// landing on Live; editor closes → calls fall back to commandlet.
+//
+// Probe strategy:
+//   1. Re-read `<ProjectDir>/Saved/bp-reader-live.json` (cheap; the
+//      file exists iff an editor module is loaded). The plugin deletes
+//      the file at ShutdownModule, so absence is a strong "no editor"
+//      signal.
+//   2. If file exists, attempt a one-shot TCP connect to the published
+//      host:port. Success → use Live; failure (refused / timeout) → use
+//      Commandlet (the file is stale from a crashed editor).
+//   3. Probe result is cached for `probeTtl` to amortize the
+//      file-read + connect cost across rapid back-to-back tool calls.
+//
+// Lifecycle:
+//   - Live reader is created lazily on first probe-success and reused
+//     until a probe fails (then dropped + re-created next probe-success).
+//   - Commandlet reader is created up-front (so `prewarm` semantics
+//     work the same as plain commandlet mode); shut down only on
+//     destruction. Probe failures don't tear down the commandlet, just
+//     route to it.
+//
+// Edge cases:
+//   - User has BOTH BP_READER_LIVE_PORT/TOKEN env vars AND an editor
+//     handshake file: env wins (caller asked for explicit values).
+//   - Live probe succeeds but RunOp throws mid-call (editor dying):
+//     the call surfaces the error; the next call re-probes and likely
+//     falls back to commandlet.
+//   - Concurrent commandlet daemon + live editor on the same project:
+//     auto mode prefers live and the commandlet daemon stays parked;
+//     no concurrent writes because every call routes to live until
+//     editor closes.
+
+#pragma once
+
+#include "backends/IBlueprintReader.h"
+#include "backends/CommandletBlueprintReader.h"
+#include "backends/LiveBlueprintReader.h"
+
+#include <chrono>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <string>
+
+namespace bpr::backends {
+
+class AutoBlueprintReader : public IBlueprintReader {
+public:
+    struct Config {
+        std::filesystem::path uproject;          // for handshake-file lookup
+        std::string liveHost = "127.0.0.1";      // env-override fallback
+        int         livePort = 0;                // env-override fallback
+        std::string liveToken;                   // env-override fallback
+        CommandletBlueprintReader::Config commandletConfig;
+        bool prewarmCommandlet = false;
+        // Cache the probe decision for this long. Tradeoff: longer →
+        // less per-call cost, slower to react to editor open/close;
+        // shorter → reactivity at the cost of a TCP connect attempt
+        // per call. 2s is a reasonable middle ground for a
+        // human-driven workflow.
+        std::chrono::milliseconds probeTtl{2000};
+        std::chrono::milliseconds probeConnectTimeout{300};
+    };
+
+    explicit AutoBlueprintReader(Config cfg);
+    ~AutoBlueprintReader() override;
+
+    AutoBlueprintReader(const AutoBlueprintReader&) = delete;
+    AutoBlueprintReader& operator=(const AutoBlueprintReader&) = delete;
+
+    // ----- read tools -----------------------------------------------
+    std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;
+    BPMetadata                  ReadBlueprint(std::string_view assetPath) override;
+    BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) override;
+    BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
+    std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
+    std::vector<BPComponent>    GetComponents(std::string_view assetPath) override;
+    std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
+                                          std::string_view kind = {}) override;
+
+    // ----- write tools ----------------------------------------------
+    void AddVariable(std::string_view assetPath, std::string_view name,
+                     const BPPinType& type, std::string_view defaultValue,
+                     std::string_view category, bool replicated, bool editable) override;
+    void SetNodePosition(std::string_view assetPath, std::string_view graphName,
+                         std::string_view nodeId, int x, int y) override;
+    void DeleteNode(std::string_view assetPath, std::string_view graphName,
+                    std::string_view nodeId) override;
+    std::string AddNode(std::string_view assetPath, std::string_view graphName,
+                        std::string_view kind, int x, int y,
+                        const std::map<std::string, std::string, std::less<>>& extras) override;
+    void WirePins(std::string_view assetPath, std::string_view graphName,
+                  std::string_view fromNodeId, std::string_view fromPinSpec,
+                  std::string_view toNodeId,   std::string_view toPinSpec) override;
+    void DeleteVariable(std::string_view assetPath, std::string_view name) override;
+    void RenameVariable(std::string_view assetPath, std::string_view oldName,
+                        std::string_view newName) override;
+    AddFunctionResult AddFunction(std::string_view assetPath, std::string_view name) override;
+    void AddFunctionInput(std::string_view assetPath, std::string_view functionName,
+                          std::string_view paramName, const BPPinType& type) override;
+    void AddFunctionOutput(std::string_view assetPath, std::string_view functionName,
+                           std::string_view paramName, const BPPinType& type) override;
+    void DeleteFunction(std::string_view assetPath, std::string_view name) override;
+    void SetVariableDefault(std::string_view assetPath, std::string_view name,
+                            std::string_view newDefault) override;
+    CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
+                                          std::string_view parentClass) override;
+    void SetPinDefault(std::string_view assetPath, std::string_view graphName,
+                       std::string_view nodeId, std::string_view pinSpec,
+                       std::string_view value) override;
+    void RetypeVariable(std::string_view assetPath, std::string_view name,
+                        const BPPinType& newType) override;
+    void SetVariableCategory(std::string_view assetPath, std::string_view name,
+                             std::string_view category) override;
+    DuplicateBlueprintResult DuplicateBlueprint(std::string_view sourceAssetPath,
+                                                std::string_view destAssetPath) override;
+    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view destPath,
+                                                    std::string_view content,
+                                                    bool createDirs) override;
+
+    // ----- batch + meta ---------------------------------------------
+    void BeginBatch() override;
+    nlohmann::json EndBatch(bool skipCompile = false) override;
+    nlohmann::json ShutdownDaemon() override;
+
+    // Test/diagnostic accessor: which backend would the next call use?
+    // Returns "live" or "commandlet". Forces a fresh probe if the
+    // cache has expired.
+    std::string SelectBackendForTesting();
+
+private:
+    // Probe → returns the reader to route this call to. Caller holds
+    // mu_; we may block briefly on a TCP connect.
+    IBlueprintReader& Pick();
+
+    // Recompute the routing decision (file read + TCP probe). Caller
+    // holds mu_.
+    void Probe();
+
+    // Construct a LiveBlueprintReader from current cfg + handshake (or
+    // env-var fallbacks). Returns nullptr if nothing's discoverable.
+    std::unique_ptr<LiveBlueprintReader> TryBuildLive();
+
+    // Lazily build the commandlet on first need. Validation is
+    // expensive (checks for the editor exe on disk); deferring means a
+    // session that lives entirely on Live never pays it.
+    CommandletBlueprintReader& EnsureCommandlet();
+
+    Config cfg_;
+    std::mutex mu_;
+
+    // Commandlet reader exists for the lifetime of this object. The
+    // ReadOnly / Caching wrappers in BackendFactory wrap *this*; the
+    // commandlet inside is the raw reader.
+    std::unique_ptr<CommandletBlueprintReader> commandlet_;
+    // Live reader is recycled on probe transitions.
+    std::unique_ptr<LiveBlueprintReader> live_;
+
+    // Last successful probe. When (now - lastProbe_) < probeTtl, we
+    // reuse `useLive_` without re-checking.
+    std::chrono::steady_clock::time_point lastProbe_{};
+    bool useLive_ = false;
+};
+
+} // namespace bpr::backends
