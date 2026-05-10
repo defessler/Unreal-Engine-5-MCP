@@ -112,6 +112,20 @@ public:
                                                     std::string_view content,
                                                     bool createDirs) override;
 
+    // ----- Project + Content Browser ops (pass-through) -----------------
+    // These are project-level rather than per-Blueprint; caching them
+    // would add complexity without much value. Save/move/delete also
+    // invalidate the global list cache (asset enumeration changes).
+    ProjectMetadata GetProjectMetadata() override;
+    SaveAllResult SaveAll(bool dirtyOnly) override;
+    MoveAssetResult MoveAsset(std::string_view sourcePath,
+                              std::string_view destPath) override;
+    DeleteAssetResult DeleteAsset(std::string_view assetPath,
+                                  bool force) override;
+    CreateFolderResult CreateFolder(std::string_view folderPath) override;
+    std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
+    DataTableInfo ReadDataTable(std::string_view assetPath) override;
+
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries
     // that subsequent ops in the same batch would re-fetch. Flushed by
