@@ -1,7 +1,12 @@
-// Shared helpers — locate the staged fixtures directory next to the test exe.
+// Shared helpers for the doctest suite: locate the staged fixtures
+// directory next to the test exe, and construct mock-backed readers
+// without restating the fixtures-dir lookup at every call site.
 #pragma once
 
+#include "backends/MockBlueprintReader.h"
+
 #include <filesystem>
+#include <memory>
 
 #if defined(_WIN32)
     #include <windows.h>
@@ -22,6 +27,18 @@ inline std::filesystem::path TestExecutableDir() {
 
 inline std::filesystem::path FixturesDir() {
     return TestExecutableDir() / "fixtures";
+}
+
+// Most tests want a mock reader pointed at the staged fixtures. These
+// factories tighten the call sites and centralize the fixtures-dir
+// lookup so any future signature change to MockBlueprintReader
+// touches exactly one spot.
+inline backends::MockBlueprintReader MakeMockReader() {
+    return backends::MockBlueprintReader(FixturesDir());
+}
+
+inline std::unique_ptr<backends::MockBlueprintReader> MakeMockReaderUnique() {
+    return std::make_unique<backends::MockBlueprintReader>(FixturesDir());
 }
 
 } // namespace bpr::test

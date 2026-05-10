@@ -22,47 +22,17 @@ Two backends:
 
 ## Tools
 
-| Tool                | Direction | Description                                                                |
-|---------------------|-----------|----------------------------------------------------------------------------|
-| `summarize_blueprint` | read    | **Tiny** orientation response: parent class + counts of variables / functions / graphs / macros / interfaces. Use this BEFORE `read_blueprint` when you don't yet know how big a BP is. |
-| `list_blueprints`   | read      | List all blueprint assets under a content path. Defaults to `/Game`.       |
-| `read_blueprint`    | read      | Top-level metadata: parent class, interfaces, variables, graph summaries.  |
-| `get_graph`         | read      | Full node + connection graph by name. Defaults to `EventGraph`.            |
-| `get_function`      | read      | A function's signature (inputs/outputs/locals) + body graph.               |
-| `list_variables`    | read      | Member variables with type, default, category, replication state.          |
-| `get_components`    | read      | SCS components — name, class, parent, root flag.                           |
-| `find_node`         | read      | Substring search by class/title; optional `kind` filter on K2 extras.      |
-| `get_node`          | read      | Fetch a single node by GUID — pins + links + position, no full-graph cost. |
-| `find_overriders`   | read      | Structural query: BPs that extend a parent, override a function, or implement an interface. |
-| `create_blueprint`  | **write** | Create a new BP under `/Game/...` extending a parent class. Idempotent.    |
-| `duplicate_blueprint` | **write** | File-level duplicate: source BP → new BP at a new path. Idempotent.       |
-| `retype_variable`   | **write** | Change a member variable's type without delete + re-add. Preserves graph node references. |
-| `set_variable_category` | **write** | Change the My-Blueprint-panel category label on a variable.            |
-| `add_variable`      | **write** | Add a member variable (BPPinType, default, category, replicated/editable). |
-| `delete_variable`   | **write** | Remove a member variable by name.                                          |
-| `rename_variable`   | **write** | Rename a member variable; updates references in graphs.                    |
-| `add_node`          | **write** | Spawn a Branch / Sequence / VariableGet/Set / CallFunction / CustomEvent. Returns new node GUID. |
-| `set_node_position` | **write** | Move a node by GUID inside a graph.                                        |
-| `delete_node`       | **write** | Remove a node by GUID; breaks links into/out of it.                        |
-| `wire_pins`         | **write** | Connect two pins by GUID (preferred) or name; schema-validated.            |
-| `add_function`      | **write** | Create a new BP function graph; returns the echoed name.                   |
-| `delete_function`   | **write** | Delete a function graph by name.                                           |
-| `add_function_input`  | **write** | Add an input parameter to an existing function (BPPinType).             |
-| `add_function_output` | **write** | Add an output parameter; spawns a FunctionResult node if missing.       |
-| `set_variable_default` | **write** | Change a member variable's default value (string form).                |
-| `list_node_kinds`   | meta      | Enumerate the `kind` values `add_node` accepts + their required extras.    |
-| `list_pin_categories` | meta    | Enumerate canonical `BPPinType.category` values + container modifiers.     |
-| `shutdown_daemon`   | meta      | Tear down the editor daemon (release project locks). Next read auto-respawns. Pair with `BP_READER_READ_ONLY=1` for editor coexistence. |
-| `apply_ops`         | **batch** | Execute a sequence of write ops as one tool call. Named slots (`id` + `$ref`) thread minted GUIDs across ops. Single recompile per affected BP. Surfaces compile diagnostics with per-op attribution. `on_failure: "compile"` (default) or `"skip"` controls partial-state semantics on mid-batch failure. |
-| `preview_ops`       | **batch** | Validate an apply_ops batch without mutating anything. Useful for agent self-checks and human-in-the-loop confirmation. |
-| `compile_function`  | **batch** | Compile a tiny pseudocode DSL (`if/set/call/var/lit` + math/comparison aliases) into nodes+wires+literals. Lets the agent generate BPs the way it generates code. |
-| `auto_layout_graph` | **write** | Reposition every node in a graph using a column-grid layout based on exec connectivity. |
-| `decompile_function` | **transpile** | Walk a BP function's graph and reconstruct a structured BPIR (Blueprint Intermediate Representation) tree — the inverse of `compile_function`. |
-| `decompile_blueprint` | **transpile** | Whole-class extraction: parent class, variables, interfaces, every function as BPIR. |
-| `transpile_function` | **transpile** | BP function → readable C++ source. Composes decompile + codegen with operator-alias rendering (Add_IntInt → `a + b`). |
-| `transpile_blueprint` | **transpile** | Whole BP class → compilable UE C++ `.h`/`.cpp` pair with UCLASS / UFUNCTION / UPROPERTY decoration + `GetLifetimeReplicatedProps` registration. Sidecar JSON tracks unsupported nodes. |
-| `write_generated_source` | **transpile** | Write a transpiled `.h`/`.cpp` into `<Project>/Source/`, path-confined by the plugin. |
-| `parse_cpp_function` | **transpile** | C++ → BPIR. Closes the round-trip: hand-written C++ feeds straight to `compile_function` to materialize a BP graph. Hand-rolled lexer + recursive-descent parser; libclang is a future swap. |
+39 tools across 5 categories — see the
+[Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
+for every input/output shape with examples.
+
+| Category | Tools | What they do |
+|----------|-------|--------------|
+| **Read** (10) | `list_blueprints`, `summarize_blueprint`, `read_blueprint`, `get_graph`, `get_function`, `list_variables`, `get_components`, `find_node`, `get_node`, `find_overriders` | Inventory + structural queries. `summarize_blueprint` is the cheap orientation tool; `find_overriders` does cross-BP queries in one call. |
+| **Write** (18) | `add_variable` / `retype_variable` / `rename_variable` / etc.; `add_function` / `add_function_input/output`; `add_node` / `wire_pins` / `set_pin_default` / `auto_layout_graph`; `create_blueprint` / `duplicate_blueprint` | Single-step mutations. All idempotent where idempotency makes sense; `wire_pins` errors include both pin types so the agent can self-correct. |
+| **Batch / generation** (3) | `apply_ops`, `preview_ops`, `compile_function` | Multi-step writes: named-slot GUID resolution, dry-run, pseudocode → BP graph. Collapse N×compile to 1. |
+| **Transpile (BP↔C++)** (6) | `decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function` | Round-trip BPs to and from C++ via the BPIR JSON AST. See [BP↔C++ round-trip](#bp--c-round-trip) below. |
+| **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.

@@ -41,7 +41,7 @@ struct DrainResult {
 };
 
 DrainResult RunServerOn(const std::string& input) {
-    backends::MockBlueprintReader reader(test::FixturesDir());
+    auto reader = test::MakeMockReader();
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, reader);
     Server server;
