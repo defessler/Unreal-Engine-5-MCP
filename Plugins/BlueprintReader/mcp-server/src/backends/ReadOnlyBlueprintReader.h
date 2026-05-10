@@ -106,6 +106,9 @@ public:
         double, double, double) override;
     DeleteActorResult DeleteActor(std::string_view) override;
     OutputLogResult ReadOutputLog(int, std::string_view) override;
+    // Automation tests pass through — they're read-shaped (trigger a run,
+    // return what happened); they don't mutate .uasset files directly.
+    AutomationRunResult RunAutomationTests(std::string_view) override;
 
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in

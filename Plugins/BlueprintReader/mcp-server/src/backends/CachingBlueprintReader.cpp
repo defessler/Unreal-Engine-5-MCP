@@ -502,6 +502,10 @@ IBlueprintReader::OutputLogResult
 CachingBlueprintReader::ReadOutputLog(int limit, std::string_view minSev) {
     return inner_->ReadOutputLog(limit, minSev);
 }
+IBlueprintReader::AutomationRunResult
+CachingBlueprintReader::RunAutomationTests(std::string_view pattern) {
+    return inner_->RunAutomationTests(pattern);
+}
 
 // ============================================================================
 // Factory helper

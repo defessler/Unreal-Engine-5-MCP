@@ -873,6 +873,19 @@ LiveBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
     return out;
 }
 
+IBlueprintReader::AutomationRunResult
+LiveBlueprintReader::RunAutomationTests(std::string_view pattern) {
+    std::vector<std::string> args = {"-Op=RunAutomationTests"};
+    if (!pattern.empty()) args.push_back("-Pattern=" + std::string(pattern));
+    auto j = RunOp(args);
+    AutomationRunResult out;
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

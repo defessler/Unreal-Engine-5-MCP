@@ -140,6 +140,9 @@ public:
     DeleteActorResult DeleteActor(std::string_view actorName) override;
     OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
 
+    // ----- Automation tests ---------------------------------------------
+    AutomationRunResult RunAutomationTests(std::string_view pattern) override;
+
     // Batch sentinels (A1) — wraps a write batch so the daemon defers
     // CompileBlueprint+SavePackage to one combined call at EndBatch.
     // EndBatch returns the daemon's flush ack (recompiled list + compile
