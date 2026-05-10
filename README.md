@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 39 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 46 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -22,7 +22,7 @@ Two backends:
 
 ## Tools
 
-39 tools across 5 categories — see the
+46 tools across 5 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 

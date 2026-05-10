@@ -145,6 +145,42 @@ nlohmann::json ReadOnlyBlueprintReader::ShutdownDaemon() {
     return inner_->ShutdownDaemon();
 }
 
+// ----- Project + Content Browser ops -------------------------------------
+
+IBlueprintReader::ProjectMetadata
+ReadOnlyBlueprintReader::GetProjectMetadata() {
+    return inner_->GetProjectMetadata();
+}
+
+IBlueprintReader::SaveAllResult ReadOnlyBlueprintReader::SaveAll(bool) {
+    Reject("save_all");
+}
+
+IBlueprintReader::MoveAssetResult
+ReadOnlyBlueprintReader::MoveAsset(std::string_view, std::string_view) {
+    Reject("move_asset");
+}
+
+IBlueprintReader::DeleteAssetResult
+ReadOnlyBlueprintReader::DeleteAsset(std::string_view, bool) {
+    Reject("delete_asset");
+}
+
+IBlueprintReader::CreateFolderResult
+ReadOnlyBlueprintReader::CreateFolder(std::string_view) {
+    Reject("create_folder");
+}
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListDataTables(std::string_view path) {
+    return inner_->ListDataTables(path);
+}
+
+IBlueprintReader::DataTableInfo
+ReadOnlyBlueprintReader::ReadDataTable(std::string_view assetPath) {
+    return inner_->ReadDataTable(assetPath);
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
