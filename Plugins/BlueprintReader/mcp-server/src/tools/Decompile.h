@@ -1,41 +1,32 @@
-// Decompile — convert BP graphs to BPIR (Phase 1B of the BP↔C++ plan).
+// Decompile — convert BP graphs to BPIR (the inverse of compile_function).
 //
 // Walks the BPGraph already returned by IBlueprintReader::GetFunction and
 // reconstructs a structured BPIR AST by pattern-matching on K2 node
 // classes. Server-side only — all the K2 metadata we need is already
 // in BPNode.meta thanks to BlueprintIntrospector.
 //
-// Algorithm (high level):
+// Algorithm:
 //   1. Find the FunctionEntry node; take its `then` exec output as start.
-//   2. Walk exec edges; for each node, classify by Class field.
-//   3. Pattern-match recognized control-flow nodes (Branch, Sequence,
-//      Cast, Switch, MacroInstance for ForEach/While) to their BPIR
-//      counterparts. Recurse into branches; converge at the immediate
-//      post-dominator.
+//   2. Walk exec edges; classify each node by its Class field.
+//   3. Pattern-match recognized control flow (Branch, Sequence, Cast,
+//      Switch, MacroInstance for ForEach/While) into BPIR. Recurse into
+//      branches; converge at the immediate post-dominator.
 //   4. For value-shaped nodes (VariableGet, CallFunction-as-rvalue,
 //      MakeArray, MakeStruct, Self, Literal), trace data edges backward
 //      from each consumer pin to build expressions.
-//   5. Anything that doesn't match a known pattern → emit `{unsupported}`
-//      with the node's class + guid + relevant meta. Lossless: callers
-//      can see exactly what couldn't be represented.
+//   5. Anything that doesn't pattern-match → emit `{unsupported}` with
+//      the node's class + guid + relevant meta. Lossless: callers see
+//      exactly what couldn't be represented.
 //
-// What v1 supports cleanly:
-//   - if/then/else (K2Node_IfThenElse with both branches reconverging)
-//   - set / call / return (VariableSet, CallFunction, FunctionResult)
-//   - cast (DynamicCast with success + fail)
-//   - sequence (ExecutionSequence)
-//   - var/lit/call expressions (VariableGet, K2Node_Literal, CallFunction-rvalue)
-//   - self (K2Node_Self)
+// Cleanly supported: if/then/else, set/call/return, cast, sequence,
+// var/lit/call expressions, self.
 //
-// What v1 emits as `{unsupported}`:
-//   - Switch nodes (K2Node_Switch* — pattern catalog grows over time)
-//   - Macros (ForEachLoop, WhileLoop, DoOnce — pattern-match by macro name)
-//   - Timelines, async actions, latent — domain-specific, not portable
-//   - Any node class we don't recognize
+// Emitted as `{unsupported}`: Switch nodes, ForEachLoop/WhileLoop/DoOnce
+// macros, timelines, async actions, latent — domain-specific, not
+// portable. Any unknown node class.
 //
-// What v1 does best-effort:
-//   - Branches whose then/else don't reconverge (one returns) — we
-//     emit the if without an else-tail, callers handle the divergence.
+// Best-effort: branches whose then/else don't reconverge (one returns) —
+// emitted as an if without an else-tail; callers handle divergence.
 //
 // The output is a BPIR `{kind: "function", ...}` document validated by
 // tools::ValidateBpir before return.

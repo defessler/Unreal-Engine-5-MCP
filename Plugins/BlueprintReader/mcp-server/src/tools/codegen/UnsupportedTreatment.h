@@ -1,15 +1,13 @@
 // UnsupportedTreatment — best-effort handling for BP nodes that don't
 // have a clean compilable-C++ equivalent.
 //
-// Phase 2B of the BP↔C++ plan. The decompile pass emits
-// `{unsupported: {node_class, guid, reason, fields}}` for any K2 node
-// it can't structurally represent (timelines, latent actions, anim
-// graph nodes, etc.). v1's CppEmit just renders these as TODO comments;
-// this module enriches that handling:
+// The decompile pass emits `{unsupported: {node_class, guid, reason,
+// fields}}` for any K2 node it can't structurally represent (timelines,
+// latent actions, anim graph nodes, etc.). This module classifies them:
 //
 //   - Recognized "approximation" patterns get a best-effort C++ stub
-//     instead of just a TODO. E.g. K2Node_SpawnActorFromClass becomes
-//     a `GetWorld()->SpawnActor<>()` call with a comment listing what
+//     instead of just a TODO. E.g. K2Node_SpawnActorFromClass becomes a
+//     `GetWorld()->SpawnActor<>()` call with a comment listing what
 //     the agent still needs to verify.
 //
 //   - Every encountered unsupported node — whether stub or pure TODO —

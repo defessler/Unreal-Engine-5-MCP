@@ -414,10 +414,10 @@ struct Emitter {
             const auto& u = s["unsupported"];
             std::string nodeClass = u.value("node_class", "?");
             std::string guid      = u.value("guid", "");
-            // Phase 2B: classify the node and emit a richer treatment
-            // — best-effort C++ stub when we know the pattern, else
-            // a TODO. Either way, the sidecar entry captures the note
-            // so the agent can iterate over manual steps.
+            // Classify the node and emit a richer treatment — best-effort
+            // C++ stub when we know the pattern, else a TODO. Either way,
+            // the sidecar entry captures the note so the agent can iterate
+            // over manual steps.
             auto cls = ClassifyUnsupported(u);
             if (cls.kind == UnsupportedClassification::Kind::Approximation &&
                 !cls.snippet.empty()) {

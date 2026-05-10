@@ -1,4 +1,4 @@
-# Live smoke test for Phase 2 (compilable UE C++ class generation).
+# Live smoke test for compilable UE C++ class generation.
 # Drives transpile_blueprint + write_generated_source through a real
 # UnrealEditor-Cmd commandlet daemon, asserting the generated .h/.cpp
 # pair lands on disk under <Project>/Source/, then optionally invokes
