@@ -231,16 +231,21 @@ work remains. Treatment table (the most common):
 
 | K2 node | Treatment | Sidecar guidance |
 |---------|-----------|------------------|
-| `K2Node_Timeline` | `UTimelineComponent*` member stub + `UCurveFloat*` UPROPERTY per track + constructor stub | "Manually configure the timeline's curve assets in the editor; auto-binding TBD." |
-| `K2Node_LatentAbilityCall` | Best-effort `UAbilityTask_*::Create*` call | "Latent action's exec output (Completed, Cancelled, ...) needs manual binding to OnX delegate." |
-| `K2Node_AsyncAction` | Async-action `Create*` call | "Async action's named exec outputs need manual delegate-binding code." |
-| `K2Node_SpawnActorFromClass` | `GetWorld()->SpawnActor<>()` | "Pin defaults pre-spawn aren't directly portable; verify SpawnParameters." |
-| `K2Node_AnimNode_*` | `// TODO[bpr-anim]` placeholder | "Anim graphs require AnimInstance subclassing; not auto-portable." |
-| `K2Node_NiagaraXxx` | Placeholder | "Niagara module-graph; manual port required." |
+| `K2Node_Timeline` | `UTimelineComponent*` member stub | "Manually configure the timeline's curve assets in the editor; auto-binding TBD." |
+| `K2Node_LatentAbilityCall` | Pure `// TODO[bpr-unsupported]` | "Latent action's exec output (Completed, Cancelled, ...) needs manual binding to OnX delegate." |
+| `K2Node_AsyncAction` | Pure `// TODO[bpr-unsupported]` | "Async action's named exec outputs need manual delegate-binding code." |
+| `K2Node_AnimNode_*` | Pure `// TODO[bpr-unsupported]` | "Anim graphs require AnimInstance subclassing; not auto-portable." |
+| `K2Node_NiagaraXxx` | Pure `// TODO[bpr-unsupported]` | "Niagara module-graph; manual port required." |
+| Anything else | Pure `// TODO[bpr-unsupported]` with the offending K2 class name | "Unrecognized BP node class. Manual port required; if it's a common pattern, add a treatment table entry." |
+
+`K2Node_SpawnActorFromClass` and `K2Node_AddComponent` are NOT in
+this table — Decompile recognizes them as structured BPIR calls that
+CppEmit lowers to real `GetWorld()->SpawnActor<T>(...)` /
+`NewObject + RegisterComponent` blocks. No TODO needed.
 
 Surface the sidecar to the user when they're working on a BP that
-includes any of these — it's the triage list for "what do I still
-need to do by hand?"
+includes any unsupported nodes — it's the triage list for "what do I
+still need to do by hand?"
 
 ## Round-trip identity
 

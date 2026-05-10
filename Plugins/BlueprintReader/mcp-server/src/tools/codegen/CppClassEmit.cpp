@@ -16,50 +16,188 @@ namespace {
 // ----- Parent class → header path table ---------------------------------
 // UE doesn't ship a programmatic "give me the header for this UClass"
 // API at the C++ level — the canonical mapping is convention-driven.
-// We bake in the common cases; unknowns get a TODO. Adding new entries
-// is a one-liner when users hit them.
+// This covers the BP parent classes that real projects extend in
+// practice. Unknowns fall back to a generic UObject include with a
+// note so the user can correct the path.
 const std::map<std::string, std::string>& ParentHeaderMap() {
     static const std::map<std::string, std::string> m = {
-        // Engine — most common.
+        // Engine — actor lineage.
         {"Object",            "UObject/Object.h"},
         {"UObject",           "UObject/Object.h"},
         {"Actor",             "GameFramework/Actor.h"},
         {"AActor",            "GameFramework/Actor.h"},
         {"Pawn",              "GameFramework/Pawn.h"},
         {"APawn",             "GameFramework/Pawn.h"},
+        {"DefaultPawn",       "GameFramework/DefaultPawn.h"},
+        {"ADefaultPawn",      "GameFramework/DefaultPawn.h"},
+        {"SpectatorPawn",     "GameFramework/SpectatorPawn.h"},
+        {"ASpectatorPawn",    "GameFramework/SpectatorPawn.h"},
         {"Character",         "GameFramework/Character.h"},
         {"ACharacter",        "GameFramework/Character.h"},
         {"Controller",        "GameFramework/Controller.h"},
         {"AController",       "GameFramework/Controller.h"},
+        {"AIController",      "AIController.h"},
+        {"AAIController",     "AIController.h"},
         {"PlayerController",  "GameFramework/PlayerController.h"},
         {"APlayerController", "GameFramework/PlayerController.h"},
         {"PlayerState",       "GameFramework/PlayerState.h"},
         {"APlayerState",      "GameFramework/PlayerState.h"},
+        {"PlayerCameraManager",  "Camera/PlayerCameraManager.h"},
+        {"APlayerCameraManager", "Camera/PlayerCameraManager.h"},
         {"GameMode",          "GameFramework/GameMode.h"},
         {"AGameMode",         "GameFramework/GameMode.h"},
         {"GameModeBase",      "GameFramework/GameModeBase.h"},
         {"AGameModeBase",     "GameFramework/GameModeBase.h"},
         {"GameState",         "GameFramework/GameState.h"},
         {"AGameState",        "GameFramework/GameState.h"},
+        {"GameStateBase",     "GameFramework/GameStateBase.h"},
+        {"AGameStateBase",    "GameFramework/GameStateBase.h"},
         {"HUD",               "GameFramework/HUD.h"},
         {"AHUD",              "GameFramework/HUD.h"},
         {"Info",              "GameFramework/Info.h"},
         {"AInfo",             "GameFramework/Info.h"},
-        // Components.
-        {"ActorComponent",       "Components/ActorComponent.h"},
-        {"UActorComponent",      "Components/ActorComponent.h"},
-        {"SceneComponent",       "Components/SceneComponent.h"},
-        {"USceneComponent",      "Components/SceneComponent.h"},
-        {"PrimitiveComponent",   "Components/PrimitiveComponent.h"},
-        {"UPrimitiveComponent",  "Components/PrimitiveComponent.h"},
-        {"StaticMeshComponent",  "Components/StaticMeshComponent.h"},
-        {"UStaticMeshComponent", "Components/StaticMeshComponent.h"},
+        {"WorldSettings",     "GameFramework/WorldSettings.h"},
+        {"AWorldSettings",    "GameFramework/WorldSettings.h"},
+        {"StaticMeshActor",   "Engine/StaticMeshActor.h"},
+        {"AStaticMeshActor",  "Engine/StaticMeshActor.h"},
+        // Volumes.
+        {"Volume",            "GameFramework/Volume.h"},
+        {"AVolume",           "GameFramework/Volume.h"},
+        {"BlockingVolume",    "Engine/BlockingVolume.h"},
+        {"ABlockingVolume",   "Engine/BlockingVolume.h"},
+        {"TriggerBox",        "Engine/TriggerBox.h"},
+        {"ATriggerBox",       "Engine/TriggerBox.h"},
+        {"TriggerSphere",     "Engine/TriggerSphere.h"},
+        {"ATriggerSphere",    "Engine/TriggerSphere.h"},
+        {"TriggerCapsule",    "Engine/TriggerCapsule.h"},
+        {"ATriggerCapsule",   "Engine/TriggerCapsule.h"},
+        {"TriggerVolume",     "Engine/TriggerVolume.h"},
+        {"ATriggerVolume",    "Engine/TriggerVolume.h"},
+        {"PostProcessVolume", "Engine/PostProcessVolume.h"},
+        {"APostProcessVolume","Engine/PostProcessVolume.h"},
+        // Lights.
+        {"Light",                  "Engine/Light.h"},
+        {"ALight",                 "Engine/Light.h"},
+        {"DirectionalLight",       "Engine/DirectionalLight.h"},
+        {"ADirectionalLight",      "Engine/DirectionalLight.h"},
+        {"PointLight",             "Engine/PointLight.h"},
+        {"APointLight",            "Engine/PointLight.h"},
+        {"SpotLight",              "Engine/SpotLight.h"},
+        {"ASpotLight",             "Engine/SpotLight.h"},
+        {"RectLight",              "Engine/RectLight.h"},
+        {"ARectLight",             "Engine/RectLight.h"},
+        {"SkyLight",               "Engine/SkyLight.h"},
+        {"ASkyLight",              "Engine/SkyLight.h"},
+        // Components — base.
+        {"ActorComponent",         "Components/ActorComponent.h"},
+        {"UActorComponent",        "Components/ActorComponent.h"},
+        {"SceneComponent",         "Components/SceneComponent.h"},
+        {"USceneComponent",        "Components/SceneComponent.h"},
+        {"PrimitiveComponent",     "Components/PrimitiveComponent.h"},
+        {"UPrimitiveComponent",    "Components/PrimitiveComponent.h"},
+        // Components — meshes.
+        {"StaticMeshComponent",                  "Components/StaticMeshComponent.h"},
+        {"UStaticMeshComponent",                 "Components/StaticMeshComponent.h"},
+        {"InstancedStaticMeshComponent",         "Components/InstancedStaticMeshComponent.h"},
+        {"UInstancedStaticMeshComponent",        "Components/InstancedStaticMeshComponent.h"},
+        {"HierarchicalInstancedStaticMeshComponent",
+                                                 "Components/HierarchicalInstancedStaticMeshComponent.h"},
+        {"UHierarchicalInstancedStaticMeshComponent",
+                                                 "Components/HierarchicalInstancedStaticMeshComponent.h"},
+        {"SkeletalMeshComponent",                "Components/SkeletalMeshComponent.h"},
+        {"USkeletalMeshComponent",               "Components/SkeletalMeshComponent.h"},
+        {"SkinnedMeshComponent",                 "Components/SkinnedMeshComponent.h"},
+        {"USkinnedMeshComponent",                "Components/SkinnedMeshComponent.h"},
+        // Components — collision shapes.
+        {"BoxComponent",      "Components/BoxComponent.h"},
+        {"UBoxComponent",     "Components/BoxComponent.h"},
+        {"SphereComponent",   "Components/SphereComponent.h"},
+        {"USphereComponent",  "Components/SphereComponent.h"},
+        {"CapsuleComponent",  "Components/CapsuleComponent.h"},
+        {"UCapsuleComponent", "Components/CapsuleComponent.h"},
+        {"ShapeComponent",    "Components/ShapeComponent.h"},
+        {"UShapeComponent",   "Components/ShapeComponent.h"},
+        // Components — camera + spring arm.
+        {"CameraComponent",     "Camera/CameraComponent.h"},
+        {"UCameraComponent",    "Camera/CameraComponent.h"},
+        {"SpringArmComponent",  "GameFramework/SpringArmComponent.h"},
+        {"USpringArmComponent", "GameFramework/SpringArmComponent.h"},
+        // Components — movement.
+        {"MovementComponent",          "GameFramework/MovementComponent.h"},
+        {"UMovementComponent",         "GameFramework/MovementComponent.h"},
+        {"PawnMovementComponent",      "GameFramework/PawnMovementComponent.h"},
+        {"UPawnMovementComponent",     "GameFramework/PawnMovementComponent.h"},
+        {"CharacterMovementComponent", "GameFramework/CharacterMovementComponent.h"},
+        {"UCharacterMovementComponent","GameFramework/CharacterMovementComponent.h"},
+        {"FloatingPawnMovement",       "GameFramework/FloatingPawnMovement.h"},
+        {"UFloatingPawnMovement",      "GameFramework/FloatingPawnMovement.h"},
+        {"ProjectileMovementComponent","GameFramework/ProjectileMovementComponent.h"},
+        {"UProjectileMovementComponent","GameFramework/ProjectileMovementComponent.h"},
+        {"RotatingMovementComponent",  "GameFramework/RotatingMovementComponent.h"},
+        {"URotatingMovementComponent", "GameFramework/RotatingMovementComponent.h"},
+        // Components — visual / utility.
+        {"ParticleSystemComponent",  "Particles/ParticleSystemComponent.h"},
+        {"UParticleSystemComponent", "Particles/ParticleSystemComponent.h"},
+        {"AudioComponent",   "Components/AudioComponent.h"},
+        {"UAudioComponent",  "Components/AudioComponent.h"},
+        {"WidgetComponent",  "Components/WidgetComponent.h"},
+        {"UWidgetComponent", "Components/WidgetComponent.h"},
+        {"BillboardComponent",  "Components/BillboardComponent.h"},
+        {"UBillboardComponent", "Components/BillboardComponent.h"},
+        {"ArrowComponent",    "Components/ArrowComponent.h"},
+        {"UArrowComponent",   "Components/ArrowComponent.h"},
+        {"DecalComponent",    "Components/DecalComponent.h"},
+        {"UDecalComponent",   "Components/DecalComponent.h"},
+        {"ChildActorComponent","Components/ChildActorComponent.h"},
+        {"UChildActorComponent","Components/ChildActorComponent.h"},
+        {"TimelineComponent", "Components/TimelineComponent.h"},
+        {"UTimelineComponent","Components/TimelineComponent.h"},
+        {"PostProcessComponent",  "Components/PostProcessComponent.h"},
+        {"UPostProcessComponent", "Components/PostProcessComponent.h"},
+        // Engine globals.
+        {"GameInstance",            "Engine/GameInstance.h"},
+        {"UGameInstance",           "Engine/GameInstance.h"},
+        {"LocalPlayer",             "Engine/LocalPlayer.h"},
+        {"ULocalPlayer",            "Engine/LocalPlayer.h"},
+        {"World",                   "Engine/World.h"},
+        {"UWorld",                  "Engine/World.h"},
+        {"Level",                   "Engine/Level.h"},
+        {"ULevel",                  "Engine/Level.h"},
+        // Subsystems.
+        {"Subsystem",                  "Subsystems/Subsystem.h"},
+        {"USubsystem",                 "Subsystems/Subsystem.h"},
+        {"GameInstanceSubsystem",      "Subsystems/GameInstanceSubsystem.h"},
+        {"UGameInstanceSubsystem",     "Subsystems/GameInstanceSubsystem.h"},
+        {"WorldSubsystem",             "Subsystems/WorldSubsystem.h"},
+        {"UWorldSubsystem",            "Subsystems/WorldSubsystem.h"},
+        {"LocalPlayerSubsystem",       "Subsystems/LocalPlayerSubsystem.h"},
+        {"ULocalPlayerSubsystem",      "Subsystems/LocalPlayerSubsystem.h"},
+        {"EngineSubsystem",            "Subsystems/EngineSubsystem.h"},
+        {"UEngineSubsystem",           "Subsystems/EngineSubsystem.h"},
+        // Save / data.
+        {"SaveGame",          "GameFramework/SaveGame.h"},
+        {"USaveGame",         "GameFramework/SaveGame.h"},
+        {"DataAsset",         "Engine/DataAsset.h"},
+        {"UDataAsset",        "Engine/DataAsset.h"},
+        {"PrimaryDataAsset",  "Engine/DataAsset.h"},
+        {"UPrimaryDataAsset", "Engine/DataAsset.h"},
+        {"DataTable",         "Engine/DataTable.h"},
+        {"UDataTable",        "Engine/DataTable.h"},
+        // BP libraries.
+        {"BlueprintFunctionLibrary",   "Kismet/BlueprintFunctionLibrary.h"},
+        {"UBlueprintFunctionLibrary",  "Kismet/BlueprintFunctionLibrary.h"},
+        {"BlueprintAsyncActionBase",   "Blueprint/BlueprintAsyncActionBase.h"},
+        {"UBlueprintAsyncActionBase",  "Blueprint/BlueprintAsyncActionBase.h"},
         // UI / Slate / UMG.
         {"UserWidget",        "Blueprint/UserWidget.h"},
         {"UUserWidget",       "Blueprint/UserWidget.h"},
         // Animation.
         {"AnimInstance",      "Animation/AnimInstance.h"},
         {"UAnimInstance",     "Animation/AnimInstance.h"},
+        {"AnimNotify",        "Animation/AnimNotifies/AnimNotify.h"},
+        {"UAnimNotify",       "Animation/AnimNotifies/AnimNotify.h"},
+        {"AnimNotifyState",   "Animation/AnimNotifies/AnimNotifyState.h"},
+        {"UAnimNotifyState",  "Animation/AnimNotifies/AnimNotifyState.h"},
     };
     return m;
 }
@@ -137,8 +275,16 @@ std::string ParentClassToHeader(std::string_view parentClassName) {
                           : std::string(parentClassName.substr(dot + 1));
     auto it = ParentHeaderMap().find(base);
     if (it != ParentHeaderMap().end()) return it->second;
-    // Unknown — return empty so caller emits a TODO.
-    return {};
+    // Unknown — best-guess as a project-local header. UE convention
+    // names headers after the class without the prefix
+    // (`AMyEnemy` → `MyEnemy.h`), so strip A/U if present.
+    std::string clean = base;
+    if (clean.size() >= 2 &&
+        (clean[0] == 'A' || clean[0] == 'U') &&
+        clean[1] >= 'A' && clean[1] <= 'Z') {
+        clean = clean.substr(1);
+    }
+    return clean + ".h";
 }
 
 std::string PrefixClassName(std::string_view bpName, std::string_view parentClass) {
@@ -358,12 +504,7 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     H << "#pragma once\n\n";
     H << "#include \"CoreMinimal.h\"\n";
 
-    std::string parentHeader = ParentClassToHeader(parentClass);
-    if (!parentHeader.empty()) {
-        H << "#include \"" << parentHeader << "\"\n";
-    } else {
-        H << "// TODO[bpr-include]: include the header for parent class '" << parentClass << "'.\n";
-    }
+    H << "#include \"" << ParentClassToHeader(parentClass) << "\"\n";
 
     // .generated.h must be the LAST include in any UCLASS-bearing header.
     H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
