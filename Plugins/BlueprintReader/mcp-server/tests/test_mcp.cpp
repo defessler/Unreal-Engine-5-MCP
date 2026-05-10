@@ -39,7 +39,7 @@ std::vector<json> ReadAllFrames(std::istream& in) {
 } // namespace
 
 TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
-    backends::MockBlueprintReader reader(test::FixturesDir());
+    auto reader = test::MakeMockReader();
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, reader);
 
@@ -126,7 +126,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 }
 
 TEST_CASE("tools/call surfaces unknown tool as MCP error envelope, not JSON-RPC error") {
-    backends::MockBlueprintReader reader(test::FixturesDir());
+    auto reader = test::MakeMockReader();
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, reader);
 
@@ -148,7 +148,7 @@ TEST_CASE("tools/call surfaces unknown tool as MCP error envelope, not JSON-RPC 
 }
 
 TEST_CASE("tools/call propagates handler error as MCP error envelope") {
-    backends::MockBlueprintReader reader(test::FixturesDir());
+    auto reader = test::MakeMockReader();
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, reader);
 

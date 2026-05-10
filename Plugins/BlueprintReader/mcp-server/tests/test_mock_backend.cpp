@@ -8,12 +8,12 @@
 using namespace bpr::backends;
 
 TEST_CASE("MockBlueprintReader loads all 3 fixtures") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     CHECK(reader.FixtureCount() == 3);
 }
 
 TEST_CASE("ListBlueprints filters by path prefix") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
 
     auto all = reader.ListBlueprints("/Game");
     CHECK(all.size() == 3);
@@ -28,7 +28,7 @@ TEST_CASE("ListBlueprints filters by path prefix") {
 }
 
 TEST_CASE("ReadBlueprint returns full metadata") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto md = reader.ReadBlueprint("/Game/AI/BP_Enemy");
     CHECK(md.ParentClass == "ACharacter");
     CHECK(md.Variables.size() == 3);
@@ -37,12 +37,12 @@ TEST_CASE("ReadBlueprint returns full metadata") {
 }
 
 TEST_CASE("ReadBlueprint throws AssetNotFound for missing path") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     CHECK_THROWS_AS(reader.ReadBlueprint("/Game/Nope"), AssetNotFound);
 }
 
 TEST_CASE("GetGraph returns the requested graph") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto g = reader.GetGraph("/Game/AI/BP_Enemy", "EventGraph");
     CHECK(g.Name == "EventGraph");
     CHECK(g.Type == "EventGraph");
@@ -51,13 +51,13 @@ TEST_CASE("GetGraph returns the requested graph") {
 }
 
 TEST_CASE("GetGraph throws on unknown graph name") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     CHECK_THROWS_AS(reader.GetGraph("/Game/AI/BP_Enemy", "NoSuchGraph"),
                     BlueprintReaderError);
 }
 
 TEST_CASE("GetFunction returns the function with locals + signature") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto fn = reader.GetFunction("/Game/Player/BP_PlayerController", "AddScore");
     CHECK(fn.Name == "AddScore");
     CHECK(fn.Inputs.size() == 1);
@@ -67,7 +67,7 @@ TEST_CASE("GetFunction returns the function with locals + signature") {
 }
 
 TEST_CASE("GetComponents returns SCS hierarchy from fixture") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto comps = reader.GetComponents("/Game/Items/BP_Pickup");
     REQUIRE(comps.size() == 3);
     bool sawRoot = false, sawMesh = false, sawHalo = false;
@@ -88,13 +88,13 @@ TEST_CASE("GetComponents returns SCS hierarchy from fixture") {
 }
 
 TEST_CASE("GetComponents returns empty array for fixtures with no components") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto comps = reader.GetComponents("/Game/AI/BP_Enemy");
     CHECK(comps.empty());
 }
 
 TEST_CASE("ListVariables matches metadata.Variables") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto vars = reader.ListVariables("/Game/AI/BP_Enemy");
     CHECK(vars.size() == 3);
     bool sawReplicated = false;
@@ -108,7 +108,7 @@ TEST_CASE("ListVariables matches metadata.Variables") {
 }
 
 TEST_CASE("FindNode searches both event graph and function graphs") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     auto branches = reader.FindNode("/Game/AI/BP_Enemy", "Branch");
     CHECK(branches.size() == 1);
     CHECK(branches[0].Class == "K2Node_IfThenElse");
@@ -122,7 +122,7 @@ TEST_CASE("FindNode searches both event graph and function graphs") {
 }
 
 TEST_CASE("FindNode kind filter narrows results") {
-    MockBlueprintReader reader(bpr::test::FixturesDir());
+    auto reader = bpr::test::MakeMockReader();
     // Empty query + kind-only should still match.
     auto allCalls = reader.FindNode("/Game/AI/BP_Enemy", "", "CallFunction");
     // BP_Enemy fixture has function_name in meta but its mock fixtures don't
