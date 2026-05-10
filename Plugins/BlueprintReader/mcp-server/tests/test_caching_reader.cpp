@@ -137,7 +137,7 @@ struct Fixture {
 
     Fixture() {
         auto inner = std::make_unique<CountingReader>(
-            MockBlueprintReader(test::FixturesDir()));
+            test::MakeMockReader());
         counter = inner.get();
         cache = std::make_unique<CachingBlueprintReader>(std::move(inner), 30s);
     }
@@ -232,7 +232,7 @@ TEST_CASE("Cache: write also invalidates ListBlueprints (modified_iso changes)")
 
 TEST_CASE("Cache: TTL expiry forces a refetch") {
     auto inner = std::make_unique<CountingReader>(
-        MockBlueprintReader(test::FixturesDir()));
+        test::MakeMockReader());
     auto* counter = inner.get();
     CachingBlueprintReader cache(std::move(inner), 100ms);
 
@@ -261,7 +261,7 @@ TEST_CASE("Cache: InvalidateAll drops everything") {
 }
 
 TEST_CASE("WrapWithCache(ttl=0) returns the inner reader unwrapped") {
-    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto inner = test::MakeMockReaderUnique();
     auto* rawInner = inner.get();
     auto wrapped = WrapWithCache(std::move(inner), 0s);
     // Pointer identity check — the wrapper should pass through.
@@ -269,7 +269,7 @@ TEST_CASE("WrapWithCache(ttl=0) returns the inner reader unwrapped") {
 }
 
 TEST_CASE("WrapWithCache(ttl>0) returns a CachingBlueprintReader") {
-    auto inner = std::make_unique<MockBlueprintReader>(test::FixturesDir());
+    auto inner = test::MakeMockReaderUnique();
     auto wrapped = WrapWithCache(std::move(inner), 30s);
     auto* asCache = dynamic_cast<CachingBlueprintReader*>(wrapped.get());
     CHECK(asCache != nullptr);
@@ -292,7 +292,7 @@ TEST_CASE("Cache C2: external mtime bump evicts a cached entry") {
     { std::ofstream(uasset) << "v1"; }
 
     auto inner = std::make_unique<CountingReader>(
-        MockBlueprintReader(test::FixturesDir()));
+        test::MakeMockReader());
     auto* counter = inner.get();
     CachingBlueprintReader cache(std::move(inner), 30s, uproject);
 
@@ -315,7 +315,7 @@ TEST_CASE("Cache C2: external mtime bump evicts a cached entry") {
 
 TEST_CASE("Cache C2: empty projectDir disables mtime checking") {
     auto inner = std::make_unique<CountingReader>(
-        MockBlueprintReader(test::FixturesDir()));
+        test::MakeMockReader());
     auto* counter = inner.get();
     // Empty projectDir means mtime stamping is skipped — entries serve
     // strictly by TTL like before.
