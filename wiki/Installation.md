@@ -37,7 +37,7 @@ cmake --build build --config Release
 build\tests\Release\bp-reader-tests.exe
 ```
 
-The `bp-reader-tests.exe` run takes ~3 s. 45 mock-backend cases pass; the
+The `bp-reader-tests.exe` run takes ~5 s. 332 mock-backend cases pass; the
 12 commandlet-backed cases skip without engine env vars set — that's
 expected.
 
