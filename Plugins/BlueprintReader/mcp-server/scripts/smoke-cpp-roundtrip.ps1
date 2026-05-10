@@ -1,4 +1,4 @@
-# Live smoke test for Phase 3 (C++ → BPIR via parse_cpp_function).
+# Live smoke test for C++ → BPIR via parse_cpp_function.
 # Closes the BP↔C++ loop end-to-end: take a hand-written C++ snippet,
 # parse it to BPIR, feed the BPIR to compile_function to materialize a
 # real BP function — confirming the parser → BPIR → compile_function

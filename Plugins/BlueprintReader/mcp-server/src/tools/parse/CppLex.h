@@ -1,14 +1,13 @@
 // CppLex — tokenizer for the controlled C++ subset CppParse accepts.
 //
-// Phase 3A of the BP↔C++ plan. Plan recommended libclang for v1; in
-// practice vendoring the LLVM binaries (~30-50MB) clashes with the
-// project's no-network/no-fetch third_party policy. The pragmatic
-// alternative: a hand-rolled lexer + parser scoped to round-trip what
-// compile_function / CppEmit produce. Upgrade to libclang stays a
-// clean future phase — replaces tools/parse/* without touching BPIR
-// or the rest of the pipeline.
+// Hand-rolled rather than libclang-based: vendoring LLVM binaries
+// (~30-50MB) clashes with the project's no-network/no-fetch third_party
+// policy. The hand-rolled lexer + parser are scoped to round-trip what
+// compile_function / CppEmit produce. Swapping to libclang stays a
+// clean future change — would replace tools/parse/* without touching
+// BPIR or the rest of the pipeline.
 //
-// Subset supported (v1):
+// Subset supported:
 //   - Keywords: if, else, for, while, switch, case, default, return,
 //     break, continue, true, false, nullptr, this, auto, const
 //   - Identifiers, qualified names (Foo::Bar)
@@ -18,7 +17,7 @@
 //   - Cast<T>(expr) — special token for DynamicCast
 //   - Comments (// and /* */) — skipped
 //
-// What v1 explicitly DOESN'T support (parser punts with a clear error):
+// Out of scope (parser throws with a clear error):
 //   - The C preprocessor (#include, #define, #ifdef)
 //   - UE macros (UCLASS, UPROPERTY, UFUNCTION) — they're decoration
 //     for the class scaffold, not function body content

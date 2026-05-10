@@ -21,13 +21,10 @@ deps (nlohmann_json, fmt, doctest) are vendored under
 
 ## 1. Build the MCP server
 
-> **Skipping ahead?** If you'll use the `commandlet` backend, building the
-> editor target in step 3 builds the MCP server too — the `BlueprintReader`
-> plugin wires `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` as a
-> `PreBuildStep`. You can clone, do steps 2 + 3, and the MCP exe lands at
-> `Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe` automatically. Use this
-> standalone path when you only want the **mock** backend, or to validate
-> the server before bringing UE into the loop.
+> Step 3 (build the editor target) also builds the MCP server via the
+> plugin's `PreBuildStep`. You can skip step 1 if you're going to do
+> step 3 anyway — the standalone path here is for **mock-only** runs
+> or validating the server before bringing UE into the loop.
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP

@@ -190,7 +190,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ----- decompile_function (Phase 1B of BP↔C++) ------------------------
+    // ----- decompile_function (BP graph → BPIR) ---------------------------
     // Walk a BP function's graph and reconstruct a structured BPIR AST
     // (see wiki/BPIR.md). Pure server-side; reuses get_function's data.
     {
@@ -256,18 +256,18 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ----- transpile_function (Phase 1C — BPIR → C++) ---------------------
+    // ----- transpile_function (BPIR → C++) --------------------------------
     {
         ToolDescriptor d;
         d.name = "transpile_function";
         d.description =
             "Convert a BP function to C++ source. Composes "
             "decompile_function (BP → BPIR) + C++ codegen (BPIR → "
-            "source). Phase 1 emits readable C++: real type names + "
-            "syntactically valid blocks, but UCLASS/UFUNCTION scaffolding "
-            "is left as comments — Phase 2 lands the compilable mode "
-            "with full `.h`/`.cpp` generation. Unsupported nodes appear "
-            "as `// TODO[bpr-unsupported]` comments + a `notes` array "
+            "source). Default `mode=readable` emits annotated C++ "
+            "(type names + valid blocks, UCLASS/UFUNCTION shown as "
+            "comments); for compilable .h/.cpp pairs, use "
+            "`transpile_blueprint`. Unsupported nodes appear as "
+            "`// TODO[bpr-unsupported]` comments + a `notes` array "
             "the agent can iterate over.";
         d.input_schema = {
             {"type","object"},
@@ -276,10 +276,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                 {"function_name", {{"type","string"}}},
                 {"target_lang",   {{"type","string"},
                                    {"enum", nlohmann::json::array({"cpp"})},
-                                   {"description","Target language. Phase 1 ships C++; future: lua, python, js."}}},
+                                   {"description","Target language. Currently C++ only; the BPIR pivot is designed to extend to Lua / Python / JS later."}}},
                 {"mode",          {{"type","string"},
                                    {"enum", nlohmann::json::array({"readable","compilable"})},
-                                   {"description","\"readable\" (default) emits annotated C++ for review; \"compilable\" (Phase 2) emits drop-in .h/.cpp pairs."}}},
+                                   {"description","\"readable\" (default) emits annotated C++ for review; \"compilable\" emits drop-in .h/.cpp pairs (use transpile_blueprint for whole-class output)."}}},
                 {"use_operator_aliases", {{"type","boolean"},
                                           {"description","Render +, ==, && etc. instead of UKismetMathLibrary calls. Default true."}}},
             }},
@@ -292,7 +292,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             std::string mode  = OptString(args, "mode", "readable");
             if (lang != "cpp") {
                 throw std::invalid_argument(fmt::format(
-                    "transpile_function: target_lang=\"{}\" not yet supported; only \"cpp\" is implemented in Phase 1.",
+                    "transpile_function: target_lang=\"{}\" not yet supported; only \"cpp\" is implemented today.",
                     lang));
             }
             CppEmitOptions opts;
@@ -316,7 +316,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ----- transpile_blueprint (Phase 2A — full UCLASS .h/.cpp) -----------
+    // ----- transpile_blueprint (whole-class .h/.cpp) ----------------------
     {
         ToolDescriptor d;
         d.name = "transpile_blueprint";
@@ -357,7 +357,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             std::string lang  = OptString(args, "target_lang", "cpp");
             if (lang != "cpp") {
                 throw std::invalid_argument(fmt::format(
-                    "transpile_blueprint: target_lang=\"{}\" not yet supported; only \"cpp\" in Phase 2.", lang));
+                    "transpile_blueprint: target_lang=\"{}\" not yet supported; only \"cpp\" today.", lang));
             }
             CppClassEmitOptions opts;
             opts.moduleApiMacro    = OptString(args, "module_api_macro", "");
@@ -401,7 +401,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ----- write_generated_source (Phase 2C) -------------------------------
+    // ----- write_generated_source -----------------------------------------
     // Write a transpiled source file (.h or .cpp) into the project's
     // Source/ tree. Path-validated by the plugin (must start with
     // <ProjectDir>/Source/) — no path-traversal escape. Use after
@@ -445,7 +445,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ----- parse_cpp_function (Phase 3 — C++ → BPIR) ----------------------
+    // ----- parse_cpp_function (C++ → BPIR) --------------------------------
     // Closes the BP↔C++ loop: source language → BPIR → BP graph (via
     // compile_function). Pairs with transpile_function (BPIR → C++) for a
     // round-trip identity on the patterns CppEmit produces. Accepts both
@@ -700,7 +700,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
-    // ===== Write tools (Phase 1.5) =========================================
+    // ===== Write tools =====================================================
 
     // ----- create_blueprint (A3) -------------------------------------------
     {

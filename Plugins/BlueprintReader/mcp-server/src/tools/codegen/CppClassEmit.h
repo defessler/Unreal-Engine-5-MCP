@@ -1,7 +1,7 @@
 // CppClassEmit — full UCLASS .h/.cpp generation from a BPIR class doc.
 //
-// Phase 2A of the BP↔C++ plan. Layers on top of CppEmit (function-body
-// codegen) by adding the UCLASS scaffolding the editor's UBT requires:
+// Layers on top of CppEmit (function-body codegen) by adding the UCLASS
+// scaffolding UBT requires:
 //   - #pragma once + matching .generated.h include
 //   - UCLASS() macro with inferred specifiers
 //   - GENERATED_BODY()
@@ -13,21 +13,20 @@
 //   - .cpp file with function bodies + GetLifetimeReplicatedProps()
 //     when any variable is Replicated
 //
-// What v1 generates:
-//   - Class declared as `<Prefix><Name>_Generated : public <ParentClass>`
-//     (so "BP_Enemy" → "ABP_Enemy_Generated" with parent AActor).
-//   - Parent class header inferred from a small lookup table for
-//     well-known UE base classes; unknown parents emit a TODO include.
+// Class naming: `<Prefix><Name>_Generated : public <ParentClass>`
+// (so "BP_Enemy" → "ABP_Enemy_Generated" with parent AActor). Parent
+// class header inferred from a lookup table for well-known UE base
+// classes; unknown parents emit a TODO include.
 //
-// What v1 punts on (deliberately):
-//   - SCS component initialization in the constructor (timeline /
-//     subobject creation). 2B's unsupported-node treatment will surface
-//     these as TODO + sidecar entries.
+// Deliberate gaps (surface as TODO + sidecar entries via the
+// unsupported-node treatment table):
+//   - SCS component initialization in the constructor (timelines,
+//     CreateDefaultSubobject calls).
 //   - Per-variable CDO defaults set in the editor's Class Defaults
-//     panel (we emit BPVariable.DefaultValue inline as the field's
-//     initializer; complex defaults get a TODO).
-//   - Native event signatures (BP overrides of ReceiveBeginPlay etc.
-//     becoming `virtual void BeginPlay() override;`). Future work.
+//     panel (we emit BPVariable.DefaultValue inline; complex defaults
+//     get a TODO).
+//   - Native event signatures — BP overrides of ReceiveBeginPlay don't
+//     auto-rewrite into `virtual void BeginPlay() override;`.
 
 #pragma once
 
@@ -71,7 +70,7 @@ struct CppClassEmitResult {
 CppClassEmitResult EmitCppClass(const nlohmann::json& bpirClassDoc,
                                 CppClassEmitOptions opts = {});
 
-// ----- Utilities exposed for tests + Phase 2C -----------------------------
+// ----- Utilities exposed for tests + write_generated_source ---------------
 
 // Map a parent class short name (e.g. "Actor", "ACharacter") to its
 // header path ("GameFramework/Actor.h"). Returns empty for unknowns;
