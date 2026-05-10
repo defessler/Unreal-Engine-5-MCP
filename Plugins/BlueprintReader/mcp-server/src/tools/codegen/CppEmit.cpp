@@ -257,6 +257,16 @@ struct Emitter {
                 }
             }
         }
+        // Sentinel-name lowering: Decompile emits structured calls for
+        // a few K2 nodes that don't have a 1:1 BP function name. We
+        // render them as the actual UE-side syntax here so the output
+        // compiles without manual fixups.
+        if (fnName == "__bpr_spawn_actor_from_class") {
+            return EmitSpawnActorFromClass(e);
+        }
+        if (fnName == "__bpr_add_component") {
+            return EmitAddComponent(e);
+        }
         // Default: render as Foo(a, b, c). If the name is qualified
         // (Owner::Func), keep the qualifier — the agent / user resolves
         // include + scope.
@@ -270,6 +280,67 @@ struct Emitter {
             }
         }
         return fmt::format("{}({})", fnName, args);
+    }
+
+    // SpawnActorFromClass → `GetWorld()->SpawnActor<AActor>(Class,
+    // SpawnTransform, SpawnParameters)`. We pull whichever input pins
+    // are present from `args`; missing pins fall back to UE defaults.
+    // Class is the only required arg — without it the call is
+    // ill-formed and we surface that as a TODO comment so the user can
+    // fix.
+    std::string EmitSpawnActorFromClass(const nlohmann::json& e) {
+        auto a = (e.contains("args") && e["args"].is_object())
+                     ? e["args"] : nlohmann::json::object();
+        std::string clsExpr  = a.contains("Class")
+                                   ? EmitExpr(a["Class"]) : std::string("nullptr");
+        std::string xform    = a.contains("SpawnTransform")
+                                   ? EmitExpr(a["SpawnTransform"])
+                                   : std::string("FTransform::Identity");
+        // Optional: Owner / Instigator wrapped in SpawnParameters.
+        std::string owner    = a.contains("Owner")      ? EmitExpr(a["Owner"])      : "";
+        std::string instig   = a.contains("Instigator") ? EmitExpr(a["Instigator"]) : "";
+        std::string collison = a.contains("CollisionHandlingOverride")
+                                   ? EmitExpr(a["CollisionHandlingOverride"]) : "";
+        if (owner.empty() && instig.empty() && collison.empty()) {
+            return fmt::format(
+                "GetWorld()->SpawnActor<AActor>({}, {})", clsExpr, xform);
+        }
+        // With SpawnParameters: emit a ([&] { ... }()) immediately-invoked
+        // lambda so the call slots into a single expression position.
+        std::string params;
+        if (!owner.empty())    params += fmt::format("    p.Owner = {};\n", owner);
+        if (!instig.empty())   params += fmt::format("    p.Instigator = {};\n", instig);
+        if (!collison.empty()) params += fmt::format(
+            "    p.SpawnCollisionHandlingOverride = {};\n", collison);
+        return fmt::format(
+            "[&]{{ FActorSpawnParameters p;\n{}    return GetWorld()->SpawnActor<AActor>({}, {}, p); }}()",
+            params, clsExpr, xform);
+    }
+
+    // AddComponent → `NewObject<UActorComponent>(this) + RegisterComponent`.
+    // Decompile carries TemplateName / RelativeTransform on the args;
+    // we render a small block that creates + attaches + registers.
+    // Returns the component pointer so the call slots into an
+    // expression position.
+    std::string EmitAddComponent(const nlohmann::json& e) {
+        auto a = (e.contains("args") && e["args"].is_object())
+                     ? e["args"] : nlohmann::json::object();
+        std::string xform = a.contains("RelativeTransform")
+                                ? EmitExpr(a["RelativeTransform"])
+                                : std::string("FTransform::Identity");
+        std::string templateName = a.contains("TemplateName")
+                                       ? EmitExpr(a["TemplateName"])
+                                       : std::string("NAME_None");
+        // The template type isn't carried as a pin (it's stored on the
+        // node as a class reference). Leave as UActorComponent — the
+        // agent retypes when copying into real source.
+        return fmt::format(
+            "[&]{{ auto* Comp = NewObject<UActorComponent>(this, {});\n"
+            "    if (auto* Scene = Cast<USceneComponent>(Comp)) {{\n"
+            "        Scene->SetRelativeTransform({});\n"
+            "    }}\n"
+            "    Comp->RegisterComponent();\n"
+            "    return Comp; }}()", templateName, xform);
     }
 
     // ----- Statement emitters -------------------------------------------

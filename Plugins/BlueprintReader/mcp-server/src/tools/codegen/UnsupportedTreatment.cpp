@@ -37,19 +37,6 @@ const std::vector<Treatment>& Table() {
          "to the class, configure its UCurveFloat tracks, and call "
          "PlayFromStart() at this point in the function body."},
 
-        // ----- SpawnActor variants -----
-        // Best-effort: emit a SpawnActor<> call. The agent verifies
-        // SpawnParameters semantics + pin defaults before/after.
-        {"K2Node_SpawnActorFromClass",
-         UnsupportedClassification::Kind::Approximation,
-         "// TODO[bpr-spawn]: verify SpawnParameters from BP node {guid}.\n"
-         "// AActor* Spawned = GetWorld()->SpawnActor<AActor>(/*Class=*/nullptr, "
-         "FTransform::Identity);\n",
-         "BP SpawnActorFromClass uses 'pre-spawn' pin defaults that aren't "
-         "directly portable. Translate the input pins (Class, Transform, Owner, "
-         "Instigator) into FActorSpawnParameters before calling SpawnActor<>(); "
-         "5.x deprecated bNoCollisionFail in favor of SpawnCollisionHandlingOverride."},
-
         // ----- Latent actions / async -----
         {"K2Node_LatentAbilityCall",
          UnsupportedClassification::Kind::TodoComment,
@@ -79,16 +66,6 @@ const std::vector<Treatment>& Table() {
          "Niagara module-graph node. Niagara modules are authored in "
          "their own graph editor; not portable to actor-side C++."},
 
-        // ----- AddComponent -----
-        {"K2Node_AddComponent",
-         UnsupportedClassification::Kind::Approximation,
-         "// TODO[bpr-component]: configure the component spawned by node {guid}.\n"
-         "// auto* Comp = NewObject<UActorComponent>(this);\n"
-         "// Comp->RegisterComponent();\n",
-         "BP AddComponent uses the SCS hierarchy. Translate to NewObject + "
-         "RegisterComponent + AttachToComponent. Move SCS subobjects (e.g. "
-         "static-mesh children created in the BP class defaults panel) into "
-         "the constructor's CreateDefaultSubobject calls."},
     };
     return t;
 }

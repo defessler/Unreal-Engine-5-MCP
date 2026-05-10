@@ -180,6 +180,56 @@ TEST_CASE("Codegen: unsupported emits TODO comment + populates notes") {
     CHECK(out.notes[0]["treatment"] == "todo_comment");
 }
 
+// ===== Sentinel-call lowering =============================================
+//
+// Decompile recognizes a few K2 nodes (SpawnActorFromClass,
+// AddComponent) as structured BPIR calls — sentinel-named so CppEmit
+// can render them as real UE-side syntax instead of routing them
+// through the unsupported-node TODO path. These tests pin the
+// rendering for the patterns the user gets when transpiling those
+// node classes.
+
+TEST_CASE("Codegen: __bpr_spawn_actor_from_class without optional pins → simple SpawnActor<T>") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Spawned"}, {"to",
+             json{{"call", "__bpr_spawn_actor_from_class"},
+                  {"args", json{
+                      {"Class", json{{"var", "EnemyClass"}}},
+                      {"SpawnTransform", json{{"var", "Xform"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "GetWorld()->SpawnActor<AActor>(EnemyClass, Xform)"));
+    // No TODO — we have the values we need.
+    CHECK_FALSE(Contains(out.source, "TODO[bpr-spawn]"));
+}
+
+TEST_CASE("Codegen: __bpr_spawn_actor_from_class with Owner → wraps in FActorSpawnParameters") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Spawned"}, {"to",
+             json{{"call", "__bpr_spawn_actor_from_class"},
+                  {"args", json{
+                      {"Class", json{{"var", "EnemyClass"}}},
+                      {"SpawnTransform", json{{"var", "Xform"}}},
+                      {"Owner", json{{"var", "this_actor"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "FActorSpawnParameters p;"));
+    CHECK(Contains(out.source, "p.Owner = this_actor;"));
+    CHECK(Contains(out.source, "GetWorld()->SpawnActor<AActor>(EnemyClass, Xform, p)"));
+}
+
+TEST_CASE("Codegen: __bpr_add_component renders NewObject + RegisterComponent block") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Comp"}, {"to",
+             json{{"call", "__bpr_add_component"},
+                  {"args", json{
+                      {"TemplateName", json{{"var", "MyComponentName"}}},
+                      {"RelativeTransform", json{{"var", "Xform"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "NewObject<UActorComponent>(this, MyComponentName)"));
+    CHECK(Contains(out.source, "Scene->SetRelativeTransform(Xform)"));
+    CHECK(Contains(out.source, "Comp->RegisterComponent()"));
+    CHECK_FALSE(Contains(out.source, "TODO[bpr-component]"));
+}
+
 // ===== Expression codegen ==================================================
 
 TEST_CASE("Codegen: operator alias renders as infix") {

@@ -511,6 +511,41 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         return r;
     }
 
+    // SpawnActorFromClass — emit a structured BPIR call; CppEmit
+    // recognizes the sentinel and renders as
+    // `GetWorld()->SpawnActor<T>(...)`. The args carry Class,
+    // SpawnTransform, CollisionHandlingOverride, Owner, Instigator
+    // straight from the BP node's input pins, so the generated C++
+    // doesn't need a TODO — every value is preserved.
+    if (n.Class.find("K2Node_SpawnActorFromClass") != std::string::npos) {
+        nlohmann::json args = nlohmann::json::object();
+        for (const auto& p : n.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            args[p.Name] = BuildExpression(w, n, p);
+        }
+        nlohmann::json stmt = {{"call", "__bpr_spawn_actor_from_class"}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        r.statement = std::move(stmt);
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
+    // AddComponent — same shape as SpawnActorFromClass. Carries the
+    // template type + transform; CppEmit emits a NewObject +
+    // RegisterComponent + AttachToComponent block.
+    if (n.Class.find("K2Node_AddComponent") != std::string::npos) {
+        nlohmann::json args = nlohmann::json::object();
+        for (const auto& p : n.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            args[p.Name] = BuildExpression(w, n, p);
+        }
+        nlohmann::json stmt = {{"call", "__bpr_add_component"}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        r.statement = std::move(stmt);
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
     // CallFunction (statement form — return value, if any, is unused).
     if (n.Class.find("K2Node_CallFunction") != std::string::npos) {
         std::string fnName, ownerCl;
