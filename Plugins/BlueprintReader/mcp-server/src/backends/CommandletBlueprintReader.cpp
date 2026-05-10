@@ -1377,6 +1377,193 @@ CommandletBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return out;
 }
 
+// ----- Live editor ops ----------------------------------------------------
+
+IBlueprintReader::ConsoleCommandResult
+CommandletBlueprintReader::ConsoleCommand(std::string_view command) {
+    auto j = RunOp({L"-Op=ConsoleCommand",
+                    L"-Command=" + Widen(command)});
+    ConsoleCommandResult out;
+    if (j.is_object()) out.output = j.value("output", std::string{});
+    return out;
+}
+
+IBlueprintReader::CVarValue
+CommandletBlueprintReader::GetCVar(std::string_view name) {
+    auto j = RunOp({L"-Op=GetCVar", L"-Name=" + Widen(name)});
+    CVarValue out;
+    out.name = std::string(name);
+    if (j.is_object()) {
+        out.value  = j.value("value",  std::string{});
+        out.help   = j.value("help",   std::string{});
+        out.exists = j.value("exists", false);
+    }
+    return out;
+}
+
+IBlueprintReader::CVarValue
+CommandletBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
+    auto j = RunOp({L"-Op=SetCVar",
+                    L"-Name="  + Widen(name),
+                    L"-Value=" + Widen(value)});
+    CVarValue out;
+    out.name = std::string(name);
+    if (j.is_object()) {
+        out.value  = j.value("value",  std::string{});
+        out.help   = j.value("help",   std::string{});
+        out.exists = j.value("exists", false);
+    }
+    return out;
+}
+
+IBlueprintReader::PieResult
+CommandletBlueprintReader::PieStart(std::string_view mode) {
+    std::vector<std::wstring> args = {L"-Op=PieStart"};
+    if (!mode.empty()) args.push_back(L"-Mode=" + Widen(mode));
+    auto j = RunOp(args);
+    PieResult out;
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.mode    = j.value("mode",    std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::PieResult CommandletBlueprintReader::PieStop() {
+    auto j = RunOp({L"-Op=PieStop"});
+    PieResult out;
+    if (j.is_object()) out.stopped = j.value("stopped", false);
+    return out;
+}
+
+IBlueprintReader::LiveCodingResult
+CommandletBlueprintReader::LiveCodingCompile() {
+    auto j = RunOp({L"-Op=LiveCodingCompile"});
+    LiveCodingResult out;
+    if (j.is_object()) {
+        out.queued  = j.value("queued",  false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SelectionResult
+CommandletBlueprintReader::GetSelectedActors() {
+    auto j = RunOp({L"-Op=GetSelectedActors"});
+    SelectionResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::SelectionResult
+CommandletBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
+                                        bool replace) {
+    // Names are passed as a comma-joined list. None of them should
+    // contain commas (UE actor names can't), so this is safe.
+    std::wstring joined;
+    for (std::size_t i = 0; i < actorNames.size(); ++i) {
+        if (i) joined += L",";
+        joined += Widen(actorNames[i]);
+    }
+    std::vector<std::wstring> args = {L"-Op=SetSelection",
+                                       L"-Names=" + joined};
+    if (!replace) args.push_back(L"-Add");
+    auto j = RunOp(args);
+    SelectionResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) {
+                if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::SpawnActorResult
+CommandletBlueprintReader::SpawnActor(std::string_view classPath,
+    double locX, double locY, double locZ,
+    double rotPitch, double rotYaw, double rotRoll,
+    double scaleX, double scaleY, double scaleZ) {
+    auto j = RunOp({
+        L"-Op=SpawnActor",
+        L"-Class=" + Widen(classPath),
+        L"-LocX=" + std::to_wstring(locX),
+        L"-LocY=" + std::to_wstring(locY),
+        L"-LocZ=" + std::to_wstring(locZ),
+        L"-RotPitch=" + std::to_wstring(rotPitch),
+        L"-RotYaw="   + std::to_wstring(rotYaw),
+        L"-RotRoll="  + std::to_wstring(rotRoll),
+        L"-ScaleX=" + std::to_wstring(scaleX),
+        L"-ScaleY=" + std::to_wstring(scaleY),
+        L"-ScaleZ=" + std::to_wstring(scaleZ),
+    });
+    SpawnActorResult out;
+    if (j.is_object()) {
+        out.actorName  = j.value("actor_name",  std::string{});
+        out.actorLabel = j.value("actor_label", std::string{});
+    }
+    return out;
+}
+
+void CommandletBlueprintReader::SetActorTransform(std::string_view actorName,
+    double locX, double locY, double locZ,
+    double rotPitch, double rotYaw, double rotRoll,
+    double scaleX, double scaleY, double scaleZ) {
+    (void)RunOp({
+        L"-Op=SetActorTransform",
+        L"-Name=" + Widen(actorName),
+        L"-LocX=" + std::to_wstring(locX),
+        L"-LocY=" + std::to_wstring(locY),
+        L"-LocZ=" + std::to_wstring(locZ),
+        L"-RotPitch=" + std::to_wstring(rotPitch),
+        L"-RotYaw="   + std::to_wstring(rotYaw),
+        L"-RotRoll="  + std::to_wstring(rotRoll),
+        L"-ScaleX=" + std::to_wstring(scaleX),
+        L"-ScaleY=" + std::to_wstring(scaleY),
+        L"-ScaleZ=" + std::to_wstring(scaleZ),
+    });
+}
+
+IBlueprintReader::DeleteActorResult
+CommandletBlueprintReader::DeleteActor(std::string_view actorName) {
+    auto j = RunOp({L"-Op=DeleteActor", L"-Name=" + Widen(actorName)});
+    DeleteActorResult out;
+    if (j.is_object()) out.deleted = j.value("deleted", false);
+    return out;
+}
+
+IBlueprintReader::OutputLogResult
+CommandletBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
+    std::vector<std::wstring> args = {L"-Op=ReadOutputLog",
+                                       L"-Limit=" + std::to_wstring(limit)};
+    if (!minSeverity.empty()) {
+        args.push_back(L"-MinSeverity=" + Widen(minSeverity));
+    }
+    auto j = RunOp(args);
+    OutputLogResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("entries"); it != j.end() && it->is_array()) {
+            for (const auto& e : *it) {
+                if (!e.is_object()) continue;
+                LogEntry entry;
+                entry.severity  = e.value("severity",  std::string{});
+                entry.category  = e.value("category",  std::string{});
+                entry.message   = e.value("message",   std::string{});
+                entry.timestamp = e.value("timestamp", std::string{});
+                out.entries.push_back(std::move(entry));
+            }
+        }
+    }
+    return out;
+}
+
 // ----- Batch sentinels (A1) -------------------------------------------------
 void CommandletBlueprintReader::BeginBatch() {
     std::vector<std::wstring> args;
