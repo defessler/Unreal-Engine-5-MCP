@@ -2244,6 +2244,35 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- run_automation_tests ------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "run_automation_tests";
+        d.description =
+            "Trigger UE's automation test framework. `pattern` is the "
+            "test-name wildcard (e.g. `BlueprintReader.*`, `*Smoke*`); empty "
+            "means every registered test. The run is async — this tool "
+            "kicks it off and returns. Use `read_output_log` to follow "
+            "results, or check `Saved/Automation/index.json` after for the "
+            "structured report.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"pattern", {{"type","string"},
+                             {"description","Test-name wildcard. Empty = all tests."}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string pattern = OptString(args, "pattern", "");
+            auto r = reader.RunAutomationTests(pattern);
+            return nlohmann::json{
+                {"ok", true},
+                {"started", r.started},
+                {"message", r.message},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.

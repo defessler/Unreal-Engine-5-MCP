@@ -148,6 +148,7 @@ public:
         double scaleX, double scaleY, double scaleZ) override;
     DeleteActorResult DeleteActor(std::string_view actorName) override;
     OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
+    AutomationRunResult RunAutomationTests(std::string_view pattern) override;
 
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries

@@ -217,6 +217,11 @@ IBlueprintReader::DeleteActorResult
 ReadOnlyBlueprintReader::DeleteActor(std::string_view) { Reject("delete_actor"); }
 IBlueprintReader::PieResult ReadOnlyBlueprintReader::PieStop() { Reject("pie_stop"); }
 
+IBlueprintReader::AutomationRunResult
+ReadOnlyBlueprintReader::RunAutomationTests(std::string_view pattern) {
+    return inner_->RunAutomationTests(pattern);
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {

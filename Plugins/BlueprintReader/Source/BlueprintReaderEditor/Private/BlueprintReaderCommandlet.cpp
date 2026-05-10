@@ -138,6 +138,8 @@ namespace
 		SetActorTransform,
 		DeleteActor,
 		ReadOutputLog,
+		// Automation tests.
+		RunAutomationTests,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -193,6 +195,7 @@ namespace
 		if (OpStr.Equals(TEXT("SetActorTransform"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetActorTransform; return true; }
 		if (OpStr.Equals(TEXT("DeleteActor"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteActor; return true; }
 		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
+		if (OpStr.Equals(TEXT("RunAutomationTests"), ESearchCase::IgnoreCase))  { OutOp = EOp::RunAutomationTests; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -1456,6 +1459,38 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Pattern;
+		FParse::Value(*Params, TEXT("Pattern="), Pattern);
+
+		// Use the console-exec route to kick off automation runs. UE's
+		// "Automation" exec dispatches to FAutomationTestFramework, which
+		// runs asynchronously on the game thread. Results land in the
+		// output log + Saved/Automation/.
+		FString Cmd = TEXT("Automation RunTests ");
+		Cmd += Pattern.IsEmpty() ? TEXT("*") : Pattern;
+		bool bStarted = false;
+		FString Message;
+		if (GEngine)
+		{
+			FStringOutputDevice Capture;
+			GEngine->Exec(GetEditorWorldOrNull(), *Cmd, Capture);
+			Message = Capture;
+			bStarted = true;
+		}
+		else
+		{
+			Message = TEXT("GEngine is null; can't dispatch automation tests");
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("started"), bStarted);
+		Obj->SetStringField(TEXT("message"), Message);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunReadOutputLogOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		// Output-log capture requires a custom FOutputDevice registered at
@@ -2476,6 +2511,7 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::SetActorTransform)  return RunSetActorTransformOp(Params, OutputPath, bPretty);
 	if (Op == EOp::DeleteActor)        return RunDeleteActorOp(Params, OutputPath, bPretty);
 	if (Op == EOp::ReadOutputLog)      return RunReadOutputLogOp(Params, OutputPath, bPretty);
+	if (Op == EOp::RunAutomationTests) return RunRunAutomationTestsOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
