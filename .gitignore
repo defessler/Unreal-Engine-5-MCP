@@ -35,6 +35,9 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
-# Claude Code session/agent state — ignore everything except shared skills.
+# Claude Code session/local state — ignore everything except shared
+# skills + agent definitions, which ship with the repo so any cloner
+# gets the same fine-grained MCP usage guidance.
 .claude/*
 !.claude/skills/
+!.claude/agents/
