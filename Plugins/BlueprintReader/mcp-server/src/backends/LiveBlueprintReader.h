@@ -141,6 +141,9 @@ public:
     DeleteActorResult DeleteActor(std::string_view actorName) override;
     OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
 
+    // ----- Automation tests ---------------------------------------------
+    AutomationRunResult RunAutomationTests(std::string_view pattern) override;
+
     // ----- batch sentinels ------------------------------------------
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;
