@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-77 tools across 10 categories. Don't memorize the list — call
+91 tools across 13 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -51,6 +51,17 @@ the same tool surface regardless of client.
 - **UMG widgets** (5): `read_widget_blueprint`, `add_widget`,
   `set_widget_property`, `bind_widget_event`,
   `compile_widget_blueprint`. Author UWidgetBlueprint trees.
+- **Behavior Trees** (5): `list_behavior_trees`,
+  `read_behavior_tree`, `add_bt_node`, `set_bt_node_property`,
+  `compile_behavior_tree`. Walk + scaffold UBehaviorTree
+  composite/decorator/service/task nodes.
+- **DataAssets** (4): `list_data_assets`, `read_data_asset`,
+  `create_data_asset`, `set_data_asset_property`. Pure
+  data-container CRUD across any UDataAsset subclass.
+- **StateTree** (5): `list_state_trees`, `read_state_tree`,
+  `add_state_tree_state`, `set_state_tree_transition`,
+  `compile_state_tree`. Inspect + scaffold (full state authoring
+  still needs StateTreeEditor).
 - **Discoverability + meta** (3): `list_node_kinds`,
   `list_pin_categories`, `shutdown_daemon`.
 

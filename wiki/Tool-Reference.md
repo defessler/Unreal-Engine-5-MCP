@@ -1,10 +1,10 @@
 # Tool Reference
 
-77 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
-content-browser, 12 live editor, 1 automation, 7 material, 5 widget.
-All use snake_case JSON keys; nullable string fields emit `null`;
-`BPNode.meta` is a real nested object (not a string-of-JSON). Wire
-shapes are pinned in
+91 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
+content-browser, 12 live editor, 1 automation, 7 material, 5 widget,
+5 behavior tree, 4 data asset, 5 state tree. All use snake_case JSON
+keys; nullable string fields emit `null`; `BPNode.meta` is a real
+nested object (not a string-of-JSON). Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Type shorthand (write tools)
@@ -1144,6 +1144,182 @@ means compile failed; check `read_output_log` for errors.
 
 ```json
 { "asset_path": "/Game/UI/WBP_HUD" }
+```
+
+## Behavior Tree tools
+
+UBehaviorTree assets host a root `UBTCompositeNode` plus
+descendant tasks / decorators / services. Node ids are the
+runtime UObject names — stable within the tree. Full editor-side
+attach for new nodes still uses the BT editor (EdGraph wiring);
+the tools below scaffold the runtime objects + properties.
+
+### `list_behavior_trees`
+List UBehaviorTree assets under a content path (default `/Game`).
+
+```json
+{ "path": "/Game/AI" }
+```
+
+### `read_behavior_tree`
+Walk a tree. Returns every node (id, class, kind, parent) and the
+root node id. `node_kind` is `composite` / `task` / `decorator` /
+`service` / `unknown`.
+
+```json
+// request
+{ "asset_path": "/Game/AI/BT_Enemy" }
+// response (abbreviated)
+{
+  "ok": true,
+  "asset_path": "/Game/AI/BT_Enemy",
+  "root_node_id": "BTComposite_Selector_0",
+  "nodes": [
+    { "node_id": "BTComposite_Selector_0", "class": "BTComposite_Selector",
+      "node_kind": "composite", "parent": "" },
+    { "node_id": "BTTask_MoveTo_0", "class": "BTTask_MoveTo",
+      "node_kind": "task", "parent": "BTComposite_Selector_0" }
+  ]
+}
+```
+
+### `add_bt_node`
+Scaffold a new node. `node_kind` is `composite` / `decorator` /
+`service` / `task`; `node_class` is the short class name (e.g.
+`BTComposite_Selector`, `BTTask_MoveTo`,
+`BTDecorator_Blackboard`). Empty `parent_node_id` becomes the
+root composite (only allowed on an empty tree).
+
+```json
+{ "asset_path": "/Game/AI/BT_Enemy",
+  "parent_node_id": "BTComposite_Selector_0",
+  "node_kind": "task",
+  "node_class": "BTTask_MoveTo" }
+```
+
+### `set_bt_node_property`
+Set a UPROPERTY on a node (e.g. MoveTo's `AcceptableRadius`,
+Blackboard decorator's `KeyName`). `value` is the property's text
+form.
+
+```json
+{ "asset_path": "/Game/AI/BT_Enemy",
+  "node_id": "BTTask_MoveTo_0",
+  "property_name": "AcceptableRadius",
+  "value": "50.0" }
+```
+
+### `compile_behavior_tree`
+Mark the asset dirty so the BT editor re-initializes on next
+open. Returns `{compiled: true}`.
+
+```json
+{ "asset_path": "/Game/AI/BT_Enemy" }
+```
+
+## DataAsset tools
+
+`UDataAsset` and its subclasses are pure data containers. We
+expose them as `{class, properties}` pairs where `properties`
+is the JSON projection of every UPROPERTY on the asset.
+
+### `list_data_assets`
+List every UDataAsset subclass instance under a content path
+(default `/Game`).
+
+```json
+{ "path": "/Game/Configs" }
+```
+
+### `read_data_asset`
+Read every UPROPERTY on a UDataAsset.
+
+```json
+// request
+{ "asset_path": "/Game/Configs/DA_EnemyConfig" }
+// response
+{
+  "ok": true,
+  "asset_path": "/Game/Configs/DA_EnemyConfig",
+  "class": "EnemyConfig",
+  "properties": {
+    "Health": "100.0",
+    "DamagePerHit": "10.0",
+    "Description": "Spear-wielding goblin"
+  }
+}
+```
+
+### `create_data_asset`
+Create a new UDataAsset instance from a UDataAsset subclass
+class name. Idempotent on `asset_path` (returns
+`already_existed:true`).
+
+```json
+{ "asset_path": "/Game/Configs/DA_NewEnemy",
+  "class_name": "EnemyConfig" }
+```
+
+### `set_data_asset_property`
+Set a UPROPERTY on a UDataAsset. `value` is the property's text
+form (UE's standard property serializer).
+
+```json
+{ "asset_path": "/Game/Configs/DA_EnemyConfig",
+  "property_name": "Health",
+  "value": "150.0" }
+```
+
+## StateTree tools
+
+UStateTree is experimental in UE 5.x. We expose discovery via
+the Asset Registry; state authoring scaffolds and returns
+`hint: "Finish state authoring in StateTreeEditor"` because the
+full state graph lives behind editor-only API
+(`FStateTreeEditorData`) that requires the StateTreeEditor
+module.
+
+### `list_state_trees`
+List UStateTree assets under a content path (default `/Game`).
+
+```json
+{ "path": "/Game/AI/States" }
+```
+
+### `read_state_tree`
+Return the asset shape (path + empty states/transitions arrays +
+hint). Inspect richer state graphs in StateTreeEditor for now.
+
+```json
+{ "asset_path": "/Game/AI/States/ST_Player" }
+```
+
+### `add_state_tree_state`
+Scaffold a state. Returns `{state_id, name, hint}`.
+
+```json
+{ "asset_path": "/Game/AI/States/ST_Player",
+  "parent_state_id": "",
+  "name": "Idle" }
+```
+
+### `set_state_tree_transition`
+Define a transition between two states. `trigger` names an event
+class or tick condition (e.g. `OnTick`, `OnEvent.Damage`).
+
+```json
+{ "asset_path": "/Game/AI/States/ST_Player",
+  "from_state_id": "Idle",
+  "to_state_id": "Combat",
+  "trigger": "OnEvent.Damage" }
+```
+
+### `compile_state_tree`
+Returns `{compiled: false, hint}` — full compile requires
+StateTreeEditor.
+
+```json
+{ "asset_path": "/Game/AI/States/ST_Player" }
 ```
 
 ## Meta tools
