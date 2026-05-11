@@ -125,6 +125,10 @@ public:
     CreateFolderResult CreateFolder(std::string_view folderPath) override;
     std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
     DataTableInfo ReadDataTable(std::string_view assetPath) override;
+    AddDataRowResult AddDataRow(std::string_view, std::string_view,
+                                const nlohmann::json&, bool) override;
+    SetDataRowValueResult SetDataRowValue(std::string_view, std::string_view,
+                                          std::string_view, std::string_view) override;
 
     // ----- Live editor ops (pass-through; no caching) -------------------
     // Editor state is too volatile for the TTL cache. CVars change at

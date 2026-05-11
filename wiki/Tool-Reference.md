@@ -1,6 +1,6 @@
 # Tool Reference
 
-59 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile, 7 project /
+61 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile, 9 project /
 content-browser, 12 live editor, 1 automation. All use
 snake_case JSON keys; nullable string fields emit `null`; `BPNode.meta`
 is a real nested object (not a string-of-JSON). Wire shapes are pinned
@@ -783,6 +783,32 @@ every row's field values (serialized via `FJsonObjectConverter`).
 
 ```json
 { "asset_path": "/Game/Data/DT_Items" }
+```
+
+### `add_data_row`
+Add a row to an existing DataTable. `values` is an object mapping
+row-struct field names to stringified values; `FProperty::ImportText`
+coerces to the property's type (works for scalars, enums, FName /
+FString / FText, and structs that round-trip through text).
+Idempotent — existing names return `{already_existed:true}` unless
+`overwrite:true` is passed. Pair with `read_data_table` to see the
+row-struct shape first.
+
+```json
+{ "asset_path": "/Game/Data/DT_Items",
+  "row_name":   "Sword_Iron",
+  "values":     { "DisplayName": "Iron Sword", "Damage": "12", "Tier": "1" } }
+```
+
+### `set_data_row_value`
+Update a single field on an existing row. Returns the pre-set and
+post-set ExportText'd values so the caller can verify the coercion.
+
+```json
+{ "asset_path": "/Game/Data/DT_Items",
+  "row_name":   "Sword_Iron",
+  "field_name": "Damage",
+  "value":      "15" }
 ```
 
 ## Live editor tools
