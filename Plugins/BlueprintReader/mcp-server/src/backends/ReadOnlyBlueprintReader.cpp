@@ -315,6 +315,76 @@ ReadOnlyBlueprintReader::CompileWidgetBlueprint(std::string_view) {
     Reject("compile_widget_blueprint");
 }
 
+// ----- Behavior Tree (reads pass through, writes reject) ---------------
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListBehaviorTrees(std::string_view p) {
+    return inner_->ListBehaviorTrees(p);
+}
+IBlueprintReader::BehaviorTreeInfo
+ReadOnlyBlueprintReader::ReadBehaviorTree(std::string_view a) {
+    return inner_->ReadBehaviorTree(a);
+}
+IBlueprintReader::AddBTNodeResult
+ReadOnlyBlueprintReader::AddBTNode(std::string_view, std::string_view,
+    std::string_view, std::string_view) {
+    Reject("add_bt_node");
+}
+IBlueprintReader::SetBTNodePropertyResult
+ReadOnlyBlueprintReader::SetBTNodeProperty(std::string_view,
+    std::string_view, std::string_view, std::string_view) {
+    Reject("set_bt_node_property");
+}
+IBlueprintReader::CompileBehaviorTreeResult
+ReadOnlyBlueprintReader::CompileBehaviorTree(std::string_view) {
+    Reject("compile_behavior_tree");
+}
+
+// ----- DataAsset (reads pass through, writes reject) -------------------
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListDataAssets(std::string_view p) {
+    return inner_->ListDataAssets(p);
+}
+IBlueprintReader::DataAssetInfo
+ReadOnlyBlueprintReader::ReadDataAsset(std::string_view a) {
+    return inner_->ReadDataAsset(a);
+}
+IBlueprintReader::CreateDataAssetResult
+ReadOnlyBlueprintReader::CreateDataAsset(std::string_view, std::string_view) {
+    Reject("create_data_asset");
+}
+IBlueprintReader::SetDataAssetPropertyResult
+ReadOnlyBlueprintReader::SetDataAssetProperty(std::string_view,
+    std::string_view, std::string_view) {
+    Reject("set_data_asset_property");
+}
+
+// ----- StateTree (reads pass through, writes reject) -------------------
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListStateTrees(std::string_view p) {
+    return inner_->ListStateTrees(p);
+}
+IBlueprintReader::StateTreeInfo
+ReadOnlyBlueprintReader::ReadStateTree(std::string_view a) {
+    return inner_->ReadStateTree(a);
+}
+IBlueprintReader::AddStateTreeStateResult
+ReadOnlyBlueprintReader::AddStateTreeState(std::string_view,
+    std::string_view, std::string_view) {
+    Reject("add_state_tree_state");
+}
+IBlueprintReader::SetStateTreeTransitionResult
+ReadOnlyBlueprintReader::SetStateTreeTransition(std::string_view,
+    std::string_view, std::string_view, std::string_view) {
+    Reject("set_state_tree_transition");
+}
+IBlueprintReader::CompileStateTreeResult
+ReadOnlyBlueprintReader::CompileStateTree(std::string_view) {
+    Reject("compile_state_tree");
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
