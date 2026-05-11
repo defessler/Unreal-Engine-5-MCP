@@ -1,11 +1,12 @@
 # Tool Reference
 
-104 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
+119 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
 content-browser, 12 live editor, 1 automation, 7 material, 5 widget,
 5 behavior tree, 4 data asset, 5 state tree, 4 profiling, 2 cook,
-3 class introspection, 4 viewport. All use snake_case JSON keys;
-nullable string fields emit `null`; `BPNode.meta` is a real nested
-object (not a string-of-JSON). Wire shapes are pinned in
+3 class introspection, 4 viewport, 4 Niagara, 4 Sequencer, 3 GAS, 4
+AnimGraph. All use snake_case JSON keys; nullable string fields emit
+`null`; `BPNode.meta` is a real nested object (not a string-of-JSON).
+Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Type shorthand (write tools)
@@ -1454,6 +1455,139 @@ Toggle a viewport show flag (`Bones`, `Bounds`, `Collision`,
 
 ```json
 { "flag_name": "Collision", "enabled": true }
+```
+
+## Niagara tools
+
+UNiagaraSystem lives in the Niagara plugin (`/Script/Niagara`).
+Discovery via Asset Registry works without linking the editor
+module; deeper authoring (emitter handle CRUD, parameter graph
+edits) returns a scaffolded shape with a hint pointing at
+NiagaraEditor.
+
+### `list_niagara_systems`
+```json
+{ "path": "/Game/VFX" }
+```
+
+### `read_niagara_system`
+Returns `{emitters[], parameter_names[], hint}`. Asset is
+discovered; deeper introspection needs NiagaraEditor.
+
+```json
+{ "asset_path": "/Game/VFX/NS_Hero" }
+```
+
+### `create_niagara_system`
+Idempotent — returns `{created, already_existed, hint}`. Asset
+creation routes through NiagaraEditor's New System wizard.
+
+```json
+{ "asset_path": "/Game/VFX/NS_NewEffect" }
+```
+
+### `set_niagara_parameter`
+Scaffold — full parameter override needs NiagaraEditor or a
+runtime UNiagaraComponent instance.
+
+```json
+{ "asset_path": "/Game/VFX/NS_Hero",
+  "parameter_name": "User.HitColor",
+  "value": "(R=1,G=0,B=0,A=1)" }
+```
+
+## Sequencer tools
+
+ULevelSequence assets discoverable via Asset Registry; track /
+range mutations are scaffolded (`hint`) — full MovieScene API
+manipulation lives behind editor modules we don't link.
+
+### `list_level_sequences`
+```json
+{ "path": "/Game/Cinematics" }
+```
+
+### `read_level_sequence`
+Returns the playback range + top-level tracks. Currently scaffolded
+(empty arrays + hint).
+
+```json
+{ "asset_path": "/Game/Cinematics/LS_Intro" }
+```
+
+### `add_sequence_track`
+```json
+{ "asset_path": "/Game/Cinematics/LS_Intro",
+  "track_class": "MovieSceneAudioTrack",
+  "track_name": "Dialog" }
+```
+
+### `set_sequence_playback_range`
+```json
+{ "asset_path": "/Game/Cinematics/LS_Intro",
+  "start_seconds": 0,
+  "end_seconds": 12.5 }
+```
+
+## GAS / GameplayTag tools
+
+### `list_gameplay_tags`
+Query the GameplayTagsManager. `filter` is an optional substring.
+
+```json
+{ "filter": "Damage" }
+```
+
+### `add_gameplay_tag`
+Scaffold — the project's tag dictionary lives in
+`Config/Tags/DefaultGameplayTags.ini`. The tool returns a hint
+pointing at the file; the actual mutation needs an .ini edit.
+
+```json
+{ "name": "Status.Damage.Fire",
+  "comment": "Burn DoT applied by fire weapons." }
+```
+
+### `read_ability_set`
+Best-effort reader for any UDataAsset that holds an array of
+`{class, level}`-shaped struct entries (common pattern for ability
+sets in GAS projects). Returns each entry's class + level.
+
+```json
+{ "asset_path": "/Game/GAS/AS_HeroBase" }
+```
+
+## AnimGraph tools
+
+### `list_anim_blueprints`
+```json
+{ "path": "/Game/Characters" }
+```
+
+### `read_anim_blueprint`
+Returns parent class + state machines. State-machine walk requires
+the AnimGraph editor module (currently scaffolded; agent gets the
+parent class + an empty state_machines array + hint).
+
+```json
+{ "asset_path": "/Game/Characters/ABP_Hero" }
+```
+
+### `add_anim_state`
+Scaffold — full state authoring requires AnimGraph module.
+
+```json
+{ "asset_path": "/Game/Characters/ABP_Hero",
+  "state_machine": "Locomotion",
+  "state_name": "Crouching" }
+```
+
+### `compile_anim_blueprint`
+Full compile via `FKismetEditorUtilities::CompileBlueprint` (works
+because UAnimBlueprint is a regular UBlueprint subclass).
+
+```json
+{ "asset_path": "/Game/Characters/ABP_Hero" }
 ```
 
 ## Meta tools
