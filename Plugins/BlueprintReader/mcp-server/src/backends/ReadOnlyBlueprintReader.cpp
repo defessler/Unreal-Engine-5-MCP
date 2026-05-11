@@ -425,6 +425,51 @@ ReadOnlyBlueprintReader::SetShowFlag(std::string_view f, bool e) {
     return inner_->SetShowFlag(f, e);
 }
 
+// ----- Stage 4 (reads pass through, writes reject) ---------------------
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListNiagaraSystems(std::string_view p) { return inner_->ListNiagaraSystems(p); }
+IBlueprintReader::NiagaraSystemInfo
+ReadOnlyBlueprintReader::ReadNiagaraSystem(std::string_view a) { return inner_->ReadNiagaraSystem(a); }
+IBlueprintReader::CreateNiagaraSystemResult
+ReadOnlyBlueprintReader::CreateNiagaraSystem(std::string_view) { Reject("create_niagara_system"); }
+IBlueprintReader::SetNiagaraParameterResult
+ReadOnlyBlueprintReader::SetNiagaraParameter(std::string_view,
+    std::string_view, std::string_view) { Reject("set_niagara_parameter"); }
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListLevelSequences(std::string_view p) { return inner_->ListLevelSequences(p); }
+IBlueprintReader::LevelSequenceInfo
+ReadOnlyBlueprintReader::ReadLevelSequence(std::string_view a) { return inner_->ReadLevelSequence(a); }
+IBlueprintReader::AddSequenceTrackResult
+ReadOnlyBlueprintReader::AddSequenceTrack(std::string_view,
+    std::string_view, std::string_view) { Reject("add_sequence_track"); }
+IBlueprintReader::SetSequencePlaybackRangeResult
+ReadOnlyBlueprintReader::SetSequencePlaybackRange(std::string_view,
+    double, double) { Reject("set_sequence_playback_range"); }
+
+IBlueprintReader::GameplayTagListResult
+ReadOnlyBlueprintReader::ListGameplayTags(std::string_view f) { return inner_->ListGameplayTags(f); }
+IBlueprintReader::AddGameplayTagResult
+ReadOnlyBlueprintReader::AddGameplayTag(std::string_view, std::string_view) {
+    Reject("add_gameplay_tag");
+}
+IBlueprintReader::AbilitySetInfo
+ReadOnlyBlueprintReader::ReadAbilitySet(std::string_view a) { return inner_->ReadAbilitySet(a); }
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListAnimBlueprints(std::string_view p) { return inner_->ListAnimBlueprints(p); }
+IBlueprintReader::AnimBlueprintInfo
+ReadOnlyBlueprintReader::ReadAnimBlueprint(std::string_view a) { return inner_->ReadAnimBlueprint(a); }
+IBlueprintReader::AddAnimStateResult
+ReadOnlyBlueprintReader::AddAnimState(std::string_view, std::string_view, std::string_view) {
+    Reject("add_anim_state");
+}
+IBlueprintReader::CompileAnimBlueprintResult
+ReadOnlyBlueprintReader::CompileAnimBlueprint(std::string_view) {
+    Reject("compile_anim_blueprint");
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
