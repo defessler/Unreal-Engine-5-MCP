@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-61 tools across 8 categories. Don't memorize the list — call
+65 tools across 8 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
