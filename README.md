@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 104 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 119 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -22,7 +22,7 @@ Two backends:
 
 ## Tools
 
-104 tools across 17 categories — see the
+119 tools across 21 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 
@@ -44,6 +44,10 @@ for every input/output shape with examples.
 | **Headless cook** (2) | `cook_content`, `package_project` | Returns the RunUAT command line to run for a target platform. We don't shell out inline (avoids editor-already-running reentrancy); agent runs the printed command. |
 | **Class introspection** (3) | `introspect_class` (tool name `get_class_info`), `find_class`, `list_functions` | Reflection over the live UClass registry: parent chain, UPROPERTYs, UFUNCTIONs with their BP flags. Substring class-name search across the registry. |
 | **Viewport ergonomics** (4) | `focus_actor`, `set_camera_transform`, `take_viewport_screenshot`, `set_show_flag` | Frame an actor, move the editor camera, capture the active viewport, toggle showflags (Bones, Collision, Wireframe, etc.). |
+| **Niagara** (4) | `list_niagara_systems`, `read_niagara_system`, `create_niagara_system`, `set_niagara_parameter` | Discover UNiagaraSystem assets + scaffold; full authoring still needs NiagaraEditor module. |
+| **Sequencer** (4) | `list_level_sequences`, `read_level_sequence`, `add_sequence_track`, `set_sequence_playback_range` | Discover ULevelSequence assets + scaffolded track/range writes (full authoring needs LevelSequenceEditor + MovieScene). |
+| **GAS / GameplayTags** (3) | `list_gameplay_tags`, `add_gameplay_tag`, `read_ability_set` | Query the GameplayTagsManager, scaffold tag additions (writes Config/Tags/DefaultGameplayTags.ini), and read any DataAsset that holds an array of `{class, level}`-shaped ability entries. |
+| **AnimGraph** (4) | `list_anim_blueprints`, `read_anim_blueprint`, `add_anim_state`, `compile_anim_blueprint` | Discover UAnimBlueprint + read parent class + compile via FKismetEditorUtilities. State-machine authoring scaffolded; full graph needs AnimGraph module. |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
