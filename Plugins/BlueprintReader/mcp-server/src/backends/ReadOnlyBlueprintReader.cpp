@@ -181,6 +181,17 @@ ReadOnlyBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return inner_->ReadDataTable(assetPath);
 }
 
+IBlueprintReader::AddDataRowResult
+ReadOnlyBlueprintReader::AddDataRow(std::string_view, std::string_view,
+                                    const nlohmann::json&, bool) {
+    Reject("add_data_row");
+}
+IBlueprintReader::SetDataRowValueResult
+ReadOnlyBlueprintReader::SetDataRowValue(std::string_view, std::string_view,
+                                         std::string_view, std::string_view) {
+    Reject("set_data_row_value");
+}
+
 // ----- Live editor ops ----------------------------------------------------
 
 // Reads through.

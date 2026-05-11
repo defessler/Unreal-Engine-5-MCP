@@ -233,7 +233,7 @@ output changed.
 
 ## Adding a new tool
 
-The pattern is consistent across all 59 tools:
+The pattern is consistent across all 61 tools:
 
 1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
    a `ParseOp` entry, a dispatch line in `RunOneOp`, and a

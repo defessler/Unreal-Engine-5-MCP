@@ -1377,6 +1377,67 @@ CommandletBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return out;
 }
 
+IBlueprintReader::AddDataRowResult
+CommandletBlueprintReader::AddDataRow(std::string_view assetPath,
+                                      std::string_view rowName,
+                                      const nlohmann::json& values,
+                                      bool overwrite) {
+    // Serialize the values object to a JSON string and pass via a
+    // temp file — the daemon line-protocol can't carry multi-line
+    // JSON inline.
+    namespace fs = std::filesystem;
+    fs::path tempDir = fs::temp_directory_path();
+    fs::path valuesTemp = tempDir /
+        ("bpr-add-row-" + std::to_string(static_cast<unsigned long long>(
+            std::hash<std::string>{}(std::string(assetPath) + ":" +
+                                      std::string(rowName)))) + ".json");
+    {
+        std::ofstream f(valuesTemp);
+        f << values.dump();
+    }
+    std::vector<std::wstring> args;
+    args.push_back(L"-Op=AddDataRow");
+    args.push_back(L"-Asset=" + Widen(assetPath));
+    args.push_back(L"-Row="   + Widen(rowName));
+    args.push_back(L"-ValuesFile=" + valuesTemp.wstring());
+    if (overwrite) args.push_back(L"-Overwrite");
+    auto j = RunOp(args);
+    std::error_code ec;
+    fs::remove(valuesTemp, ec);
+
+    AddDataRowResult out;
+    out.assetPath = std::string(assetPath);
+    out.rowName   = std::string(rowName);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+        out.created        = j.value("created", false);
+    }
+    return out;
+}
+
+IBlueprintReader::SetDataRowValueResult
+CommandletBlueprintReader::SetDataRowValue(std::string_view assetPath,
+                                           std::string_view rowName,
+                                           std::string_view fieldName,
+                                           std::string_view value) {
+    auto j = RunOp({
+        L"-Op=SetDataRowValue",
+        L"-Asset=" + Widen(assetPath),
+        L"-Row="   + Widen(rowName),
+        L"-Field=" + Widen(fieldName),
+        L"-Value=" + Widen(value),
+    });
+    SetDataRowValueResult out;
+    out.assetPath = std::string(assetPath);
+    out.rowName   = std::string(rowName);
+    out.fieldName = std::string(fieldName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
 // ----- Live editor ops ----------------------------------------------------
 
 IBlueprintReader::ConsoleCommandResult
