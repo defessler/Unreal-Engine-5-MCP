@@ -708,6 +708,167 @@ preprocessor (`#include` / `#define` / `#ifdef`), templates beyond
 The interface is implementation-decoupled — swapping in libclang for
 fuller C++ support stays a future phase that touches no callers.
 
+## Project + Content Browser tools
+
+Project-level introspection + asset-browser operations alongside the
+per-Blueprint surface.
+
+### `get_project_metadata`
+Read the project's `.uproject` JSON and return parsed metadata.
+Returns the normalized fields the agent usually wants plus the raw
+JSON for anything else.
+
+```json
+{}
+
+// returns
+{
+  "ok": true,
+  "project_name":       "UE5_MCP",
+  "project_path":       "D:/Projects/UE5_MCP/UE5_MCP.uproject",
+  "engine_association": "5.7",
+  "category":           "",
+  "description":        "",
+  "raw":                { ... full .uproject ... }
+}
+```
+
+### `save_all`
+Save every dirty package the editor has loaded. With `dirty_only=true`
+(default), clean packages are skipped — fast no-op when nothing's
+changed. Returns the saved count + any failed asset paths.
+
+```json
+{ "dirty_only": true }
+```
+
+### `move_asset`
+Move or rename an asset. `dest_asset_path` is the full destination
+package path — pass the same folder with a different leaf for a
+rename, or a different folder to move. Both must be under `/Game/`.
+Updates the asset registry and fixes references in other assets.
+
+```json
+{ "asset_path":      "/Game/AI/BP_Boss",
+  "dest_asset_path": "/Game/Bosses/BP_Boss" }
+```
+
+### `delete_asset`
+Delete an asset. Refuses by default if other assets reference it
+(returns the list of referrers); set `force=true` to delete anyway.
+
+```json
+{ "asset_path": "/Game/AI/OldBP", "force": false }
+```
+
+### `create_folder`
+Create a folder under `/Game/`. Idempotent — returns
+`{already_existed:true}` when the folder is already present.
+
+```json
+{ "folder_path": "/Game/AI/Boss" }
+```
+
+### `list_data_tables`
+List every `UDataTable` asset under a content path. Mirrors
+`list_blueprints` shape but filtered for the DataTable type.
+
+```json
+{ "path": "/Game/Data" }
+```
+
+### `read_data_table`
+Load a DataTable and return the row-struct type, column names, and
+every row's field values (serialized via `FJsonObjectConverter`).
+
+```json
+{ "asset_path": "/Game/Data/DT_Items" }
+```
+
+## Live editor tools
+
+Operate on the running editor's in-memory state. Most useful with the
+`live` backend (open editor); the commandlet daemon routes them too,
+but PIE / Live Coding semantics in a headless editor are limited.
+
+### `console_command`
+Execute a UE console command (e.g. `stat unit`, `showflag.bones 1`,
+`r.ScreenPercentage 75`). Returns whatever the command echoed.
+
+```json
+{ "command": "stat unit" }
+```
+
+### `get_cvar` / `set_cvar`
+Read or write a console variable. `set_cvar` forces `ECVF_SetByCode`
+priority — overrides ini files / scalability defaults.
+
+```json
+{ "name": "r.ScreenPercentage" }                       // get
+{ "name": "r.ScreenPercentage", "value": "50" }       // set
+```
+
+### `pie_start` / `pie_stop`
+Start / end a Play-In-Editor session. `mode` accepts
+`selected_viewport` (default), `new_editor_window`, `standalone`,
+`vr_preview`. `pie_stop` is a no-op when PIE isn't running.
+
+### `live_coding_compile`
+Trigger UE's Live Coding compile + patch. Async — progress lands in
+the editor log. Pair with `read_output_log` to follow.
+
+### `get_selected_actors`
+List the names of currently-selected actors in the level editor.
+
+### `set_selection`
+Replace (or extend with `replace:false`) the selection. Returns the
+post-call selected names so the caller can verify.
+
+```json
+{ "actor_names": ["Cube_0", "PointLight_2"], "replace": true }
+```
+
+### `spawn_actor`
+Spawn an actor of a given UClass in the current level. `class_path`
+is the full path (e.g. `/Script/Engine.StaticMeshActor` or a BP
+class). All transform fields are optional; default to identity.
+
+```json
+{ "class_path": "/Script/Engine.StaticMeshActor",
+  "location": { "x": 0, "y": 0, "z": 100 } }
+```
+
+### `set_actor_transform`
+Update an actor's world transform. `actor_name` is from
+`get_selected_actors` or `spawn_actor`. All transform fields are
+absolute (not delta).
+
+### `delete_actor`
+Destroy an actor by name. Returns `{deleted:false}` when the actor
+wasn't found.
+
+### `read_output_log`
+Read recent entries from the editor's output log. The plugin module
+installs a ring-buffer log sink at startup; this returns up to
+`limit` of the most recent entries, optionally filtered by minimum
+severity (`Display` / `Log` / `Warning` / `Error` / `Fatal`).
+
+> **Note:** ring-buffer registration isn't yet wired up in the
+> plugin's `StartupModule`. The tool returns an empty array + a
+> clear note until that lands.
+
+## Automation tools
+
+### `run_automation_tests`
+Trigger UE's automation test framework with a wildcard pattern
+(empty = all tests). The run is async — this tool kicks it off
+and returns immediately. Results land in the output log and at
+`Saved/Automation/index.json`.
+
+```json
+{ "pattern": "BlueprintReader.*" }
+```
+
 ## Meta tools
 
 ### `shutdown_daemon`
