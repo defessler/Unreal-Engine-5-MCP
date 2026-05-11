@@ -34,7 +34,12 @@ public class BlueprintReaderEditor : ModuleRules
 			// UMG widget authoring (Stage 1) — UWidgetBlueprint lives in
 			// UMGEditor, runtime UWidget/UPanelWidget in UMG.
 			"UMG",
-			"UMGEditor"
+			"UMGEditor",
+			// Behavior Tree authoring (Stage 2) — runtime UBehaviorTree +
+			// UBTNode classes. We don't link BehaviorTreeEditor; full
+			// authoring still needs that, but the runtime asset can be
+			// inspected + scaffolded from here.
+			"AIModule"
 		});
 	}
 }

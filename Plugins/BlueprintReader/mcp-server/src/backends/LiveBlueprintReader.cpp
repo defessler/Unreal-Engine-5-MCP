@@ -1244,6 +1244,235 @@ LiveBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
     return out;
 }
 
+// ----- Behavior Tree authoring (Stage 2) ---------------------------------
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListBehaviorTrees(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListBehaviorTrees"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s; from_json(v, s); out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::BehaviorTreeInfo
+LiveBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadBehaviorTree", "-Asset=" + std::string(assetPath)});
+    BehaviorTreeInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    out.rootNodeId = j.value("root_node_id", std::string{});
+    if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
+        for (const auto& n : *it) {
+            BTNode bn;
+            bn.nodeId       = n.value("node_id",   std::string{});
+            bn.className    = n.value("class",     std::string{});
+            bn.nodeKind     = n.value("node_kind", std::string{});
+            bn.parentNodeId = n.value("parent",    std::string{});
+            out.nodes.push_back(std::move(bn));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddBTNodeResult
+LiveBlueprintReader::AddBTNode(std::string_view assetPath,
+    std::string_view parentNodeId, std::string_view nodeKind,
+    std::string_view nodeClass) {
+    std::vector<std::string> args = {"-Op=AddBTNode",
+                                     "-Asset=" + std::string(assetPath),
+                                     "-Kind="  + std::string(nodeKind),
+                                     "-Class=" + std::string(nodeClass)};
+    if (!parentNodeId.empty()) args.push_back("-Parent=" + std::string(parentNodeId));
+    auto j = RunOp(args);
+    AddBTNodeResult out;
+    out.assetPath = std::string(assetPath);
+    out.className = std::string(nodeClass);
+    out.nodeKind  = std::string(nodeKind);
+    if (j.is_object()) out.nodeId = j.value("node_id", std::string{});
+    return out;
+}
+
+IBlueprintReader::SetBTNodePropertyResult
+LiveBlueprintReader::SetBTNodeProperty(std::string_view assetPath,
+    std::string_view nodeId, std::string_view propertyName,
+    std::string_view value) {
+    auto j = RunOp({"-Op=SetBTNodeProperty",
+                    "-Asset="    + std::string(assetPath),
+                    "-Node="     + std::string(nodeId),
+                    "-Property=" + std::string(propertyName),
+                    "-Value="    + std::string(value)});
+    SetBTNodePropertyResult out;
+    out.assetPath    = std::string(assetPath);
+    out.nodeId       = std::string(nodeId);
+    out.propertyName = std::string(propertyName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::CompileBehaviorTreeResult
+LiveBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CompileBehaviorTree", "-Asset=" + std::string(assetPath)});
+    CompileBehaviorTreeResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
+// ----- DataAsset CRUD (Stage 2) ------------------------------------------
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListDataAssets(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListDataAssets"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s; from_json(v, s); out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::DataAssetInfo
+LiveBlueprintReader::ReadDataAsset(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadDataAsset", "-Asset=" + std::string(assetPath)});
+    DataAssetInfo out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.className  = j.value("class", std::string{});
+        if (auto it = j.find("properties"); it != j.end()) out.properties = *it;
+    }
+    return out;
+}
+
+IBlueprintReader::CreateDataAssetResult
+LiveBlueprintReader::CreateDataAsset(std::string_view assetPath,
+    std::string_view className) {
+    auto j = RunOp({"-Op=CreateDataAsset",
+                    "-Asset=" + std::string(assetPath),
+                    "-Class=" + std::string(className)});
+    CreateDataAssetResult out;
+    out.assetPath = std::string(assetPath);
+    out.className = std::string(className);
+    if (j.is_object()) {
+        out.created        = j.value("created", false);
+        out.alreadyExisted = j.value("already_existed", false);
+    }
+    return out;
+}
+
+IBlueprintReader::SetDataAssetPropertyResult
+LiveBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
+    std::string_view propertyName, std::string_view value) {
+    auto j = RunOp({"-Op=SetDataAssetProperty",
+                    "-Asset="    + std::string(assetPath),
+                    "-Property=" + std::string(propertyName),
+                    "-Value="    + std::string(value)});
+    SetDataAssetPropertyResult out;
+    out.assetPath    = std::string(assetPath);
+    out.propertyName = std::string(propertyName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+// ----- StateTree authoring (Stage 2) -------------------------------------
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListStateTrees(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListStateTrees"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s; from_json(v, s); out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::StateTreeInfo
+LiveBlueprintReader::ReadStateTree(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadStateTree", "-Asset=" + std::string(assetPath)});
+    StateTreeInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    if (auto it = j.find("states"); it != j.end() && it->is_array()) {
+        for (const auto& s : *it) {
+            StateTreeState st;
+            st.stateId       = s.value("state_id", std::string{});
+            st.name          = s.value("name",     std::string{});
+            st.parentStateId = s.value("parent",   std::string{});
+            out.states.push_back(std::move(st));
+        }
+    }
+    if (auto it = j.find("transitions"); it != j.end() && it->is_array()) {
+        for (const auto& t : *it) {
+            StateTreeTransition tr;
+            tr.fromStateId = t.value("from",    std::string{});
+            tr.toStateId   = t.value("to",      std::string{});
+            tr.trigger     = t.value("trigger", std::string{});
+            out.transitions.push_back(std::move(tr));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddStateTreeStateResult
+LiveBlueprintReader::AddStateTreeState(std::string_view assetPath,
+    std::string_view parentStateId, std::string_view name) {
+    std::vector<std::string> args = {"-Op=AddStateTreeState",
+                                     "-Asset=" + std::string(assetPath),
+                                     "-Name="  + std::string(name)};
+    if (!parentStateId.empty()) args.push_back("-Parent=" + std::string(parentStateId));
+    auto j = RunOp(args);
+    AddStateTreeStateResult out;
+    out.assetPath = std::string(assetPath);
+    out.name      = std::string(name);
+    if (j.is_object()) out.stateId = j.value("state_id", std::string{});
+    return out;
+}
+
+IBlueprintReader::SetStateTreeTransitionResult
+LiveBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
+    std::string_view fromStateId, std::string_view toStateId,
+    std::string_view trigger) {
+    auto j = RunOp({"-Op=SetStateTreeTransition",
+                    "-Asset="   + std::string(assetPath),
+                    "-From="    + std::string(fromStateId),
+                    "-To="      + std::string(toStateId),
+                    "-Trigger=" + std::string(trigger)});
+    SetStateTreeTransitionResult out;
+    out.assetPath   = std::string(assetPath);
+    out.fromStateId = std::string(fromStateId);
+    out.toStateId   = std::string(toStateId);
+    out.trigger     = std::string(trigger);
+    if (j.is_object()) out.added = j.value("added", false);
+    return out;
+}
+
+IBlueprintReader::CompileStateTreeResult
+LiveBlueprintReader::CompileStateTree(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CompileStateTree", "-Asset=" + std::string(assetPath)});
+    CompileStateTreeResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

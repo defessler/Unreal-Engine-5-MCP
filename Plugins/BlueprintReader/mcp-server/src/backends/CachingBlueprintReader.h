@@ -187,6 +187,31 @@ public:
         std::string_view, std::string_view) override;
     CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
 
+    // ----- Behavior Tree authoring (Stage 2) ----------------------------
+    std::vector<BPAssetSummary> ListBehaviorTrees(std::string_view) override;
+    BehaviorTreeInfo ReadBehaviorTree(std::string_view) override;
+    AddBTNodeResult AddBTNode(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetBTNodePropertyResult SetBTNodeProperty(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    CompileBehaviorTreeResult CompileBehaviorTree(std::string_view) override;
+
+    // ----- DataAsset CRUD (Stage 2) -------------------------------------
+    std::vector<BPAssetSummary> ListDataAssets(std::string_view) override;
+    DataAssetInfo ReadDataAsset(std::string_view) override;
+    CreateDataAssetResult CreateDataAsset(std::string_view, std::string_view) override;
+    SetDataAssetPropertyResult SetDataAssetProperty(std::string_view,
+        std::string_view, std::string_view) override;
+
+    // ----- StateTree authoring (Stage 2) --------------------------------
+    std::vector<BPAssetSummary> ListStateTrees(std::string_view) override;
+    StateTreeInfo ReadStateTree(std::string_view) override;
+    AddStateTreeStateResult AddStateTreeState(std::string_view,
+        std::string_view, std::string_view) override;
+    SetStateTreeTransitionResult SetStateTreeTransition(std::string_view,
+        std::string_view, std::string_view, std::string_view) override;
+    CompileStateTreeResult CompileStateTree(std::string_view) override;
+
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries
     // that subsequent ops in the same batch would re-fetch. Flushed by
