@@ -2244,6 +2244,84 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- add_data_row ---------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_data_row";
+        d.description =
+            "Add a row to an existing DataTable. The row name must be "
+            "unique within the table; existing names return "
+            "`{already_existed:true}` unless `overwrite:true` is passed. "
+            "`values` is an object whose keys map to the row struct's "
+            "field names; values are stringified and coerced via "
+            "FProperty::ImportText (works for scalars, enums, and structs "
+            "that round-trip through text). Pair with `read_data_table` to "
+            "see the row-struct shape before calling.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"row_name",   {{"type","string"}}},
+                {"values",     {{"type","object"},
+                                {"description","Field-name → value map. Values are stringified; ImportText coerces to the property's type."}}},
+                {"overwrite",  {{"type","boolean"},
+                                {"description","Default false. Set true to replace an existing row."}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","row_name","values"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string row   = RequireString(args, "row_name");
+            nlohmann::json values = args.value("values", nlohmann::json::object());
+            bool overwrite = args.value("overwrite", false);
+            auto r = reader.AddDataRow(asset, row, values, overwrite);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      r.assetPath},
+                {"row_name",        r.rowName},
+                {"already_existed", r.alreadyExisted},
+                {"created",         r.created},
+            };
+        });
+    }
+
+    // ----- set_data_row_value --------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_data_row_value";
+        d.description =
+            "Update a single field on an existing DataTable row. "
+            "`field_name` must match a property on the row struct; "
+            "`value` is its string form (ImportText input). Returns the "
+            "pre-set and post-set ExportText'd values so the caller can "
+            "verify the coercion landed.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"row_name",   {{"type","string"}}},
+                {"field_name", {{"type","string"}}},
+                {"value",      {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","row_name","field_name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string row   = RequireString(args, "row_name");
+            std::string field = RequireString(args, "field_name");
+            std::string value = RequireString(args, "value");
+            auto r = reader.SetDataRowValue(asset, row, field, value);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"row_name",   r.rowName},
+                {"field_name", r.fieldName},
+                {"old_value",  r.oldValue},
+                {"new_value",  r.newValue},
+            };
+        });
+    }
+
     // ----- run_automation_tests ------------------------------------------
     {
         ToolDescriptor d;

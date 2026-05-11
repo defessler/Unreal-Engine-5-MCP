@@ -461,6 +461,22 @@ CachingBlueprintReader::ReadDataTable(std::string_view assetPath) {
     return inner_->ReadDataTable(assetPath);
 }
 
+IBlueprintReader::AddDataRowResult
+CachingBlueprintReader::AddDataRow(std::string_view a, std::string_view n,
+                                   const nlohmann::json& v, bool o) {
+    auto out = inner_->AddDataRow(a, n, v, o);
+    InvalidateAsset(a);  // row count + table contents changed
+    return out;
+}
+
+IBlueprintReader::SetDataRowValueResult
+CachingBlueprintReader::SetDataRowValue(std::string_view a, std::string_view r,
+                                        std::string_view f, std::string_view v) {
+    auto out = inner_->SetDataRowValue(a, r, f, v);
+    InvalidateAsset(a);
+    return out;
+}
+
 // ----- Live editor ops (pass-through) ------------------------------------
 
 IBlueprintReader::ConsoleCommandResult

@@ -263,6 +263,46 @@ public:
         throw BlueprintReaderError("ReadDataTable not supported by this backend");
     }
 
+    // Add a row to an existing DataTable. The row name must be unique
+    // within the table. `values` is a JSON object whose keys map to the
+    // row struct's field names; UE's FProperty::ImportText handles the
+    // string→native coercion (works for scalars, enums, structs that
+    // serialize to text). Idempotent: if `rowName` already exists,
+    // returns `{already_existed:true}` without overwriting unless
+    // `overwrite=true` is passed.
+    struct AddDataRowResult {
+        std::string assetPath;
+        std::string rowName;
+        bool alreadyExisted = false;
+        bool created = false;
+    };
+    virtual AddDataRowResult AddDataRow(std::string_view assetPath,
+                                        std::string_view rowName,
+                                        const nlohmann::json& values,
+                                        bool overwrite = false) {
+        (void)assetPath; (void)rowName; (void)values; (void)overwrite;
+        throw BlueprintReaderError("AddDataRow not supported by this backend");
+    }
+
+    // Update a single field on an existing row. `fieldName` must match
+    // a property on the row struct; `value` is its string form
+    // (ImportText input). Use this for surgical edits — a full-row
+    // overwrite is a separate AddDataRow call with `overwrite=true`.
+    struct SetDataRowValueResult {
+        std::string assetPath;
+        std::string rowName;
+        std::string fieldName;
+        std::string oldValue;       // ExportText'd
+        std::string newValue;       // post-set ExportText'd
+    };
+    virtual SetDataRowValueResult SetDataRowValue(std::string_view assetPath,
+                                                  std::string_view rowName,
+                                                  std::string_view fieldName,
+                                                  std::string_view value) {
+        (void)assetPath; (void)rowName; (void)fieldName; (void)value;
+        throw BlueprintReaderError("SetDataRowValue not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The
