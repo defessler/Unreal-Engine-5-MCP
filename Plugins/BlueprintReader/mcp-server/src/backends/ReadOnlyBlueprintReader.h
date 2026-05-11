@@ -86,6 +86,14 @@ public:
                                 const nlohmann::json&, bool) override;
     SetDataRowValueResult SetDataRowValue(std::string_view, std::string_view,
                                           std::string_view, std::string_view) override;
+    AddComponentResult AddComponent(std::string_view, std::string_view,
+                                    std::string_view, std::string_view,
+                                    std::string_view) override;
+    RemoveComponentResult RemoveComponent(std::string_view, std::string_view) override;
+    AttachComponentResult AttachComponent(std::string_view, std::string_view,
+                                          std::string_view, std::string_view) override;
+    SetComponentPropertyResult SetComponentProperty(std::string_view, std::string_view,
+                                                    std::string_view, std::string_view) override;
 
     // ----- Live editor ops ----------------------------------------------
     // Reads (GetCVar, GetSelectedActors, ReadOutputLog, ConsoleCommand,

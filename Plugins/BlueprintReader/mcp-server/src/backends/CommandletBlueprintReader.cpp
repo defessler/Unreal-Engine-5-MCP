@@ -1438,6 +1438,90 @@ CommandletBlueprintReader::SetDataRowValue(std::string_view assetPath,
     return out;
 }
 
+// ----- Component (SCS) authoring -----------------------------------------
+
+IBlueprintReader::AddComponentResult
+CommandletBlueprintReader::AddComponent(std::string_view assetPath,
+                                        std::string_view name,
+                                        std::string_view componentClass,
+                                        std::string_view parentName,
+                                        std::string_view socket) {
+    std::vector<std::wstring> args = {
+        L"-Op=AddComponent",
+        L"-Asset=" + Widen(assetPath),
+        L"-Name="  + Widen(name),
+        L"-Class=" + Widen(componentClass),
+    };
+    if (!parentName.empty()) args.push_back(L"-Parent=" + Widen(parentName));
+    if (!socket.empty())     args.push_back(L"-Socket=" + Widen(socket));
+    auto j = RunOp(args);
+    AddComponentResult out;
+    out.assetPath      = std::string(assetPath);
+    out.name           = std::string(name);
+    out.componentClass = std::string(componentClass);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+        out.created        = j.value("created", false);
+    }
+    return out;
+}
+
+IBlueprintReader::RemoveComponentResult
+CommandletBlueprintReader::RemoveComponent(std::string_view assetPath,
+                                           std::string_view name) {
+    auto j = RunOp({L"-Op=RemoveComponent",
+                    L"-Asset=" + Widen(assetPath),
+                    L"-Name="  + Widen(name)});
+    RemoveComponentResult out;
+    out.assetPath = std::string(assetPath);
+    out.name      = std::string(name);
+    if (j.is_object()) out.removed = j.value("removed", false);
+    return out;
+}
+
+IBlueprintReader::AttachComponentResult
+CommandletBlueprintReader::AttachComponent(std::string_view assetPath,
+                                           std::string_view name,
+                                           std::string_view newParentName,
+                                           std::string_view socket) {
+    std::vector<std::wstring> args = {
+        L"-Op=AttachComponent",
+        L"-Asset=" + Widen(assetPath),
+        L"-Name="  + Widen(name),
+    };
+    if (!newParentName.empty()) args.push_back(L"-NewParent=" + Widen(newParentName));
+    if (!socket.empty())        args.push_back(L"-Socket="    + Widen(socket));
+    auto j = RunOp(args);
+    AttachComponentResult out;
+    out.assetPath     = std::string(assetPath);
+    out.name          = std::string(name);
+    out.newParentName = std::string(newParentName);
+    out.socket        = std::string(socket);
+    if (j.is_object()) out.reparented = j.value("reparented", false);
+    return out;
+}
+
+IBlueprintReader::SetComponentPropertyResult
+CommandletBlueprintReader::SetComponentProperty(std::string_view assetPath,
+                                                std::string_view componentName,
+                                                std::string_view propertyName,
+                                                std::string_view value) {
+    auto j = RunOp({L"-Op=SetComponentProperty",
+                    L"-Asset="     + Widen(assetPath),
+                    L"-Component=" + Widen(componentName),
+                    L"-Property="  + Widen(propertyName),
+                    L"-Value="     + Widen(value)});
+    SetComponentPropertyResult out;
+    out.assetPath     = std::string(assetPath);
+    out.componentName = std::string(componentName);
+    out.propertyName  = std::string(propertyName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
 // ----- Live editor ops ----------------------------------------------------
 
 IBlueprintReader::ConsoleCommandResult
