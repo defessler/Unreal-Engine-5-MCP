@@ -875,13 +875,15 @@ wasn't found.
 
 ### `read_output_log`
 Read recent entries from the editor's output log. The plugin module
-installs a ring-buffer log sink at startup; this returns up to
-`limit` of the most recent entries, optionally filtered by minimum
-severity (`Display` / `Log` / `Warning` / `Error` / `Fatal`).
+installs a 1024-entry ring-buffer log sink at `StartupModule` (size
+overridable via `BP_READER_LOG_BUFFER`); this returns up to `limit`
+of the most recent entries newest-last, optionally filtered by
+minimum severity (`Display` / `Log` / `Warning` / `Error` / `Fatal`).
+Each entry: `{severity, category, message, timestamp}`.
 
-> **Note:** ring-buffer registration isn't yet wired up in the
-> plugin's `StartupModule`. The tool returns an empty array + a
-> clear note until that lands.
+```json
+{ "limit": 50, "min_severity": "Warning" }
+```
 
 ## Automation tools
 

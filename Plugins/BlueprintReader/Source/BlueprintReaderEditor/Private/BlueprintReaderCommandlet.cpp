@@ -2,6 +2,7 @@
 
 #include "BlueprintIntrospector.h"
 #include "BlueprintReaderJson.h"
+#include "BlueprintReaderLogSink.h"
 #include "BlueprintReaderWireJson.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -1691,18 +1692,56 @@ namespace
 
 	int32 RunReadOutputLogOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
-		// Output-log capture requires a custom FOutputDevice registered at
-		// plugin StartupModule. That infrastructure isn't in this PR — we
-		// return an empty array with a clear note so the agent knows the
-		// tool exists but the buffer isn't wired up yet.
-		(void)Params;
+		int32 Limit = 200;
+		FString MinSeverity;
+		FParse::Value(*Params, TEXT("Limit="),       Limit);
+		FParse::Value(*Params, TEXT("MinSeverity="), MinSeverity);
+
+		// Map the human-readable severity name to UE's ELogVerbosity. The
+		// MCP-server tool's schema constrains values to the five common
+		// ones; anything else is treated as "no filter."
+		ELogVerbosity::Type MinVerb = ELogVerbosity::NoLogging;
+		if (MinSeverity.Equals(TEXT("Fatal"),   ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Fatal;
+		else if (MinSeverity.Equals(TEXT("Error"),  ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Error;
+		else if (MinSeverity.Equals(TEXT("Warning"),ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Warning;
+		else if (MinSeverity.Equals(TEXT("Display"),ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Display;
+		else if (MinSeverity.Equals(TEXT("Log"),    ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Log;
+
+		TArray<BlueprintReader::FLogSinkEntry> Drained;
+		if (BlueprintReader::FLogSink* Sink = BlueprintReader::GetLogSink())
+		{
+			Sink->Drain(Limit, MinVerb, Drained);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Entries;
+		Entries.Reserve(Drained.Num());
+		for (const auto& E : Drained)
+		{
+			auto Entry = MakeShared<FJsonObject>();
+			// Severity name — re-match the enum to a stable string so
+			// the wire shape doesn't drift if UE adds verbosity levels.
+			const TCHAR* SevName = TEXT("Log");
+			switch (E.Verbosity)
+			{
+				case ELogVerbosity::Fatal:       SevName = TEXT("Fatal"); break;
+				case ELogVerbosity::Error:       SevName = TEXT("Error"); break;
+				case ELogVerbosity::Warning:     SevName = TEXT("Warning"); break;
+				case ELogVerbosity::Display:     SevName = TEXT("Display"); break;
+				case ELogVerbosity::Log:         SevName = TEXT("Log"); break;
+				case ELogVerbosity::Verbose:     SevName = TEXT("Verbose"); break;
+				case ELogVerbosity::VeryVerbose: SevName = TEXT("VeryVerbose"); break;
+				default: break;
+			}
+			Entry->SetStringField(TEXT("severity"),  SevName);
+			Entry->SetStringField(TEXT("category"),  E.Category.ToString());
+			Entry->SetStringField(TEXT("message"),   E.Message);
+			Entry->SetStringField(TEXT("timestamp"), E.Timestamp.ToIso8601());
+			Entries.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
-		Obj->SetArrayField(TEXT("entries"), TArray<TSharedPtr<FJsonValue>>());
-		Obj->SetStringField(TEXT("note"),
-			TEXT("Output log capture not yet wired up in the plugin. "
-			     "Module-level FOutputDevice ring-buffer registration is "
-			     "the next step; track via GitHub issues."));
+		Obj->SetArrayField(TEXT("entries"), Entries);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
