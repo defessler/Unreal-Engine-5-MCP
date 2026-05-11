@@ -5,7 +5,7 @@ description: Use this skill when the user asks to inspect, edit, build, transpil
 
 # bp-reader — using the Blueprint MCP tools
 
-The `bp-reader` MCP server exposes **59 tools** that read, mutate, and
+The `bp-reader` MCP server exposes **61 tools** that read, mutate, and
 round-trip-to-C++ `.uasset` Blueprint files in a UE 5.7.4 project.
 This skill covers *how to use them well* — the wire format, common
 patterns, when to prefer one tool over another. For *building or
@@ -32,7 +32,7 @@ triage — there are focused sub-skills:
 | **Write — assets** | `create_blueprint`, `duplicate_blueprint` |
 | **Batch / generation** | `apply_ops`, `preview_ops`, `compile_function` |
 | **Transpile (BP↔C++)** | `decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function` |
-| **Project + Content Browser** | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table` |
+| **Project + Content Browser** | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table`, `add_data_row`, `set_data_row_value` |
 | **Live editor** | `console_command`, `get_cvar`, `set_cvar`, `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`, `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`, `read_output_log` |
 | **Automation** | `run_automation_tests` |
 | **Discoverability** | `list_node_kinds`, `list_pin_categories` |

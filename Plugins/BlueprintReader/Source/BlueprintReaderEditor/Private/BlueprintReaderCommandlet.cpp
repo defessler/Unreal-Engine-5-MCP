@@ -140,6 +140,9 @@ namespace
 		ReadOutputLog,
 		// Automation tests.
 		RunAutomationTests,
+		// DataTable row mutation.
+		AddDataRow,
+		SetDataRowValue,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -196,6 +199,8 @@ namespace
 		if (OpStr.Equals(TEXT("DeleteActor"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteActor; return true; }
 		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
 		if (OpStr.Equals(TEXT("RunAutomationTests"), ESearchCase::IgnoreCase))  { OutOp = EOp::RunAutomationTests; return true; }
+		if (OpStr.Equals(TEXT("AddDataRow"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddDataRow; return true; }
+		if (OpStr.Equals(TEXT("SetDataRowValue"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetDataRowValue; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -1459,6 +1464,199 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ----- DataTable row mutation -------------------------------------
+	//
+	// AddDataRow inserts a row whose contents are the JSON object passed
+	// via -ValuesFile=<path>. Each top-level key maps to a property on
+	// the row struct; FProperty::ImportText handles the string→native
+	// coercion (works for scalars, enums, FName/FString/FText, and any
+	// struct that exports via text). Idempotent: existing rows return
+	// {already_existed:true} unless -Overwrite is passed.
+	//
+	// SetDataRowValue is the surgical-edit cousin: one field on one
+	// existing row.
+
+	int32 RunAddDataRowOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, RowName, ValuesFile;
+		FParse::Value(*Params, TEXT("Asset="),      AssetPath);
+		FParse::Value(*Params, TEXT("Row="),        RowName);
+		FParse::Value(*Params, TEXT("ValuesFile="), ValuesFile);
+		const bool bOverwrite = FParse::Param(*Params, TEXT("Overwrite"));
+
+		if (AssetPath.IsEmpty() || RowName.IsEmpty() || ValuesFile.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddDataRow requires -Asset / -Row / -ValuesFile"));
+			return 1;
+		}
+
+		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
+		if (!DT)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddDataRow: failed to load DataTable: %s"), *AssetPath);
+			return 4;
+		}
+		const UScriptStruct* RowStruct = DT->GetRowStruct();
+		if (!RowStruct)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddDataRow: DataTable %s has no row struct"), *AssetPath);
+			return 5;
+		}
+
+		// Load + parse the JSON values blob.
+		FString ValuesBlob;
+		if (!FFileHelper::LoadFileToString(ValuesBlob, *ValuesFile))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddDataRow: cannot read values file: %s"), *ValuesFile);
+			return 1;
+		}
+		TSharedPtr<FJsonObject> Values;
+		{
+			TSharedRef<TJsonReader<>> R = TJsonReaderFactory<>::Create(ValuesBlob);
+			if (!FJsonSerializer::Deserialize(R, Values) || !Values.IsValid())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddDataRow: values is not a JSON object"));
+				return 1;
+			}
+		}
+
+		// Idempotency check.
+		const FName RowFName(*RowName);
+		uint8* ExistingRow = DT->FindRowUnchecked(RowFName);
+		if (ExistingRow && !bOverwrite)
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetBoolField(TEXT("created"), false);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		// Allocate + zero-init a row struct, then ImportText each field.
+		const int32 StructSize = RowStruct->GetStructureSize();
+		TArray<uint8> RowData;
+		RowData.SetNumZeroed(StructSize);
+		RowStruct->InitializeStruct(RowData.GetData());
+
+		for (const auto& Pair : Values->Values)
+		{
+			FProperty* Prop = RowStruct->FindPropertyByName(FName(*Pair.Key));
+			if (!Prop) continue;  // ignore unknown keys
+			FString Stringified;
+			if (Pair.Value.IsValid())
+			{
+				// JSON scalars → their textual form. Quotes stripped for
+				// strings so ImportText sees the bare value.
+				if (Pair.Value->Type == EJson::String)
+				{
+					Stringified = Pair.Value->AsString();
+				}
+				else
+				{
+					Stringified = Pair.Value->AsString();  // numbers / bools coerce ToString
+				}
+			}
+			Prop->ImportText_Direct(*Stringified,
+				Prop->ContainerPtrToValuePtr<void>(RowData.GetData()),
+				/*OwnerObject=*/DT, PPF_None);
+		}
+
+		// AddRow takes FTableRowBase&; the underlying impl just memcpy's
+		// the struct bytes into a new heap allocation tied to RowFName.
+		// Since the row struct is dynamic, we go via the internal API.
+		if (ExistingRow)
+		{
+			// Overwrite path: just memcpy the new bytes onto the existing
+			// allocation. UE doesn't expose this directly; the public
+			// path is RemoveRow + AddRow.
+			DT->RemoveRow(RowFName);
+		}
+
+		// The public API requires a typed FTableRowBase. We cast our
+		// dynamically-sized buffer; UE memcpy's the right number of bytes.
+		DT->AddRow(RowFName, *reinterpret_cast<FTableRowBase*>(RowData.GetData()));
+		DT->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), ExistingRow != nullptr);
+		Obj->SetBoolField(TEXT("created"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("row_name"),  RowName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetDataRowValueOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, RowName, FieldName, NewValue;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Row="),   RowName);
+		FParse::Value(*Params, TEXT("Field="), FieldName);
+		FParse::Value(*Params, TEXT("Value="), NewValue);
+		if (AssetPath.IsEmpty() || RowName.IsEmpty() || FieldName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetDataRowValue requires -Asset / -Row / -Field"));
+			return 1;
+		}
+
+		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
+		if (!DT)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetDataRowValue: cannot load DataTable: %s"), *AssetPath);
+			return 4;
+		}
+		const UScriptStruct* RowStruct = DT->GetRowStruct();
+		uint8* RowData = DT->FindRowUnchecked(FName(*RowName));
+		if (!RowStruct || !RowData)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetDataRowValue: row '%s' not found in %s"), *RowName, *AssetPath);
+			return 4;
+		}
+		FProperty* Prop = RowStruct->FindPropertyByName(FName(*FieldName));
+		if (!Prop)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetDataRowValue: field '%s' not found on %s"),
+				*FieldName, *RowStruct->GetName());
+			return 4;
+		}
+
+		// Capture the pre-set value for the response.
+		FString OldText;
+		Prop->ExportText_Direct(OldText,
+			Prop->ContainerPtrToValuePtr<void>(RowData),
+			/*Defaults=*/nullptr, /*OwnerObject=*/DT, PPF_None);
+
+		// Apply.
+		Prop->ImportText_Direct(*NewValue,
+			Prop->ContainerPtrToValuePtr<void>(RowData),
+			/*OwnerObject=*/DT, PPF_None);
+		DT->MarkPackageDirty();
+
+		// Capture the post-set form for round-trip verification.
+		FString NewText;
+		Prop->ExportText_Direct(NewText,
+			Prop->ContainerPtrToValuePtr<void>(RowData),
+			/*Defaults=*/nullptr, /*OwnerObject=*/DT, PPF_None);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("row_name"),  RowName);
+		Obj->SetStringField(TEXT("field_name"), FieldName);
+		Obj->SetStringField(TEXT("old_value"), OldText);
+		Obj->SetStringField(TEXT("new_value"), NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -2512,6 +2710,8 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::DeleteActor)        return RunDeleteActorOp(Params, OutputPath, bPretty);
 	if (Op == EOp::ReadOutputLog)      return RunReadOutputLogOp(Params, OutputPath, bPretty);
 	if (Op == EOp::RunAutomationTests) return RunRunAutomationTestsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddDataRow)         return RunAddDataRowOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetDataRowValue)    return RunSetDataRowValueOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
