@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-59 tools across 5 categories. Don't memorize the list — call
+59 tools across 8 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -32,6 +32,17 @@ the same tool surface regardless of client.
   `decompile_blueprint`, `transpile_function`, `transpile_blueprint`,
   `write_generated_source`, `parse_cpp_function`. Pivot on a JSON
   AST called BPIR.
+- **Project + Content Browser** (7): `get_project_metadata`,
+  `save_all`, `move_asset`, `delete_asset`, `create_folder`,
+  `list_data_tables`, `read_data_table`. Project-level introspection
+  + asset-browser ops alongside the per-Blueprint surface.
+- **Live editor** (12): `console_command`, `get_cvar`, `set_cvar`,
+  `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`,
+  `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`,
+  `read_output_log`. Operate on the running editor's in-memory state;
+  most useful with the `live` backend (open editor).
+- **Automation** (1): `run_automation_tests`. Kick off UE's
+  automation suites with a wildcard pattern.
 - **Discoverability + meta** (3): `list_node_kinds`,
   `list_pin_categories`, `shutdown_daemon`.
 
@@ -69,6 +80,19 @@ https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference
 | Convert BP to C++ for review | `transpile_function` |
 | Convert BP class to compilable C++ | `transpile_blueprint` + `write_generated_source` |
 | Convert C++ → BP graph | `parse_cpp_function` → `compile_function` |
+| Read `.uproject` metadata | `get_project_metadata` |
+| Save all dirty packages | `save_all` |
+| Move / rename / delete an asset | `move_asset` / `delete_asset` |
+| Create a content-browser folder | `create_folder` |
+| Inventory + read DataTables | `list_data_tables` / `read_data_table` |
+| Run a console command in the editor | `console_command` |
+| Read / write a console variable | `get_cvar` / `set_cvar` |
+| Start / stop Play-In-Editor | `pie_start` / `pie_stop` |
+| Trigger Live Coding rebuild | `live_coding_compile` |
+| Inspect / change the editor's selection | `get_selected_actors` / `set_selection` |
+| Spawn / move / delete actors in the level | `spawn_actor` / `set_actor_transform` / `delete_actor` |
+| Read recent editor log entries | `read_output_log` |
+| Run UE automation tests | `run_automation_tests` |
 
 ## Performance — assume daemon mode
 
