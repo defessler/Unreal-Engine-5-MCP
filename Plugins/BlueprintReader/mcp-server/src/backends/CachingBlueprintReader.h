@@ -212,6 +212,22 @@ public:
         std::string_view, std::string_view, std::string_view) override;
     CompileStateTreeResult CompileStateTree(std::string_view) override;
 
+    // ----- Stage 3: pass-through (transient editor state, no caching) ---
+    StartProfileResult StartProfile(std::string_view) override;
+    StopProfileResult StopProfile() override;
+    StatGroupResult GetStats(std::string_view) override;
+    ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
+    CookResult CookContent(std::string_view) override;
+    CookResult PackageProject(std::string_view, std::string_view) override;
+    ClassInfo IntrospectClass(std::string_view) override;
+    FindClassResult FindClass(std::string_view) override;
+    std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
+    FocusActorResult FocusActor(std::string_view) override;
+    SetCameraResult SetCameraTransform(double, double, double,
+                                       double, double, double) override;
+    ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
+    SetShowFlagResult SetShowFlag(std::string_view, bool) override;
+
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries
     // that subsequent ops in the same batch would re-fetch. Flushed by

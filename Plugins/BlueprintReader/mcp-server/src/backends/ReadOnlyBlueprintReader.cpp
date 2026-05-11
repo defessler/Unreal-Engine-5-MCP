@@ -385,6 +385,46 @@ ReadOnlyBlueprintReader::CompileStateTree(std::string_view) {
     Reject("compile_state_tree");
 }
 
+// ----- Stage 3 (all read-shaped diagnostics; pass through) -------------
+
+IBlueprintReader::StartProfileResult
+ReadOnlyBlueprintReader::StartProfile(std::string_view m) { return inner_->StartProfile(m); }
+IBlueprintReader::StopProfileResult
+ReadOnlyBlueprintReader::StopProfile() { return inner_->StopProfile(); }
+IBlueprintReader::StatGroupResult
+ReadOnlyBlueprintReader::GetStats(std::string_view g) { return inner_->GetStats(g); }
+IBlueprintReader::ScreenshotResult
+ReadOnlyBlueprintReader::TakeScreenshot(std::string_view d, int w, int h) {
+    return inner_->TakeScreenshot(d, w, h);
+}
+IBlueprintReader::CookResult
+ReadOnlyBlueprintReader::CookContent(std::string_view p) { return inner_->CookContent(p); }
+IBlueprintReader::CookResult
+ReadOnlyBlueprintReader::PackageProject(std::string_view p, std::string_view o) {
+    return inner_->PackageProject(p, o);
+}
+IBlueprintReader::ClassInfo
+ReadOnlyBlueprintReader::IntrospectClass(std::string_view c) { return inner_->IntrospectClass(c); }
+IBlueprintReader::FindClassResult
+ReadOnlyBlueprintReader::FindClass(std::string_view q) { return inner_->FindClass(q); }
+std::vector<IBlueprintReader::ClassFunctionInfo>
+ReadOnlyBlueprintReader::ListFunctions(std::string_view c) { return inner_->ListFunctions(c); }
+IBlueprintReader::FocusActorResult
+ReadOnlyBlueprintReader::FocusActor(std::string_view a) { return inner_->FocusActor(a); }
+IBlueprintReader::SetCameraResult
+ReadOnlyBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
+    double rp, double ry, double rr) {
+    return inner_->SetCameraTransform(lx, ly, lz, rp, ry, rr);
+}
+IBlueprintReader::ViewportScreenshotResult
+ReadOnlyBlueprintReader::TakeViewportScreenshot(std::string_view d) {
+    return inner_->TakeViewportScreenshot(d);
+}
+IBlueprintReader::SetShowFlagResult
+ReadOnlyBlueprintReader::SetShowFlag(std::string_view f, bool e) {
+    return inner_->SetShowFlag(f, e);
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {

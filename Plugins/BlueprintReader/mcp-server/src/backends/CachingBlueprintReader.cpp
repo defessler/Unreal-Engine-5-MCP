@@ -718,6 +718,46 @@ CachingBlueprintReader::CompileStateTree(std::string_view a) {
     return out;
 }
 
+// ----- Stage 3 (pass-through; transient editor state, never cached) ----
+
+IBlueprintReader::StartProfileResult
+CachingBlueprintReader::StartProfile(std::string_view m) { return inner_->StartProfile(m); }
+IBlueprintReader::StopProfileResult
+CachingBlueprintReader::StopProfile() { return inner_->StopProfile(); }
+IBlueprintReader::StatGroupResult
+CachingBlueprintReader::GetStats(std::string_view g) { return inner_->GetStats(g); }
+IBlueprintReader::ScreenshotResult
+CachingBlueprintReader::TakeScreenshot(std::string_view d, int w, int h) {
+    return inner_->TakeScreenshot(d, w, h);
+}
+IBlueprintReader::CookResult
+CachingBlueprintReader::CookContent(std::string_view p) { return inner_->CookContent(p); }
+IBlueprintReader::CookResult
+CachingBlueprintReader::PackageProject(std::string_view p, std::string_view o) {
+    return inner_->PackageProject(p, o);
+}
+IBlueprintReader::ClassInfo
+CachingBlueprintReader::IntrospectClass(std::string_view c) { return inner_->IntrospectClass(c); }
+IBlueprintReader::FindClassResult
+CachingBlueprintReader::FindClass(std::string_view q) { return inner_->FindClass(q); }
+std::vector<IBlueprintReader::ClassFunctionInfo>
+CachingBlueprintReader::ListFunctions(std::string_view c) { return inner_->ListFunctions(c); }
+IBlueprintReader::FocusActorResult
+CachingBlueprintReader::FocusActor(std::string_view a) { return inner_->FocusActor(a); }
+IBlueprintReader::SetCameraResult
+CachingBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
+    double rp, double ry, double rr) {
+    return inner_->SetCameraTransform(lx, ly, lz, rp, ry, rr);
+}
+IBlueprintReader::ViewportScreenshotResult
+CachingBlueprintReader::TakeViewportScreenshot(std::string_view d) {
+    return inner_->TakeViewportScreenshot(d);
+}
+IBlueprintReader::SetShowFlagResult
+CachingBlueprintReader::SetShowFlag(std::string_view f, bool e) {
+    return inner_->SetShowFlag(f, e);
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================
