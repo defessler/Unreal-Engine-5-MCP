@@ -1,6 +1,6 @@
 ---
 name: bp-reader
-description: Use this skill when the user asks to inspect, edit, build, or transpile Unreal Engine 5 Blueprint assets through the bp-reader MCP server. Triggers on phrases like "the blueprint", "BP_*", "/Game/...", "add a variable", "wire these pins", "what does this blueprint do", "convert this BP to C++", "compile this pseudocode into a function", or any explicit mention of bp-reader tools (list_blueprints, read_blueprint, add_function, wire_pins, apply_ops, compile_function, transpile_function, parse_cpp_function, etc.). Skip for non-blueprint UE topics (C++ source unrelated to BPs, build scripts, ini files).
+description: Use this skill when the user asks to inspect, edit, build, transpile, or operate on Unreal Engine 5 Blueprint assets and the surrounding project through the bp-reader MCP server. Triggers on phrases like "the blueprint", "BP_*", "/Game/...", "add a variable", "wire these pins", "what does this blueprint do", "convert this BP to C++", "compile this pseudocode into a function", "spawn an actor", "move/rename/delete this asset", "save all", "read a DataTable", "run a console command", "set a CVar", "start/stop PIE", "Live Coding compile", "get/set the selection", "read the output log", "run automation tests", or any explicit mention of bp-reader tools (list_blueprints, read_blueprint, add_function, wire_pins, apply_ops, compile_function, transpile_function, parse_cpp_function, get_project_metadata, save_all, move_asset, console_command, get_cvar, pie_start, spawn_actor, run_automation_tests, etc.). Skip for non-blueprint UE topics like raw C++ source unrelated to BPs, build scripts, ini files.
 ---
 
 # bp-reader — using the Blueprint MCP tools
@@ -32,6 +32,9 @@ triage — there are focused sub-skills:
 | **Write — assets** | `create_blueprint`, `duplicate_blueprint` |
 | **Batch / generation** | `apply_ops`, `preview_ops`, `compile_function` |
 | **Transpile (BP↔C++)** | `decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function` |
+| **Project + Content Browser** | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table` |
+| **Live editor** | `console_command`, `get_cvar`, `set_cvar`, `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`, `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`, `read_output_log` |
+| **Automation** | `run_automation_tests` |
 | **Discoverability** | `list_node_kinds`, `list_pin_categories` |
 | **Meta** | `shutdown_daemon` |
 
@@ -295,6 +298,21 @@ attempting a workaround that fails:
   with `function_name:"BeginPlay"`.
 - *"Make BP_Boss from BP_Enemy."* → `duplicate_blueprint` then mutate.
 - *"Convert ApplyDamage to C++ for code review."* → `transpile_function`.
+- *"What project is this and which engine version?"* → `get_project_metadata`.
+- *"Save everything."* → `save_all`.
+- *"Move /Game/AI/BP_Boss to /Game/Bosses/BP_Boss."* → `move_asset`.
+- *"List the DataTables in /Game/Data."* → `list_data_tables`.
+- *"Spawn a StaticMeshActor at (0, 0, 100)."* → `spawn_actor` with
+  `class_path:"/Script/Engine.StaticMeshActor"` + a `location` object.
+- *"What's selected right now?"* → `get_selected_actors`.
+- *"Run `stat unit` in the editor."* → `console_command`.
+- *"Bump `r.ScreenPercentage` to 50."* → `set_cvar` with `name:"r.ScreenPercentage"` `value:"50"`.
+- *"Start PIE."* → `pie_start`. (Stop it later with `pie_stop`.)
+- *"Recompile my C++ via Live Coding."* → `live_coding_compile`, then
+  `read_output_log` to watch progress.
+- *"Run the BlueprintReader.* tests."* → `run_automation_tests` with
+  `pattern:"BlueprintReader.*"`; check `read_output_log` or
+  `Saved/Automation/index.json` for results.
 
 If a request hits a tool that doesn't exist (or a node kind not in
 `list_node_kinds`), say so directly and tell the user what is
