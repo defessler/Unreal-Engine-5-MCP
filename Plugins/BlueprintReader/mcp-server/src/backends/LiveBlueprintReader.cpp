@@ -1029,6 +1029,221 @@ LiveBlueprintReader::RunAutomationTests(std::string_view pattern) {
     return out;
 }
 
+// ----- Material authoring ------------------------------------------------
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListMaterials(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListMaterials"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s; from_json(v, s); out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::MaterialInfo
+LiveBlueprintReader::ReadMaterial(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadMaterial", "-Asset=" + std::string(assetPath)});
+    MaterialInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    if (auto it = j.find("expressions"); it != j.end() && it->is_array()) {
+        for (const auto& e : *it) {
+            MaterialExpression x;
+            x.id            = e.value("id",             std::string{});
+            x.className     = e.value("class",          std::string{});
+            x.parameterName = e.value("parameter_name", std::string{});
+            x.x             = e.value("x", 0);
+            x.y             = e.value("y", 0);
+            out.expressions.push_back(std::move(x));
+        }
+    }
+    if (auto it = j.find("connections"); it != j.end() && it->is_array()) {
+        for (const auto& c : *it) {
+            MaterialConnection mc;
+            mc.fromNodeId = c.value("from_node", std::string{});
+            mc.fromPin    = c.value("from_pin",  std::string{});
+            mc.toNodeId   = c.value("to_node",   std::string{});
+            mc.toPin      = c.value("to_pin",    std::string{});
+            out.connections.push_back(std::move(mc));
+        }
+    }
+    if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
+        for (const auto& v : *it) {
+            if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddMaterialExpressionResult
+LiveBlueprintReader::AddMaterialExpression(std::string_view assetPath,
+    std::string_view expressionClass, int x, int y) {
+    auto j = RunOp({"-Op=AddMaterialExpression",
+                    "-Asset=" + std::string(assetPath),
+                    "-Class=" + std::string(expressionClass),
+                    "-X=" + std::to_string(x),
+                    "-Y=" + std::to_string(y)});
+    AddMaterialExpressionResult out;
+    out.assetPath = std::string(assetPath);
+    out.className = std::string(expressionClass);
+    if (j.is_object()) out.expressionId = j.value("expression_id", std::string{});
+    return out;
+}
+
+IBlueprintReader::ConnectMaterialResult
+LiveBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
+    std::string_view fromNodeId, std::string_view fromPin,
+    std::string_view toNodeId, std::string_view toPin) {
+    auto j = RunOp({"-Op=ConnectMaterialExpressions",
+                    "-Asset="   + std::string(assetPath),
+                    "-From="    + std::string(fromNodeId),
+                    "-FromPin=" + std::string(fromPin),
+                    "-To="      + std::string(toNodeId),
+                    "-ToPin="   + std::string(toPin)});
+    ConnectMaterialResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.connected = j.value("connected", false);
+    return out;
+}
+
+IBlueprintReader::SetMaterialParameterResult
+LiveBlueprintReader::SetMaterialParameter(std::string_view assetPath,
+    std::string_view parameterName, std::string_view value) {
+    auto j = RunOp({"-Op=SetMaterialParameter",
+                    "-Asset=" + std::string(assetPath),
+                    "-Param=" + std::string(parameterName),
+                    "-Value=" + std::string(value)});
+    SetMaterialParameterResult out;
+    out.assetPath = std::string(assetPath);
+    out.parameterName = std::string(parameterName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SetMIParameterResult
+LiveBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath,
+    std::string_view parameterName, std::string_view paramType,
+    std::string_view value) {
+    auto j = RunOp({"-Op=SetMaterialInstanceParameter",
+                    "-Asset=" + std::string(assetPath),
+                    "-Param=" + std::string(parameterName),
+                    "-Type="  + std::string(paramType),
+                    "-Value=" + std::string(value)});
+    SetMIParameterResult out;
+    out.assetPath     = std::string(assetPath);
+    out.parameterName = std::string(parameterName);
+    out.paramType     = std::string(paramType);
+    if (j.is_object()) out.newValue = j.value("new_value", std::string{});
+    return out;
+}
+
+IBlueprintReader::CompileMaterialResult
+LiveBlueprintReader::CompileMaterial(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CompileMaterial", "-Asset=" + std::string(assetPath)});
+    CompileMaterialResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
+// ----- UMG widget authoring ----------------------------------------------
+
+IBlueprintReader::WidgetBlueprintInfo
+LiveBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadWidgetBlueprint", "-Asset=" + std::string(assetPath)});
+    WidgetBlueprintInfo out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.rootName = j.value("root_name", std::string{});
+        if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
+            for (const auto& n : *it) {
+                WidgetNode wn;
+                wn.name       = n.value("name",   std::string{});
+                wn.className  = n.value("class",  std::string{});
+                wn.parentName = n.value("parent", std::string{});
+                out.nodes.push_back(std::move(wn));
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddWidgetResult
+LiveBlueprintReader::AddWidget(std::string_view assetPath,
+    std::string_view parentName, std::string_view widgetClass,
+    std::string_view name) {
+    std::vector<std::string> args = {"-Op=AddWidget",
+                                     "-Asset=" + std::string(assetPath),
+                                     "-Name="  + std::string(name),
+                                     "-Class=" + std::string(widgetClass)};
+    if (!parentName.empty()) args.push_back("-Parent=" + std::string(parentName));
+    auto j = RunOp(args);
+    AddWidgetResult out;
+    out.assetPath   = std::string(assetPath);
+    out.name        = std::string(name);
+    out.widgetClass = std::string(widgetClass);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+        out.created        = j.value("created", false);
+    }
+    return out;
+}
+
+IBlueprintReader::SetWidgetPropertyResult
+LiveBlueprintReader::SetWidgetProperty(std::string_view assetPath,
+    std::string_view widgetName, std::string_view propertyName,
+    std::string_view value) {
+    auto j = RunOp({"-Op=SetWidgetProperty",
+                    "-Asset="    + std::string(assetPath),
+                    "-Widget="   + std::string(widgetName),
+                    "-Property=" + std::string(propertyName),
+                    "-Value="    + std::string(value)});
+    SetWidgetPropertyResult out;
+    out.assetPath    = std::string(assetPath);
+    out.widgetName   = std::string(widgetName);
+    out.propertyName = std::string(propertyName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::BindWidgetEventResult
+LiveBlueprintReader::BindWidgetEvent(std::string_view assetPath,
+    std::string_view widgetName, std::string_view eventName,
+    std::string_view handlerFunction) {
+    auto j = RunOp({"-Op=BindWidgetEvent",
+                    "-Asset="   + std::string(assetPath),
+                    "-Widget="  + std::string(widgetName),
+                    "-Event="   + std::string(eventName),
+                    "-Handler=" + std::string(handlerFunction)});
+    BindWidgetEventResult out;
+    out.assetPath       = std::string(assetPath);
+    out.widgetName      = std::string(widgetName);
+    out.eventName       = std::string(eventName);
+    out.handlerFunction = std::string(handlerFunction);
+    if (j.is_object()) out.bound = j.value("bound", false);
+    return out;
+}
+
+IBlueprintReader::CompileWidgetBlueprintResult
+LiveBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CompileWidgetBlueprint", "-Asset=" + std::string(assetPath)});
+    CompileWidgetBlueprintResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

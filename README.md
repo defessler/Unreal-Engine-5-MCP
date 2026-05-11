@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 65 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 77 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -22,7 +22,7 @@ Two backends:
 
 ## Tools
 
-65 tools across 8 categories — see the
+77 tools across 10 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 
@@ -35,6 +35,8 @@ for every input/output shape with examples.
 | **Project + Content Browser** (9) | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table`, `add_data_row`, `set_data_row_value` | Project-level introspection + asset-browser ops complementing the per-Blueprint surface. |
 | **Live editor** (12) | `console_command`, `get_cvar`, `set_cvar`, `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`, `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`, `read_output_log` | Operate on the running editor's in-memory state. Work best with the `live` backend (open editor); commandlet daemon routes them too. |
 | **Automation** (1) | `run_automation_tests` | Kick off UE's automation test framework with a wildcard pattern; results land in the output log + `Saved/Automation/`. |
+| **Material authoring** (7) | `list_materials`, `read_material`, `add_material_expression`, `connect_material_expressions`, `set_material_parameter`, `set_material_instance_parameter`, `compile_material` | Walk the UMaterial expression graph; add nodes; wire them to other expressions or to the master-material slots (BaseColor / Roughness / Normal / …); override scalar/vector/texture parameters on a UMaterialInstanceConstant; trigger shader recompiles. |
+| **UMG widgets** (5) | `read_widget_blueprint`, `add_widget`, `set_widget_property`, `bind_widget_event`, `compile_widget_blueprint` | Inspect UWidgetBlueprint's UWidgetTree; add widgets under a PanelWidget parent; set widget properties; scaffold event handlers; compile. |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case

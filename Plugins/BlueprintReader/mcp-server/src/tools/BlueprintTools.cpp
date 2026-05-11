@@ -2490,6 +2490,419 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Material authoring (Stage 1) ====================================
+    // The material expression graph is a separate UObject tree from
+    // Blueprint event graphs — `ReadMaterial` returns expression nodes +
+    // their connections + parameter names. Writes (add_expression,
+    // connect, set_parameter, compile) mutate the UMaterial directly;
+    // mark dirty + SavePackage after if you want it to persist on disk.
+
+    // ----- list_materials ------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "list_materials";
+        d.description =
+            "List all UMaterial / UMaterialInstance assets under a content "
+            "path. Mirrors `list_blueprints` but filters by class. Defaults "
+            "to `/Game`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto summaries = reader.ListMaterials(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : summaries) arr.push_back(s);
+            return arr;
+        });
+    }
+
+    // ----- read_material -------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "read_material";
+        d.description =
+            "Read a material's expression graph: every UMaterialExpression "
+            "node (id, class, parameter name, x/y), every connection (from "
+            "expression output → expression input or master-material slot "
+            "like BaseColor / Roughness), and the names of all exposed "
+            "scalar/vector parameters.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto m = reader.ReadMaterial(asset);
+            nlohmann::json exprs = nlohmann::json::array();
+            for (const auto& e : m.expressions) {
+                exprs.push_back({
+                    {"id", e.id}, {"class", e.className},
+                    {"parameter_name", e.parameterName},
+                    {"x", e.x}, {"y", e.y},
+                });
+            }
+            nlohmann::json conns = nlohmann::json::array();
+            for (const auto& c : m.connections) {
+                conns.push_back({
+                    {"from_node", c.fromNodeId}, {"from_pin", c.fromPin},
+                    {"to_node",   c.toNodeId},   {"to_pin",   c.toPin},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      m.assetPath},
+                {"expressions",     exprs},
+                {"connections",     conns},
+                {"parameter_names", m.parameterNames},
+            };
+        });
+    }
+
+    // ----- add_material_expression ---------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_material_expression";
+        d.description =
+            "Add a UMaterialExpression node to a material. `expression_class` "
+            "is the short class name like `MaterialExpressionConstant3Vector`, "
+            "`MaterialExpressionScalarParameter`, "
+            "`MaterialExpressionTextureSampleParameter2D`. x/y are graph "
+            "coordinates. Returns the new expression's id (use in "
+            "`connect_material_expressions`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",       {{"type","string"}}},
+                {"expression_class", {{"type","string"}}},
+                {"x", {{"type","integer"}}},
+                {"y", {{"type","integer"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","expression_class"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string cls   = RequireString(args, "expression_class");
+            int x = args.value("x", 0);
+            int y = args.value("y", 0);
+            auto r = reader.AddMaterialExpression(asset, cls, x, y);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"expression_id", r.expressionId},
+                {"class",         r.className},
+            };
+        });
+    }
+
+    // ----- connect_material_expressions ----------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "connect_material_expressions";
+        d.description =
+            "Wire one expression's output pin to another expression's input "
+            "pin, or to a master-material slot. Pass empty `to_node` to wire "
+            "to a master slot (`to_pin` then names the slot, e.g. "
+            "`BaseColor`, `Metallic`, `Roughness`, `EmissiveColor`, `Normal`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"from_node",  {{"type","string"}}},
+                {"from_pin",   {{"type","string"}}},
+                {"to_node",    {{"type","string"}}},
+                {"to_pin",     {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","from_node","from_pin","to_pin"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string fn = RequireString(args, "from_node");
+            std::string fp = RequireString(args, "from_pin");
+            std::string tn = OptString(args, "to_node", "");
+            std::string tp = RequireString(args, "to_pin");
+            auto r = reader.ConnectMaterialExpressions(asset, fn, fp, tn, tp);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"connected",  r.connected},
+            };
+        });
+    }
+
+    // ----- set_material_parameter ----------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_material_parameter";
+        d.description =
+            "Set the default value of a named scalar / vector parameter on a "
+            "UMaterial. `value` is the parameter's text representation "
+            "(scalar: `0.5`; vector: `(R=1,G=0,B=0,A=1)`). For overriding on "
+            "an instance, use `set_material_instance_parameter`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",     {{"type","string"}}},
+                {"parameter_name", {{"type","string"}}},
+                {"value",          {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","parameter_name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string name  = RequireString(args, "parameter_name");
+            std::string value = RequireString(args, "value");
+            auto r = reader.SetMaterialParameter(asset, name, value);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",     r.assetPath},
+                {"parameter_name", r.parameterName},
+                {"old_value",      r.oldValue},
+                {"new_value",      r.newValue},
+            };
+        });
+    }
+
+    // ----- set_material_instance_parameter -------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_material_instance_parameter";
+        d.description =
+            "Override a parameter on a UMaterialInstanceConstant. `type` is "
+            "`scalar`, `vector`, or `texture`; `value` is its text form "
+            "(scalar `0.5`, vector `(R=...,G=...,B=...,A=...)`, texture "
+            "`/Game/Textures/T_Foo.T_Foo`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",     {{"type","string"}}},
+                {"parameter_name", {{"type","string"}}},
+                {"type",           {{"type","string"}}},
+                {"value",          {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","parameter_name","type","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string name  = RequireString(args, "parameter_name");
+            std::string type  = RequireString(args, "type");
+            std::string value = RequireString(args, "value");
+            auto r = reader.SetMaterialInstanceParameter(asset, name, type, value);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",     r.assetPath},
+                {"parameter_name", r.parameterName},
+                {"type",           r.paramType},
+                {"new_value",      r.newValue},
+            };
+        });
+    }
+
+    // ----- compile_material ----------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "compile_material";
+        d.description =
+            "Recompile a material's shader code. UE normally compiles "
+            "incrementally on edit; call this explicitly to flush pending "
+            "recompiles or recover from a stuck shader compile state.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CompileMaterial(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"compiled",   r.compiled},
+            };
+        });
+    }
+
+    // ===== UMG widget authoring (Stage 1) ==================================
+    // UMG widget blueprints store their hierarchy in a UWidgetTree rather
+    // than a USimpleConstructionScript — different shape from actor
+    // components, so they get their own tool surface.
+
+    // ----- read_widget_blueprint -----------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "read_widget_blueprint";
+        d.description =
+            "Read a UWidgetBlueprint's widget tree: every UWidget node "
+            "(name, class, parent name) and the root widget's name. "
+            "Mirrors `get_components` but for UMG.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto w = reader.ReadWidgetBlueprint(asset);
+            nlohmann::json nodes = nlohmann::json::array();
+            for (const auto& n : w.nodes) {
+                nodes.push_back({
+                    {"name",   n.name},
+                    {"class",  n.className},
+                    {"parent", n.parentName},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", w.assetPath},
+                {"root_name",  w.rootName},
+                {"nodes",      nodes},
+            };
+        });
+    }
+
+    // ----- add_widget ----------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "add_widget";
+        d.description =
+            "Add a UWidget node to a UWidgetBlueprint. `widget_class` is the "
+            "short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, "
+            "etc.). `parent_name` empty = becomes the new root (replaces "
+            "the existing root only if the tree was empty). Otherwise "
+            "appends as a child of `parent_name`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",   {{"type","string"}}},
+                {"parent_name",  {{"type","string"}}},
+                {"widget_class", {{"type","string"}}},
+                {"name",         {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","widget_class","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset  = RequireString(args, "asset_path");
+            std::string parent = OptString(args, "parent_name", "");
+            std::string cls    = RequireString(args, "widget_class");
+            std::string name   = RequireString(args, "name");
+            auto r = reader.AddWidget(asset, parent, cls, name);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      r.assetPath},
+                {"name",            r.name},
+                {"widget_class",    r.widgetClass},
+                {"already_existed", r.alreadyExisted},
+                {"created",         r.created},
+            };
+        });
+    }
+
+    // ----- set_widget_property -------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "set_widget_property";
+        d.description =
+            "Set a UPROPERTY on a widget in a UWidgetBlueprint. `property_name` "
+            "is the property's name as authored in C++ (`Text`, "
+            "`ColorAndOpacity`, `Visibility`). `value` is the property's text "
+            "form (text: a string; FLinearColor: `(R=1,G=0,B=0,A=1)`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"widget_name",   {{"type","string"}}},
+                {"property_name", {{"type","string"}}},
+                {"value",         {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","widget_name","property_name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string w     = RequireString(args, "widget_name");
+            std::string p     = RequireString(args, "property_name");
+            std::string v     = RequireString(args, "value");
+            auto r = reader.SetWidgetProperty(asset, w, p, v);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"widget_name",   r.widgetName},
+                {"property_name", r.propertyName},
+                {"old_value",     r.oldValue},
+                {"new_value",     r.newValue},
+            };
+        });
+    }
+
+    // ----- bind_widget_event ---------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "bind_widget_event";
+        d.description =
+            "Bind a widget's event (e.g. `OnClicked` on a Button) to a "
+            "named handler function in the widget blueprint's graph. If the "
+            "handler function doesn't exist, it's created with the event's "
+            "signature. Pairs with `add_function` if you want to author the "
+            "handler explicitly first.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",       {{"type","string"}}},
+                {"widget_name",      {{"type","string"}}},
+                {"event_name",       {{"type","string"}}},
+                {"handler_function", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","widget_name","event_name","handler_function"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string w     = RequireString(args, "widget_name");
+            std::string e     = RequireString(args, "event_name");
+            std::string h     = RequireString(args, "handler_function");
+            auto r = reader.BindWidgetEvent(asset, w, e, h);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",       r.assetPath},
+                {"widget_name",      r.widgetName},
+                {"event_name",       r.eventName},
+                {"handler_function", r.handlerFunction},
+                {"bound",            r.bound},
+            };
+        });
+    }
+
+    // ----- compile_widget_blueprint --------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "compile_widget_blueprint";
+        d.description =
+            "Compile a UWidgetBlueprint. Equivalent to clicking Compile in "
+            "the UMG designer. Returns `{compiled: true|false}` — false "
+            "means compile failed; check `read_output_log` for errors.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CompileWidgetBlueprint(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"compiled",   r.compiled},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.
