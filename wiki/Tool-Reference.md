@@ -1,10 +1,11 @@
 # Tool Reference
 
-91 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
+104 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
 content-browser, 12 live editor, 1 automation, 7 material, 5 widget,
-5 behavior tree, 4 data asset, 5 state tree. All use snake_case JSON
-keys; nullable string fields emit `null`; `BPNode.meta` is a real
-nested object (not a string-of-JSON). Wire shapes are pinned in
+5 behavior tree, 4 data asset, 5 state tree, 4 profiling, 2 cook,
+3 class introspection, 4 viewport. All use snake_case JSON keys;
+nullable string fields emit `null`; `BPNode.meta` is a real nested
+object (not a string-of-JSON). Wire shapes are pinned in
 `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Type shorthand (write tools)
@@ -1320,6 +1321,139 @@ StateTreeEditor.
 
 ```json
 { "asset_path": "/Game/AI/States/ST_Player" }
+```
+
+## Profiling tools
+
+Drive UE's profiling backends from the agent — start a capture,
+run your scenario, stop and read the output file. `start_profile`
+selects between `stats` (UE's built-in `stat startfile` flow),
+`csv` (CSVProfiler), and `insights` (UnrealInsights trace).
+
+### `start_profile`
+Start a capture.
+
+```json
+{ "mode": "stats" }
+// or: { "mode": "csv" } / { "mode": "insights" }
+```
+
+### `stop_profile`
+Stop the active capture; returns the output file path.
+
+```json
+{}
+```
+
+### `get_stats`
+Toggle a stat group on (`Unit`, `Game`, `GPU`, `Memory`, `Engine`).
+The text snapshot is captured asynchronously by the editor — use
+`read_output_log` after to read it back.
+
+```json
+{ "group": "Unit" }
+```
+
+### `take_screenshot`
+High-res screenshot via `HighResShot`. Width/height optional.
+
+```json
+{ "dest_path": "D:/screenshots/hero.png",
+  "width": 3840, "height": 2160 }
+```
+
+## Headless cook / package tools
+
+These return the `RunUAT.bat` command line you should execute
+manually. The MCP server doesn't shell out inline to avoid editor-
+already-running reentrancy issues with the daemon.
+
+### `cook_content`
+```json
+{ "platform": "Windows" }
+```
+
+### `package_project`
+```json
+{ "platform": "Windows", "output_dir": "D:/Builds/MyGame" }
+```
+
+## Class introspection tools
+
+Reflection over the live UClass registry. Cheap; useful for
+agent orientation against a class hierarchy the user just
+mentioned.
+
+### `get_class_info`
+```json
+// request
+{ "class_name": "Actor" }
+// response (abbreviated)
+{ "ok": true,
+  "class": "Actor",
+  "parent": "Object",
+  "ancestors": ["Object"],
+  "properties": [
+    { "name": "RootComponent", "type": "TObjectPtr<USceneComponent>", "category": "Actor" }
+  ],
+  "functions": [
+    { "name": "BeginPlay",   "flags": "BlueprintEvent" },
+    { "name": "K2_DestroyActor", "flags": "BlueprintCallable" }
+  ]
+}
+```
+
+### `find_class`
+Substring search across the UClass registry. Case-insensitive,
+capped at 200 results.
+
+```json
+{ "query": "Controller" }
+// → { "ok": true, "classes": ["PlayerController", "AIController", ...] }
+```
+
+### `list_functions`
+Cheaper projection than `get_class_info` when you only need the
+call surface.
+
+```json
+{ "class_name": "PlayerController" }
+```
+
+## Viewport tools
+
+Editor viewport ergonomics — frame an actor, move the camera,
+capture, toggle show flags.
+
+### `focus_actor`
+Equivalent to selecting the actor and pressing F.
+
+```json
+{ "actor_name": "BP_TestEnemy_0" }
+```
+
+### `set_camera_transform`
+Move the active viewport camera explicitly.
+
+```json
+{ "loc_x": 0, "loc_y": 0, "loc_z": 500,
+  "rot_pitch": -30, "rot_yaw": 90, "rot_roll": 0 }
+```
+
+### `take_viewport_screenshot`
+Quick viewport capture (vs `take_screenshot` which uses HighResShot
+for offline-quality output).
+
+```json
+{ "dest_path": "D:/screenshots/viewport.png" }
+```
+
+### `set_show_flag`
+Toggle a viewport show flag (`Bones`, `Bounds`, `Collision`,
+`Wireframe`, `Lighting`).
+
+```json
+{ "flag_name": "Collision", "enabled": true }
 ```
 
 ## Meta tools

@@ -3301,6 +3301,333 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Profiling (Stage 3) =============================================
+
+    {
+        ToolDescriptor d;
+        d.name = "start_profile";
+        d.description = "Start a profiling capture. `mode` selects the "
+                        "backend: `stats` (UE's built-in stat group "
+                        "file, default), `insights` (UnrealInsights "
+                        "trace), or `csv` (CSVProfiler). Returns "
+                        "`{started, output_file}` — the file path may be "
+                        "empty until `stop_profile` finalizes the capture.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"mode", {{"type","string"}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string mode = OptString(args, "mode", "stats");
+            auto r = reader.StartProfile(mode);
+            return nlohmann::json{
+                {"ok", true},
+                {"started",     r.started},
+                {"output_file", r.outputFile},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "stop_profile";
+        d.description = "Stop the active profile capture and return its "
+                        "output file path. No-op if nothing is in progress.";
+        d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            auto r = reader.StopProfile();
+            return nlohmann::json{
+                {"ok", true},
+                {"stopped",     r.stopped},
+                {"output_file", r.outputFile},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "get_stats";
+        d.description = "Snapshot a stat group's current values. `group` "
+                        "is the name passed to UE's `stat` command "
+                        "(`Unit`, `Game`, `GPU`, `Memory`). Returns the "
+                        "text snapshot the stat system produces.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"group", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"group"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string g = RequireString(args, "group");
+            auto r = reader.GetStats(g);
+            return nlohmann::json{
+                {"ok", true},
+                {"group",    r.group},
+                {"snapshot", r.snapshot},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "take_screenshot";
+        d.description = "Capture a high-res screenshot to disk. `dest_path` "
+                        "is the output file; `width`/`height` default to the "
+                        "current viewport size if omitted. Routed via UE's "
+                        "`HighResShot` exec command.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"dest_path", {{"type","string"}}},
+                {"width",     {{"type","integer"}}},
+                {"height",    {{"type","integer"}}},
+            }},
+            {"required", nlohmann::json::array({"dest_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string dest = RequireString(args, "dest_path");
+            int w = args.value("width",  0);
+            int h = args.value("height", 0);
+            auto r = reader.TakeScreenshot(dest, w, h);
+            return nlohmann::json{
+                {"ok", true},
+                {"captured",    r.captured},
+                {"output_file", r.outputFile},
+            };
+        });
+    }
+
+    // ===== Headless cook / package (Stage 3) ==============================
+
+    {
+        ToolDescriptor d;
+        d.name = "cook_content";
+        d.description = "Run UE's content cook for a target platform "
+                        "(`Windows`, `Linux`, etc.). Asynchronous; the "
+                        "tool returns once the cook is dispatched. Follow "
+                        "progress via `read_output_log` or the editor's "
+                        "Cook Status panel.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"platform", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"platform"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string p = RequireString(args, "platform");
+            auto r = reader.CookContent(p);
+            return nlohmann::json{
+                {"ok", true},
+                {"started",  r.started},
+                {"platform", r.platform},
+                {"message",  r.message},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "package_project";
+        d.description = "Package the project for a target platform via "
+                        "UAT. `output_dir` is where the packaged build "
+                        "lands. Async — tool returns once UAT is "
+                        "dispatched.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"platform",   {{"type","string"}}},
+                {"output_dir", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"platform","output_dir"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string p = RequireString(args, "platform");
+            std::string o = RequireString(args, "output_dir");
+            auto r = reader.PackageProject(p, o);
+            return nlohmann::json{
+                {"ok", true},
+                {"started",  r.started},
+                {"platform", r.platform},
+                {"message",  r.message},
+            };
+        });
+    }
+
+    // ===== Class introspection / API docs (Stage 3) =======================
+
+    {
+        ToolDescriptor d;
+        d.name = "get_class_info";
+        d.description = "Inspect a UClass: parent + ancestor chain + every "
+                        "UPROPERTY + UFUNCTION. `class_name` is the short "
+                        "class name (e.g. `Actor`, `PlayerController`) or a "
+                        "full class path.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"class_name", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"class_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string n = RequireString(args, "class_name");
+            auto ci = reader.IntrospectClass(n);
+            nlohmann::json props = nlohmann::json::array();
+            for (const auto& p : ci.properties) {
+                props.push_back({
+                    {"name",     p.name},
+                    {"type",     p.typeName},
+                    {"category", p.category},
+                });
+            }
+            nlohmann::json fns = nlohmann::json::array();
+            for (const auto& f : ci.functions) {
+                fns.push_back({{"name", f.name}, {"flags", f.flagsCsv}});
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"class",      ci.className},
+                {"parent",     ci.parentClass},
+                {"ancestors",  ci.ancestors},
+                {"properties", props},
+                {"functions",  fns},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "find_class";
+        d.description = "Search the UClass registry by substring. Returns "
+                        "an array of class names matching `query` "
+                        "(case-insensitive).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"query", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"query"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string q = RequireString(args, "query");
+            auto r = reader.FindClass(q);
+            return nlohmann::json{{"ok", true}, {"classes", r.classNames}};
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "list_functions";
+        d.description = "List every UFUNCTION on a class with its flags "
+                        "(BlueprintCallable, BlueprintPure, etc.). Cheaper "
+                        "projection than `get_class_info` when you only "
+                        "need the call surface.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"class_name", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"class_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string n = RequireString(args, "class_name");
+            auto fns = reader.ListFunctions(n);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& f : fns) {
+                arr.push_back({{"name", f.name}, {"flags", f.flagsCsv}});
+            }
+            return arr;
+        });
+    }
+
+    // ===== Viewport ergonomics (Stage 3) ==================================
+
+    {
+        ToolDescriptor d;
+        d.name = "focus_actor";
+        d.description = "Frame an actor in the editor viewport — equivalent "
+                        "to clicking the actor and pressing F. `actor_name` "
+                        "is the actor's level label.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"actor_name", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"actor_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string n = RequireString(args, "actor_name");
+            auto r = reader.FocusActor(n);
+            return nlohmann::json{
+                {"ok", true},
+                {"actor_name", r.actorName},
+                {"focused",    r.focused},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_camera_transform";
+        d.description = "Move the editor viewport camera to a specific "
+                        "location + rotation. Rotation is in degrees "
+                        "(pitch / yaw / roll).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"loc_x", {{"type","number"}}},
+                {"loc_y", {{"type","number"}}},
+                {"loc_z", {{"type","number"}}},
+                {"rot_pitch", {{"type","number"}}},
+                {"rot_yaw",   {{"type","number"}}},
+                {"rot_roll",  {{"type","number"}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            auto r = reader.SetCameraTransform(
+                args.value("loc_x", 0.0), args.value("loc_y", 0.0), args.value("loc_z", 0.0),
+                args.value("rot_pitch", 0.0), args.value("rot_yaw", 0.0), args.value("rot_roll", 0.0));
+            return nlohmann::json{{"ok", true}, {"moved", r.moved}};
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "take_viewport_screenshot";
+        d.description = "Quick capture of the active editor viewport to "
+                        "disk (vs `take_screenshot` which uses HighResShot "
+                        "for offline-quality output).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"dest_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"dest_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string dest = RequireString(args, "dest_path");
+            auto r = reader.TakeViewportScreenshot(dest);
+            return nlohmann::json{
+                {"ok", true},
+                {"captured",    r.captured},
+                {"output_file", r.outputFile},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_show_flag";
+        d.description = "Toggle a viewport show flag (`Bones`, `Bounds`, "
+                        "`Collision`, `Wireframe`, `Lighting`). Equivalent "
+                        "to the `showflag.<name> <0|1>` console command.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"flag_name", {{"type","string"}}},
+                {"enabled",   {{"type","boolean"}}},
+            }},
+            {"required", nlohmann::json::array({"flag_name","enabled"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string f = RequireString(args, "flag_name");
+            bool e = args.value("enabled", true);
+            auto r = reader.SetShowFlag(f, e);
+            return nlohmann::json{
+                {"ok", true},
+                {"flag_name", r.flagName},
+                {"enabled",   r.enabled},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.

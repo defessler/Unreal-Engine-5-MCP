@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 91 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 104 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -22,7 +22,7 @@ Two backends:
 
 ## Tools
 
-91 tools across 13 categories — see the
+104 tools across 17 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 
@@ -40,6 +40,10 @@ for every input/output shape with examples.
 | **Behavior Trees** (5) | `list_behavior_trees`, `read_behavior_tree`, `add_bt_node`, `set_bt_node_property`, `compile_behavior_tree` | Walk a UBehaviorTree's runtime node graph (composite / decorator / service / task); scaffold new nodes; set node properties; mark dirty. Final attach for new nodes still uses the BT editor for graph wiring. |
 | **DataAssets** (4) | `list_data_assets`, `read_data_asset`, `create_data_asset`, `set_data_asset_property` | Create / inspect / mutate any UDataAsset subclass. Properties round-trip via UE's text property serializer (same encoding `set_component_property` uses). |
 | **StateTree** (5) | `list_state_trees`, `read_state_tree`, `add_state_tree_state`, `set_state_tree_transition`, `compile_state_tree` | Discover UStateTree assets via Asset Registry; state/transition authoring scaffolds and returns a hint pointing at StateTreeEditor (full authoring still needs the editor module). |
+| **Profiling** (4) | `start_profile`, `stop_profile`, `get_stats`, `take_screenshot` | Drive UE's profiling backends (stats / CSV / UnrealInsights), snapshot stat groups, capture high-res screenshots. |
+| **Headless cook** (2) | `cook_content`, `package_project` | Returns the RunUAT command line to run for a target platform. We don't shell out inline (avoids editor-already-running reentrancy); agent runs the printed command. |
+| **Class introspection** (3) | `introspect_class` (tool name `get_class_info`), `find_class`, `list_functions` | Reflection over the live UClass registry: parent chain, UPROPERTYs, UFUNCTIONs with their BP flags. Substring class-name search across the registry. |
+| **Viewport ergonomics** (4) | `focus_actor`, `set_camera_transform`, `take_viewport_screenshot`, `set_show_flag` | Frame an actor, move the editor camera, capture the active viewport, toggle showflags (Bones, Collision, Wireframe, etc.). |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
