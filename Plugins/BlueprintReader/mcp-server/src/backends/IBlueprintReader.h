@@ -379,6 +379,188 @@ public:
         throw BlueprintReaderError("SetComponentProperty not supported by this backend");
     }
 
+    // ----- Material authoring -------------------------------------------
+    //
+    // Material graphs are author-time DAGs of UMaterialExpression nodes
+    // that connect into the master material's input pins (BaseColor /
+    // Roughness / Normal / etc.). Reading dumps every expression + every
+    // connection; writing creates expressions, wires them, sets named
+    // parameters, recompiles.
+    //
+    // Material instances (UMaterialInstanceConstant) override their parent
+    // material's exposed parameters without changing the graph. We expose
+    // scalar / vector / texture / static-switch param setters as one tool
+    // dispatched by `param_type`.
+
+    virtual std::vector<BPAssetSummary> ListMaterials(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListMaterials not supported by this backend");
+    }
+
+    struct MaterialExpression {
+        std::string id;       // GUID-style id mintable per session
+        std::string className;
+        std::string parameterName;  // for parameter expressions
+        int x = 0;
+        int y = 0;
+    };
+    struct MaterialConnection {
+        std::string fromNodeId;
+        std::string fromPin;        // e.g. "RGBA", or "Output"
+        std::string toNodeId;       // empty toNodeId = master material slot
+        std::string toPin;          // e.g. "BaseColor", "Roughness"
+    };
+    struct MaterialInfo {
+        std::string assetPath;
+        std::vector<MaterialExpression> expressions;
+        std::vector<MaterialConnection> connections;
+        std::vector<std::string> parameterNames;  // names of exposed params
+    };
+    virtual MaterialInfo ReadMaterial(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadMaterial not supported by this backend");
+    }
+
+    struct AddMaterialExpressionResult {
+        std::string assetPath;
+        std::string expressionId;
+        std::string className;
+    };
+    virtual AddMaterialExpressionResult AddMaterialExpression(
+        std::string_view assetPath, std::string_view expressionClass,
+        int x, int y) {
+        (void)assetPath; (void)expressionClass; (void)x; (void)y;
+        throw BlueprintReaderError("AddMaterialExpression not supported by this backend");
+    }
+
+    struct ConnectMaterialResult {
+        std::string assetPath;
+        bool connected = false;
+    };
+    virtual ConnectMaterialResult ConnectMaterialExpressions(
+        std::string_view assetPath,
+        std::string_view fromNodeId, std::string_view fromPin,
+        std::string_view toNodeId, std::string_view toPin) {
+        (void)assetPath; (void)fromNodeId; (void)fromPin;
+        (void)toNodeId; (void)toPin;
+        throw BlueprintReaderError("ConnectMaterialExpressions not supported by this backend");
+    }
+
+    struct SetMaterialParameterResult {
+        std::string assetPath;
+        std::string parameterName;
+        std::string oldValue;
+        std::string newValue;
+    };
+    virtual SetMaterialParameterResult SetMaterialParameter(
+        std::string_view assetPath, std::string_view parameterName,
+        std::string_view value) {
+        (void)assetPath; (void)parameterName; (void)value;
+        throw BlueprintReaderError("SetMaterialParameter not supported by this backend");
+    }
+
+    // Set a parameter override on a UMaterialInstanceConstant.
+    // `param_type` is one of: "scalar" / "vector" / "texture" /
+    // "static_switch". The value is stringified; ImportText handles the
+    // type-specific parse.
+    struct SetMIParameterResult {
+        std::string assetPath;
+        std::string parameterName;
+        std::string paramType;
+        std::string newValue;
+    };
+    virtual SetMIParameterResult SetMaterialInstanceParameter(
+        std::string_view assetPath, std::string_view parameterName,
+        std::string_view paramType, std::string_view value) {
+        (void)assetPath; (void)parameterName; (void)paramType; (void)value;
+        throw BlueprintReaderError("SetMaterialInstanceParameter not supported by this backend");
+    }
+
+    struct CompileMaterialResult {
+        std::string assetPath;
+        bool compiled = false;
+    };
+    virtual CompileMaterialResult CompileMaterial(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CompileMaterial not supported by this backend");
+    }
+
+    // ----- UMG widget authoring -----------------------------------------
+    //
+    // Widget Blueprints (UMG) author UI hierarchies on a UWidgetTree
+    // hung off the WBP class. Each widget is a UWidget subclass with a
+    // unique FName. Read dumps the tree + each widget's class +
+    // parent. Write adds widgets to existing parents, sets properties,
+    // binds events, recompiles.
+
+    struct WidgetNode {
+        std::string name;
+        std::string className;
+        std::string parentName;  // empty = root
+    };
+    struct WidgetBlueprintInfo {
+        std::string assetPath;
+        std::string rootName;
+        std::vector<WidgetNode> nodes;
+    };
+    virtual WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadWidgetBlueprint not supported by this backend");
+    }
+
+    struct AddWidgetResult {
+        std::string assetPath;
+        std::string name;
+        std::string widgetClass;
+        bool alreadyExisted = false;
+        bool created = false;
+    };
+    virtual AddWidgetResult AddWidget(std::string_view assetPath,
+                                       std::string_view parentName,
+                                       std::string_view widgetClass,
+                                       std::string_view name) {
+        (void)assetPath; (void)parentName; (void)widgetClass; (void)name;
+        throw BlueprintReaderError("AddWidget not supported by this backend");
+    }
+
+    struct SetWidgetPropertyResult {
+        std::string assetPath;
+        std::string widgetName;
+        std::string propertyName;
+        std::string oldValue;
+        std::string newValue;
+    };
+    virtual SetWidgetPropertyResult SetWidgetProperty(
+        std::string_view assetPath, std::string_view widgetName,
+        std::string_view propertyName, std::string_view value) {
+        (void)assetPath; (void)widgetName; (void)propertyName; (void)value;
+        throw BlueprintReaderError("SetWidgetProperty not supported by this backend");
+    }
+
+    struct BindWidgetEventResult {
+        std::string assetPath;
+        std::string widgetName;
+        std::string eventName;
+        std::string handlerFunction;
+        bool bound = false;
+    };
+    virtual BindWidgetEventResult BindWidgetEvent(
+        std::string_view assetPath, std::string_view widgetName,
+        std::string_view eventName, std::string_view handlerFunction) {
+        (void)assetPath; (void)widgetName; (void)eventName; (void)handlerFunction;
+        throw BlueprintReaderError("BindWidgetEvent not supported by this backend");
+    }
+
+    struct CompileWidgetBlueprintResult {
+        std::string assetPath;
+        bool compiled = false;
+    };
+    virtual CompileWidgetBlueprintResult CompileWidgetBlueprint(
+        std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CompileWidgetBlueprint not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The

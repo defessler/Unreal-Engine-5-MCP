@@ -142,6 +142,30 @@ public:
                                                     std::string_view propertyName,
                                                     std::string_view value) override;
 
+    // ----- Material authoring -------------------------------------------
+    std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+    MaterialInfo ReadMaterial(std::string_view) override;
+    AddMaterialExpressionResult AddMaterialExpression(std::string_view,
+        std::string_view, int, int) override;
+    ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
+        std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetMaterialParameterResult SetMaterialParameter(std::string_view,
+        std::string_view, std::string_view) override;
+    SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
+        std::string_view, std::string_view, std::string_view) override;
+    CompileMaterialResult CompileMaterial(std::string_view) override;
+
+    // ----- UMG widget authoring -----------------------------------------
+    WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+    AddWidgetResult AddWidget(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+
     // ----- Live editor ops ----------------------------------------------
     ConsoleCommandResult ConsoleCommand(std::string_view command) override;
     CVarValue GetCVar(std::string_view name) override;

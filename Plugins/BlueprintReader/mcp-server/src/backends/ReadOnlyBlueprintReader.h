@@ -122,6 +122,32 @@ public:
     // return what happened); they don't mutate .uasset files directly.
     AutomationRunResult RunAutomationTests(std::string_view) override;
 
+    // ----- Material authoring ------------------------------------------
+    // Reads (list/read) pass through; writes (add expression, connect,
+    // set parameter, compile) throw the read-only error.
+    std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+    MaterialInfo ReadMaterial(std::string_view) override;
+    AddMaterialExpressionResult AddMaterialExpression(std::string_view,
+        std::string_view, int, int) override;
+    ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
+        std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetMaterialParameterResult SetMaterialParameter(std::string_view,
+        std::string_view, std::string_view) override;
+    SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
+        std::string_view, std::string_view, std::string_view) override;
+    CompileMaterialResult CompileMaterial(std::string_view) override;
+
+    // ----- UMG widget authoring ----------------------------------------
+    WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+    AddWidgetResult AddWidget(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in
     // read-only mode they're still no-ops because no writes can happen
