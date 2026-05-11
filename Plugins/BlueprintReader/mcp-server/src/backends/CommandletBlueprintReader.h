@@ -126,6 +126,21 @@ public:
                                           std::string_view rowName,
                                           std::string_view fieldName,
                                           std::string_view value) override;
+    AddComponentResult AddComponent(std::string_view assetPath,
+                                    std::string_view name,
+                                    std::string_view componentClass,
+                                    std::string_view parentName,
+                                    std::string_view socket) override;
+    RemoveComponentResult RemoveComponent(std::string_view assetPath,
+                                          std::string_view name) override;
+    AttachComponentResult AttachComponent(std::string_view assetPath,
+                                          std::string_view name,
+                                          std::string_view newParentName,
+                                          std::string_view socket) override;
+    SetComponentPropertyResult SetComponentProperty(std::string_view assetPath,
+                                                    std::string_view componentName,
+                                                    std::string_view propertyName,
+                                                    std::string_view value) override;
 
     // ----- Live editor ops ----------------------------------------------
     ConsoleCommandResult ConsoleCommand(std::string_view command) override;

@@ -303,6 +303,82 @@ public:
         throw BlueprintReaderError("SetDataRowValue not supported by this backend");
     }
 
+    // ----- Component (SCS) authoring ------------------------------------
+    //
+    // BP components live in the class's SimpleConstructionScript tree.
+    // Each USCS_Node holds a ComponentClass, a ComponentTemplate
+    // (UActorComponent with the BP-author's default values), and an
+    // attach-parent + socket. These ops manipulate that tree.
+    //
+    // Add: creates a new node, optionally child of `parent_name` (root
+    // attachment when empty), with an optional `socket` for SceneComp
+    // children. Idempotent on `name`: returns `{already_existed:true}`
+    // when a node by that name already exists.
+    struct AddComponentResult {
+        std::string assetPath;
+        std::string name;
+        std::string componentClass;
+        bool alreadyExisted = false;
+        bool created = false;
+    };
+    virtual AddComponentResult AddComponent(std::string_view assetPath,
+                                            std::string_view name,
+                                            std::string_view componentClass,
+                                            std::string_view parentName,
+                                            std::string_view socket) {
+        (void)assetPath; (void)name; (void)componentClass;
+        (void)parentName; (void)socket;
+        throw BlueprintReaderError("AddComponent not supported by this backend");
+    }
+
+    // Remove a component node from the BP's SCS. Returns
+    // `{removed:false}` when the node doesn't exist.
+    struct RemoveComponentResult {
+        std::string assetPath;
+        std::string name;
+        bool removed = false;
+    };
+    virtual RemoveComponentResult RemoveComponent(std::string_view assetPath,
+                                                  std::string_view name) {
+        (void)assetPath; (void)name;
+        throw BlueprintReaderError("RemoveComponent not supported by this backend");
+    }
+
+    // Re-parent a component node. Pass empty `newParentName` to attach
+    // at the SCS root. `socket` applies to SceneComp children only and
+    // is otherwise ignored.
+    struct AttachComponentResult {
+        std::string assetPath;
+        std::string name;
+        std::string newParentName;
+        std::string socket;
+        bool reparented = false;
+    };
+    virtual AttachComponentResult AttachComponent(std::string_view assetPath,
+                                                  std::string_view name,
+                                                  std::string_view newParentName,
+                                                  std::string_view socket) {
+        (void)assetPath; (void)name; (void)newParentName; (void)socket;
+        throw BlueprintReaderError("AttachComponent not supported by this backend");
+    }
+
+    // Set a property on a component template (the BP-author's default
+    // values). Same ImportText coercion as set_data_row_value: value is
+    // stringified and the property's type handles the conversion.
+    struct SetComponentPropertyResult {
+        std::string assetPath;
+        std::string componentName;
+        std::string propertyName;
+        std::string oldValue;
+        std::string newValue;
+    };
+    virtual SetComponentPropertyResult SetComponentProperty(
+        std::string_view assetPath, std::string_view componentName,
+        std::string_view propertyName, std::string_view value) {
+        (void)assetPath; (void)componentName; (void)propertyName; (void)value;
+        throw BlueprintReaderError("SetComponentProperty not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The

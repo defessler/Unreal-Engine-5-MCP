@@ -192,6 +192,27 @@ ReadOnlyBlueprintReader::SetDataRowValue(std::string_view, std::string_view,
     Reject("set_data_row_value");
 }
 
+IBlueprintReader::AddComponentResult
+ReadOnlyBlueprintReader::AddComponent(std::string_view, std::string_view,
+                                      std::string_view, std::string_view,
+                                      std::string_view) {
+    Reject("add_component");
+}
+IBlueprintReader::RemoveComponentResult
+ReadOnlyBlueprintReader::RemoveComponent(std::string_view, std::string_view) {
+    Reject("remove_component");
+}
+IBlueprintReader::AttachComponentResult
+ReadOnlyBlueprintReader::AttachComponent(std::string_view, std::string_view,
+                                         std::string_view, std::string_view) {
+    Reject("attach_component");
+}
+IBlueprintReader::SetComponentPropertyResult
+ReadOnlyBlueprintReader::SetComponentProperty(std::string_view, std::string_view,
+                                              std::string_view, std::string_view) {
+    Reject("set_component_property");
+}
+
 // ----- Live editor ops ----------------------------------------------------
 
 // Reads through.

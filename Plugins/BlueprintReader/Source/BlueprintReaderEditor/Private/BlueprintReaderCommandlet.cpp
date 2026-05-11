@@ -4,6 +4,9 @@
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderLogSink.h"
 #include "BlueprintReaderWireJson.h"
+#include "Components/SceneComponent.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
@@ -144,6 +147,11 @@ namespace
 		// DataTable row mutation.
 		AddDataRow,
 		SetDataRowValue,
+		// Component (SCS) authoring.
+		AddComponent,
+		RemoveComponent,
+		AttachComponent,
+		SetComponentProperty,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -202,6 +210,10 @@ namespace
 		if (OpStr.Equals(TEXT("RunAutomationTests"), ESearchCase::IgnoreCase))  { OutOp = EOp::RunAutomationTests; return true; }
 		if (OpStr.Equals(TEXT("AddDataRow"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddDataRow; return true; }
 		if (OpStr.Equals(TEXT("SetDataRowValue"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetDataRowValue; return true; }
+		if (OpStr.Equals(TEXT("AddComponent"), ESearchCase::IgnoreCase))        { OutOp = EOp::AddComponent; return true; }
+		if (OpStr.Equals(TEXT("RemoveComponent"), ESearchCase::IgnoreCase))     { OutOp = EOp::RemoveComponent; return true; }
+		if (OpStr.Equals(TEXT("AttachComponent"), ESearchCase::IgnoreCase))     { OutOp = EOp::AttachComponent; return true; }
+		if (OpStr.Equals(TEXT("SetComponentProperty"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetComponentProperty; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -1658,6 +1670,295 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ----- Component (SCS) authoring ----------------------------------
+	//
+	// Blueprint components live on the class's SimpleConstructionScript
+	// (USCS). Each USCS_Node holds:
+	//   - ComponentClass (the UClass being instantiated)
+	//   - ComponentTemplate (a UActorComponent with the BP-author's
+	//     defaults — what the BP Details panel shows)
+	//   - AttachToName + parent SCS_Node (for SceneComp children)
+	//   - VariableName (the BP-side property name)
+	//
+	// Helpers below load the BP, locate nodes by name, and call the
+	// public USCS APIs to mutate the tree. Every mutation ends with
+	// FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified +
+	// FKismetEditorUtilities::CompileBlueprint so the change actually
+	// takes effect at next instance spawn.
+
+	USCS_Node* FindSCSNodeOrNull(USimpleConstructionScript* SCS, FName Name)
+	{
+		if (!SCS) return nullptr;
+		return SCS->FindSCSNode(Name);
+	}
+
+	USCS_Node* FindParentOfNode(USimpleConstructionScript* SCS, USCS_Node* Target)
+	{
+		if (!SCS || !Target) return nullptr;
+		for (USCS_Node* Root : SCS->GetRootNodes())
+		{
+			TArray<USCS_Node*> Stack;
+			Stack.Push(Root);
+			while (Stack.Num() > 0)
+			{
+				USCS_Node* Cur = Stack.Pop();
+				if (!Cur) continue;
+				for (USCS_Node* Child : Cur->GetChildNodes())
+				{
+					if (Child == Target) return Cur;
+					Stack.Push(Child);
+				}
+			}
+		}
+		return nullptr;  // node is a root
+	}
+
+	int32 RunAddComponentOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, Name, ClassPath, ParentName, Socket;
+		FParse::Value(*Params, TEXT("Asset="),  AssetPath);
+		FParse::Value(*Params, TEXT("Name="),   Name);
+		FParse::Value(*Params, TEXT("Class="),  ClassPath);
+		FParse::Value(*Params, TEXT("Parent="), ParentName);
+		FParse::Value(*Params, TEXT("Socket="), Socket);
+		if (AssetPath.IsEmpty() || Name.IsEmpty() || ClassPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddComponent requires -Asset / -Name / -Class"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+		if (!SCS)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddComponent: BP %s has no SimpleConstructionScript"), *AssetPath);
+			return 5;
+		}
+
+		// Idempotency check.
+		const FName NodeName(*Name);
+		if (SCS->FindSCSNode(NodeName))
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetBoolField(TEXT("created"), false);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			Obj->SetStringField(TEXT("name"), Name);
+			Obj->SetStringField(TEXT("component_class"), ClassPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		UClass* CompClass = LoadObject<UClass>(nullptr, *ClassPath);
+		if (!CompClass || !CompClass->IsChildOf(UActorComponent::StaticClass()))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddComponent: '%s' isn't a UActorComponent subclass"), *ClassPath);
+			return 4;
+		}
+
+		USCS_Node* NewNode = SCS->CreateNode(CompClass, NodeName);
+		if (!NewNode)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddComponent: SCS->CreateNode returned null"));
+			return 5;
+		}
+
+		// Parent attachment: child of a named node, or root.
+		USCS_Node* Parent = ParentName.IsEmpty() ? nullptr :
+			SCS->FindSCSNode(FName(*ParentName));
+		if (Parent)
+		{
+			Parent->AddChildNode(NewNode);
+			if (!Socket.IsEmpty()) NewNode->AttachToName = FName(*Socket);
+		}
+		else
+		{
+			SCS->AddNode(NewNode);
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+		CompileAndSaveBlueprint(BP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetBoolField(TEXT("created"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("name"), Name);
+		Obj->SetStringField(TEXT("component_class"), ClassPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunRemoveComponentOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, Name;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Name="),  Name);
+		if (AssetPath.IsEmpty() || Name.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("RemoveComponent requires -Asset / -Name"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
+
+		bool bRemoved = false;
+		if (Node)
+		{
+			SCS->RemoveNodeAndPromoteChildren(Node);
+			bRemoved = true;
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+			CompileAndSaveBlueprint(BP);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("removed"), bRemoved);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("name"), Name);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAttachComponentOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, Name, NewParent, Socket;
+		FParse::Value(*Params, TEXT("Asset="),     AssetPath);
+		FParse::Value(*Params, TEXT("Name="),      Name);
+		FParse::Value(*Params, TEXT("NewParent="), NewParent);
+		FParse::Value(*Params, TEXT("Socket="),    Socket);
+		if (AssetPath.IsEmpty() || Name.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AttachComponent requires -Asset / -Name"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
+		if (!Node)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AttachComponent: node '%s' not found"), *Name);
+			return 4;
+		}
+
+		// Detach from current parent (could be root or a child).
+		USCS_Node* OldParent = FindParentOfNode(SCS, Node);
+		if (OldParent)
+		{
+			OldParent->RemoveChildNodeFromPropertyName(Node->GetVariableName(), /*bRemoveInstanceData=*/false);
+		}
+		else
+		{
+			SCS->RemoveNode(Node);  // was a root; takes it out of root list
+		}
+
+		// Attach to the new parent.
+		USCS_Node* NewParentNode = NewParent.IsEmpty() ? nullptr :
+			SCS->FindSCSNode(FName(*NewParent));
+		bool bReparented = false;
+		if (NewParentNode)
+		{
+			NewParentNode->AddChildNode(Node);
+			if (!Socket.IsEmpty()) Node->AttachToName = FName(*Socket);
+			bReparented = true;
+		}
+		else
+		{
+			SCS->AddNode(Node);
+			bReparented = true;
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+		CompileAndSaveBlueprint(BP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("reparented"), bReparented);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("name"), Name);
+		Obj->SetStringField(TEXT("new_parent"), NewParent);
+		Obj->SetStringField(TEXT("socket"), Socket);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetComponentPropertyOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ComponentName, PropertyName, NewValue;
+		FParse::Value(*Params, TEXT("Asset="),     AssetPath);
+		FParse::Value(*Params, TEXT("Component="), ComponentName);
+		FParse::Value(*Params, TEXT("Property="),  PropertyName);
+		FParse::Value(*Params, TEXT("Value="),     NewValue);
+		if (AssetPath.IsEmpty() || ComponentName.IsEmpty() || PropertyName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetComponentProperty requires -Asset / -Component / -Property"));
+			return 1;
+		}
+
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!BP) return 4;
+		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*ComponentName)) : nullptr;
+		if (!Node || !Node->ComponentTemplate)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetComponentProperty: component '%s' or its template not found"),
+				*ComponentName);
+			return 4;
+		}
+		UActorComponent* Template = Node->ComponentTemplate;
+		FProperty* Prop = Template->GetClass()->FindPropertyByName(FName(*PropertyName));
+		if (!Prop)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SetComponentProperty: property '%s' not found on %s"),
+				*PropertyName, *Template->GetClass()->GetName());
+			return 4;
+		}
+
+		// Capture before-value.
+		FString OldText;
+		Prop->ExportText_Direct(OldText,
+			Prop->ContainerPtrToValuePtr<void>(Template),
+			/*Defaults=*/nullptr, /*OwnerObject=*/Template, PPF_None);
+
+		// Apply via ImportText.
+		Prop->ImportText_Direct(*NewValue,
+			Prop->ContainerPtrToValuePtr<void>(Template),
+			/*OwnerObject=*/Template, PPF_None);
+
+		// Capture after-value + propagate to instances via the BP modify
+		// path.
+		FString NewText;
+		Prop->ExportText_Direct(NewText,
+			Prop->ContainerPtrToValuePtr<void>(Template),
+			/*Defaults=*/nullptr, /*OwnerObject=*/Template, PPF_None);
+
+		FBlueprintEditorUtils::MarkBlueprintAsModified(BP);
+		CompileAndSaveBlueprint(BP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("component"),  ComponentName);
+		Obj->SetStringField(TEXT("property"),   PropertyName);
+		Obj->SetStringField(TEXT("old_value"),  OldText);
+		Obj->SetStringField(TEXT("new_value"),  NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -2751,6 +3052,10 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::RunAutomationTests) return RunRunAutomationTestsOp(Params, OutputPath, bPretty);
 	if (Op == EOp::AddDataRow)         return RunAddDataRowOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetDataRowValue)    return RunSetDataRowValueOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddComponent)       return RunAddComponentOp(Params, OutputPath, bPretty);
+	if (Op == EOp::RemoveComponent)    return RunRemoveComponentOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AttachComponent)    return RunAttachComponentOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetComponentProperty) return RunSetComponentPropertyOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

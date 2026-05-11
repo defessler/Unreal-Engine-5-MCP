@@ -2322,6 +2322,145 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- add_component / remove_component / attach_component /
+    //       set_component_property ------------------------------------
+    //
+    // BP component authoring: SCS (SimpleConstructionScript) tree
+    // manipulation + property edits on component templates.
+    {
+        ToolDescriptor d;
+        d.name = "add_component";
+        d.description =
+            "Add a component to a Blueprint's SimpleConstructionScript tree. "
+            "`component_class` is the full UClass path (e.g. "
+            "`/Script/Engine.StaticMeshComponent`). Pass `parent` to attach "
+            "as a child of an existing node; omit for root attachment. "
+            "`socket` applies to SceneComponent children only. Idempotent on "
+            "`name`: existing names return `{already_existed:true}`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",      {{"type","string"}}},
+                {"name",            {{"type","string"}}},
+                {"component_class", {{"type","string"}}},
+                {"parent",          {{"type","string"}}},
+                {"socket",          {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name","component_class"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string name  = RequireString(args, "name");
+            std::string cls   = RequireString(args, "component_class");
+            std::string parent = OptString(args, "parent", "");
+            std::string socket = OptString(args, "socket", "");
+            auto r = reader.AddComponent(asset, name, cls, parent, socket);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",       r.assetPath},
+                {"name",             r.name},
+                {"component_class",  r.componentClass},
+                {"already_existed",  r.alreadyExisted},
+                {"created",          r.created},
+            };
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "remove_component";
+        d.description =
+            "Remove a component from a Blueprint's SCS tree by name. "
+            "Returns `{removed:false}` when the component isn't found.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string name  = RequireString(args, "name");
+            auto r = reader.RemoveComponent(asset, name);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"name",       r.name},
+                {"removed",    r.removed},
+            };
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "attach_component";
+        d.description =
+            "Re-parent an SCS component. Pass `new_parent` to attach the "
+            "component as a child of that node; pass empty to attach at "
+            "the SCS root. `socket` applies to SceneComponent children "
+            "only.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"name",       {{"type","string"}}},
+                {"new_parent", {{"type","string"}}},
+                {"socket",     {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset  = RequireString(args, "asset_path");
+            std::string name   = RequireString(args, "name");
+            std::string parent = OptString(args, "new_parent", "");
+            std::string socket = OptString(args, "socket", "");
+            auto r = reader.AttachComponent(asset, name, parent, socket);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",     r.assetPath},
+                {"name",           r.name},
+                {"new_parent",     r.newParentName},
+                {"socket",         r.socket},
+                {"reparented",     r.reparented},
+            };
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "set_component_property";
+        d.description =
+            "Set a property on a Blueprint component's template (the "
+            "author-time default values, what the BP Details panel shows "
+            "for that component). Same string→type coercion as "
+            "`set_data_row_value` (FProperty::ImportText). Returns "
+            "pre-set and post-set ExportText'd values for verification.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"component",     {{"type","string"}}},
+                {"property",      {{"type","string"}}},
+                {"value",         {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","component","property","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string comp  = RequireString(args, "component");
+            std::string prop  = RequireString(args, "property");
+            std::string value = RequireString(args, "value");
+            auto r = reader.SetComponentProperty(asset, comp, prop, value);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"component",     r.componentName},
+                {"property",      r.propertyName},
+                {"old_value",     r.oldValue},
+                {"new_value",     r.newValue},
+            };
+        });
+    }
+
     // ----- run_automation_tests ------------------------------------------
     {
         ToolDescriptor d;

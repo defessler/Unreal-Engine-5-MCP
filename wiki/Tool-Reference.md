@@ -1,6 +1,6 @@
 # Tool Reference
 
-61 tools — 12 read, 18 write, 3 meta, 3 batch, 3 transpile, 9 project /
+65 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
 content-browser, 12 live editor, 1 automation. All use
 snake_case JSON keys; nullable string fields emit `null`; `BPNode.meta`
 is a real nested object (not a string-of-JSON). Wire shapes are pinned
@@ -375,6 +375,55 @@ Delete a function graph by name.
 
 ```json
 { "asset_path": "/Game/AI/BP_TestEnemy", "function_name": "ApplyDamage" }
+```
+
+### `add_component`
+Add a component to a Blueprint's `SimpleConstructionScript` tree.
+`component_class` is the full UClass path (e.g.
+`/Script/Engine.StaticMeshComponent`). Pass `parent` to attach as a
+child of an existing node; omit for root attachment. `socket` applies
+to `SceneComponent` children only. Idempotent on `name`.
+
+```json
+{ "asset_path":      "/Game/AI/BP_Enemy",
+  "name":            "SpotLight",
+  "component_class": "/Script/Engine.SpotLightComponent",
+  "parent":          "RootSceneComp",
+  "socket":          "head" }
+```
+
+### `remove_component`
+Remove a component from the SCS tree by name. Returns
+`{removed:false}` when the component isn't found. Children are
+promoted to the removed node's parent.
+
+```json
+{ "asset_path": "/Game/AI/BP_Enemy", "name": "SpotLight" }
+```
+
+### `attach_component`
+Re-parent an SCS component. Pass `new_parent` to attach as a child;
+empty means root. `socket` applies to `SceneComponent` children only.
+
+```json
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "name":       "SpotLight",
+  "new_parent": "ArmComp",
+  "socket":     "hand_r" }
+```
+
+### `set_component_property`
+Set a property on a component's template (the BP-author default
+values — what the BP Details panel shows for that component). Same
+string→type coercion as `set_data_row_value`
+(`FProperty::ImportText`). Returns pre-set and post-set
+ExportText'd values for verification.
+
+```json
+{ "asset_path": "/Game/AI/BP_Enemy",
+  "component":  "SpotLight",
+  "property":   "Intensity",
+  "value":      "5000.0" }
 ```
 
 ### `add_function_input` / `add_function_output`
