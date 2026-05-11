@@ -477,6 +477,35 @@ CachingBlueprintReader::SetDataRowValue(std::string_view a, std::string_view r,
     return out;
 }
 
+IBlueprintReader::AddComponentResult
+CachingBlueprintReader::AddComponent(std::string_view a, std::string_view n,
+                                     std::string_view c, std::string_view p,
+                                     std::string_view s) {
+    auto out = inner_->AddComponent(a, n, c, p, s);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::RemoveComponentResult
+CachingBlueprintReader::RemoveComponent(std::string_view a, std::string_view n) {
+    auto out = inner_->RemoveComponent(a, n);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::AttachComponentResult
+CachingBlueprintReader::AttachComponent(std::string_view a, std::string_view n,
+                                        std::string_view p, std::string_view s) {
+    auto out = inner_->AttachComponent(a, n, p, s);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetComponentPropertyResult
+CachingBlueprintReader::SetComponentProperty(std::string_view a, std::string_view c,
+                                             std::string_view p, std::string_view v) {
+    auto out = inner_->SetComponentProperty(a, c, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+
 // ----- Live editor ops (pass-through) ------------------------------------
 
 IBlueprintReader::ConsoleCommandResult
