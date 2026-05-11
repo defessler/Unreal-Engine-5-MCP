@@ -5,7 +5,7 @@ description: Use this skill when the user asks to inspect, edit, build, transpil
 
 # bp-reader — using the Blueprint MCP tools
 
-The `bp-reader` MCP server exposes **61 tools** that read, mutate, and
+The `bp-reader` MCP server exposes **65 tools** that read, mutate, and
 round-trip-to-C++ `.uasset` Blueprint files in a UE 5.7.4 project.
 This skill covers *how to use them well* — the wire format, common
 patterns, when to prefer one tool over another. For *building or
@@ -30,6 +30,7 @@ triage — there are focused sub-skills:
 | **Write — functions** | `add_function`, `delete_function`, `add_function_input`, `add_function_output` |
 | **Write — graph topology** | `add_node`, `delete_node`, `set_node_position`, `wire_pins`, `set_pin_default`, `auto_layout_graph` |
 | **Write — assets** | `create_blueprint`, `duplicate_blueprint` |
+| **Write — components (SCS)** | `add_component`, `remove_component`, `attach_component`, `set_component_property` |
 | **Batch / generation** | `apply_ops`, `preview_ops`, `compile_function` |
 | **Transpile (BP↔C++)** | `decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function` |
 | **Project + Content Browser** | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table`, `add_data_row`, `set_data_row_value` |
