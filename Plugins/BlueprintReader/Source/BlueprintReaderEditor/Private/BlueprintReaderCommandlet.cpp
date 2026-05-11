@@ -11,7 +11,6 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
-#include "AssetRenameData.h"
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/DataTable.h"
@@ -1216,7 +1215,7 @@ namespace
 		}
 
 		return EmitJson(
-			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			FBlueprintReaderWireJson::WriteArrayString(Items, bPretty),
 			OutputPath);
 	}
 
@@ -1261,7 +1260,7 @@ namespace
 			if (RowStruct && Pair.Value)
 			{
 				// Use FJsonObjectConverter to serialize the row struct.
-				auto Fields = MakeShared<FJsonObject>();
+				TSharedPtr<FJsonObject> Fields = MakeShared<FJsonObject>();
 				FJsonObjectConverter::UStructToJsonObject(
 					RowStruct, Pair.Value, Fields.ToSharedRef(), 0, 0);
 				for (const auto& F : Fields->Values)
@@ -2005,7 +2004,7 @@ namespace
 		USCS_Node* OldParent = FindParentOfNode(SCS, Node);
 		if (OldParent)
 		{
-			OldParent->RemoveChildNodeFromPropertyName(Node->GetVariableName(), /*bRemoveInstanceData=*/false);
+			OldParent->RemoveChildNode(Node, /*bRemoveInstanceData=*/false);
 		}
 		else
 		{
@@ -2153,7 +2152,7 @@ namespace
 		}
 
 		return EmitJson(
-			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			FBlueprintReaderWireJson::WriteArrayString(Items, bPretty),
 			OutputPath);
 	}
 
@@ -2766,7 +2765,7 @@ namespace
 				A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunReadBehaviorTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -2982,7 +2981,7 @@ namespace
 				A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunReadDataAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -3130,7 +3129,7 @@ namespace
 			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	// For ReadStateTree / mutations we keep the shape but stub out the
@@ -3446,7 +3445,7 @@ namespace
 		if (!Cls)
 		{
 			TArray<TSharedPtr<FJsonValue>> Empty;
-			return EmitJson(FBlueprintReaderWireJson::WriteString(Empty, bPretty), OutputPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Empty, bPretty), OutputPath);
 		}
 
 		TArray<TSharedPtr<FJsonValue>> Funcs;
@@ -3463,7 +3462,7 @@ namespace
 			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
 			Funcs.Add(MakeShared<FJsonValueObject>(F));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Funcs, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Funcs, bPretty), OutputPath);
 	}
 
 	int32 RunFocusActorOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -3481,7 +3480,7 @@ namespace
 					if (GEditor)
 					{
 						GEditor->SelectActor(*It, /*bSelected=*/true, /*bNotify=*/true);
-						GEditor->MoveViewportCamerasToActor(*It, /*bActiveViewportOnly=*/true);
+						GEditor->MoveViewportCamerasToActor(**It, /*bActiveViewportOnly=*/true);
 						bFocused = true;
 					}
 					break;
@@ -3610,7 +3609,7 @@ namespace
 			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunListNiagaraSystemsOp(const FString& Params, const FString& OutputPath, bool bPretty)
