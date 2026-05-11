@@ -552,6 +552,86 @@ CachingBlueprintReader::RunAutomationTests(std::string_view pattern) {
     return inner_->RunAutomationTests(pattern);
 }
 
+// ----- Material authoring (pass-through; writes invalidate the asset) ---
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListMaterials(std::string_view path) {
+    return inner_->ListMaterials(path);
+}
+IBlueprintReader::MaterialInfo
+CachingBlueprintReader::ReadMaterial(std::string_view a) {
+    return inner_->ReadMaterial(a);
+}
+IBlueprintReader::AddMaterialExpressionResult
+CachingBlueprintReader::AddMaterialExpression(std::string_view a,
+    std::string_view c, int x, int y) {
+    auto out = inner_->AddMaterialExpression(a, c, x, y);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::ConnectMaterialResult
+CachingBlueprintReader::ConnectMaterialExpressions(std::string_view a,
+    std::string_view fn, std::string_view fp,
+    std::string_view tn, std::string_view tp) {
+    auto out = inner_->ConnectMaterialExpressions(a, fn, fp, tn, tp);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetMaterialParameterResult
+CachingBlueprintReader::SetMaterialParameter(std::string_view a,
+    std::string_view p, std::string_view v) {
+    auto out = inner_->SetMaterialParameter(a, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetMIParameterResult
+CachingBlueprintReader::SetMaterialInstanceParameter(std::string_view a,
+    std::string_view p, std::string_view t, std::string_view v) {
+    auto out = inner_->SetMaterialInstanceParameter(a, p, t, v);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::CompileMaterialResult
+CachingBlueprintReader::CompileMaterial(std::string_view a) {
+    auto out = inner_->CompileMaterial(a);
+    InvalidateAsset(a);
+    return out;
+}
+
+// ----- UMG widget authoring (pass-through; writes invalidate) -----------
+
+IBlueprintReader::WidgetBlueprintInfo
+CachingBlueprintReader::ReadWidgetBlueprint(std::string_view a) {
+    return inner_->ReadWidgetBlueprint(a);
+}
+IBlueprintReader::AddWidgetResult
+CachingBlueprintReader::AddWidget(std::string_view a, std::string_view p,
+    std::string_view c, std::string_view n) {
+    auto out = inner_->AddWidget(a, p, c, n);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetWidgetPropertyResult
+CachingBlueprintReader::SetWidgetProperty(std::string_view a, std::string_view w,
+    std::string_view p, std::string_view v) {
+    auto out = inner_->SetWidgetProperty(a, w, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::BindWidgetEventResult
+CachingBlueprintReader::BindWidgetEvent(std::string_view a, std::string_view w,
+    std::string_view e, std::string_view h) {
+    auto out = inner_->BindWidgetEvent(a, w, e, h);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::CompileWidgetBlueprintResult
+CachingBlueprintReader::CompileWidgetBlueprint(std::string_view a) {
+    auto out = inner_->CompileWidgetBlueprint(a);
+    InvalidateAsset(a);
+    return out;
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

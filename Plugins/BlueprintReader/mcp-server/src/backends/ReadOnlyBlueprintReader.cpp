@@ -254,6 +254,67 @@ ReadOnlyBlueprintReader::RunAutomationTests(std::string_view pattern) {
     return inner_->RunAutomationTests(pattern);
 }
 
+// ----- Material authoring (reads pass through, writes reject) -----------
+
+std::vector<BPAssetSummary>
+ReadOnlyBlueprintReader::ListMaterials(std::string_view p) {
+    return inner_->ListMaterials(p);
+}
+IBlueprintReader::MaterialInfo
+ReadOnlyBlueprintReader::ReadMaterial(std::string_view a) {
+    return inner_->ReadMaterial(a);
+}
+IBlueprintReader::AddMaterialExpressionResult
+ReadOnlyBlueprintReader::AddMaterialExpression(std::string_view,
+    std::string_view, int, int) {
+    Reject("add_material_expression");
+}
+IBlueprintReader::ConnectMaterialResult
+ReadOnlyBlueprintReader::ConnectMaterialExpressions(std::string_view,
+    std::string_view, std::string_view, std::string_view, std::string_view) {
+    Reject("connect_material_expressions");
+}
+IBlueprintReader::SetMaterialParameterResult
+ReadOnlyBlueprintReader::SetMaterialParameter(std::string_view,
+    std::string_view, std::string_view) {
+    Reject("set_material_parameter");
+}
+IBlueprintReader::SetMIParameterResult
+ReadOnlyBlueprintReader::SetMaterialInstanceParameter(std::string_view,
+    std::string_view, std::string_view, std::string_view) {
+    Reject("set_material_instance_parameter");
+}
+IBlueprintReader::CompileMaterialResult
+ReadOnlyBlueprintReader::CompileMaterial(std::string_view) {
+    Reject("compile_material");
+}
+
+// ----- UMG widget authoring (read passes through, writes reject) --------
+
+IBlueprintReader::WidgetBlueprintInfo
+ReadOnlyBlueprintReader::ReadWidgetBlueprint(std::string_view a) {
+    return inner_->ReadWidgetBlueprint(a);
+}
+IBlueprintReader::AddWidgetResult
+ReadOnlyBlueprintReader::AddWidget(std::string_view, std::string_view,
+    std::string_view, std::string_view) {
+    Reject("add_widget");
+}
+IBlueprintReader::SetWidgetPropertyResult
+ReadOnlyBlueprintReader::SetWidgetProperty(std::string_view, std::string_view,
+    std::string_view, std::string_view) {
+    Reject("set_widget_property");
+}
+IBlueprintReader::BindWidgetEventResult
+ReadOnlyBlueprintReader::BindWidgetEvent(std::string_view, std::string_view,
+    std::string_view, std::string_view) {
+    Reject("bind_widget_event");
+}
+IBlueprintReader::CompileWidgetBlueprintResult
+ReadOnlyBlueprintReader::CompileWidgetBlueprint(std::string_view) {
+    Reject("compile_widget_blueprint");
+}
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
