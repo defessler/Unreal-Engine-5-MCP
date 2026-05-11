@@ -1,10 +1,11 @@
 # Tool Reference
 
-65 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
-content-browser, 12 live editor, 1 automation. All use
-snake_case JSON keys; nullable string fields emit `null`; `BPNode.meta`
-is a real nested object (not a string-of-JSON). Wire shapes are pinned
-in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
+77 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 9 project /
+content-browser, 12 live editor, 1 automation, 7 material, 5 widget.
+All use snake_case JSON keys; nullable string fields emit `null`;
+`BPNode.meta` is a real nested object (not a string-of-JSON). Wire
+shapes are pinned in
+`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
 
 ## Type shorthand (write tools)
 
@@ -944,6 +945,205 @@ and returns immediately. Results land in the output log and at
 
 ```json
 { "pattern": "BlueprintReader.*" }
+```
+
+## Material tools
+
+Author UMaterial expression graphs the same way you'd edit them in
+the material editor — add nodes, wire them to each other or to the
+master-material slots, override parameters on instances, trigger
+shader recompiles. Material expressions live in a separate UObject
+tree from Blueprint event graphs; expression `id` is the
+expression's UObject name within the material.
+
+### `list_materials`
+List all UMaterial / UMaterialInstanceConstant assets under a content
+path. Mirrors `list_blueprints` but filters by class. Defaults to
+`/Game`. Returns `BPAssetSummary[]`.
+
+```json
+{ "path": "/Game/Materials" }
+```
+
+### `read_material`
+Read a material's expression graph: every `MaterialExpression` node
+(id, class, parameter name, x/y) plus every connection. Connections
+with empty `to_node` wire to a master-material slot whose name is
+in `to_pin` (e.g. `BaseColor`, `Roughness`, `EmissiveColor`,
+`Normal`, `Opacity`, `Metallic`, `Specular`, `OpacityMask`).
+
+```json
+// request
+{ "asset_path": "/Game/Materials/M_Hero" }
+// response (abbreviated)
+{
+  "ok": true,
+  "asset_path": "/Game/Materials/M_Hero",
+  "expressions": [
+    { "id":"MaterialExpressionVectorParameter_0",
+      "class":"MaterialExpressionVectorParameter",
+      "parameter_name":"BaseColor",
+      "x":-300, "y":0 }
+  ],
+  "connections": [
+    { "from_node":"MaterialExpressionVectorParameter_0",
+      "from_pin":"Output",
+      "to_node":"", "to_pin":"BaseColor" }
+  ],
+  "parameter_names": ["BaseColor"]
+}
+```
+
+### `add_material_expression`
+Add a `UMaterialExpression` node. `expression_class` is the short
+class name (`MaterialExpressionConstant3Vector`,
+`MaterialExpressionScalarParameter`,
+`MaterialExpressionTextureSampleParameter2D`, etc.). `x`/`y` are
+graph coordinates. Returns `expression_id` to use in
+`connect_material_expressions`.
+
+```json
+{ "asset_path": "/Game/Materials/M_Hero",
+  "expression_class": "MaterialExpressionScalarParameter",
+  "x": -300, "y": 100 }
+```
+
+### `connect_material_expressions`
+Wire an expression's output to another expression's input or to a
+master-material slot. Empty `to_node` = wire to a master slot
+(`to_pin` then names the slot: `BaseColor`, `Metallic`,
+`Roughness`, `EmissiveColor`, `Normal`, `Opacity`, etc.).
+
+```json
+// expression → expression
+{ "asset_path": "/Game/Materials/M_Hero",
+  "from_node": "MaterialExpressionMultiply_0", "from_pin": "Output",
+  "to_node": "MaterialExpressionAdd_0",        "to_pin": "A" }
+
+// expression → master-material slot
+{ "asset_path": "/Game/Materials/M_Hero",
+  "from_node": "MaterialExpressionVectorParameter_0", "from_pin": "Output",
+  "to_node": "",                                       "to_pin": "BaseColor" }
+```
+
+### `set_material_parameter`
+Set the default value of a named scalar / vector parameter on a
+UMaterial. `value` is the parameter's text representation —
+`"0.5"` for a scalar, `"(R=1,G=0,B=0,A=1)"` for a vector. Returns
+`{old_value, new_value}`. For overriding on an instance, use
+`set_material_instance_parameter`.
+
+```json
+{ "asset_path": "/Game/Materials/M_Hero",
+  "parameter_name": "BaseColor",
+  "value": "(R=0.8,G=0.2,B=0.2,A=1)" }
+```
+
+### `set_material_instance_parameter`
+Override a parameter on a UMaterialInstanceConstant. `type` is
+`scalar`, `vector`, or `texture`; `value` is its text form:
+
+| Type | Example |
+|------|---------|
+| scalar | `"0.75"` |
+| vector | `"(R=1,G=0,B=0,A=1)"` |
+| texture | `"/Game/Textures/T_Foo.T_Foo"` (object path of a UTexture) |
+
+```json
+{ "asset_path": "/Game/Materials/MI_Hero_Red",
+  "parameter_name": "TintColor",
+  "type": "vector",
+  "value": "(R=0.9,G=0.1,B=0.1,A=1)" }
+```
+
+### `compile_material`
+Recompile a material's shader code. UE normally compiles
+incrementally on edit; call this explicitly to flush pending
+recompiles or recover from a stuck shader compile state. Returns
+`{compiled: true|false}`.
+
+```json
+{ "asset_path": "/Game/Materials/M_Hero" }
+```
+
+## UMG widget tools
+
+Author UWidgetBlueprint widget trees. The hierarchy lives in a
+UWidgetTree (root + recursive PanelWidget children), separate
+from the Blueprint event graph. Properties are set via
+`set_widget_property`; events get scaffolded via
+`bind_widget_event` (final binding may still need a manual editor
+step depending on the delegate).
+
+### `read_widget_blueprint`
+Read a UWidgetBlueprint's tree: every `UWidget` node (name, class,
+parent) and the root widget's name. Mirrors `get_components` but
+for UMG.
+
+```json
+// request
+{ "asset_path": "/Game/UI/WBP_HUD" }
+// response
+{ "ok": true,
+  "asset_path": "/Game/UI/WBP_HUD",
+  "root_name": "RootVerticalBox",
+  "nodes": [
+    { "name": "RootVerticalBox", "class": "VerticalBox", "parent": "" },
+    { "name": "HealthBar",       "class": "ProgressBar", "parent": "RootVerticalBox" }
+  ]
+}
+```
+
+### `add_widget`
+Add a UWidget node. `widget_class` is the short class name
+(`Button`, `TextBlock`, `Image`, `VerticalBox`, etc.). Empty
+`parent_name` = becomes the new root (only if the tree was empty);
+otherwise appends as a child of `parent_name`. The parent must be a
+PanelWidget. Idempotent on name (returns `already_existed:true`).
+
+```json
+{ "asset_path": "/Game/UI/WBP_HUD",
+  "parent_name": "RootVerticalBox",
+  "widget_class": "ProgressBar",
+  "name": "HealthBar" }
+```
+
+### `set_widget_property`
+Set a UPROPERTY on a widget. `property_name` is the property's
+name as authored in C++ (`Text`, `ColorAndOpacity`, `Visibility`,
+`Percent`). `value` is the property's text form — same encoding
+UE's property system uses (`(R=...,G=...,B=...,A=...)` for
+FLinearColor, plain text for FText).
+
+```json
+{ "asset_path": "/Game/UI/WBP_HUD",
+  "widget_name": "HealthBar",
+  "property_name": "Percent",
+  "value": "0.75" }
+```
+
+### `bind_widget_event`
+Bind a widget's event (e.g. `OnClicked` on a Button) to a named
+handler function. Scaffolds the binding so the event graph knows
+about the handler — depending on the delegate shape the final
+runtime bind may still need a manual step in the editor (UMG's
+"Bind Event to ..." workflow). Pairs with `add_function` if you
+want to author the handler explicitly first.
+
+```json
+{ "asset_path": "/Game/UI/WBP_HUD",
+  "widget_name": "ContinueButton",
+  "event_name": "OnClicked",
+  "handler_function": "OnContinueClicked" }
+```
+
+### `compile_widget_blueprint`
+Compile a UWidgetBlueprint. Equivalent to the Compile button in
+the UMG designer. Returns `{compiled: true|false}` — `false`
+means compile failed; check `read_output_log` for errors.
+
+```json
+{ "asset_path": "/Game/UI/WBP_HUD" }
 ```
 
 ## Meta tools

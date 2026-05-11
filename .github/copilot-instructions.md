@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-65 tools across 8 categories. Don't memorize the list — call
+77 tools across 10 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -43,6 +43,14 @@ the same tool surface regardless of client.
   most useful with the `live` backend (open editor).
 - **Automation** (1): `run_automation_tests`. Kick off UE's
   automation suites with a wildcard pattern.
+- **Material authoring** (7): `list_materials`, `read_material`,
+  `add_material_expression`, `connect_material_expressions`,
+  `set_material_parameter`, `set_material_instance_parameter`,
+  `compile_material`. Walk + edit the UMaterial expression graph
+  and override MIC parameters.
+- **UMG widgets** (5): `read_widget_blueprint`, `add_widget`,
+  `set_widget_property`, `bind_widget_event`,
+  `compile_widget_blueprint`. Author UWidgetBlueprint trees.
 - **Discoverability + meta** (3): `list_node_kinds`,
   `list_pin_categories`, `shutdown_daemon`.
 
