@@ -727,6 +727,140 @@ public:
         throw BlueprintReaderError("CompileStateTree not supported by this backend");
     }
 
+    // ----- Stage 3: profiling / cook / class introspection / viewport ---
+
+    struct StartProfileResult {
+        std::string outputFile;   // empty until StopProfile
+        bool started = false;
+    };
+    virtual StartProfileResult StartProfile(std::string_view mode) {
+        (void)mode;
+        throw BlueprintReaderError("StartProfile not supported by this backend");
+    }
+
+    struct StopProfileResult {
+        std::string outputFile;
+        bool stopped = false;
+    };
+    virtual StopProfileResult StopProfile() {
+        throw BlueprintReaderError("StopProfile not supported by this backend");
+    }
+
+    struct StatGroupResult {
+        std::string group;
+        std::string snapshot;  // text output of "stat <group>"
+    };
+    virtual StatGroupResult GetStats(std::string_view group) {
+        (void)group;
+        throw BlueprintReaderError("GetStats not supported by this backend");
+    }
+
+    struct ScreenshotResult {
+        std::string outputFile;
+        bool captured = false;
+    };
+    virtual ScreenshotResult TakeScreenshot(std::string_view destPath, int width, int height) {
+        (void)destPath; (void)width; (void)height;
+        throw BlueprintReaderError("TakeScreenshot not supported by this backend");
+    }
+
+    // Headless cook / package — async; returns "started" + a message
+    // describing where to look for results.
+    struct CookResult {
+        bool started = false;
+        std::string platform;
+        std::string message;
+    };
+    virtual CookResult CookContent(std::string_view platform) {
+        (void)platform;
+        throw BlueprintReaderError("CookContent not supported by this backend");
+    }
+    virtual CookResult PackageProject(std::string_view platform, std::string_view outputDir) {
+        (void)platform; (void)outputDir;
+        throw BlueprintReaderError("PackageProject not supported by this backend");
+    }
+
+    // Class introspection — return parent chain + UPROPERTY + UFUNCTION
+    // list for a UClass given by short name or class path.
+    struct ClassPropertyInfo {
+        std::string name;
+        std::string typeName;
+        std::string category;
+    };
+    struct ClassFunctionInfo {
+        std::string name;
+        std::string flagsCsv;  // e.g. "BlueprintCallable,BlueprintPure"
+    };
+    struct ClassInfo {
+        std::string className;
+        std::string parentClass;
+        std::vector<std::string> ancestors;
+        std::vector<ClassPropertyInfo> properties;
+        std::vector<ClassFunctionInfo> functions;
+    };
+    // NB: `IntrospectClass`, not `GetClassInfo` — <windows.h> defines
+    // `GetClassInfo` as a macro (→ `GetClassInfoA`/`GetClassInfoW`) which
+    // wins the preprocessor pass on any TU that pulls it in (winsock2.h
+    // does, transitively). Renaming the C++ method avoids needing
+    // #undef tricks in every consumer.
+    virtual ClassInfo IntrospectClass(std::string_view className) {
+        (void)className;
+        throw BlueprintReaderError("IntrospectClass not supported by this backend");
+    }
+
+    struct FindClassResult {
+        std::vector<std::string> classNames;
+    };
+    virtual FindClassResult FindClass(std::string_view query) {
+        (void)query;
+        throw BlueprintReaderError("FindClass not supported by this backend");
+    }
+
+    virtual std::vector<ClassFunctionInfo> ListFunctions(std::string_view className) {
+        (void)className;
+        throw BlueprintReaderError("ListFunctions not supported by this backend");
+    }
+
+    // Viewport ergonomics — frame an actor, set camera transform, take
+    // viewport screenshot, toggle show flags.
+    struct FocusActorResult {
+        std::string actorName;
+        bool focused = false;
+    };
+    virtual FocusActorResult FocusActor(std::string_view actorName) {
+        (void)actorName;
+        throw BlueprintReaderError("FocusActor not supported by this backend");
+    }
+
+    struct SetCameraResult {
+        bool moved = false;
+    };
+    virtual SetCameraResult SetCameraTransform(
+        double locX, double locY, double locZ,
+        double rotPitch, double rotYaw, double rotRoll) {
+        (void)locX; (void)locY; (void)locZ;
+        (void)rotPitch; (void)rotYaw; (void)rotRoll;
+        throw BlueprintReaderError("SetCameraTransform not supported by this backend");
+    }
+
+    struct ViewportScreenshotResult {
+        std::string outputFile;
+        bool captured = false;
+    };
+    virtual ViewportScreenshotResult TakeViewportScreenshot(std::string_view destPath) {
+        (void)destPath;
+        throw BlueprintReaderError("TakeViewportScreenshot not supported by this backend");
+    }
+
+    struct SetShowFlagResult {
+        std::string flagName;
+        bool enabled = false;
+    };
+    virtual SetShowFlagResult SetShowFlag(std::string_view flagName, bool enabled) {
+        (void)flagName; (void)enabled;
+        throw BlueprintReaderError("SetShowFlag not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The

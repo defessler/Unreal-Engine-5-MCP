@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-91 tools across 13 categories. Don't memorize the list — call
+104 tools across 17 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -62,6 +62,14 @@ the same tool surface regardless of client.
   `add_state_tree_state`, `set_state_tree_transition`,
   `compile_state_tree`. Inspect + scaffold (full state authoring
   still needs StateTreeEditor).
+- **Profiling** (4): `start_profile`, `stop_profile`, `get_stats`,
+  `take_screenshot`. Drive UE's stats / CSV / UnrealInsights backends.
+- **Headless cook** (2): `cook_content`, `package_project`. Returns
+  the RunUAT command for the agent to run manually.
+- **Class introspection** (3): `get_class_info`, `find_class`,
+  `list_functions`. Reflection over the live UClass registry.
+- **Viewport** (4): `focus_actor`, `set_camera_transform`,
+  `take_viewport_screenshot`, `set_show_flag`.
 - **Discoverability + meta** (3): `list_node_kinds`,
   `list_pin_categories`, `shutdown_daemon`.
 

@@ -1473,6 +1473,184 @@ LiveBlueprintReader::CompileStateTree(std::string_view assetPath) {
     return out;
 }
 
+// ----- Stage 3: profile / cook / class info / viewport ------------------
+
+IBlueprintReader::StartProfileResult
+LiveBlueprintReader::StartProfile(std::string_view mode) {
+    auto j = RunOp({"-Op=StartProfile", "-Mode=" + std::string(mode)});
+    StartProfileResult out;
+    if (j.is_object()) {
+        out.started    = j.value("started", false);
+        out.outputFile = j.value("output_file", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::StopProfileResult
+LiveBlueprintReader::StopProfile() {
+    auto j = RunOp({"-Op=StopProfile"});
+    StopProfileResult out;
+    if (j.is_object()) {
+        out.stopped    = j.value("stopped", false);
+        out.outputFile = j.value("output_file", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::StatGroupResult
+LiveBlueprintReader::GetStats(std::string_view group) {
+    auto j = RunOp({"-Op=GetStats", "-Group=" + std::string(group)});
+    StatGroupResult out;
+    out.group = std::string(group);
+    if (j.is_object()) out.snapshot = j.value("snapshot", std::string{});
+    return out;
+}
+
+IBlueprintReader::ScreenshotResult
+LiveBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int height) {
+    auto j = RunOp({"-Op=TakeScreenshot",
+                    "-Dest="   + std::string(destPath),
+                    "-Width="  + std::to_string(width),
+                    "-Height=" + std::to_string(height)});
+    ScreenshotResult out;
+    if (j.is_object()) {
+        out.captured   = j.value("captured", false);
+        out.outputFile = j.value("output_file", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::CookResult
+LiveBlueprintReader::CookContent(std::string_view platform) {
+    auto j = RunOp({"-Op=CookContent", "-Platform=" + std::string(platform)});
+    CookResult out;
+    out.platform = std::string(platform);
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::CookResult
+LiveBlueprintReader::PackageProject(std::string_view platform, std::string_view outputDir) {
+    auto j = RunOp({"-Op=PackageProject",
+                    "-Platform=" + std::string(platform),
+                    "-Output="   + std::string(outputDir)});
+    CookResult out;
+    out.platform = std::string(platform);
+    if (j.is_object()) {
+        out.started = j.value("started", false);
+        out.message = j.value("message", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::ClassInfo
+LiveBlueprintReader::IntrospectClass(std::string_view className) {
+    auto j = RunOp({"-Op=IntrospectClass", "-Class=" + std::string(className)});
+    ClassInfo out;
+    if (!j.is_object()) return out;
+    out.className   = j.value("class",  std::string{});
+    out.parentClass = j.value("parent", std::string{});
+    if (auto it = j.find("ancestors"); it != j.end() && it->is_array()) {
+        for (const auto& a : *it) if (a.is_string()) out.ancestors.push_back(a.get<std::string>());
+    }
+    if (auto it = j.find("properties"); it != j.end() && it->is_array()) {
+        for (const auto& p : *it) {
+            ClassPropertyInfo cp;
+            cp.name     = p.value("name",     std::string{});
+            cp.typeName = p.value("type",     std::string{});
+            cp.category = p.value("category", std::string{});
+            out.properties.push_back(std::move(cp));
+        }
+    }
+    if (auto it = j.find("functions"); it != j.end() && it->is_array()) {
+        for (const auto& f : *it) {
+            ClassFunctionInfo cf;
+            cf.name     = f.value("name",  std::string{});
+            cf.flagsCsv = f.value("flags", std::string{});
+            out.functions.push_back(std::move(cf));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::FindClassResult
+LiveBlueprintReader::FindClass(std::string_view query) {
+    auto j = RunOp({"-Op=FindClass", "-Query=" + std::string(query)});
+    FindClassResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("classes"); it != j.end() && it->is_array()) {
+            for (const auto& c : *it) {
+                if (c.is_string()) out.classNames.push_back(c.get<std::string>());
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<IBlueprintReader::ClassFunctionInfo>
+LiveBlueprintReader::ListFunctions(std::string_view className) {
+    auto j = RunOp({"-Op=ListFunctions", "-Class=" + std::string(className)});
+    std::vector<ClassFunctionInfo> out;
+    if (j.is_array()) {
+        for (const auto& f : j) {
+            ClassFunctionInfo cf;
+            cf.name     = f.value("name",  std::string{});
+            cf.flagsCsv = f.value("flags", std::string{});
+            out.push_back(std::move(cf));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::FocusActorResult
+LiveBlueprintReader::FocusActor(std::string_view actorName) {
+    auto j = RunOp({"-Op=FocusActor", "-Actor=" + std::string(actorName)});
+    FocusActorResult out;
+    out.actorName = std::string(actorName);
+    if (j.is_object()) out.focused = j.value("focused", false);
+    return out;
+}
+
+IBlueprintReader::SetCameraResult
+LiveBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
+                                        double rp, double ry, double rr) {
+    auto j = RunOp({"-Op=SetCameraTransform",
+                    "-LX=" + std::to_string(lx),
+                    "-LY=" + std::to_string(ly),
+                    "-LZ=" + std::to_string(lz),
+                    "-RP=" + std::to_string(rp),
+                    "-RY=" + std::to_string(ry),
+                    "-RR=" + std::to_string(rr)});
+    SetCameraResult out;
+    if (j.is_object()) out.moved = j.value("moved", false);
+    return out;
+}
+
+IBlueprintReader::ViewportScreenshotResult
+LiveBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
+    auto j = RunOp({"-Op=TakeViewportScreenshot", "-Dest=" + std::string(destPath)});
+    ViewportScreenshotResult out;
+    if (j.is_object()) {
+        out.captured   = j.value("captured", false);
+        out.outputFile = j.value("output_file", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SetShowFlagResult
+LiveBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
+    auto j = RunOp({"-Op=SetShowFlag",
+                    "-Flag=" + std::string(flagName),
+                    std::string("-Enabled=") + (enabled ? "1" : "0")});
+    SetShowFlagResult out;
+    out.flagName = std::string(flagName);
+    if (j.is_object()) out.enabled = j.value("enabled", false);
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

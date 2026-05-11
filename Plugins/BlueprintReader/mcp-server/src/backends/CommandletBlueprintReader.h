@@ -191,6 +191,22 @@ public:
         std::string_view, std::string_view, std::string_view) override;
     CompileStateTreeResult CompileStateTree(std::string_view) override;
 
+    // ----- Stage 3: profile / cook / class info / viewport --------------
+    StartProfileResult StartProfile(std::string_view) override;
+    StopProfileResult StopProfile() override;
+    StatGroupResult GetStats(std::string_view) override;
+    ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
+    CookResult CookContent(std::string_view) override;
+    CookResult PackageProject(std::string_view, std::string_view) override;
+    ClassInfo IntrospectClass(std::string_view) override;
+    FindClassResult FindClass(std::string_view) override;
+    std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
+    FocusActorResult FocusActor(std::string_view) override;
+    SetCameraResult SetCameraTransform(double, double, double,
+                                       double, double, double) override;
+    ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
+    SetShowFlagResult SetShowFlag(std::string_view, bool) override;
+
     // ----- Live editor ops ----------------------------------------------
     ConsoleCommandResult ConsoleCommand(std::string_view command) override;
     CVarValue GetCVar(std::string_view name) override;
