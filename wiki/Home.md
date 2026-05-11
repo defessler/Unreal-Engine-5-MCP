@@ -2,7 +2,7 @@
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
-graphs, nodes, connections, K2 metadata — through 104 tools.
+graphs, nodes, connections, K2 metadata — through 119 tools.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐

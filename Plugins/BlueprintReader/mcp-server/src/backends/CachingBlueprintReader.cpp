@@ -758,6 +758,70 @@ CachingBlueprintReader::SetShowFlag(std::string_view f, bool e) {
     return inner_->SetShowFlag(f, e);
 }
 
+// ----- Stage 4 (pass-through; writes invalidate the asset) -------------
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListNiagaraSystems(std::string_view p) { return inner_->ListNiagaraSystems(p); }
+IBlueprintReader::NiagaraSystemInfo
+CachingBlueprintReader::ReadNiagaraSystem(std::string_view a) { return inner_->ReadNiagaraSystem(a); }
+IBlueprintReader::CreateNiagaraSystemResult
+CachingBlueprintReader::CreateNiagaraSystem(std::string_view a) {
+    auto out = inner_->CreateNiagaraSystem(a);
+    InvalidateAsset("");
+    return out;
+}
+IBlueprintReader::SetNiagaraParameterResult
+CachingBlueprintReader::SetNiagaraParameter(std::string_view a,
+    std::string_view p, std::string_view v) {
+    auto out = inner_->SetNiagaraParameter(a, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListLevelSequences(std::string_view p) { return inner_->ListLevelSequences(p); }
+IBlueprintReader::LevelSequenceInfo
+CachingBlueprintReader::ReadLevelSequence(std::string_view a) { return inner_->ReadLevelSequence(a); }
+IBlueprintReader::AddSequenceTrackResult
+CachingBlueprintReader::AddSequenceTrack(std::string_view a,
+    std::string_view c, std::string_view n) {
+    auto out = inner_->AddSequenceTrack(a, c, n);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetSequencePlaybackRangeResult
+CachingBlueprintReader::SetSequencePlaybackRange(std::string_view a,
+    double s, double e) {
+    auto out = inner_->SetSequencePlaybackRange(a, s, e);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::GameplayTagListResult
+CachingBlueprintReader::ListGameplayTags(std::string_view f) { return inner_->ListGameplayTags(f); }
+IBlueprintReader::AddGameplayTagResult
+CachingBlueprintReader::AddGameplayTag(std::string_view t, std::string_view c) {
+    auto out = inner_->AddGameplayTag(t, c);
+    InvalidateAsset("");  // tag registry is project-global
+    return out;
+}
+IBlueprintReader::AbilitySetInfo
+CachingBlueprintReader::ReadAbilitySet(std::string_view a) { return inner_->ReadAbilitySet(a); }
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListAnimBlueprints(std::string_view p) { return inner_->ListAnimBlueprints(p); }
+IBlueprintReader::AnimBlueprintInfo
+CachingBlueprintReader::ReadAnimBlueprint(std::string_view a) { return inner_->ReadAnimBlueprint(a); }
+IBlueprintReader::AddAnimStateResult
+CachingBlueprintReader::AddAnimState(std::string_view a, std::string_view m, std::string_view n) {
+    auto out = inner_->AddAnimState(a, m, n);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::CompileAnimBlueprintResult
+CachingBlueprintReader::CompileAnimBlueprint(std::string_view a) {
+    auto out = inner_->CompileAnimBlueprint(a);
+    InvalidateAsset(a);
+    return out;
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================
