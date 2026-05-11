@@ -17,7 +17,7 @@ the same tool surface regardless of client.
 
 ## The tool surface
 
-104 tools across 17 categories. Don't memorize the list — call
+119 tools across 21 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -70,6 +70,14 @@ the same tool surface regardless of client.
   `list_functions`. Reflection over the live UClass registry.
 - **Viewport** (4): `focus_actor`, `set_camera_transform`,
   `take_viewport_screenshot`, `set_show_flag`.
+- **Niagara** (4): `list_niagara_systems`, `read_niagara_system`,
+  `create_niagara_system`, `set_niagara_parameter`.
+- **Sequencer** (4): `list_level_sequences`, `read_level_sequence`,
+  `add_sequence_track`, `set_sequence_playback_range`.
+- **GAS / GameplayTags** (3): `list_gameplay_tags`,
+  `add_gameplay_tag`, `read_ability_set`.
+- **AnimGraph** (4): `list_anim_blueprints`, `read_anim_blueprint`,
+  `add_anim_state`, `compile_anim_blueprint`.
 - **Discoverability + meta** (3): `list_node_kinds`,
   `list_pin_categories`, `shutdown_daemon`.
 

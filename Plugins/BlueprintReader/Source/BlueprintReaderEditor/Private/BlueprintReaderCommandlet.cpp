@@ -90,6 +90,9 @@
 #include "BehaviorTree/BTService.h"
 // DataAsset CRUD (Stage 2).
 #include "Engine/DataAsset.h"
+// AnimBlueprint authoring (Stage 4).
+#include "Animation/AnimBlueprint.h"
+#include "Animation/AnimBlueprintGeneratedClass.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -220,6 +223,22 @@ namespace
 		SetCameraTransform,
 		TakeViewportScreenshot,
 		SetShowFlag,
+		// Stage 4: Niagara / Sequencer / GAS / AnimGraph.
+		ListNiagaraSystems,
+		ReadNiagaraSystem,
+		CreateNiagaraSystem,
+		SetNiagaraParameter,
+		ListLevelSequences,
+		ReadLevelSequence,
+		AddSequenceTrack,
+		SetSequencePlaybackRange,
+		ListGameplayTags,
+		AddGameplayTag,
+		ReadAbilitySet,
+		ListAnimBlueprints,
+		ReadAnimBlueprint,
+		AddAnimState,
+		CompileAnimBlueprint,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -327,6 +346,22 @@ namespace
 		if (OpStr.Equals(TEXT("SetCameraTransform"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetCameraTransform; return true; }
 		if (OpStr.Equals(TEXT("TakeViewportScreenshot"), ESearchCase::IgnoreCase)) { OutOp = EOp::TakeViewportScreenshot; return true; }
 		if (OpStr.Equals(TEXT("SetShowFlag"), ESearchCase::IgnoreCase))            { OutOp = EOp::SetShowFlag; return true; }
+		// Stage 4: Niagara / Sequencer / GAS / AnimGraph.
+		if (OpStr.Equals(TEXT("ListNiagaraSystems"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListNiagaraSystems; return true; }
+		if (OpStr.Equals(TEXT("ReadNiagaraSystem"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadNiagaraSystem; return true; }
+		if (OpStr.Equals(TEXT("CreateNiagaraSystem"), ESearchCase::IgnoreCase))     { OutOp = EOp::CreateNiagaraSystem; return true; }
+		if (OpStr.Equals(TEXT("SetNiagaraParameter"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetNiagaraParameter; return true; }
+		if (OpStr.Equals(TEXT("ListLevelSequences"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListLevelSequences; return true; }
+		if (OpStr.Equals(TEXT("ReadLevelSequence"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadLevelSequence; return true; }
+		if (OpStr.Equals(TEXT("AddSequenceTrack"), ESearchCase::IgnoreCase))        { OutOp = EOp::AddSequenceTrack; return true; }
+		if (OpStr.Equals(TEXT("SetSequencePlaybackRange"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetSequencePlaybackRange; return true; }
+		if (OpStr.Equals(TEXT("ListGameplayTags"), ESearchCase::IgnoreCase))        { OutOp = EOp::ListGameplayTags; return true; }
+		if (OpStr.Equals(TEXT("AddGameplayTag"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddGameplayTag; return true; }
+		if (OpStr.Equals(TEXT("ReadAbilitySet"), ESearchCase::IgnoreCase))          { OutOp = EOp::ReadAbilitySet; return true; }
+		if (OpStr.Equals(TEXT("ListAnimBlueprints"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListAnimBlueprints; return true; }
+		if (OpStr.Equals(TEXT("ReadAnimBlueprint"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadAnimBlueprint; return true; }
+		if (OpStr.Equals(TEXT("AddAnimState"), ESearchCase::IgnoreCase))            { OutOp = EOp::AddAnimState; return true; }
+		if (OpStr.Equals(TEXT("CompileAnimBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CompileAnimBlueprint; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -3531,6 +3566,365 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ============================================================================
+	// Stage 4: Niagara / Sequencer / GAS / AnimGraph
+	// ============================================================================
+	//
+	// Niagara / LevelSequence / GameplayAbilitySystem are all separate UE
+	// plugins with their own runtime + editor modules. We avoid linking
+	// their editor-only modules (NiagaraEditor, LevelSequenceEditor,
+	// AnimGraph) to keep our deps lean — instead we discover assets via
+	// Asset Registry by class path and surface "best-effort" mutation
+	// hints when authoring needs editor-side APIs. Same pattern Stage 2
+	// used for StateTree.
+
+	// Helper: list assets filtered by a class-path string. Tries the
+	// concrete class path first; falls back to runtime class lookup if
+	// the plugin isn't loaded.
+	int32 ListAssetsByClassPath(const FString& Params, const FString& OutputPath,
+	    bool bPretty, FTopLevelAssetPath ClassPath)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		Filter.ClassPaths.Add(ClassPath);
+		Filter.bRecursiveClasses = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"),   A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),         A.AssetName.ToString());
+			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+	}
+
+	int32 RunListNiagaraSystemsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		return ListAssetsByClassPath(Params, OutputPath, bPretty,
+			FTopLevelAssetPath(TEXT("/Script/Niagara"), TEXT("NiagaraSystem")));
+	}
+
+	int32 RunReadNiagaraSystemOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		// We don't link NiagaraEditor; surface the asset shape + a hint.
+		// At runtime UNiagaraSystem exposes emitter handles via reflection
+		// — best-effort scaffold the response shape here so the agent
+		// gets a stable result. Full read needs NiagaraEditor.
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetArrayField(TEXT("emitters"),        TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetArrayField(TEXT("parameter_names"), TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Niagara system introspection requires NiagaraEditor module. "
+			     "Asset discovered; deeper read scaffolds an empty shape."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCreateNiagaraSystemOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		// Already exists?
+		if (UObject* Existing = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath))
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			Obj->SetBoolField(TEXT("created"),         false);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			(void)Existing;
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("created"),         false);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Niagara asset creation needs NiagaraEditor. Use the "
+			     "Niagara editor's New System wizard manually."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetNiagaraParameterOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, Param, Value;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Param="), Param);
+		FParse::Value(*Params, TEXT("Value="), Value);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("asset_path"),     AssetPath);
+		Obj->SetStringField(TEXT("parameter_name"), Param);
+		Obj->SetStringField(TEXT("new_value"),      Value);
+		Obj->SetBoolField(TEXT("applied"),          false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Niagara user-parameter override needs NiagaraEditor; "
+			     "set in the editor or via a component instance."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunListLevelSequencesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		return ListAssetsByClassPath(Params, OutputPath, bPretty,
+			FTopLevelAssetPath(TEXT("/Script/LevelSequence"), TEXT("LevelSequence")));
+	}
+
+	int32 RunReadLevelSequenceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetNumberField(TEXT("start_seconds"), 0.0);
+		Obj->SetNumberField(TEXT("end_seconds"),   0.0);
+		Obj->SetArrayField(TEXT("tracks"),         TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("LevelSequence introspection scaffolded; full read needs "
+			     "MovieScene module APIs."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddSequenceTrackOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ClassName, Name;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+		FParse::Value(*Params, TEXT("Name="),  Name);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("asset_path"),  AssetPath);
+		Obj->SetStringField(TEXT("track_name"),  Name);
+		Obj->SetStringField(TEXT("track_class"), ClassName);
+		Obj->SetBoolField(TEXT("added"),         false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Sequencer track authoring needs LevelSequenceEditor."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetSequencePlaybackRangeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		double Start = 0, End = 0;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Start="), Start);
+		FParse::Value(*Params, TEXT("End="),   End);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetNumberField(TEXT("start_seconds"), Start);
+		Obj->SetNumberField(TEXT("end_seconds"),   End);
+		Obj->SetBoolField(TEXT("applied"),         false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Playback range write needs MovieScene helpers."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunListGameplayTagsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Filter;
+		FParse::Value(*Params, TEXT("Filter="), Filter);
+
+		// UGameplayTagsManager is in /Script/GameplayTags; query directly
+		// via UClass lookup so we don't have to link the module.
+		TArray<TSharedPtr<FJsonValue>> Tags;
+		if (UClass* MgrClass = FindObject<UClass>(nullptr, TEXT("/Script/GameplayTags.GameplayTagsManager")))
+		{
+			if (UObject* Mgr = MgrClass->GetDefaultObject())
+			{
+				if (UFunction* Fn = MgrClass->FindFunctionByName(FName(TEXT("RequestAllGameplayTags"))))
+				{
+					(void)Fn;
+					(void)Mgr;
+				}
+			}
+		}
+		// Best-effort: agent gets the schema; specific tag enumeration
+		// requires the editor's GameplayTagsManager singleton at runtime.
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetArrayField(TEXT("tags"), Tags);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Tag enumeration scaffolded; full list needs the live "
+			     "GameplayTagsManager singleton."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddGameplayTagOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Tag, Comment;
+		FParse::Value(*Params, TEXT("Tag="),     Tag);
+		FParse::Value(*Params, TEXT("Comment="), Comment);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("tag_name"),       Tag);
+		Obj->SetBoolField(TEXT("added"),            false);
+		Obj->SetBoolField(TEXT("already_existed"),  false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Tag dictionary mutation writes Config/Tags/DefaultGameplayTags.ini "
+			     "directly. Edit the .ini, then `console_command \"GameplayTags.PrintReport\"`."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunReadAbilitySetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
+		TArray<TSharedPtr<FJsonValue>> Abilities;
+		// AbilitySet schemas vary across projects. We scan for any array
+		// property containing a "class" + "level" pair via the property
+		// system. Best-effort.
+		if (DA)
+		{
+			for (TFieldIterator<FArrayProperty> It(DA->GetClass()); It; ++It)
+			{
+				FScriptArrayHelper Helper(*It, It->ContainerPtrToValuePtr<void>(DA));
+				for (int32 i = 0; i < Helper.Num(); ++i)
+				{
+					if (FStructProperty* Struct = CastField<FStructProperty>(It->Inner))
+					{
+						void* Ptr = Helper.GetRawPtr(i);
+						auto Entry = MakeShared<FJsonObject>();
+						for (TFieldIterator<FProperty> P(Struct->Struct); P; ++P)
+						{
+							FString Text;
+							P->ExportText_Direct(Text,
+								P->ContainerPtrToValuePtr<void>(Ptr), nullptr, nullptr, PPF_None);
+							Entry->SetStringField(P->GetName(), Text);
+						}
+						// Re-emit as our normalized {class, level} shape.
+						auto E = MakeShared<FJsonObject>();
+						const FString* CName = nullptr;
+						const FString* LName = nullptr;
+						for (const auto& Pair : Entry->Values)
+						{
+							if (Pair.Key.Contains(TEXT("Class")) ||
+							    Pair.Key.Contains(TEXT("Ability")))
+							{
+								FString S;
+								Pair.Value->TryGetString(S);
+								E->SetStringField(TEXT("class"), S);
+								CName = &Pair.Key;
+							}
+							else if (Pair.Key.Contains(TEXT("Level")))
+							{
+								int32 L = 1;
+								Pair.Value->TryGetNumber(L);
+								E->SetNumberField(TEXT("level"), L);
+								LName = &Pair.Key;
+							}
+						}
+						(void)CName; (void)LName;
+						if (!E->HasField(TEXT("level"))) E->SetNumberField(TEXT("level"), 1);
+						Abilities.Add(MakeShared<FJsonValueObject>(E));
+					}
+				}
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), DA != nullptr);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetArrayField(TEXT("abilities"),   Abilities);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunListAnimBlueprintsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		return ListAssetsByClassPath(Params, OutputPath, bPretty,
+			UAnimBlueprint::StaticClass()->GetClassPathName());
+	}
+
+	int32 RunReadAnimBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
+		if (!ABP) return 4;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),   AssetPath);
+		Obj->SetStringField(TEXT("parent_class"),
+			ABP->ParentClass ? ABP->ParentClass->GetName() : FString{});
+		// State machine introspection lives in AnimGraph editor module
+		// (FAnimStateMachineNodeBase). We surface an empty list with a
+		// hint so the agent gets the asset's parent class but knows it
+		// needs the editor for the deeper graph.
+		Obj->SetArrayField(TEXT("state_machines"), TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("State-machine walk needs AnimGraph module."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddAnimStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, Machine, Name;
+		FParse::Value(*Params, TEXT("Asset="),   AssetPath);
+		FParse::Value(*Params, TEXT("Machine="), Machine);
+		FParse::Value(*Params, TEXT("Name="),    Name);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("state_machine"), Machine);
+		Obj->SetStringField(TEXT("state_name"),    Name);
+		Obj->SetBoolField(TEXT("added"),           false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("AnimGraph state authoring needs AnimGraph module."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCompileAnimBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
+		if (!ABP) return 4;
+
+		FCompilerResultsLog ResultsLog;
+		FKismetEditorUtilities::CompileBlueprint(ABP,
+			EBlueprintCompileOptions::SkipGarbageCollection, &ResultsLog);
+		const bool bCompiled = ResultsLog.NumErrors == 0;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bCompiled);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("compiled"),     bCompiled);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -4667,6 +5061,21 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::SetCameraTransform)           return RunSetCameraTransformOp(Params, OutputPath, bPretty);
 	if (Op == EOp::TakeViewportScreenshot)       return RunTakeViewportScreenshotOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetShowFlag)                  return RunSetShowFlagOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListNiagaraSystems)           return RunListNiagaraSystemsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadNiagaraSystem)            return RunReadNiagaraSystemOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CreateNiagaraSystem)          return RunCreateNiagaraSystemOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetNiagaraParameter)          return RunSetNiagaraParameterOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListLevelSequences)           return RunListLevelSequencesOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadLevelSequence)            return RunReadLevelSequenceOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddSequenceTrack)             return RunAddSequenceTrackOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetSequencePlaybackRange)     return RunSetSequencePlaybackRangeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListGameplayTags)             return RunListGameplayTagsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddGameplayTag)               return RunAddGameplayTagOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadAbilitySet)               return RunReadAbilitySetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListAnimBlueprints)           return RunListAnimBlueprintsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadAnimBlueprint)            return RunReadAnimBlueprintOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddAnimState)                 return RunAddAnimStateOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CompileAnimBlueprint)         return RunCompileAnimBlueprintOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

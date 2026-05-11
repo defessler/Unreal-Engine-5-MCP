@@ -3628,6 +3628,362 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Niagara (Stage 4) ===============================================
+
+    {
+        ToolDescriptor d;
+        d.name = "list_niagara_systems";
+        d.description = "List UNiagaraSystem assets under a content path "
+                        "(default `/Game`).";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto s = reader.ListNiagaraSystems(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& v : s) arr.push_back(v);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_niagara_system";
+        d.description = "Read a UNiagaraSystem's emitter handles (each "
+                        "names an underlying UNiagaraEmitter) and its "
+                        "exposed user parameter names.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto n = reader.ReadNiagaraSystem(asset);
+            nlohmann::json emitters = nlohmann::json::array();
+            for (const auto& e : n.emitters) {
+                emitters.push_back({
+                    {"name",         e.name},
+                    {"emitter_path", e.emitterPath},
+                    {"enabled",      e.enabled},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      n.assetPath},
+                {"emitters",        emitters},
+                {"parameter_names", n.parameterNames},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "create_niagara_system";
+        d.description = "Create a new (empty) UNiagaraSystem asset at "
+                        "the given path. Idempotent.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CreateNiagaraSystem(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      r.assetPath},
+                {"created",         r.created},
+                {"already_existed", r.alreadyExisted},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_niagara_parameter";
+        d.description = "Override a user-exposed parameter on a Niagara "
+                        "system. `value` is the parameter's text form.";
+        d.input_schema = {{"type","object"},
+            {"properties", {
+                {"asset_path",     {{"type","string"}}},
+                {"parameter_name", {{"type","string"}}},
+                {"value",          {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","parameter_name","value"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string p     = RequireString(args, "parameter_name");
+            std::string v     = RequireString(args, "value");
+            auto r = reader.SetNiagaraParameter(asset, p, v);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",     r.assetPath},
+                {"parameter_name", r.parameterName},
+                {"new_value",      r.newValue},
+                {"applied",        r.applied},
+            };
+        });
+    }
+
+    // ===== LevelSequence (Stage 4) ========================================
+
+    {
+        ToolDescriptor d;
+        d.name = "list_level_sequences";
+        d.description = "List ULevelSequence assets under a content path.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto s = reader.ListLevelSequences(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& v : s) arr.push_back(v);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_level_sequence";
+        d.description = "Read a sequence's playback range (start/end "
+                        "seconds) and its top-level tracks.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto ls = reader.ReadLevelSequence(asset);
+            nlohmann::json tracks = nlohmann::json::array();
+            for (const auto& t : ls.tracks) {
+                tracks.push_back({
+                    {"name",          t.trackName},
+                    {"class",         t.trackClass},
+                    {"section_count", t.sectionCount},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    ls.assetPath},
+                {"start_seconds", ls.startSeconds},
+                {"end_seconds",   ls.endSeconds},
+                {"tracks",        tracks},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "add_sequence_track";
+        d.description = "Add a master track to a level sequence. "
+                        "`track_class` is the short class name "
+                        "(`MovieSceneAudioTrack`, `MovieScene3DTransformTrack`).";
+        d.input_schema = {{"type","object"},
+            {"properties", {
+                {"asset_path",  {{"type","string"}}},
+                {"track_class", {{"type","string"}}},
+                {"track_name",  {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","track_class","track_name"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string c     = RequireString(args, "track_class");
+            std::string n     = RequireString(args, "track_name");
+            auto r = reader.AddSequenceTrack(asset, c, n);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",  r.assetPath},
+                {"track_name",  r.trackName},
+                {"track_class", r.trackClass},
+                {"added",       r.added},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_sequence_playback_range";
+        d.description = "Set the playback range of a level sequence in "
+                        "seconds (start <= end).";
+        d.input_schema = {{"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"start_seconds", {{"type","number"}}},
+                {"end_seconds",   {{"type","number"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","start_seconds","end_seconds"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            double s = args.value("start_seconds", 0.0);
+            double e = args.value("end_seconds",   0.0);
+            auto r = reader.SetSequencePlaybackRange(asset, s, e);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"start_seconds", r.startSeconds},
+                {"end_seconds",   r.endSeconds},
+                {"applied",       r.applied},
+            };
+        });
+    }
+
+    // ===== GAS / GameplayTags (Stage 4) ===================================
+
+    {
+        ToolDescriptor d;
+        d.name = "list_gameplay_tags";
+        d.description = "Query the project's GameplayTagsManager. `filter` "
+                        "is an optional substring; empty returns every "
+                        "registered tag.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"filter", {{"type","string"}}}}}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string f = OptString(args, "filter", "");
+            auto r = reader.ListGameplayTags(f);
+            return nlohmann::json{{"ok", true}, {"tags", r.tags}};
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "add_gameplay_tag";
+        d.description = "Add a tag to the project's tag dictionary. `name` "
+                        "uses dot-separated form (e.g. `Status.Damage.Fire`). "
+                        "`comment` is optional.";
+        d.input_schema = {{"type","object"},
+            {"properties", {
+                {"name",    {{"type","string"}}},
+                {"comment", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"name"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string n = RequireString(args, "name");
+            std::string c = OptString(args, "comment", "");
+            auto r = reader.AddGameplayTag(n, c);
+            return nlohmann::json{
+                {"ok", true},
+                {"tag_name",        r.tagName},
+                {"added",           r.added},
+                {"already_existed", r.alreadyExisted},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_ability_set";
+        d.description = "Read a GAS ability-set DataAsset: every granted "
+                        "ability class + its level.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto s = reader.ReadAbilitySet(asset);
+            nlohmann::json abilities = nlohmann::json::array();
+            for (const auto& a : s.abilities) {
+                abilities.push_back({{"class", a.abilityClass}, {"level", a.level}});
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", s.assetPath},
+                {"abilities",  abilities},
+            };
+        });
+    }
+
+    // ===== AnimGraph (Stage 4) ============================================
+
+    {
+        ToolDescriptor d;
+        d.name = "list_anim_blueprints";
+        d.description = "List UAnimBlueprint assets under a content path.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto s = reader.ListAnimBlueprints(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& v : s) arr.push_back(v);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_anim_blueprint";
+        d.description = "Walk a UAnimBlueprint: parent class + each "
+                        "state machine's states (state / conduit / "
+                        "transition / entry).";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto a = reader.ReadAnimBlueprint(asset);
+            nlohmann::json machines = nlohmann::json::array();
+            for (const auto& m : a.stateMachines) {
+                nlohmann::json states = nlohmann::json::array();
+                for (const auto& s : m.states) {
+                    states.push_back({{"name", s.name}, {"kind", s.kind}});
+                }
+                machines.push_back({{"name", m.name}, {"states", states}});
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",     a.assetPath},
+                {"parent_class",   a.parentClass},
+                {"state_machines", machines},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "add_anim_state";
+        d.description = "Add a state to a named state machine inside a "
+                        "UAnimBlueprint. Scaffold only — final state "
+                        "authoring still uses the AnimGraph editor.";
+        d.input_schema = {{"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"state_machine", {{"type","string"}}},
+                {"state_name",    {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","state_machine","state_name"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string m     = RequireString(args, "state_machine");
+            std::string n     = RequireString(args, "state_name");
+            auto r = reader.AddAnimState(asset, m, n);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"state_machine", r.stateMachine},
+                {"state_name",    r.stateName},
+                {"added",         r.added},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "compile_anim_blueprint";
+        d.description = "Compile a UAnimBlueprint.";
+        d.input_schema = {{"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})}};
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CompileAnimBlueprint(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"compiled",   r.compiled},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.

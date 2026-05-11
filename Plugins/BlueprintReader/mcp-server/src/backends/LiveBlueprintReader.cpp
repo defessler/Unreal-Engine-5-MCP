@@ -1651,6 +1651,238 @@ LiveBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
     return out;
 }
 
+// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph -------------------
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListNiagaraSystems(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListNiagaraSystems"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) { BPAssetSummary s; from_json(v, s); out.push_back(std::move(s)); }
+    }
+    return out;
+}
+
+IBlueprintReader::NiagaraSystemInfo
+LiveBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadNiagaraSystem", "-Asset=" + std::string(assetPath)});
+    NiagaraSystemInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    if (auto it = j.find("emitters"); it != j.end() && it->is_array()) {
+        for (const auto& e : *it) {
+            NiagaraEmitterHandleInfo h;
+            h.name        = e.value("name", std::string{});
+            h.emitterPath = e.value("emitter_path", std::string{});
+            h.enabled     = e.value("enabled", false);
+            out.emitters.push_back(std::move(h));
+        }
+    }
+    if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
+        for (const auto& v : *it) if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+    }
+    return out;
+}
+
+IBlueprintReader::CreateNiagaraSystemResult
+LiveBlueprintReader::CreateNiagaraSystem(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CreateNiagaraSystem", "-Asset=" + std::string(assetPath)});
+    CreateNiagaraSystemResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.created        = j.value("created", false);
+        out.alreadyExisted = j.value("already_existed", false);
+    }
+    return out;
+}
+
+IBlueprintReader::SetNiagaraParameterResult
+LiveBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
+    std::string_view parameterName, std::string_view value) {
+    auto j = RunOp({"-Op=SetNiagaraParameter",
+                    "-Asset=" + std::string(assetPath),
+                    "-Param=" + std::string(parameterName),
+                    "-Value=" + std::string(value)});
+    SetNiagaraParameterResult out;
+    out.assetPath     = std::string(assetPath);
+    out.parameterName = std::string(parameterName);
+    out.newValue      = std::string(value);
+    if (j.is_object()) out.applied = j.value("applied", false);
+    return out;
+}
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListLevelSequences(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListLevelSequences"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) { BPAssetSummary s; from_json(v, s); out.push_back(std::move(s)); }
+    }
+    return out;
+}
+
+IBlueprintReader::LevelSequenceInfo
+LiveBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadLevelSequence", "-Asset=" + std::string(assetPath)});
+    LevelSequenceInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    out.startSeconds = j.value("start_seconds", 0.0);
+    out.endSeconds   = j.value("end_seconds",   0.0);
+    if (auto it = j.find("tracks"); it != j.end() && it->is_array()) {
+        for (const auto& t : *it) {
+            SequenceTrackInfo st;
+            st.trackName    = t.value("name",          std::string{});
+            st.trackClass   = t.value("class",         std::string{});
+            st.sectionCount = t.value("section_count", 0);
+            out.tracks.push_back(std::move(st));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddSequenceTrackResult
+LiveBlueprintReader::AddSequenceTrack(std::string_view assetPath,
+    std::string_view trackClass, std::string_view trackName) {
+    auto j = RunOp({"-Op=AddSequenceTrack",
+                    "-Asset=" + std::string(assetPath),
+                    "-Class=" + std::string(trackClass),
+                    "-Name="  + std::string(trackName)});
+    AddSequenceTrackResult out;
+    out.assetPath  = std::string(assetPath);
+    out.trackName  = std::string(trackName);
+    out.trackClass = std::string(trackClass);
+    if (j.is_object()) out.added = j.value("added", false);
+    return out;
+}
+
+IBlueprintReader::SetSequencePlaybackRangeResult
+LiveBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
+    double startSeconds, double endSeconds) {
+    auto j = RunOp({"-Op=SetSequencePlaybackRange",
+                    "-Asset=" + std::string(assetPath),
+                    "-Start=" + std::to_string(startSeconds),
+                    "-End="   + std::to_string(endSeconds)});
+    SetSequencePlaybackRangeResult out;
+    out.assetPath    = std::string(assetPath);
+    out.startSeconds = startSeconds;
+    out.endSeconds   = endSeconds;
+    if (j.is_object()) out.applied = j.value("applied", false);
+    return out;
+}
+
+IBlueprintReader::GameplayTagListResult
+LiveBlueprintReader::ListGameplayTags(std::string_view filter) {
+    std::vector<std::string> args = {"-Op=ListGameplayTags"};
+    if (!filter.empty()) args.push_back("-Filter=" + std::string(filter));
+    auto j = RunOp(args);
+    GameplayTagListResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("tags"); it != j.end() && it->is_array()) {
+            for (const auto& v : *it) if (v.is_string()) out.tags.push_back(v.get<std::string>());
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddGameplayTagResult
+LiveBlueprintReader::AddGameplayTag(std::string_view tagName,
+    std::string_view comment) {
+    std::vector<std::string> args = {"-Op=AddGameplayTag",
+                                     "-Tag=" + std::string(tagName)};
+    if (!comment.empty()) args.push_back("-Comment=" + std::string(comment));
+    auto j = RunOp(args);
+    AddGameplayTagResult out;
+    out.tagName = std::string(tagName);
+    if (j.is_object()) {
+        out.added          = j.value("added", false);
+        out.alreadyExisted = j.value("already_existed", false);
+    }
+    return out;
+}
+
+IBlueprintReader::AbilitySetInfo
+LiveBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadAbilitySet", "-Asset=" + std::string(assetPath)});
+    AbilitySetInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    if (auto it = j.find("abilities"); it != j.end() && it->is_array()) {
+        for (const auto& a : *it) {
+            AbilitySetEntry e;
+            e.abilityClass = a.value("class", std::string{});
+            e.level        = a.value("level", 1);
+            out.abilities.push_back(std::move(e));
+        }
+    }
+    return out;
+}
+
+std::vector<BPAssetSummary>
+LiveBlueprintReader::ListAnimBlueprints(std::string_view path) {
+    std::vector<std::string> args = {"-Op=ListAnimBlueprints"};
+    if (!path.empty()) args.push_back("-Path=" + std::string(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) { BPAssetSummary s; from_json(v, s); out.push_back(std::move(s)); }
+    }
+    return out;
+}
+
+IBlueprintReader::AnimBlueprintInfo
+LiveBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
+    auto j = RunOp({"-Op=ReadAnimBlueprint", "-Asset=" + std::string(assetPath)});
+    AnimBlueprintInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    out.parentClass = j.value("parent_class", std::string{});
+    if (auto it = j.find("state_machines"); it != j.end() && it->is_array()) {
+        for (const auto& sm : *it) {
+            AnimStateMachineInfo asm_info;
+            asm_info.name = sm.value("name", std::string{});
+            if (auto sIt = sm.find("states"); sIt != sm.end() && sIt->is_array()) {
+                for (const auto& s : *sIt) {
+                    AnimStateInfo si;
+                    si.name = s.value("name", std::string{});
+                    si.kind = s.value("kind", std::string{});
+                    asm_info.states.push_back(std::move(si));
+                }
+            }
+            out.stateMachines.push_back(std::move(asm_info));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddAnimStateResult
+LiveBlueprintReader::AddAnimState(std::string_view assetPath,
+    std::string_view stateMachine, std::string_view stateName) {
+    auto j = RunOp({"-Op=AddAnimState",
+                    "-Asset="   + std::string(assetPath),
+                    "-Machine=" + std::string(stateMachine),
+                    "-Name="    + std::string(stateName)});
+    AddAnimStateResult out;
+    out.assetPath    = std::string(assetPath);
+    out.stateMachine = std::string(stateMachine);
+    out.stateName    = std::string(stateName);
+    if (j.is_object()) out.added = j.value("added", false);
+    return out;
+}
+
+IBlueprintReader::CompileAnimBlueprintResult
+LiveBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
+    auto j = RunOp({"-Op=CompileAnimBlueprint", "-Asset=" + std::string(assetPath)});
+    CompileAnimBlueprintResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
 void LiveBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }

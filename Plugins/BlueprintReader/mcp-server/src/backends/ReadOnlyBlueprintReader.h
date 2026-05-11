@@ -194,6 +194,27 @@ public:
     ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
     SetShowFlagResult SetShowFlag(std::string_view, bool) override;
 
+    // ----- Stage 4: reads pass through, writes reject ------------------
+    std::vector<BPAssetSummary> ListNiagaraSystems(std::string_view) override;
+    NiagaraSystemInfo ReadNiagaraSystem(std::string_view) override;
+    CreateNiagaraSystemResult CreateNiagaraSystem(std::string_view) override;
+    SetNiagaraParameterResult SetNiagaraParameter(std::string_view,
+        std::string_view, std::string_view) override;
+    std::vector<BPAssetSummary> ListLevelSequences(std::string_view) override;
+    LevelSequenceInfo ReadLevelSequence(std::string_view) override;
+    AddSequenceTrackResult AddSequenceTrack(std::string_view,
+        std::string_view, std::string_view) override;
+    SetSequencePlaybackRangeResult SetSequencePlaybackRange(std::string_view,
+        double, double) override;
+    GameplayTagListResult ListGameplayTags(std::string_view) override;
+    AddGameplayTagResult AddGameplayTag(std::string_view, std::string_view) override;
+    AbilitySetInfo ReadAbilitySet(std::string_view) override;
+    std::vector<BPAssetSummary> ListAnimBlueprints(std::string_view) override;
+    AnimBlueprintInfo ReadAnimBlueprint(std::string_view) override;
+    AddAnimStateResult AddAnimState(std::string_view, std::string_view,
+        std::string_view) override;
+    CompileAnimBlueprintResult CompileAnimBlueprint(std::string_view) override;
+
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in
     // read-only mode they're still no-ops because no writes can happen

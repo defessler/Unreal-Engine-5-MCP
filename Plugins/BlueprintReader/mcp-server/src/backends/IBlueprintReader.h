@@ -861,6 +861,162 @@ public:
         throw BlueprintReaderError("SetShowFlag not supported by this backend");
     }
 
+    // ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
+
+    struct NiagaraEmitterHandleInfo {
+        std::string name;
+        std::string emitterPath;  // package path of the underlying UNiagaraEmitter
+        bool enabled = false;
+    };
+    struct NiagaraSystemInfo {
+        std::string assetPath;
+        std::vector<NiagaraEmitterHandleInfo> emitters;
+        std::vector<std::string> parameterNames;
+    };
+    virtual std::vector<BPAssetSummary> ListNiagaraSystems(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListNiagaraSystems not supported by this backend");
+    }
+    virtual NiagaraSystemInfo ReadNiagaraSystem(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadNiagaraSystem not supported by this backend");
+    }
+    struct CreateNiagaraSystemResult {
+        std::string assetPath;
+        bool created = false;
+        bool alreadyExisted = false;
+    };
+    virtual CreateNiagaraSystemResult CreateNiagaraSystem(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CreateNiagaraSystem not supported by this backend");
+    }
+    struct SetNiagaraParameterResult {
+        std::string assetPath;
+        std::string parameterName;
+        std::string newValue;
+        bool applied = false;
+    };
+    virtual SetNiagaraParameterResult SetNiagaraParameter(std::string_view assetPath,
+        std::string_view parameterName, std::string_view value) {
+        (void)assetPath; (void)parameterName; (void)value;
+        throw BlueprintReaderError("SetNiagaraParameter not supported by this backend");
+    }
+
+    struct SequenceTrackInfo {
+        std::string trackName;
+        std::string trackClass;
+        int sectionCount = 0;
+    };
+    struct LevelSequenceInfo {
+        std::string assetPath;
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        std::vector<SequenceTrackInfo> tracks;
+    };
+    virtual std::vector<BPAssetSummary> ListLevelSequences(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListLevelSequences not supported by this backend");
+    }
+    virtual LevelSequenceInfo ReadLevelSequence(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadLevelSequence not supported by this backend");
+    }
+    struct AddSequenceTrackResult {
+        std::string assetPath;
+        std::string trackName;
+        std::string trackClass;
+        bool added = false;
+    };
+    virtual AddSequenceTrackResult AddSequenceTrack(std::string_view assetPath,
+        std::string_view trackClass, std::string_view trackName) {
+        (void)assetPath; (void)trackClass; (void)trackName;
+        throw BlueprintReaderError("AddSequenceTrack not supported by this backend");
+    }
+    struct SetSequencePlaybackRangeResult {
+        std::string assetPath;
+        double startSeconds = 0.0;
+        double endSeconds = 0.0;
+        bool applied = false;
+    };
+    virtual SetSequencePlaybackRangeResult SetSequencePlaybackRange(std::string_view assetPath,
+        double startSeconds, double endSeconds) {
+        (void)assetPath; (void)startSeconds; (void)endSeconds;
+        throw BlueprintReaderError("SetSequencePlaybackRange not supported by this backend");
+    }
+
+    // GAS / GameplayTags
+    struct GameplayTagListResult {
+        std::vector<std::string> tags;
+    };
+    virtual GameplayTagListResult ListGameplayTags(std::string_view filter) {
+        (void)filter;
+        throw BlueprintReaderError("ListGameplayTags not supported by this backend");
+    }
+    struct AddGameplayTagResult {
+        std::string tagName;
+        bool added = false;
+        bool alreadyExisted = false;
+    };
+    virtual AddGameplayTagResult AddGameplayTag(std::string_view tagName,
+        std::string_view comment) {
+        (void)tagName; (void)comment;
+        throw BlueprintReaderError("AddGameplayTag not supported by this backend");
+    }
+    struct AbilitySetEntry {
+        std::string abilityClass;
+        int level = 1;
+    };
+    struct AbilitySetInfo {
+        std::string assetPath;
+        std::vector<AbilitySetEntry> abilities;
+    };
+    virtual AbilitySetInfo ReadAbilitySet(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadAbilitySet not supported by this backend");
+    }
+
+    // AnimGraph
+    struct AnimStateInfo {
+        std::string name;
+        std::string kind;  // "state" | "conduit" | "transition" | "entry"
+    };
+    struct AnimStateMachineInfo {
+        std::string name;
+        std::vector<AnimStateInfo> states;
+    };
+    struct AnimBlueprintInfo {
+        std::string assetPath;
+        std::string parentClass;
+        std::vector<AnimStateMachineInfo> stateMachines;
+    };
+    virtual std::vector<BPAssetSummary> ListAnimBlueprints(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListAnimBlueprints not supported by this backend");
+    }
+    virtual AnimBlueprintInfo ReadAnimBlueprint(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadAnimBlueprint not supported by this backend");
+    }
+    struct AddAnimStateResult {
+        std::string assetPath;
+        std::string stateMachine;
+        std::string stateName;
+        bool added = false;
+    };
+    virtual AddAnimStateResult AddAnimState(std::string_view assetPath,
+        std::string_view stateMachine, std::string_view stateName) {
+        (void)assetPath; (void)stateMachine; (void)stateName;
+        throw BlueprintReaderError("AddAnimState not supported by this backend");
+    }
+    struct CompileAnimBlueprintResult {
+        std::string assetPath;
+        bool compiled = false;
+    };
+    virtual CompileAnimBlueprintResult CompileAnimBlueprint(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CompileAnimBlueprint not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The
