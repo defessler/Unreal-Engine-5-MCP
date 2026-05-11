@@ -82,6 +82,10 @@ public:
     CreateFolderResult CreateFolder(std::string_view) override;
     std::vector<BPAssetSummary> ListDataTables(std::string_view) override;
     DataTableInfo ReadDataTable(std::string_view) override;
+    AddDataRowResult AddDataRow(std::string_view, std::string_view,
+                                const nlohmann::json&, bool) override;
+    SetDataRowValueResult SetDataRowValue(std::string_view, std::string_view,
+                                          std::string_view, std::string_view) override;
 
     // ----- Live editor ops ----------------------------------------------
     // Reads (GetCVar, GetSelectedActors, ReadOutputLog, ConsoleCommand,

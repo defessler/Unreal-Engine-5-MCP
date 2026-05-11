@@ -118,6 +118,14 @@ public:
     CreateFolderResult CreateFolder(std::string_view folderPath) override;
     std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
     DataTableInfo ReadDataTable(std::string_view assetPath) override;
+    AddDataRowResult AddDataRow(std::string_view assetPath,
+                                std::string_view rowName,
+                                const nlohmann::json& values,
+                                bool overwrite) override;
+    SetDataRowValueResult SetDataRowValue(std::string_view assetPath,
+                                          std::string_view rowName,
+                                          std::string_view fieldName,
+                                          std::string_view value) override;
 
     // ----- Live editor ops ----------------------------------------------
     ConsoleCommandResult ConsoleCommand(std::string_view command) override;
