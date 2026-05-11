@@ -162,6 +162,31 @@ public:
     OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
     AutomationRunResult RunAutomationTests(std::string_view pattern) override;
 
+    // ----- Material authoring (pass-through; ReadMaterial cacheable but
+    // not yet wired — punt until staleness is a problem) -----------------
+    std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+    MaterialInfo ReadMaterial(std::string_view) override;
+    AddMaterialExpressionResult AddMaterialExpression(std::string_view,
+        std::string_view, int, int) override;
+    ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
+        std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetMaterialParameterResult SetMaterialParameter(std::string_view,
+        std::string_view, std::string_view) override;
+    SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
+        std::string_view, std::string_view, std::string_view) override;
+    CompileMaterialResult CompileMaterial(std::string_view) override;
+
+    // ----- UMG widget authoring (pass-through) --------------------------
+    WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+    AddWidgetResult AddWidget(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+
     // Batch sentinels (A1) — forwards to inner and tracks depth so
     // invalidations triggered by writes during a batch don't drop entries
     // that subsequent ops in the same batch would re-fetch. Flushed by

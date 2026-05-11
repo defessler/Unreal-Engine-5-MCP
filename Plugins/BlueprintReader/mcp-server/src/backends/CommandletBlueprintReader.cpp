@@ -1522,6 +1522,221 @@ CommandletBlueprintReader::SetComponentProperty(std::string_view assetPath,
     return out;
 }
 
+// ----- Material authoring ------------------------------------------------
+
+std::vector<BPAssetSummary>
+CommandletBlueprintReader::ListMaterials(std::string_view path) {
+    std::vector<std::wstring> args = {L"-Op=ListMaterials"};
+    if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+    auto j = RunOp(args);
+    std::vector<BPAssetSummary> out;
+    if (j.is_array()) {
+        for (const auto& v : j) {
+            BPAssetSummary s; from_json(v, s); out.push_back(std::move(s));
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::MaterialInfo
+CommandletBlueprintReader::ReadMaterial(std::string_view assetPath) {
+    auto j = RunOp({L"-Op=ReadMaterial", L"-Asset=" + Widen(assetPath)});
+    MaterialInfo out;
+    out.assetPath = std::string(assetPath);
+    if (!j.is_object()) return out;
+    if (auto it = j.find("expressions"); it != j.end() && it->is_array()) {
+        for (const auto& e : *it) {
+            MaterialExpression x;
+            x.id            = e.value("id",             std::string{});
+            x.className     = e.value("class",          std::string{});
+            x.parameterName = e.value("parameter_name", std::string{});
+            x.x             = e.value("x", 0);
+            x.y             = e.value("y", 0);
+            out.expressions.push_back(std::move(x));
+        }
+    }
+    if (auto it = j.find("connections"); it != j.end() && it->is_array()) {
+        for (const auto& c : *it) {
+            MaterialConnection mc;
+            mc.fromNodeId = c.value("from_node", std::string{});
+            mc.fromPin    = c.value("from_pin",  std::string{});
+            mc.toNodeId   = c.value("to_node",   std::string{});
+            mc.toPin      = c.value("to_pin",    std::string{});
+            out.connections.push_back(std::move(mc));
+        }
+    }
+    if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
+        for (const auto& v : *it) {
+            if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddMaterialExpressionResult
+CommandletBlueprintReader::AddMaterialExpression(std::string_view assetPath,
+    std::string_view expressionClass, int x, int y) {
+    auto j = RunOp({L"-Op=AddMaterialExpression",
+                    L"-Asset=" + Widen(assetPath),
+                    L"-Class=" + Widen(expressionClass),
+                    L"-X=" + std::to_wstring(x),
+                    L"-Y=" + std::to_wstring(y)});
+    AddMaterialExpressionResult out;
+    out.assetPath = std::string(assetPath);
+    out.className = std::string(expressionClass);
+    if (j.is_object()) out.expressionId = j.value("expression_id", std::string{});
+    return out;
+}
+
+IBlueprintReader::ConnectMaterialResult
+CommandletBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
+    std::string_view fromNodeId, std::string_view fromPin,
+    std::string_view toNodeId, std::string_view toPin) {
+    auto j = RunOp({L"-Op=ConnectMaterialExpressions",
+                    L"-Asset=" + Widen(assetPath),
+                    L"-From="  + Widen(fromNodeId),
+                    L"-FromPin=" + Widen(fromPin),
+                    L"-To="    + Widen(toNodeId),
+                    L"-ToPin=" + Widen(toPin)});
+    ConnectMaterialResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.connected = j.value("connected", false);
+    return out;
+}
+
+IBlueprintReader::SetMaterialParameterResult
+CommandletBlueprintReader::SetMaterialParameter(std::string_view assetPath,
+    std::string_view parameterName, std::string_view value) {
+    auto j = RunOp({L"-Op=SetMaterialParameter",
+                    L"-Asset=" + Widen(assetPath),
+                    L"-Param=" + Widen(parameterName),
+                    L"-Value=" + Widen(value)});
+    SetMaterialParameterResult out;
+    out.assetPath = std::string(assetPath);
+    out.parameterName = std::string(parameterName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::SetMIParameterResult
+CommandletBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath,
+    std::string_view parameterName, std::string_view paramType,
+    std::string_view value) {
+    auto j = RunOp({L"-Op=SetMaterialInstanceParameter",
+                    L"-Asset=" + Widen(assetPath),
+                    L"-Param=" + Widen(parameterName),
+                    L"-Type="  + Widen(paramType),
+                    L"-Value=" + Widen(value)});
+    SetMIParameterResult out;
+    out.assetPath     = std::string(assetPath);
+    out.parameterName = std::string(parameterName);
+    out.paramType     = std::string(paramType);
+    if (j.is_object()) out.newValue = j.value("new_value", std::string{});
+    return out;
+}
+
+IBlueprintReader::CompileMaterialResult
+CommandletBlueprintReader::CompileMaterial(std::string_view assetPath) {
+    auto j = RunOp({L"-Op=CompileMaterial", L"-Asset=" + Widen(assetPath)});
+    CompileMaterialResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
+// ----- UMG widget authoring ----------------------------------------------
+
+IBlueprintReader::WidgetBlueprintInfo
+CommandletBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
+    auto j = RunOp({L"-Op=ReadWidgetBlueprint", L"-Asset=" + Widen(assetPath)});
+    WidgetBlueprintInfo out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) {
+        out.rootName = j.value("root_name", std::string{});
+        if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
+            for (const auto& n : *it) {
+                WidgetNode wn;
+                wn.name       = n.value("name",   std::string{});
+                wn.className  = n.value("class",  std::string{});
+                wn.parentName = n.value("parent", std::string{});
+                out.nodes.push_back(std::move(wn));
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::AddWidgetResult
+CommandletBlueprintReader::AddWidget(std::string_view assetPath,
+    std::string_view parentName, std::string_view widgetClass,
+    std::string_view name) {
+    std::vector<std::wstring> args = {L"-Op=AddWidget",
+                                       L"-Asset=" + Widen(assetPath),
+                                       L"-Name="  + Widen(name),
+                                       L"-Class=" + Widen(widgetClass)};
+    if (!parentName.empty()) args.push_back(L"-Parent=" + Widen(parentName));
+    auto j = RunOp(args);
+    AddWidgetResult out;
+    out.assetPath   = std::string(assetPath);
+    out.name        = std::string(name);
+    out.widgetClass = std::string(widgetClass);
+    if (j.is_object()) {
+        out.alreadyExisted = j.value("already_existed", false);
+        out.created        = j.value("created", false);
+    }
+    return out;
+}
+
+IBlueprintReader::SetWidgetPropertyResult
+CommandletBlueprintReader::SetWidgetProperty(std::string_view assetPath,
+    std::string_view widgetName, std::string_view propertyName,
+    std::string_view value) {
+    auto j = RunOp({L"-Op=SetWidgetProperty",
+                    L"-Asset="    + Widen(assetPath),
+                    L"-Widget="   + Widen(widgetName),
+                    L"-Property=" + Widen(propertyName),
+                    L"-Value="    + Widen(value)});
+    SetWidgetPropertyResult out;
+    out.assetPath    = std::string(assetPath);
+    out.widgetName   = std::string(widgetName);
+    out.propertyName = std::string(propertyName);
+    if (j.is_object()) {
+        out.oldValue = j.value("old_value", std::string{});
+        out.newValue = j.value("new_value", std::string{});
+    }
+    return out;
+}
+
+IBlueprintReader::BindWidgetEventResult
+CommandletBlueprintReader::BindWidgetEvent(std::string_view assetPath,
+    std::string_view widgetName, std::string_view eventName,
+    std::string_view handlerFunction) {
+    auto j = RunOp({L"-Op=BindWidgetEvent",
+                    L"-Asset="   + Widen(assetPath),
+                    L"-Widget="  + Widen(widgetName),
+                    L"-Event="   + Widen(eventName),
+                    L"-Handler=" + Widen(handlerFunction)});
+    BindWidgetEventResult out;
+    out.assetPath       = std::string(assetPath);
+    out.widgetName      = std::string(widgetName);
+    out.eventName       = std::string(eventName);
+    out.handlerFunction = std::string(handlerFunction);
+    if (j.is_object()) out.bound = j.value("bound", false);
+    return out;
+}
+
+IBlueprintReader::CompileWidgetBlueprintResult
+CommandletBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
+    auto j = RunOp({L"-Op=CompileWidgetBlueprint", L"-Asset=" + Widen(assetPath)});
+    CompileWidgetBlueprintResult out;
+    out.assetPath = std::string(assetPath);
+    if (j.is_object()) out.compiled = j.value("compiled", false);
+    return out;
+}
+
 // ----- Live editor ops ----------------------------------------------------
 
 IBlueprintReader::ConsoleCommandResult

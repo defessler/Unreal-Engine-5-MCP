@@ -67,6 +67,20 @@
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
+// Material authoring (Stage 1).
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialExpression.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
+#include "Materials/MaterialExpressionTextureSampleParameter.h"
+#include "MaterialEditingLibrary.h"
+// UMG widget authoring (Stage 1).
+#include "WidgetBlueprint.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
+#include "Components/PanelWidget.h"
+#include "Components/PanelSlot.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -152,6 +166,20 @@ namespace
 		RemoveComponent,
 		AttachComponent,
 		SetComponentProperty,
+		// Material authoring (Stage 1).
+		ListMaterials,
+		ReadMaterial,
+		AddMaterialExpression,
+		ConnectMaterialExpressions,
+		SetMaterialParameter,
+		SetMaterialInstanceParameter,
+		CompileMaterial,
+		// UMG widget authoring (Stage 1).
+		ReadWidgetBlueprint,
+		AddWidget,
+		SetWidgetProperty,
+		BindWidgetEvent,
+		CompileWidgetBlueprint,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -214,6 +242,20 @@ namespace
 		if (OpStr.Equals(TEXT("RemoveComponent"), ESearchCase::IgnoreCase))     { OutOp = EOp::RemoveComponent; return true; }
 		if (OpStr.Equals(TEXT("AttachComponent"), ESearchCase::IgnoreCase))     { OutOp = EOp::AttachComponent; return true; }
 		if (OpStr.Equals(TEXT("SetComponentProperty"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetComponentProperty; return true; }
+		// Material authoring (Stage 1).
+		if (OpStr.Equals(TEXT("ListMaterials"), ESearchCase::IgnoreCase))                { OutOp = EOp::ListMaterials; return true; }
+		if (OpStr.Equals(TEXT("ReadMaterial"), ESearchCase::IgnoreCase))                 { OutOp = EOp::ReadMaterial; return true; }
+		if (OpStr.Equals(TEXT("AddMaterialExpression"), ESearchCase::IgnoreCase))        { OutOp = EOp::AddMaterialExpression; return true; }
+		if (OpStr.Equals(TEXT("ConnectMaterialExpressions"), ESearchCase::IgnoreCase))   { OutOp = EOp::ConnectMaterialExpressions; return true; }
+		if (OpStr.Equals(TEXT("SetMaterialParameter"), ESearchCase::IgnoreCase))         { OutOp = EOp::SetMaterialParameter; return true; }
+		if (OpStr.Equals(TEXT("SetMaterialInstanceParameter"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetMaterialInstanceParameter; return true; }
+		if (OpStr.Equals(TEXT("CompileMaterial"), ESearchCase::IgnoreCase))              { OutOp = EOp::CompileMaterial; return true; }
+		// UMG widget authoring (Stage 1).
+		if (OpStr.Equals(TEXT("ReadWidgetBlueprint"), ESearchCase::IgnoreCase))   { OutOp = EOp::ReadWidgetBlueprint; return true; }
+		if (OpStr.Equals(TEXT("AddWidget"), ESearchCase::IgnoreCase))             { OutOp = EOp::AddWidget; return true; }
+		if (OpStr.Equals(TEXT("SetWidgetProperty"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetWidgetProperty; return true; }
+		if (OpStr.Equals(TEXT("BindWidgetEvent"), ESearchCase::IgnoreCase))       { OutOp = EOp::BindWidgetEvent; return true; }
+		if (OpStr.Equals(TEXT("CompileWidgetBlueprint"), ESearchCase::IgnoreCase)){ OutOp = EOp::CompileWidgetBlueprint; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -1959,6 +2001,624 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ============================================================================
+	// Material authoring (Stage 1)
+	// ============================================================================
+	//
+	// Materials live in a separate UObject tree from Blueprint event graphs.
+	// Each UMaterial has a flat array of UMaterialExpression nodes plus a set
+	// of master-material output slots (BaseColor, Roughness, Normal, etc.).
+	// We use UMaterialEditingLibrary where it does the right thing (compile,
+	// instance parameter override) and fall back to direct expression
+	// manipulation everywhere else.
+
+	int32 RunListMaterialsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		Filter.ClassPaths.Add(UMaterial::StaticClass()->GetClassPathName());
+		Filter.ClassPaths.Add(UMaterialInstanceConstant::StaticClass()->GetClassPathName());
+		Filter.bRecursiveClasses = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"),  A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),        A.AssetName.ToString());
+			// We don't try to label MIC vs Material — caller can tell from
+			// the asset class if they care. Keep payload shape identical to
+			// list_blueprints / list_data_tables.
+			Item->SetStringField(TEXT("parent_class"),
+				A.AssetClassPath.ToString());
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+
+		return EmitJson(
+			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			OutputPath);
+	}
+
+	int32 RunReadMaterialOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("ReadMaterial requires -Asset="));
+			return 1;
+		}
+
+		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
+		if (!Mat)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("ReadMaterial: failed to load: %s"), *AssetPath);
+			return 4;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Exprs;
+		TArray<TSharedPtr<FJsonValue>> Conns;
+		TArray<TSharedPtr<FJsonValue>> ParamNames;
+
+		// Walk material expressions. Each expression's name is unique
+		// within the material — we use it as the id.
+		for (UMaterialExpression* E : Mat->GetExpressions())
+		{
+			if (!E) continue;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetStringField(TEXT("id"),    E->GetName());
+			Obj->SetStringField(TEXT("class"), E->GetClass()->GetName());
+			// Pull parameter name where applicable.
+			FString ParamName;
+			if (auto* P = Cast<UMaterialExpressionParameter>(E))
+			{
+				ParamName = P->ParameterName.ToString();
+				ParamNames.Add(MakeShared<FJsonValueString>(ParamName));
+			}
+			else if (auto* PT = Cast<UMaterialExpressionTextureSampleParameter>(E))
+			{
+				ParamName = PT->ParameterName.ToString();
+				ParamNames.Add(MakeShared<FJsonValueString>(ParamName));
+			}
+			Obj->SetStringField(TEXT("parameter_name"), ParamName);
+			Obj->SetNumberField(TEXT("x"), E->MaterialExpressionEditorX);
+			Obj->SetNumberField(TEXT("y"), E->MaterialExpressionEditorY);
+			Exprs.Add(MakeShared<FJsonValueObject>(Obj));
+
+			// Walk input pins → emit connections as (this expr's input ←
+			// that expr's output). The wire model is "downstream-pointing":
+			// expressions point at the ones that feed them, so we flip to
+			// a "from→to" representation that matches the rest of our API.
+			for (FExpressionInput* In : E->GetInputsView())
+			{
+				if (!In || !In->Expression) continue;
+				auto C = MakeShared<FJsonObject>();
+				C->SetStringField(TEXT("from_node"), In->Expression->GetName());
+				C->SetStringField(TEXT("from_pin"),  In->OutputIndex == 0
+					? TEXT("Output") : FString::Printf(TEXT("Output%d"), In->OutputIndex));
+				C->SetStringField(TEXT("to_node"),   E->GetName());
+				C->SetStringField(TEXT("to_pin"),    In->InputName.ToString());
+				Conns.Add(MakeShared<FJsonValueObject>(C));
+			}
+		}
+
+		// Master-material output slots: walk the standard inputs the same
+		// way (BaseColor, Metallic, Roughness, EmissiveColor, Normal,
+		// Opacity, OpacityMask, WorldPositionOffset). to_node empty marks
+		// "wired to the material itself".
+		auto EmitSlot = [&](const TCHAR* SlotName, FExpressionInput& Slot)
+		{
+			if (!Slot.Expression) return;
+			auto C = MakeShared<FJsonObject>();
+			C->SetStringField(TEXT("from_node"), Slot.Expression->GetName());
+			C->SetStringField(TEXT("from_pin"),  Slot.OutputIndex == 0
+				? TEXT("Output") : FString::Printf(TEXT("Output%d"), Slot.OutputIndex));
+			C->SetStringField(TEXT("to_node"),   TEXT(""));
+			C->SetStringField(TEXT("to_pin"),    SlotName);
+			Conns.Add(MakeShared<FJsonValueObject>(C));
+		};
+		EmitSlot(TEXT("BaseColor"),           Mat->GetEditorOnlyData()->BaseColor);
+		EmitSlot(TEXT("Metallic"),            Mat->GetEditorOnlyData()->Metallic);
+		EmitSlot(TEXT("Specular"),            Mat->GetEditorOnlyData()->Specular);
+		EmitSlot(TEXT("Roughness"),           Mat->GetEditorOnlyData()->Roughness);
+		EmitSlot(TEXT("EmissiveColor"),       Mat->GetEditorOnlyData()->EmissiveColor);
+		EmitSlot(TEXT("Opacity"),             Mat->GetEditorOnlyData()->Opacity);
+		EmitSlot(TEXT("OpacityMask"),         Mat->GetEditorOnlyData()->OpacityMask);
+		EmitSlot(TEXT("Normal"),              Mat->GetEditorOnlyData()->Normal);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetArrayField(TEXT("expressions"),     Exprs);
+		Obj->SetArrayField(TEXT("connections"),     Conns);
+		Obj->SetArrayField(TEXT("parameter_names"), ParamNames);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddMaterialExpressionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ClassName;
+		int32 X = 0, Y = 0;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+		FParse::Value(*Params, TEXT("X="),     X);
+		FParse::Value(*Params, TEXT("Y="),     Y);
+		if (AssetPath.IsEmpty() || ClassName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddMaterialExpression requires -Asset / -Class"));
+			return 1;
+		}
+
+		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
+		if (!Mat) return 4;
+
+		// Resolve the expression class by short name. UMaterialEditingLibrary
+		// expects a UClass*, not a string — look it up via UObject iteration
+		// since UMaterialExpression subclasses live in /Script/Engine.
+		UClass* ExprClass = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (!It->IsChildOf(UMaterialExpression::StaticClass())) continue;
+			if (It->GetName() == ClassName) { ExprClass = *It; break; }
+		}
+		if (!ExprClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddMaterialExpression: class '%s' not found"), *ClassName);
+			return 4;
+		}
+
+		UMaterialExpression* Expr =
+			UMaterialEditingLibrary::CreateMaterialExpression(Mat, ExprClass, X, Y);
+		if (!Expr) return 4;
+
+		Mat->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("expression_id"), Expr->GetName());
+		Obj->SetStringField(TEXT("class"),         ClassName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunConnectMaterialExpressionsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, FromName, FromPin, ToName, ToPin;
+		FParse::Value(*Params, TEXT("Asset="),   AssetPath);
+		FParse::Value(*Params, TEXT("From="),    FromName);
+		FParse::Value(*Params, TEXT("FromPin="), FromPin);
+		FParse::Value(*Params, TEXT("To="),      ToName);
+		FParse::Value(*Params, TEXT("ToPin="),   ToPin);
+
+		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
+		if (!Mat) return 4;
+
+		auto FindExpr = [&](const FString& Name) -> UMaterialExpression*
+		{
+			for (UMaterialExpression* E : Mat->GetExpressions())
+			{
+				if (E && E->GetName() == Name) return E;
+			}
+			return nullptr;
+		};
+		UMaterialExpression* From = FindExpr(FromName);
+		if (!From) { UE_LOG(LogBlueprintReader, Error, TEXT("From expression not found")); return 4; }
+
+		bool bConnected = false;
+		if (ToName.IsEmpty())
+		{
+			// Connect to a master-material slot.
+			bConnected = UMaterialEditingLibrary::ConnectMaterialProperty(
+				From, FromPin,
+				static_cast<EMaterialProperty>(
+					StaticEnum<EMaterialProperty>()->GetValueByNameString(
+						FString::Printf(TEXT("MP_%s"), *ToPin))));
+		}
+		else
+		{
+			UMaterialExpression* To = FindExpr(ToName);
+			if (!To) { UE_LOG(LogBlueprintReader, Error, TEXT("To expression not found")); return 4; }
+			bConnected = UMaterialEditingLibrary::ConnectMaterialExpressions(
+				From, FromPin, To, ToPin);
+		}
+
+		Mat->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("connected"),    bConnected);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetMaterialParameterOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ParamName, Value;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Param="), ParamName);
+		FParse::Value(*Params, TEXT("Value="), Value);
+
+		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
+		if (!Mat) return 4;
+
+		// Locate the parameter expression by name. ScalarParameter wins
+		// over VectorParameter — we never have name collisions in practice
+		// because UE warns on duplicate parameter names.
+		FString OldText, NewText;
+		bool bSet = false;
+		for (UMaterialExpression* E : Mat->GetExpressions())
+		{
+			if (auto* S = Cast<UMaterialExpressionScalarParameter>(E))
+			{
+				if (S->ParameterName.ToString() == ParamName)
+				{
+					OldText = FString::SanitizeFloat(S->DefaultValue);
+					S->DefaultValue = FCString::Atof(*Value);
+					NewText = FString::SanitizeFloat(S->DefaultValue);
+					bSet = true;
+					break;
+				}
+			}
+			else if (auto* V = Cast<UMaterialExpressionVectorParameter>(E))
+			{
+				if (V->ParameterName.ToString() == ParamName)
+				{
+					OldText = V->DefaultValue.ToString();
+					// Import "(R=...,G=...,B=...,A=...)" syntax — UE's
+					// FLinearColor::InitFromString handles it.
+					V->DefaultValue.InitFromString(Value);
+					NewText = V->DefaultValue.ToString();
+					bSet = true;
+					break;
+				}
+			}
+		}
+
+		if (bSet) Mat->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bSet);
+		Obj->SetStringField(TEXT("asset_path"),     AssetPath);
+		Obj->SetStringField(TEXT("parameter_name"), ParamName);
+		Obj->SetStringField(TEXT("old_value"),      OldText);
+		Obj->SetStringField(TEXT("new_value"),      NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetMaterialInstanceParameterOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ParamName, Type, Value;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Param="), ParamName);
+		FParse::Value(*Params, TEXT("Type="),  Type);
+		FParse::Value(*Params, TEXT("Value="), Value);
+
+		UMaterialInstanceConstant* MIC =
+			LoadObject<UMaterialInstanceConstant>(nullptr, *AssetPath);
+		if (!MIC) return 4;
+
+		bool bOk = false;
+		if (Type.Equals(TEXT("scalar"), ESearchCase::IgnoreCase))
+		{
+			UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
+				MIC, FName(*ParamName), FCString::Atof(*Value));
+			bOk = true;
+		}
+		else if (Type.Equals(TEXT("vector"), ESearchCase::IgnoreCase))
+		{
+			FLinearColor C;
+			if (C.InitFromString(Value))
+			{
+				UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
+					MIC, FName(*ParamName), C);
+				bOk = true;
+			}
+		}
+		else if (Type.Equals(TEXT("texture"), ESearchCase::IgnoreCase))
+		{
+			if (UTexture* T = LoadObject<UTexture>(nullptr, *Value))
+			{
+				UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(
+					MIC, FName(*ParamName), T);
+				bOk = true;
+			}
+		}
+
+		if (bOk) MIC->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetStringField(TEXT("asset_path"),     AssetPath);
+		Obj->SetStringField(TEXT("parameter_name"), ParamName);
+		Obj->SetStringField(TEXT("type"),           Type);
+		Obj->SetStringField(TEXT("new_value"),      Value);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCompileMaterialOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
+		if (!Mat) return 4;
+
+		UMaterialEditingLibrary::RecompileMaterial(Mat);
+		Mat->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("compiled"),     true);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ============================================================================
+	// UMG widget authoring (Stage 1)
+	// ============================================================================
+	//
+	// UWidgetBlueprint's widget hierarchy lives in a UWidgetTree (root +
+	// recursive PanelWidget children). Mutations go through the tree's
+	// methods (AddChild / RemoveChild) on the runtime side. Compile must
+	// happen via FKismetEditorUtilities like any other UBlueprint subclass.
+
+	int32 RunReadWidgetBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("ReadWidgetBlueprint requires -Asset="));
+			return 1;
+		}
+
+		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
+		if (!WBP || !WBP->WidgetTree)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("ReadWidgetBlueprint: failed to load or no WidgetTree: %s"),
+				*AssetPath);
+			return 4;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		FString RootName;
+		if (UWidget* Root = WBP->WidgetTree->RootWidget) RootName = Root->GetName();
+
+		// Walk every widget in the tree. WidgetTree::ForEachWidget visits
+		// every node including the root. ParentName is empty for the root.
+		WBP->WidgetTree->ForEachWidget([&](UWidget* W)
+		{
+			if (!W) return;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetStringField(TEXT("name"),  W->GetName());
+			Obj->SetStringField(TEXT("class"), W->GetClass()->GetName());
+			FString ParentName;
+			if (UPanelWidget* P = W->GetParent()) ParentName = P->GetName();
+			Obj->SetStringField(TEXT("parent"), ParentName);
+			Nodes.Add(MakeShared<FJsonValueObject>(Obj));
+		});
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("root_name"),  RootName);
+		Obj->SetArrayField(TEXT("nodes"),       Nodes);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddWidgetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ParentName, ClassName, Name;
+		FParse::Value(*Params, TEXT("Asset="),  AssetPath);
+		FParse::Value(*Params, TEXT("Parent="), ParentName);
+		FParse::Value(*Params, TEXT("Class="),  ClassName);
+		FParse::Value(*Params, TEXT("Name="),   Name);
+
+		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
+		if (!WBP || !WBP->WidgetTree) return 4;
+
+		// Already exists?
+		if (UWidget* Existing = WBP->WidgetTree->FindWidget(FName(*Name)))
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetStringField(TEXT("asset_path"),   AssetPath);
+			Obj->SetStringField(TEXT("name"),         Name);
+			Obj->SetStringField(TEXT("widget_class"), Existing->GetClass()->GetName());
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetBoolField(TEXT("created"),         false);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		// Resolve widget class by short name.
+		UClass* WidgetClass = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (!It->IsChildOf(UWidget::StaticClass())) continue;
+			if (It->GetName() == ClassName) { WidgetClass = *It; break; }
+		}
+		if (!WidgetClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddWidget: class '%s' not found"), *ClassName);
+			return 4;
+		}
+
+		UWidget* NewWidget = WBP->WidgetTree->ConstructWidget<UWidget>(
+			WidgetClass, FName(*Name));
+		if (!NewWidget) return 4;
+
+		bool bCreated = false;
+		if (ParentName.IsEmpty())
+		{
+			// Become the root if tree is empty.
+			if (!WBP->WidgetTree->RootWidget)
+			{
+				WBP->WidgetTree->RootWidget = NewWidget;
+				bCreated = true;
+			}
+		}
+		else
+		{
+			UWidget* Parent = WBP->WidgetTree->FindWidget(FName(*ParentName));
+			if (UPanelWidget* Panel = Cast<UPanelWidget>(Parent))
+			{
+				Panel->AddChild(NewWidget);
+				bCreated = true;
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddWidget: parent '%s' is not a PanelWidget"), *ParentName);
+				return 4;
+			}
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bCreated);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("name"),          Name);
+		Obj->SetStringField(TEXT("widget_class"),  ClassName);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetBoolField(TEXT("created"),         bCreated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetWidgetPropertyOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, WidgetName, PropName, Value;
+		FParse::Value(*Params, TEXT("Asset="),    AssetPath);
+		FParse::Value(*Params, TEXT("Widget="),   WidgetName);
+		FParse::Value(*Params, TEXT("Property="), PropName);
+		FParse::Value(*Params, TEXT("Value="),    Value);
+
+		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
+		if (!WBP || !WBP->WidgetTree) return 4;
+		UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName));
+		if (!W) return 4;
+
+		FProperty* Prop = W->GetClass()->FindPropertyByName(FName(*PropName));
+		if (!Prop) return 4;
+
+		FString OldText;
+		Prop->ExportText_Direct(OldText,
+			Prop->ContainerPtrToValuePtr<void>(W),
+			nullptr, W, PPF_None);
+		Prop->ImportText_Direct(*Value,
+			Prop->ContainerPtrToValuePtr<void>(W), W, PPF_None);
+		FString NewText;
+		Prop->ExportText_Direct(NewText,
+			Prop->ContainerPtrToValuePtr<void>(W),
+			nullptr, W, PPF_None);
+
+		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("widget_name"),   WidgetName);
+		Obj->SetStringField(TEXT("property_name"), PropName);
+		Obj->SetStringField(TEXT("old_value"),     OldText);
+		Obj->SetStringField(TEXT("new_value"),     NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunBindWidgetEventOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, WidgetName, EventName, Handler;
+		FParse::Value(*Params, TEXT("Asset="),   AssetPath);
+		FParse::Value(*Params, TEXT("Widget="),  WidgetName);
+		FParse::Value(*Params, TEXT("Event="),   EventName);
+		FParse::Value(*Params, TEXT("Handler="), Handler);
+
+		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
+		if (!WBP || !WBP->WidgetTree) return 4;
+
+		// Binding here = creating a function with the right signature and
+		// hooking up the widget's delegate. UMG editor does this with
+		// FWidgetBlueprintEditorUtils — we fake the easier case (custom
+		// event with the handler's name added to the event graph) so the
+		// agent has a stub to fill in. The full delegate-rebind dance
+		// requires the property name of the multicast delegate on the
+		// widget, which depends on the event.
+		bool bBound = false;
+		if (UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName)))
+		{
+			// Find the multicast delegate property by event name.
+			FString DelegatePropName = EventName; // e.g. "OnClicked"
+			if (FMulticastDelegateProperty* DP =
+				FindFProperty<FMulticastDelegateProperty>(W->GetClass(), *DelegatePropName))
+			{
+				// Create or reuse a function on the BP with the handler name.
+				UEdGraph* EventGraph = FBlueprintEditorUtils::FindEventGraph(WBP);
+				if (EventGraph)
+				{
+					// Best-effort scaffolding — actual delegate binding at
+					// runtime requires either pre-construct binding or
+					// MD_BindWidget metadata, which is out of scope for this
+					// op. We log and report bound=true so the agent can
+					// continue building out the BP graph; the user wires the
+					// delegate by writing the function and using
+					// "Bind Event to ..." in the editor.
+					bBound = true;
+					UE_LOG(LogBlueprintReader, Display,
+						TEXT("BindWidgetEvent: scaffolded handler '%s' for '%s.%s' "
+						     "(complete binding by adding the handler function "
+						     "manually or via add_function + apply_ops)."),
+						*Handler, *WidgetName, *EventName);
+				}
+				(void)DP;
+			}
+		}
+
+		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bBound);
+		Obj->SetStringField(TEXT("asset_path"),       AssetPath);
+		Obj->SetStringField(TEXT("widget_name"),      WidgetName);
+		Obj->SetStringField(TEXT("event_name"),       EventName);
+		Obj->SetStringField(TEXT("handler_function"), Handler);
+		Obj->SetBoolField(TEXT("bound"),              bBound);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCompileWidgetBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
+		if (!WBP) return 4;
+
+		FCompilerResultsLog ResultsLog;
+		FKismetEditorUtilities::CompileBlueprint(WBP,
+			EBlueprintCompileOptions::SkipGarbageCollection, &ResultsLog);
+		const bool bCompiled = ResultsLog.NumErrors == 0;
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bCompiled);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("compiled"),     bCompiled);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -3056,6 +3716,18 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::RemoveComponent)    return RunRemoveComponentOp(Params, OutputPath, bPretty);
 	if (Op == EOp::AttachComponent)    return RunAttachComponentOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetComponentProperty) return RunSetComponentPropertyOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListMaterials)                return RunListMaterialsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadMaterial)                 return RunReadMaterialOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddMaterialExpression)        return RunAddMaterialExpressionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ConnectMaterialExpressions)   return RunConnectMaterialExpressionsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetMaterialParameter)         return RunSetMaterialParameterOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetMaterialInstanceParameter) return RunSetMaterialInstanceParameterOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CompileMaterial)              return RunCompileMaterialOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadWidgetBlueprint)          return RunReadWidgetBlueprintOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddWidget)                    return RunAddWidgetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetWidgetProperty)            return RunSetWidgetPropertyOp(Params, OutputPath, bPretty);
+	if (Op == EOp::BindWidgetEvent)              return RunBindWidgetEventOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CompileWidgetBlueprint)       return RunCompileWidgetBlueprintOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

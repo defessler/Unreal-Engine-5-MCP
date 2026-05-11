@@ -167,6 +167,30 @@ public:
     // ----- Automation tests ---------------------------------------------
     AutomationRunResult RunAutomationTests(std::string_view pattern) override;
 
+    // ----- Material authoring -------------------------------------------
+    std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+    MaterialInfo ReadMaterial(std::string_view) override;
+    AddMaterialExpressionResult AddMaterialExpression(std::string_view,
+        std::string_view, int, int) override;
+    ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
+        std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetMaterialParameterResult SetMaterialParameter(std::string_view,
+        std::string_view, std::string_view) override;
+    SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
+        std::string_view, std::string_view, std::string_view) override;
+    CompileMaterialResult CompileMaterial(std::string_view) override;
+
+    // ----- UMG widget authoring -----------------------------------------
+    WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+    AddWidgetResult AddWidget(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
+        std::string_view, std::string_view) override;
+    CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+
     // ----- batch sentinels ------------------------------------------
     void BeginBatch() override;
     nlohmann::json EndBatch(bool skipCompile = false) override;
