@@ -632,6 +632,92 @@ CachingBlueprintReader::CompileWidgetBlueprint(std::string_view a) {
     return out;
 }
 
+// ----- Behavior Tree (pass-through; writes invalidate) ------------------
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListBehaviorTrees(std::string_view p) {
+    return inner_->ListBehaviorTrees(p);
+}
+IBlueprintReader::BehaviorTreeInfo
+CachingBlueprintReader::ReadBehaviorTree(std::string_view a) {
+    return inner_->ReadBehaviorTree(a);
+}
+IBlueprintReader::AddBTNodeResult
+CachingBlueprintReader::AddBTNode(std::string_view a, std::string_view p,
+    std::string_view k, std::string_view c) {
+    auto out = inner_->AddBTNode(a, p, k, c);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetBTNodePropertyResult
+CachingBlueprintReader::SetBTNodeProperty(std::string_view a, std::string_view n,
+    std::string_view p, std::string_view v) {
+    auto out = inner_->SetBTNodeProperty(a, n, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::CompileBehaviorTreeResult
+CachingBlueprintReader::CompileBehaviorTree(std::string_view a) {
+    auto out = inner_->CompileBehaviorTree(a);
+    InvalidateAsset(a);
+    return out;
+}
+
+// ----- DataAsset (pass-through; writes invalidate) ----------------------
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListDataAssets(std::string_view p) {
+    return inner_->ListDataAssets(p);
+}
+IBlueprintReader::DataAssetInfo
+CachingBlueprintReader::ReadDataAsset(std::string_view a) {
+    return inner_->ReadDataAsset(a);
+}
+IBlueprintReader::CreateDataAssetResult
+CachingBlueprintReader::CreateDataAsset(std::string_view a, std::string_view c) {
+    auto out = inner_->CreateDataAsset(a, c);
+    InvalidateAsset("");  // global list cache may change
+    return out;
+}
+IBlueprintReader::SetDataAssetPropertyResult
+CachingBlueprintReader::SetDataAssetProperty(std::string_view a,
+    std::string_view p, std::string_view v) {
+    auto out = inner_->SetDataAssetProperty(a, p, v);
+    InvalidateAsset(a);
+    return out;
+}
+
+// ----- StateTree (pass-through; writes invalidate) ----------------------
+
+std::vector<BPAssetSummary>
+CachingBlueprintReader::ListStateTrees(std::string_view p) {
+    return inner_->ListStateTrees(p);
+}
+IBlueprintReader::StateTreeInfo
+CachingBlueprintReader::ReadStateTree(std::string_view a) {
+    return inner_->ReadStateTree(a);
+}
+IBlueprintReader::AddStateTreeStateResult
+CachingBlueprintReader::AddStateTreeState(std::string_view a,
+    std::string_view p, std::string_view n) {
+    auto out = inner_->AddStateTreeState(a, p, n);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::SetStateTreeTransitionResult
+CachingBlueprintReader::SetStateTreeTransition(std::string_view a,
+    std::string_view f, std::string_view t, std::string_view tr) {
+    auto out = inner_->SetStateTreeTransition(a, f, t, tr);
+    InvalidateAsset(a);
+    return out;
+}
+IBlueprintReader::CompileStateTreeResult
+CachingBlueprintReader::CompileStateTree(std::string_view a) {
+    auto out = inner_->CompileStateTree(a);
+    InvalidateAsset(a);
+    return out;
+}
+
 // ============================================================================
 // Factory helper
 // ============================================================================

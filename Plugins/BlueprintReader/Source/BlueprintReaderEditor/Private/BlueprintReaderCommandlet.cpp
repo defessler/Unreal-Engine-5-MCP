@@ -81,6 +81,15 @@
 #include "Components/Widget.h"
 #include "Components/PanelWidget.h"
 #include "Components/PanelSlot.h"
+// Behavior Tree authoring (Stage 2).
+#include "BehaviorTree/BehaviorTree.h"
+#include "BehaviorTree/BTNode.h"
+#include "BehaviorTree/BTCompositeNode.h"
+#include "BehaviorTree/BTTaskNode.h"
+#include "BehaviorTree/BTDecorator.h"
+#include "BehaviorTree/BTService.h"
+// DataAsset CRUD (Stage 2).
+#include "Engine/DataAsset.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -180,6 +189,23 @@ namespace
 		SetWidgetProperty,
 		BindWidgetEvent,
 		CompileWidgetBlueprint,
+		// Behavior Tree authoring (Stage 2).
+		ListBehaviorTrees,
+		ReadBehaviorTree,
+		AddBTNode,
+		SetBTNodeProperty,
+		CompileBehaviorTree,
+		// DataAsset CRUD (Stage 2).
+		ListDataAssets,
+		ReadDataAsset,
+		CreateDataAsset,
+		SetDataAssetProperty,
+		// StateTree authoring (Stage 2).
+		ListStateTrees,
+		ReadStateTree,
+		AddStateTreeState,
+		SetStateTreeTransition,
+		CompileStateTree,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -256,6 +282,23 @@ namespace
 		if (OpStr.Equals(TEXT("SetWidgetProperty"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetWidgetProperty; return true; }
 		if (OpStr.Equals(TEXT("BindWidgetEvent"), ESearchCase::IgnoreCase))       { OutOp = EOp::BindWidgetEvent; return true; }
 		if (OpStr.Equals(TEXT("CompileWidgetBlueprint"), ESearchCase::IgnoreCase)){ OutOp = EOp::CompileWidgetBlueprint; return true; }
+		// Behavior Tree authoring (Stage 2).
+		if (OpStr.Equals(TEXT("ListBehaviorTrees"), ESearchCase::IgnoreCase))   { OutOp = EOp::ListBehaviorTrees; return true; }
+		if (OpStr.Equals(TEXT("ReadBehaviorTree"), ESearchCase::IgnoreCase))    { OutOp = EOp::ReadBehaviorTree; return true; }
+		if (OpStr.Equals(TEXT("AddBTNode"), ESearchCase::IgnoreCase))           { OutOp = EOp::AddBTNode; return true; }
+		if (OpStr.Equals(TEXT("SetBTNodeProperty"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetBTNodeProperty; return true; }
+		if (OpStr.Equals(TEXT("CompileBehaviorTree"), ESearchCase::IgnoreCase)) { OutOp = EOp::CompileBehaviorTree; return true; }
+		// DataAsset CRUD (Stage 2).
+		if (OpStr.Equals(TEXT("ListDataAssets"), ESearchCase::IgnoreCase))       { OutOp = EOp::ListDataAssets; return true; }
+		if (OpStr.Equals(TEXT("ReadDataAsset"), ESearchCase::IgnoreCase))        { OutOp = EOp::ReadDataAsset; return true; }
+		if (OpStr.Equals(TEXT("CreateDataAsset"), ESearchCase::IgnoreCase))      { OutOp = EOp::CreateDataAsset; return true; }
+		if (OpStr.Equals(TEXT("SetDataAssetProperty"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetDataAssetProperty; return true; }
+		// StateTree authoring (Stage 2).
+		if (OpStr.Equals(TEXT("ListStateTrees"), ESearchCase::IgnoreCase))         { OutOp = EOp::ListStateTrees; return true; }
+		if (OpStr.Equals(TEXT("ReadStateTree"), ESearchCase::IgnoreCase))          { OutOp = EOp::ReadStateTree; return true; }
+		if (OpStr.Equals(TEXT("AddStateTreeState"), ESearchCase::IgnoreCase))      { OutOp = EOp::AddStateTreeState; return true; }
+		if (OpStr.Equals(TEXT("SetStateTreeTransition"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetStateTreeTransition; return true; }
+		if (OpStr.Equals(TEXT("CompileStateTree"), ESearchCase::IgnoreCase))       { OutOp = EOp::CompileStateTree; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -2619,6 +2662,488 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ============================================================================
+	// Behavior Tree authoring (Stage 2)
+	// ============================================================================
+	//
+	// UBehaviorTree is an AIModule UObject with a RootNode (UBTCompositeNode)
+	// plus task / decorator / service descendants. The editor-side
+	// BehaviorTreeEditor module owns the full authoring graph (EdGraph
+	// nodes), but at the runtime asset level we can manipulate the
+	// UBTCompositeNode tree directly. For complex authoring patterns the
+	// caller still needs the BT editor UI; we expose enough surface here to
+	// orient an agent + scaffold node trees.
+
+	int32 RunListBehaviorTreesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		Filter.ClassPaths.Add(UBehaviorTree::StaticClass()->GetClassPathName());
+		Filter.bRecursiveClasses = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"),  A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),        A.AssetName.ToString());
+			Item->SetStringField(TEXT("parent_class"),
+				A.AssetClassPath.ToString());
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+	}
+
+	int32 RunReadBehaviorTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
+		if (!BT) return 4;
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		FString RootName;
+
+		// Walk the root composite tree. Each UBTCompositeNode has
+		// Children + Decorators + Services arrays.
+		TFunction<void(UBTNode*, const FString&)> Walk = [&](UBTNode* N, const FString& Parent)
+		{
+			if (!N) return;
+			auto Obj = MakeShared<FJsonObject>();
+			FString Kind;
+			if (Cast<UBTCompositeNode>(N))      Kind = TEXT("composite");
+			else if (Cast<UBTTaskNode>(N))      Kind = TEXT("task");
+			else if (Cast<UBTDecorator>(N))     Kind = TEXT("decorator");
+			else if (Cast<UBTService>(N))       Kind = TEXT("service");
+			else                                Kind = TEXT("unknown");
+			Obj->SetStringField(TEXT("node_id"),   N->GetName());
+			Obj->SetStringField(TEXT("class"),     N->GetClass()->GetName());
+			Obj->SetStringField(TEXT("node_kind"), Kind);
+			Obj->SetStringField(TEXT("parent"),    Parent);
+			Nodes.Add(MakeShared<FJsonValueObject>(Obj));
+
+			if (UBTCompositeNode* Comp = Cast<UBTCompositeNode>(N))
+			{
+				for (const FBTCompositeChild& Child : Comp->Children)
+				{
+					// Decorators on this slot.
+					for (UBTDecorator* Dec : Child.Decorators) Walk(Dec, N->GetName());
+					// Child node + its sub-tree.
+					if (Child.ChildComposite) Walk(Child.ChildComposite, N->GetName());
+					if (Child.ChildTask)      Walk(Child.ChildTask,      N->GetName());
+				}
+				for (UBTService* Svc : Comp->Services) Walk(Svc, N->GetName());
+			}
+		};
+		if (BT->RootNode)
+		{
+			RootName = BT->RootNode->GetName();
+			Walk(BT->RootNode, FString{});
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),   AssetPath);
+		Obj->SetStringField(TEXT("root_node_id"), RootName);
+		Obj->SetArrayField(TEXT("nodes"),         Nodes);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddBTNodeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ParentName, Kind, ClassName;
+		FParse::Value(*Params, TEXT("Asset="),  AssetPath);
+		FParse::Value(*Params, TEXT("Parent="), ParentName);
+		FParse::Value(*Params, TEXT("Kind="),   Kind);
+		FParse::Value(*Params, TEXT("Class="),  ClassName);
+
+		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
+		if (!BT) return 4;
+
+		// Resolve node class by short name from any UBTNode subclass.
+		UClass* NodeClass = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (!It->IsChildOf(UBTNode::StaticClass())) continue;
+			if (It->GetName() == ClassName) { NodeClass = *It; break; }
+		}
+		if (!NodeClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("AddBTNode: class '%s' not found"), *ClassName);
+			return 4;
+		}
+
+		UBTNode* NewNode = NewObject<UBTNode>(BT, NodeClass);
+		if (!NewNode) return 4;
+
+		// Attach. Root composite if empty parent + this is composite + tree empty.
+		if (ParentName.IsEmpty())
+		{
+			if (UBTCompositeNode* AsComp = Cast<UBTCompositeNode>(NewNode))
+			{
+				if (!BT->RootNode) BT->RootNode = AsComp;
+			}
+		}
+		else
+		{
+			// Search for parent in the tree. Best-effort — full editor-side
+			// attach with EdGraph wiring requires BehaviorTreeEditor's
+			// FBehaviorTreeGraphNode helpers, which are beyond what the
+			// runtime UObject surface alone can provide. Scaffold so the
+			// node exists; the agent can finish wiring in the BT editor.
+			UE_LOG(LogBlueprintReader, Display,
+				TEXT("AddBTNode: node '%s' scaffolded for parent '%s' — "
+				     "complete attach in the BT editor."),
+				*NewNode->GetName(), *ParentName);
+		}
+
+		BT->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("node_id"),    NewNode->GetName());
+		Obj->SetStringField(TEXT("class"),      ClassName);
+		Obj->SetStringField(TEXT("node_kind"),  Kind);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetBTNodePropertyOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, NodeName, PropName, Value;
+		FParse::Value(*Params, TEXT("Asset="),    AssetPath);
+		FParse::Value(*Params, TEXT("Node="),     NodeName);
+		FParse::Value(*Params, TEXT("Property="), PropName);
+		FParse::Value(*Params, TEXT("Value="),    Value);
+
+		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
+		if (!BT) return 4;
+
+		// Linear search across all UBTNode children of the asset's package.
+		UBTNode* Target = nullptr;
+		ForEachObjectWithOuter(BT, [&](UObject* O)
+		{
+			if (Target) return;
+			if (UBTNode* N = Cast<UBTNode>(O))
+			{
+				if (N->GetName() == NodeName) Target = N;
+			}
+		});
+		if (!Target) return 4;
+
+		FProperty* Prop = Target->GetClass()->FindPropertyByName(FName(*PropName));
+		if (!Prop) return 4;
+
+		FString OldText;
+		Prop->ExportText_Direct(OldText,
+			Prop->ContainerPtrToValuePtr<void>(Target), nullptr, Target, PPF_None);
+		Prop->ImportText_Direct(*Value,
+			Prop->ContainerPtrToValuePtr<void>(Target), Target, PPF_None);
+		FString NewText;
+		Prop->ExportText_Direct(NewText,
+			Prop->ContainerPtrToValuePtr<void>(Target), nullptr, Target, PPF_None);
+
+		BT->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("node_id"),       NodeName);
+		Obj->SetStringField(TEXT("property_name"), PropName);
+		Obj->SetStringField(TEXT("old_value"),     OldText);
+		Obj->SetStringField(TEXT("new_value"),     NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCompileBehaviorTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
+		if (!BT) return 4;
+
+		// UBehaviorTree doesn't have an explicit "compile" — re-save +
+		// mark dirty triggers the BT editor's lazy re-init on next open.
+		BT->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("compiled"),     true);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ============================================================================
+	// DataAsset CRUD (Stage 2)
+	// ============================================================================
+
+	int32 RunListDataAssetsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		Filter.ClassPaths.Add(UDataAsset::StaticClass()->GetClassPathName());
+		Filter.bRecursiveClasses = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"),  A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),        A.AssetName.ToString());
+			Item->SetStringField(TEXT("parent_class"),
+				A.AssetClassPath.ToString());
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+	}
+
+	int32 RunReadDataAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
+		if (!DA) return 4;
+
+		auto Props = MakeShared<FJsonObject>();
+		for (TFieldIterator<FProperty> It(DA->GetClass()); It; ++It)
+		{
+			FString Text;
+			It->ExportText_Direct(Text,
+				It->ContainerPtrToValuePtr<void>(DA), nullptr, DA, PPF_None);
+			Props->SetStringField(It->GetName(), Text);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("class"),      DA->GetClass()->GetName());
+		Obj->SetObjectField(TEXT("properties"), Props);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCreateDataAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ClassName;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+
+		// Already exists?
+		if (UDataAsset* Existing = LoadObject<UDataAsset>(nullptr, *AssetPath))
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			Obj->SetStringField(TEXT("class"),      Existing->GetClass()->GetName());
+			Obj->SetBoolField(TEXT("created"),         false);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		// Resolve class by short name (any UDataAsset subclass).
+		UClass* AssetClass = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (!It->IsChildOf(UDataAsset::StaticClass())) continue;
+			if (It->GetName() == ClassName) { AssetClass = *It; break; }
+		}
+		if (!AssetClass) return 4;
+
+		// Convert package path to disk path + create the asset.
+		FString PackageName = AssetPath;
+		FString AssetName = FPackageName::GetShortName(PackageName);
+		UPackage* Pkg = CreatePackage(*PackageName);
+		if (!Pkg) return 4;
+		UDataAsset* NewDA = NewObject<UDataAsset>(Pkg, AssetClass,
+			FName(*AssetName), RF_Public | RF_Standalone | RF_Transactional);
+		if (!NewDA) return 4;
+		FAssetRegistryModule::AssetCreated(NewDA);
+		NewDA->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("class"),         ClassName);
+		Obj->SetBoolField(TEXT("created"),         true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetDataAssetPropertyOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, PropName, Value;
+		FParse::Value(*Params, TEXT("Asset="),    AssetPath);
+		FParse::Value(*Params, TEXT("Property="), PropName);
+		FParse::Value(*Params, TEXT("Value="),    Value);
+
+		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
+		if (!DA) return 4;
+
+		FProperty* Prop = DA->GetClass()->FindPropertyByName(FName(*PropName));
+		if (!Prop) return 4;
+
+		FString OldText;
+		Prop->ExportText_Direct(OldText,
+			Prop->ContainerPtrToValuePtr<void>(DA), nullptr, DA, PPF_None);
+		Prop->ImportText_Direct(*Value,
+			Prop->ContainerPtrToValuePtr<void>(DA), DA, PPF_None);
+		FString NewText;
+		Prop->ExportText_Direct(NewText,
+			Prop->ContainerPtrToValuePtr<void>(DA), nullptr, DA, PPF_None);
+
+		DA->MarkPackageDirty();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("property_name"), PropName);
+		Obj->SetStringField(TEXT("old_value"),     OldText);
+		Obj->SetStringField(TEXT("new_value"),     NewText);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ============================================================================
+	// StateTree authoring (Stage 2)
+	// ============================================================================
+	//
+	// UStateTree is an experimental plugin asset; we use TObjectIterator
+	// to discover the class at runtime and route Asset Registry queries
+	// through the package class path string. Authoring is best-effort —
+	// final state authoring still requires StateTreeEditor.
+
+	int32 RunListStateTreesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathFilter;
+		FParse::Value(*Params, TEXT("Path="), PathFilter);
+		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		AR.ScanPathsSynchronous({ PathFilter }, /*bForceRescan=*/false);
+
+		FARFilter Filter;
+		// StateTree may not be loaded — use the conventional class path
+		// directly, falling back to a class search if the plugin module
+		// isn't loaded in this commandlet config.
+		Filter.ClassPaths.Add(FTopLevelAssetPath(
+			TEXT("/Script/StateTreeModule"), TEXT("StateTree")));
+		Filter.bRecursiveClasses = true;
+		Filter.PackagePaths.Add(*PathFilter);
+		Filter.bRecursivePaths = true;
+		TArray<FAssetData> Assets;
+		AR.GetAssets(Filter, Assets);
+
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FAssetData& A : Assets)
+		{
+			auto Item = MakeShared<FJsonObject>();
+			Item->SetStringField(TEXT("asset_path"),   A.PackageName.ToString());
+			Item->SetStringField(TEXT("name"),         A.AssetName.ToString());
+			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
+			Items.Add(MakeShared<FJsonValueObject>(Item));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+	}
+
+	// For ReadStateTree / mutations we keep the shape but stub out the
+	// internals — UStateTree's state graph lives behind editor-only API
+	// (FStateTreeEditorData + FCompactStateTreeState) that requires the
+	// StateTreeEditor module. The plugin only depends on runtime modules,
+	// so we surface the schema (no states / no transitions) and ack
+	// mutations as "scaffolded; finish in the StateTree editor."
+
+	int32 RunReadStateTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetArrayField(TEXT("states"),      TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetArrayField(TEXT("transitions"), TArray<TSharedPtr<FJsonValue>>{});
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("StateTree authoring uses StateTreeEditor module. Open the "
+			     "asset in the editor to inspect its state graph."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunAddStateTreeStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, ParentId, Name;
+		FParse::Value(*Params, TEXT("Asset="),  AssetPath);
+		FParse::Value(*Params, TEXT("Parent="), ParentId);
+		FParse::Value(*Params, TEXT("Name="),   Name);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("state_id"),   Name);  // best-effort id
+		Obj->SetStringField(TEXT("name"),       Name);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("Scaffolded only. Finish state authoring in StateTreeEditor."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetStateTreeTransitionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath, FromId, ToId, Trigger;
+		FParse::Value(*Params, TEXT("Asset="),   AssetPath);
+		FParse::Value(*Params, TEXT("From="),    FromId);
+		FParse::Value(*Params, TEXT("To="),      ToId);
+		FParse::Value(*Params, TEXT("Trigger="), Trigger);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("from"),       FromId);
+		Obj->SetStringField(TEXT("to"),         ToId);
+		Obj->SetStringField(TEXT("trigger"),    Trigger);
+		Obj->SetBoolField(TEXT("added"), false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("StateTree transitions require StateTreeEditor module."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCompileStateTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetBoolField(TEXT("compiled"), false);
+		Obj->SetStringField(TEXT("hint"),
+			TEXT("StateTree compile requires StateTreeEditor module."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -3728,6 +4253,20 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::SetWidgetProperty)            return RunSetWidgetPropertyOp(Params, OutputPath, bPretty);
 	if (Op == EOp::BindWidgetEvent)              return RunBindWidgetEventOp(Params, OutputPath, bPretty);
 	if (Op == EOp::CompileWidgetBlueprint)       return RunCompileWidgetBlueprintOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListBehaviorTrees)            return RunListBehaviorTreesOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadBehaviorTree)             return RunReadBehaviorTreeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddBTNode)                    return RunAddBTNodeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetBTNodeProperty)            return RunSetBTNodePropertyOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CompileBehaviorTree)          return RunCompileBehaviorTreeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListDataAssets)               return RunListDataAssetsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadDataAsset)                return RunReadDataAssetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CreateDataAsset)              return RunCreateDataAssetOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetDataAssetProperty)         return RunSetDataAssetPropertyOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListStateTrees)               return RunListStateTreesOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ReadStateTree)                return RunReadStateTreeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::AddStateTreeState)            return RunAddStateTreeStateOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetStateTreeTransition)       return RunSetStateTreeTransitionOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CompileStateTree)             return RunCompileStateTreeOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

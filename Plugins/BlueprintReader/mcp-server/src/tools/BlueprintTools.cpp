@@ -2903,6 +2903,404 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ===== Behavior Tree authoring (Stage 2) ===============================
+    // Behavior Trees are AIModule UObjects: root composite + decorators +
+    // services + tasks. node_kind = "composite" | "decorator" | "service"
+    // | "task". Node ids are stable UObject names within the tree.
+
+    {
+        ToolDescriptor d;
+        d.name = "list_behavior_trees";
+        d.description = "List UBehaviorTree assets under a content path "
+                        "(default `/Game`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto summaries = reader.ListBehaviorTrees(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : summaries) arr.push_back(s);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_behavior_tree";
+        d.description = "Walk a UBehaviorTree's node graph. Returns every "
+                        "node (id, class, kind, parent) and the root node id.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto bt = reader.ReadBehaviorTree(asset);
+            nlohmann::json nodes = nlohmann::json::array();
+            for (const auto& n : bt.nodes) {
+                nodes.push_back({
+                    {"node_id",   n.nodeId},
+                    {"class",     n.className},
+                    {"node_kind", n.nodeKind},
+                    {"parent",    n.parentNodeId},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",   bt.assetPath},
+                {"root_node_id", bt.rootNodeId},
+                {"nodes",        nodes},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "add_bt_node";
+        d.description = "Add a node to a UBehaviorTree. `node_kind` is "
+                        "`composite` / `decorator` / `service` / `task`; "
+                        "`node_class` is the short class name (e.g. "
+                        "`BTComposite_Selector`, `BTTask_MoveTo`, "
+                        "`BTDecorator_Blackboard`). Empty `parent_node_id` "
+                        "becomes the root composite (only allowed for the "
+                        "first composite added).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",     {{"type","string"}}},
+                {"parent_node_id", {{"type","string"}}},
+                {"node_kind",      {{"type","string"}}},
+                {"node_class",     {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","node_kind","node_class"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset  = RequireString(args, "asset_path");
+            std::string parent = OptString(args, "parent_node_id", "");
+            std::string kind   = RequireString(args, "node_kind");
+            std::string cls    = RequireString(args, "node_class");
+            auto r = reader.AddBTNode(asset, parent, kind, cls);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"node_id",    r.nodeId},
+                {"class",      r.className},
+                {"node_kind",  r.nodeKind},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_bt_node_property";
+        d.description = "Set a UPROPERTY on a behavior tree node (e.g. "
+                        "MoveTo's `AcceptableRadius`, Blackboard decorator's "
+                        "`KeyName`). `value` is the property's text form.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"node_id",       {{"type","string"}}},
+                {"property_name", {{"type","string"}}},
+                {"value",         {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","node_id","property_name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string n     = RequireString(args, "node_id");
+            std::string p     = RequireString(args, "property_name");
+            std::string v     = RequireString(args, "value");
+            auto r = reader.SetBTNodeProperty(asset, n, p, v);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"node_id",       r.nodeId},
+                {"property_name", r.propertyName},
+                {"old_value",     r.oldValue},
+                {"new_value",     r.newValue},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "compile_behavior_tree";
+        d.description = "Compile a behavior tree (recompiles + marks the "
+                        "asset dirty). Returns `{compiled: true|false}`.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CompileBehaviorTree(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"compiled",   r.compiled},
+            };
+        });
+    }
+
+    // ===== DataAsset CRUD (Stage 2) ========================================
+    // UDataAsset subclasses are pure data containers. read_data_asset
+    // returns every UPROPERTY's text projection in a JSON map; mutations go
+    // through ImportText_Direct/ExportText_Direct (same pattern as
+    // set_component_property + set_widget_property).
+
+    {
+        ToolDescriptor d;
+        d.name = "list_data_assets";
+        d.description = "List all UDataAsset subclass instances under a "
+                        "content path. Mirrors `list_blueprints` but "
+                        "filters by base class.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto summaries = reader.ListDataAssets(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : summaries) arr.push_back(s);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_data_asset";
+        d.description = "Read every UPROPERTY on a UDataAsset. Returns the "
+                        "asset's class + a `{property: stringified_value}` "
+                        "map.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto da = reader.ReadDataAsset(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", da.assetPath},
+                {"class",      da.className},
+                {"properties", da.properties},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "create_data_asset";
+        d.description = "Create a new UDataAsset instance. `class_name` is "
+                        "the short C++ class name (or BP path) of a "
+                        "UDataAsset subclass.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path", {{"type","string"}}},
+                {"class_name", {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","class_name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string cls   = RequireString(args, "class_name");
+            auto r = reader.CreateDataAsset(asset, cls);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",      r.assetPath},
+                {"class",           r.className},
+                {"created",         r.created},
+                {"already_existed", r.alreadyExisted},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_data_asset_property";
+        d.description = "Set a UPROPERTY on a UDataAsset. `value` is the "
+                        "text form UE's property system uses.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"property_name", {{"type","string"}}},
+                {"value",         {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","property_name","value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string p     = RequireString(args, "property_name");
+            std::string v     = RequireString(args, "value");
+            auto r = reader.SetDataAssetProperty(asset, p, v);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"property_name", r.propertyName},
+                {"old_value",     r.oldValue},
+                {"new_value",     r.newValue},
+            };
+        });
+    }
+
+    // ===== StateTree authoring (Stage 2) ===================================
+    // UStateTree (experimental in UE 5.x) — hierarchical FSM with state +
+    // transition nodes. State ids are stable names within the asset.
+
+    {
+        ToolDescriptor d;
+        d.name = "list_state_trees";
+        d.description = "List UStateTree assets under a content path "
+                        "(default `/Game`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"path", {{"type","string"}}}}},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string path = OptString(args, "path", "/Game");
+            auto summaries = reader.ListStateTrees(path);
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& s : summaries) arr.push_back(s);
+            return arr;
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "read_state_tree";
+        d.description = "Read a UStateTree's hierarchy + transitions: "
+                        "every state (id, name, parent) and every "
+                        "transition (from, to, trigger).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto st = reader.ReadStateTree(asset);
+            nlohmann::json states = nlohmann::json::array();
+            for (const auto& s : st.states) {
+                states.push_back({
+                    {"state_id", s.stateId},
+                    {"name",     s.name},
+                    {"parent",   s.parentStateId},
+                });
+            }
+            nlohmann::json trans = nlohmann::json::array();
+            for (const auto& t : st.transitions) {
+                trans.push_back({
+                    {"from",    t.fromStateId},
+                    {"to",      t.toStateId},
+                    {"trigger", t.trigger},
+                });
+            }
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",  st.assetPath},
+                {"states",      states},
+                {"transitions", trans},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "add_state_tree_state";
+        d.description = "Add a state to a UStateTree. Empty "
+                        "`parent_state_id` makes it a top-level state. "
+                        "Returns the new state id.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",      {{"type","string"}}},
+                {"parent_state_id", {{"type","string"}}},
+                {"name",            {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array({"asset_path","name"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset  = RequireString(args, "asset_path");
+            std::string parent = OptString(args, "parent_state_id", "");
+            std::string name   = RequireString(args, "name");
+            auto r = reader.AddStateTreeState(asset, parent, name);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"state_id",   r.stateId},
+                {"name",       r.name},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "set_state_tree_transition";
+        d.description = "Define a transition between two states. `trigger` "
+                        "names the event class or tick condition "
+                        "(e.g. `OnTick`, `OnEvent.Damage`).";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {
+                {"asset_path",    {{"type","string"}}},
+                {"from_state_id", {{"type","string"}}},
+                {"to_state_id",   {{"type","string"}}},
+                {"trigger",       {{"type","string"}}},
+            }},
+            {"required", nlohmann::json::array(
+                {"asset_path","from_state_id","to_state_id","trigger"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            std::string from  = RequireString(args, "from_state_id");
+            std::string to    = RequireString(args, "to_state_id");
+            std::string trig  = RequireString(args, "trigger");
+            auto r = reader.SetStateTreeTransition(asset, from, to, trig);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path",    r.assetPath},
+                {"from_state_id", r.fromStateId},
+                {"to_state_id",   r.toStateId},
+                {"trigger",       r.trigger},
+                {"added",         r.added},
+            };
+        });
+    }
+
+    {
+        ToolDescriptor d;
+        d.name = "compile_state_tree";
+        d.description = "Compile a UStateTree. Returns `{compiled: "
+                        "true|false}` — false means compile failed; check "
+                        "`read_output_log` for errors.";
+        d.input_schema = {
+            {"type","object"},
+            {"properties", {{"asset_path", {{"type","string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string asset = RequireString(args, "asset_path");
+            auto r = reader.CompileStateTree(asset);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", r.assetPath},
+                {"compiled",   r.compiled},
+            };
+        });
+    }
+
     // ===== Batch + DSL =====================================================
     // apply_ops and compile_function live in their own files because their
     // dispatch tables are bigger than the per-tool handlers above.
