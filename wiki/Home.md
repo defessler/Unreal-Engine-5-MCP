@@ -25,6 +25,9 @@ graphs, nodes, connections, K2 metadata — through 59 tools.
   future Lua / Python / JS).
 - **[Configuration](Configuration)** — env vars, daemon mode, timeouts.
 - **[Troubleshooting](Troubleshooting)** — common failure modes + fixes.
+- **[Roadmap](Roadmap)** — gap analysis vs. the UE-MCP ecosystem +
+  the staged plan to close it. Where bp-reader is unique, where the
+  ecosystem is ahead, and the rough order we'll add things in.
 
 ## TL;DR
 
