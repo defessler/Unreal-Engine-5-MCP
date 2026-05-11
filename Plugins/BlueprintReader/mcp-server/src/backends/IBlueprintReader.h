@@ -561,6 +561,172 @@ public:
         throw BlueprintReaderError("CompileWidgetBlueprint not supported by this backend");
     }
 
+    // ----- Behavior Tree authoring (Stage 2) ----------------------------
+    //
+    // UBehaviorTree exposes a root composite node, decorators, services,
+    // and tasks. Node ids are stable UObject names within the tree.
+    struct BTNode {
+        std::string nodeId;
+        std::string className;     // Composite / Decorator / Task class
+        std::string nodeKind;      // "composite" | "decorator" | "service" | "task"
+        std::string parentNodeId;  // empty = root
+    };
+    struct BehaviorTreeInfo {
+        std::string assetPath;
+        std::string rootNodeId;
+        std::vector<BTNode> nodes;
+    };
+    virtual BehaviorTreeInfo ReadBehaviorTree(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadBehaviorTree not supported by this backend");
+    }
+
+    struct AddBTNodeResult {
+        std::string assetPath;
+        std::string nodeId;
+        std::string className;
+        std::string nodeKind;
+    };
+    virtual AddBTNodeResult AddBTNode(std::string_view assetPath,
+        std::string_view parentNodeId, std::string_view nodeKind,
+        std::string_view nodeClass) {
+        (void)assetPath; (void)parentNodeId; (void)nodeKind; (void)nodeClass;
+        throw BlueprintReaderError("AddBTNode not supported by this backend");
+    }
+
+    struct SetBTNodePropertyResult {
+        std::string assetPath;
+        std::string nodeId;
+        std::string propertyName;
+        std::string oldValue;
+        std::string newValue;
+    };
+    virtual SetBTNodePropertyResult SetBTNodeProperty(std::string_view assetPath,
+        std::string_view nodeId, std::string_view propertyName,
+        std::string_view value) {
+        (void)assetPath; (void)nodeId; (void)propertyName; (void)value;
+        throw BlueprintReaderError("SetBTNodeProperty not supported by this backend");
+    }
+
+    struct CompileBehaviorTreeResult {
+        std::string assetPath;
+        bool compiled = false;
+    };
+    virtual CompileBehaviorTreeResult CompileBehaviorTree(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CompileBehaviorTree not supported by this backend");
+    }
+
+    virtual std::vector<BPAssetSummary> ListBehaviorTrees(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListBehaviorTrees not supported by this backend");
+    }
+
+    // ----- DataAsset CRUD (Stage 2) -------------------------------------
+    //
+    // UDataAsset subclasses are pure data containers. We expose them as
+    // {class, properties} pairs where properties is the JSON projection
+    // of every UPROPERTY on the asset.
+    struct DataAssetInfo {
+        std::string assetPath;
+        std::string className;
+        nlohmann::json properties;  // {propName: stringifiedValue}
+    };
+    virtual std::vector<BPAssetSummary> ListDataAssets(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListDataAssets not supported by this backend");
+    }
+    virtual DataAssetInfo ReadDataAsset(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadDataAsset not supported by this backend");
+    }
+
+    struct CreateDataAssetResult {
+        std::string assetPath;
+        std::string className;
+        bool created = false;
+        bool alreadyExisted = false;
+    };
+    virtual CreateDataAssetResult CreateDataAsset(std::string_view assetPath,
+        std::string_view className) {
+        (void)assetPath; (void)className;
+        throw BlueprintReaderError("CreateDataAsset not supported by this backend");
+    }
+
+    struct SetDataAssetPropertyResult {
+        std::string assetPath;
+        std::string propertyName;
+        std::string oldValue;
+        std::string newValue;
+    };
+    virtual SetDataAssetPropertyResult SetDataAssetProperty(std::string_view assetPath,
+        std::string_view propertyName, std::string_view value) {
+        (void)assetPath; (void)propertyName; (void)value;
+        throw BlueprintReaderError("SetDataAssetProperty not supported by this backend");
+    }
+
+    // ----- StateTree authoring (Stage 2) --------------------------------
+    //
+    // UStateTree (experimental in UE 5.x) — hierarchical FSM with state +
+    // transition nodes. State ids are stable names within the asset.
+    struct StateTreeState {
+        std::string stateId;
+        std::string name;
+        std::string parentStateId;  // empty = root
+    };
+    struct StateTreeTransition {
+        std::string fromStateId;
+        std::string toStateId;
+        std::string trigger;  // e.g. "OnTick", "OnEvent"
+    };
+    struct StateTreeInfo {
+        std::string assetPath;
+        std::vector<StateTreeState> states;
+        std::vector<StateTreeTransition> transitions;
+    };
+    virtual std::vector<BPAssetSummary> ListStateTrees(std::string_view path) {
+        (void)path;
+        throw BlueprintReaderError("ListStateTrees not supported by this backend");
+    }
+    virtual StateTreeInfo ReadStateTree(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("ReadStateTree not supported by this backend");
+    }
+
+    struct AddStateTreeStateResult {
+        std::string assetPath;
+        std::string stateId;
+        std::string name;
+    };
+    virtual AddStateTreeStateResult AddStateTreeState(std::string_view assetPath,
+        std::string_view parentStateId, std::string_view name) {
+        (void)assetPath; (void)parentStateId; (void)name;
+        throw BlueprintReaderError("AddStateTreeState not supported by this backend");
+    }
+
+    struct SetStateTreeTransitionResult {
+        std::string assetPath;
+        std::string fromStateId;
+        std::string toStateId;
+        std::string trigger;
+        bool added = false;
+    };
+    virtual SetStateTreeTransitionResult SetStateTreeTransition(
+        std::string_view assetPath, std::string_view fromStateId,
+        std::string_view toStateId, std::string_view trigger) {
+        (void)assetPath; (void)fromStateId; (void)toStateId; (void)trigger;
+        throw BlueprintReaderError("SetStateTreeTransition not supported by this backend");
+    }
+
+    struct CompileStateTreeResult {
+        std::string assetPath;
+        bool compiled = false;
+    };
+    virtual CompileStateTreeResult CompileStateTree(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("CompileStateTree not supported by this backend");
+    }
+
     // ----- Live editor ops -----------------------------------------------
     //
     // These are most useful with an open editor (live backend). The

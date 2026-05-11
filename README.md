@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 77 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 91 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -22,7 +22,7 @@ Two backends:
 
 ## Tools
 
-77 tools across 10 categories — see the
+91 tools across 13 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 
@@ -37,6 +37,9 @@ for every input/output shape with examples.
 | **Automation** (1) | `run_automation_tests` | Kick off UE's automation test framework with a wildcard pattern; results land in the output log + `Saved/Automation/`. |
 | **Material authoring** (7) | `list_materials`, `read_material`, `add_material_expression`, `connect_material_expressions`, `set_material_parameter`, `set_material_instance_parameter`, `compile_material` | Walk the UMaterial expression graph; add nodes; wire them to other expressions or to the master-material slots (BaseColor / Roughness / Normal / …); override scalar/vector/texture parameters on a UMaterialInstanceConstant; trigger shader recompiles. |
 | **UMG widgets** (5) | `read_widget_blueprint`, `add_widget`, `set_widget_property`, `bind_widget_event`, `compile_widget_blueprint` | Inspect UWidgetBlueprint's UWidgetTree; add widgets under a PanelWidget parent; set widget properties; scaffold event handlers; compile. |
+| **Behavior Trees** (5) | `list_behavior_trees`, `read_behavior_tree`, `add_bt_node`, `set_bt_node_property`, `compile_behavior_tree` | Walk a UBehaviorTree's runtime node graph (composite / decorator / service / task); scaffold new nodes; set node properties; mark dirty. Final attach for new nodes still uses the BT editor for graph wiring. |
+| **DataAssets** (4) | `list_data_assets`, `read_data_asset`, `create_data_asset`, `set_data_asset_property` | Create / inspect / mutate any UDataAsset subclass. Properties round-trip via UE's text property serializer (same encoding `set_component_property` uses). |
+| **StateTree** (5) | `list_state_trees`, `read_state_tree`, `add_state_tree_state`, `set_state_tree_transition`, `compile_state_tree` | Discover UStateTree assets via Asset Registry; state/transition authoring scaffolds and returns a hint pointing at StateTreeEditor (full authoring still needs the editor module). |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
 Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
