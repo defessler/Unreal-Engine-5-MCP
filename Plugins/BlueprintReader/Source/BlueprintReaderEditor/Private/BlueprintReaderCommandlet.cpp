@@ -206,6 +206,20 @@ namespace
 		AddStateTreeState,
 		SetStateTreeTransition,
 		CompileStateTree,
+		// Stage 3: profile / cook / class info / viewport.
+		StartProfile,
+		StopProfile,
+		GetStats,
+		TakeScreenshot,
+		CookContent,
+		PackageProject,
+		IntrospectClass,
+		FindClass,
+		ListFunctions,
+		FocusActor,
+		SetCameraTransform,
+		TakeViewportScreenshot,
+		SetShowFlag,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -299,6 +313,20 @@ namespace
 		if (OpStr.Equals(TEXT("AddStateTreeState"), ESearchCase::IgnoreCase))      { OutOp = EOp::AddStateTreeState; return true; }
 		if (OpStr.Equals(TEXT("SetStateTreeTransition"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetStateTreeTransition; return true; }
 		if (OpStr.Equals(TEXT("CompileStateTree"), ESearchCase::IgnoreCase))       { OutOp = EOp::CompileStateTree; return true; }
+		// Stage 3: profile / cook / class info / viewport.
+		if (OpStr.Equals(TEXT("StartProfile"), ESearchCase::IgnoreCase))           { OutOp = EOp::StartProfile; return true; }
+		if (OpStr.Equals(TEXT("StopProfile"), ESearchCase::IgnoreCase))            { OutOp = EOp::StopProfile; return true; }
+		if (OpStr.Equals(TEXT("GetStats"), ESearchCase::IgnoreCase))               { OutOp = EOp::GetStats; return true; }
+		if (OpStr.Equals(TEXT("TakeScreenshot"), ESearchCase::IgnoreCase))         { OutOp = EOp::TakeScreenshot; return true; }
+		if (OpStr.Equals(TEXT("CookContent"), ESearchCase::IgnoreCase))            { OutOp = EOp::CookContent; return true; }
+		if (OpStr.Equals(TEXT("PackageProject"), ESearchCase::IgnoreCase))         { OutOp = EOp::PackageProject; return true; }
+		if (OpStr.Equals(TEXT("IntrospectClass"), ESearchCase::IgnoreCase))        { OutOp = EOp::IntrospectClass; return true; }
+		if (OpStr.Equals(TEXT("FindClass"), ESearchCase::IgnoreCase))              { OutOp = EOp::FindClass; return true; }
+		if (OpStr.Equals(TEXT("ListFunctions"), ESearchCase::IgnoreCase))          { OutOp = EOp::ListFunctions; return true; }
+		if (OpStr.Equals(TEXT("FocusActor"), ESearchCase::IgnoreCase))             { OutOp = EOp::FocusActor; return true; }
+		if (OpStr.Equals(TEXT("SetCameraTransform"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetCameraTransform; return true; }
+		if (OpStr.Equals(TEXT("TakeViewportScreenshot"), ESearchCase::IgnoreCase)) { OutOp = EOp::TakeViewportScreenshot; return true; }
+		if (OpStr.Equals(TEXT("SetShowFlag"), ESearchCase::IgnoreCase))            { OutOp = EOp::SetShowFlag; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -3144,6 +3172,365 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ============================================================================
+	// Stage 3: profile / cook / class info / viewport ergonomics
+	// ============================================================================
+	//
+	// Most of these are thin wrappers around UE console-exec commands; we
+	// trade some surface-API depth for breadth + low maintenance burden.
+	// GetClassInfo / FindClass / ListFunctions are pure UClass reflection
+	// queries that don't need any exec route.
+
+	// Cached profile-stop output path so StopProfile can return it.
+	static FString GProfileOutputFile;
+
+	int32 RunStartProfileOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Mode;
+		FParse::Value(*Params, TEXT("Mode="), Mode);
+		if (Mode.IsEmpty()) Mode = TEXT("stats");
+		Mode = Mode.ToLower();
+
+		FString Cmd;
+		if (Mode == TEXT("stats"))    Cmd = TEXT("stat startfile");
+		else if (Mode == TEXT("csv")) Cmd = TEXT("csvprofile start");
+		else if (Mode == TEXT("insights")) Cmd = TEXT("trace.start");
+		else Cmd = TEXT("stat startfile");
+		bool bStarted = false;
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			bStarted = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bStarted);
+		Obj->SetBoolField(TEXT("started"),     bStarted);
+		Obj->SetStringField(TEXT("output_file"), FString{});  // filled in StopProfile
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunStopProfileOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bStopped = false;
+		// stat stopfile prints the resulting path to the log; we can't
+		// scrape stdout reliably here, so we return the path we expect
+		// the stats system to drop the file at.
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			bStopped = GEngine->Exec(GetEditorWorldOrNull(), TEXT("stat stopfile"));
+			GEngine->Exec(GetEditorWorldOrNull(), TEXT("csvprofile stop"));
+			GEngine->Exec(GetEditorWorldOrNull(), TEXT("trace.stop"));
+		}
+		GProfileOutputFile = FPaths::ProfilingDir();
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bStopped);
+		Obj->SetBoolField(TEXT("stopped"),     bStopped);
+		Obj->SetStringField(TEXT("output_file"), GProfileOutputFile);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunGetStatsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Group;
+		FParse::Value(*Params, TEXT("Group="), Group);
+		// We can't easily harvest the live stat HUD from a commandlet,
+		// so we issue the toggle and tell the caller to use
+		// read_output_log to fetch the snapshot. Returning the command
+		// echo keeps the result shape consistent.
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			GEngine->Exec(GetEditorWorldOrNull(), *FString::Printf(TEXT("stat %s"), *Group));
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("group"),    Group);
+		Obj->SetStringField(TEXT("snapshot"),
+			TEXT("Stat group toggled. Use read_output_log to capture the snapshot."));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunTakeScreenshotOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Dest;
+		int32 W = 0, H = 0;
+		FParse::Value(*Params, TEXT("Dest="),   Dest);
+		FParse::Value(*Params, TEXT("Width="),  W);
+		FParse::Value(*Params, TEXT("Height="), H);
+
+		bool bOk = false;
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			FString Cmd = (W > 0 && H > 0)
+				? FString::Printf(TEXT("HighResShot %dx%d %s"), W, H, *Dest)
+				: FString::Printf(TEXT("HighResShot %s"), *Dest);
+			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+		}
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetBoolField(TEXT("captured"),    bOk);
+		Obj->SetStringField(TEXT("output_file"), Dest);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunCookContentOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Platform;
+		FParse::Value(*Params, TEXT("Platform="), Platform);
+		if (Platform.IsEmpty()) Platform = TEXT("Windows");
+
+		// Cooking via UAT is a heavy external process — we report
+		// "scaffolded" + tell the agent how to run it manually. Full
+		// integration would shell out to RunUAT.bat with the right
+		// arguments; we keep that out of the commandlet to avoid
+		// reentrancy issues with the editor already running.
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("started"),  false);
+		Obj->SetStringField(TEXT("platform"), Platform);
+		Obj->SetStringField(TEXT("message"),
+			FString::Printf(TEXT("Run cook manually: `RunUAT.bat BuildCookRun "
+			    "-project=<your>.uproject -platform=%s -cook -build -stage`."),
+			    *Platform));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunPackageProjectOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Platform, OutputDir;
+		FParse::Value(*Params, TEXT("Platform="), Platform);
+		FParse::Value(*Params, TEXT("Output="),   OutputDir);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("started"),  false);
+		Obj->SetStringField(TEXT("platform"), Platform);
+		Obj->SetStringField(TEXT("message"),
+			FString::Printf(TEXT("Run package manually: `RunUAT.bat BuildCookRun "
+			    "-project=<your>.uproject -platform=%s -cook -stage -package "
+			    "-archive -archivedirectory=%s`."), *Platform, *OutputDir));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunIntrospectClassOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassName;
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+
+		// Resolve by short name; fall back to class path.
+		UClass* Cls = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (It->GetName() == ClassName) { Cls = *It; break; }
+		}
+		if (!Cls) Cls = FindObject<UClass>(nullptr, *ClassName);
+		if (!Cls)
+		{
+			auto Err = MakeShared<FJsonObject>();
+			Err->SetBoolField(TEXT("ok"), false);
+			Err->SetStringField(TEXT("class"), ClassName);
+			Err->SetStringField(TEXT("error"),
+				FString::Printf(TEXT("Class '%s' not found"), *ClassName));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Err, bPretty), OutputPath);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Ancestors;
+		for (UClass* P = Cls->GetSuperClass(); P; P = P->GetSuperClass())
+		{
+			Ancestors.Add(MakeShared<FJsonValueString>(P->GetName()));
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Props;
+		for (TFieldIterator<FProperty> It(Cls); It; ++It)
+		{
+			auto P = MakeShared<FJsonObject>();
+			P->SetStringField(TEXT("name"),     It->GetName());
+			P->SetStringField(TEXT("type"),     It->GetCPPType());
+			P->SetStringField(TEXT("category"), It->GetMetaData(TEXT("Category")));
+			Props.Add(MakeShared<FJsonValueObject>(P));
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Funcs;
+		for (TFieldIterator<UFunction> It(Cls); It; ++It)
+		{
+			auto F = MakeShared<FJsonObject>();
+			F->SetStringField(TEXT("name"), It->GetName());
+			// Emit a small flag CSV that covers the BP-callable surface.
+			TArray<FString> Flags;
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable)) Flags.Add(TEXT("BlueprintCallable"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))     Flags.Add(TEXT("BlueprintPure"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))    Flags.Add(TEXT("BlueprintEvent"));
+			if (It->HasAnyFunctionFlags(FUNC_Net))               Flags.Add(TEXT("Net"));
+			if (It->HasAnyFunctionFlags(FUNC_Static))            Flags.Add(TEXT("Static"));
+			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
+			Funcs.Add(MakeShared<FJsonValueObject>(F));
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("class"),  Cls->GetName());
+		Obj->SetStringField(TEXT("parent"), Cls->GetSuperClass() ? Cls->GetSuperClass()->GetName() : FString{});
+		Obj->SetArrayField(TEXT("ancestors"),  Ancestors);
+		Obj->SetArrayField(TEXT("properties"), Props);
+		Obj->SetArrayField(TEXT("functions"),  Funcs);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunFindClassOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Query;
+		FParse::Value(*Params, TEXT("Query="), Query);
+
+		TArray<TSharedPtr<FJsonValue>> Classes;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (It->GetName().Contains(Query, ESearchCase::IgnoreCase))
+			{
+				Classes.Add(MakeShared<FJsonValueString>(It->GetName()));
+				if (Classes.Num() >= 200) break;  // cap
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetArrayField(TEXT("classes"), Classes);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunListFunctionsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassName;
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+
+		UClass* Cls = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (It->GetName() == ClassName) { Cls = *It; break; }
+		}
+		if (!Cls) Cls = FindObject<UClass>(nullptr, *ClassName);
+		if (!Cls)
+		{
+			TArray<TSharedPtr<FJsonValue>> Empty;
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Empty, bPretty), OutputPath);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Funcs;
+		for (TFieldIterator<UFunction> It(Cls); It; ++It)
+		{
+			auto F = MakeShared<FJsonObject>();
+			F->SetStringField(TEXT("name"), It->GetName());
+			TArray<FString> Flags;
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable)) Flags.Add(TEXT("BlueprintCallable"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))     Flags.Add(TEXT("BlueprintPure"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))    Flags.Add(TEXT("BlueprintEvent"));
+			if (It->HasAnyFunctionFlags(FUNC_Net))               Flags.Add(TEXT("Net"));
+			if (It->HasAnyFunctionFlags(FUNC_Static))            Flags.Add(TEXT("Static"));
+			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
+			Funcs.Add(MakeShared<FJsonValueObject>(F));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Funcs, bPretty), OutputPath);
+	}
+
+	int32 RunFocusActorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ActorName;
+		FParse::Value(*Params, TEXT("Actor="), ActorName);
+
+		bool bFocused = false;
+		if (UWorld* W = GetEditorWorldOrNull())
+		{
+			for (TActorIterator<AActor> It(W); It; ++It)
+			{
+				if (It->GetActorLabel() == ActorName || It->GetName() == ActorName)
+				{
+					if (GEditor)
+					{
+						GEditor->SelectActor(*It, /*bSelected=*/true, /*bNotify=*/true);
+						GEditor->MoveViewportCamerasToActor(*It, /*bActiveViewportOnly=*/true);
+						bFocused = true;
+					}
+					break;
+				}
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bFocused);
+		Obj->SetStringField(TEXT("actor_name"), ActorName);
+		Obj->SetBoolField(TEXT("focused"),      bFocused);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetCameraTransformOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		double LX = 0, LY = 0, LZ = 0, RP = 0, RY = 0, RR = 0;
+		FParse::Value(*Params, TEXT("LX="), LX);
+		FParse::Value(*Params, TEXT("LY="), LY);
+		FParse::Value(*Params, TEXT("LZ="), LZ);
+		FParse::Value(*Params, TEXT("RP="), RP);
+		FParse::Value(*Params, TEXT("RY="), RY);
+		FParse::Value(*Params, TEXT("RR="), RR);
+
+		bool bMoved = false;
+		if (GEditor && GEditor->GetActiveViewport())
+		{
+			FViewport* VP = GEditor->GetActiveViewport();
+			if (FEditorViewportClient* VC =
+				static_cast<FEditorViewportClient*>(VP->GetClient()))
+			{
+				VC->SetViewLocation(FVector(LX, LY, LZ));
+				VC->SetViewRotation(FRotator(RP, RY, RR));
+				VC->Invalidate();
+				bMoved = true;
+			}
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bMoved);
+		Obj->SetBoolField(TEXT("moved"), bMoved);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunTakeViewportScreenshotOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Dest;
+		FParse::Value(*Params, TEXT("Dest="), Dest);
+
+		bool bOk = false;
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			FString Cmd = FString::Printf(TEXT("Shot %s"), *Dest);
+			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetBoolField(TEXT("captured"),    bOk);
+		Obj->SetStringField(TEXT("output_file"), Dest);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	int32 RunSetShowFlagOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Flag;
+		int32 Enabled = 0;
+		FParse::Value(*Params, TEXT("Flag="),    Flag);
+		FParse::Value(*Params, TEXT("Enabled="), Enabled);
+
+		bool bOk = false;
+		if (GEngine && GetEditorWorldOrNull())
+		{
+			FString Cmd = FString::Printf(TEXT("showflag.%s %d"), *Flag, Enabled);
+			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+		}
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetStringField(TEXT("flag_name"), Flag);
+		Obj->SetBoolField(TEXT("enabled"),     Enabled != 0);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	int32 RunRunAutomationTestsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString Pattern;
@@ -4267,6 +4654,19 @@ int32 RunOneOp(const FString& Params)
 	if (Op == EOp::AddStateTreeState)            return RunAddStateTreeStateOp(Params, OutputPath, bPretty);
 	if (Op == EOp::SetStateTreeTransition)       return RunSetStateTreeTransitionOp(Params, OutputPath, bPretty);
 	if (Op == EOp::CompileStateTree)             return RunCompileStateTreeOp(Params, OutputPath, bPretty);
+	if (Op == EOp::StartProfile)                 return RunStartProfileOp(Params, OutputPath, bPretty);
+	if (Op == EOp::StopProfile)                  return RunStopProfileOp(Params, OutputPath, bPretty);
+	if (Op == EOp::GetStats)                     return RunGetStatsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::TakeScreenshot)               return RunTakeScreenshotOp(Params, OutputPath, bPretty);
+	if (Op == EOp::CookContent)                  return RunCookContentOp(Params, OutputPath, bPretty);
+	if (Op == EOp::PackageProject)               return RunPackageProjectOp(Params, OutputPath, bPretty);
+	if (Op == EOp::IntrospectClass)              return RunIntrospectClassOp(Params, OutputPath, bPretty);
+	if (Op == EOp::FindClass)                    return RunFindClassOp(Params, OutputPath, bPretty);
+	if (Op == EOp::ListFunctions)                return RunListFunctionsOp(Params, OutputPath, bPretty);
+	if (Op == EOp::FocusActor)                   return RunFocusActorOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetCameraTransform)           return RunSetCameraTransformOp(Params, OutputPath, bPretty);
+	if (Op == EOp::TakeViewportScreenshot)       return RunTakeViewportScreenshotOp(Params, OutputPath, bPretty);
+	if (Op == EOp::SetShowFlag)                  return RunSetShowFlagOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())

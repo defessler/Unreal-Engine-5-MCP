@@ -173,6 +173,27 @@ public:
         std::string_view, std::string_view, std::string_view) override;
     CompileStateTreeResult CompileStateTree(std::string_view) override;
 
+    // ----- Stage 3 ----------------------------------------------------
+    // Profile + stats + screenshots + viewport reads pass through —
+    // they don't mutate .uasset files. Cook / package + camera write +
+    // show flag are arguable; treat as read-shaped diagnostics (they
+    // produce artifacts, not .uasset edits). Only writes that touch
+    // the project tree (none here) would reject.
+    StartProfileResult StartProfile(std::string_view) override;
+    StopProfileResult StopProfile() override;
+    StatGroupResult GetStats(std::string_view) override;
+    ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
+    CookResult CookContent(std::string_view) override;
+    CookResult PackageProject(std::string_view, std::string_view) override;
+    ClassInfo IntrospectClass(std::string_view) override;
+    FindClassResult FindClass(std::string_view) override;
+    std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
+    FocusActorResult FocusActor(std::string_view) override;
+    SetCameraResult SetCameraTransform(double, double, double,
+                                       double, double, double) override;
+    ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
+    SetShowFlagResult SetShowFlag(std::string_view, bool) override;
+
     // ----- batch sentinels ------------------------------------------
     // BeginBatch / EndBatch are technically not writes themselves, but in
     // read-only mode they're still no-ops because no writes can happen
