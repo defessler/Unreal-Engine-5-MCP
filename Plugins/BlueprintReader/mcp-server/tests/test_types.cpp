@@ -53,6 +53,47 @@ TEST_CASE("BPPin round-trips with optional default_value") {
     CHECK(j["default_value"].is_null());
 }
 
+TEST_CASE("BPPin carries inline linked_to array (issue #5)") {
+    // Verifies the per-pin connection view round-trips. An empty
+    // linked_to is fine — every pin emits the field (possibly empty).
+    BPPin p;
+    p.Id = "src-pin";
+    p.Name = "Then";
+    p.Direction = "Output";
+    p.Type.Category = "exec";
+    BPPinLink l1{"target-node-guid", "target-pin-guid"};
+    BPPinLink l2{"second-node-guid", "second-pin-guid"};
+    p.LinkedTo.push_back(l1);
+    p.LinkedTo.push_back(l2);
+
+    auto j = json(p);
+    REQUIRE(j.contains("linked_to"));
+    REQUIRE(j["linked_to"].is_array());
+    REQUIRE(j["linked_to"].size() == 2);
+    CHECK(j["linked_to"][0]["node_id"] == "target-node-guid");
+    CHECK(j["linked_to"][0]["pin_id"] == "target-pin-guid");
+
+    auto back = RoundTrip(p);
+    REQUIRE(back.LinkedTo.size() == 2);
+    CHECK(back.LinkedTo[0].NodeId == "target-node-guid");
+    CHECK(back.LinkedTo[1].PinId == "second-pin-guid");
+
+    // Older wire shape (no `linked_to` key) decodes as empty without
+    // throwing — backward compat with pre-#5 fixtures.
+    nlohmann::json legacy = {
+        {"id", "x"}, {"name", "Y"}, {"direction", "Input"},
+        {"type", {
+            {"category","int"},
+            {"sub_category", nullptr},
+            {"sub_category_object", nullptr},
+            {"is_array", false}, {"is_set", false}, {"is_map", false},
+        }},
+        {"default_value", nullptr},
+    };
+    auto legacyDecoded = legacy.get<BPPin>();
+    CHECK(legacyDecoded.LinkedTo.empty());
+}
+
 TEST_CASE("BPPosition uses x/y keys") {
     BPPosition pos{42, -7};
     json j = pos;

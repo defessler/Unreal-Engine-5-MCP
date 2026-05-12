@@ -78,6 +78,11 @@ struct FBPPin
     UPROPERTY() FString    DefaultValue;
 };
 #else
+struct BPPinLink
+{
+    BPRString NodeId;
+    BPRString PinId;
+};
 struct BPPin
 {
     BPRString Id;
@@ -85,6 +90,10 @@ struct BPPin
     BPRString Direction;       // "Input" | "Output"
     BPPinType Type;
     BPROptionalString DefaultValue;
+    // Inline view of this pin's connections — same data as the graph-
+    // level connections[] array, but reachable from a single get_node
+    // call rather than requiring a separate get_graph (issue #5).
+    BPRArray<BPPinLink> LinkedTo;
 };
 #endif
 
@@ -403,6 +412,16 @@ inline void from_json(const nlohmann::json& j, BPPinType& v)
     j.at("is_map").get_to(v.IsMap);
 }
 
+inline void to_json(nlohmann::json& j, const BPPinLink& v)
+{
+    j = nlohmann::json{ {"node_id", v.NodeId}, {"pin_id", v.PinId} };
+}
+inline void from_json(const nlohmann::json& j, BPPinLink& v)
+{
+    j.at("node_id").get_to(v.NodeId);
+    j.at("pin_id").get_to(v.PinId);
+}
+
 inline void to_json(nlohmann::json& j, const BPPin& v)
 {
     j = nlohmann::json{
@@ -411,6 +430,7 @@ inline void to_json(nlohmann::json& j, const BPPin& v)
         {"direction",     v.Direction},
         {"type",          v.Type},
         {"default_value", v.DefaultValue},
+        {"linked_to",     v.LinkedTo},
     };
 }
 inline void from_json(const nlohmann::json& j, BPPin& v)
@@ -420,6 +440,13 @@ inline void from_json(const nlohmann::json& j, BPPin& v)
     j.at("direction").get_to(v.Direction);
     j.at("type").get_to(v.Type);
     j.at("default_value").get_to(v.DefaultValue);
+    // linked_to was added later (issue #5); older fixtures + older
+    // plugin builds won't include it. Default to empty array.
+    if (j.contains("linked_to") && j["linked_to"].is_array()) {
+        j["linked_to"].get_to(v.LinkedTo);
+    } else {
+        v.LinkedTo.clear();
+    }
 }
 
 inline void to_json(nlohmann::json& j, const BPPosition& v)
