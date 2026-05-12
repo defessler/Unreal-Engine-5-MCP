@@ -389,6 +389,9 @@ struct Emitter {
         if (fnName == "__bpr_construct_object_from_class") {
             return EmitConstructObjectFromClass(e);
         }
+        if (fnName == "__bpr_format_text") {
+            return EmitFormatText(e);
+        }
         // GetDataTableRow is statement-form (carries success+fail blocks)
         // — the statement dispatcher handles it directly; we'd only see
         // it here if someone misuses the sentinel in an expression slot.
@@ -521,6 +524,40 @@ struct Emitter {
         // via the LHS UPROPERTY type. Cast<> on the result is the agent's
         // job (we can't infer the target type from BPIR alone).
         return fmt::format("NewObject<UObject>({}, {})", outer, cls);
+    }
+
+    // FormatText → `FText::Format(NSLOCTEXT("BPR", "...", "..."),
+    // FFormatNamedArguments{...})`. The C++ canonical form uses
+    // FFormatNamedArguments populated from the named pins; we emit an
+    // immediately-invoked lambda so the call slots into an expression
+    // position even though Args needs statements to populate.
+    std::string EmitFormatText(const nlohmann::json& e) {
+        std::string fmtStr = e.value("format", std::string{});
+        // Escape any embedded " for safe TEXT() embedding.
+        std::string escaped;
+        escaped.reserve(fmtStr.size());
+        for (char c : fmtStr) {
+            if (c == '"' || c == '\\') escaped.push_back('\\');
+            escaped.push_back(c);
+        }
+        std::string body;
+        if (e.contains("args") && e["args"].is_object()) {
+            for (auto& [k, v] : e["args"].items()) {
+                // BP arg names are bare identifiers; we wrap with TEXT()
+                // for the key and emit the value expression.
+                body += fmt::format(
+                    "    Args.Add(TEXT(\"{}\"), {});\n", k, EmitExpr(v));
+            }
+        }
+        // No args → drop the formatting machinery, just emit the literal.
+        if (body.empty()) {
+            return fmt::format(
+                "FText::FromString(TEXT(\"{}\"))", escaped);
+        }
+        return fmt::format(
+            "[&]{{ FFormatNamedArguments Args;\n{}    return FText::Format("
+            "NSLOCTEXT(\"BPR\", \"FormatText\", \"{}\"), Args); }}()",
+            body, escaped);
     }
 
     // DestroyActor → `Target->Destroy()` (or `this->Destroy()` when
