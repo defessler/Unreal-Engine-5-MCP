@@ -156,7 +156,26 @@ git** — CMake itself is the only external tool required.
 > building the editor target also builds the MCP server via the plugin's
 > `PreBuildSteps`. See [Plugin-driven build](#plugin-driven-build) below.
 
-### 2. Wire it into your MCP client
+### 2. Install the Claude skills (optional but recommended)
+
+The plugin ships Claude skills + an agent that teach Claude (and
+compatible clients) how to drive `bp-reader` well. Install them with:
+
+```pwsh
+pwsh Plugins/BlueprintReader/Scripts/Install-ClaudeAssets.ps1
+```
+
+```bash
+./Plugins/BlueprintReader/Scripts/install-claude-assets.sh
+```
+
+The script copies `Plugins/BlueprintReader/Claude/{agents,skills}/`
+into `<project-root>/.claude/`, where Claude Code discovers them.
+Idempotent — re-run it after every plugin update so the skills stay
+in lockstep with the wire format. See
+`Plugins/BlueprintReader/Claude/README.md` for the layout.
+
+### 3. Wire it into your MCP client
 
 The repo ships a project-scope **`.mcp.json`** at the root, so cloning +
 launching Claude Code from the project directory wires bp-reader
@@ -190,7 +209,7 @@ For other configs:
 - **Mock-only** (no UE) — drop the entire `env` block; the server defaults
   to the bundled fixtures and exposes the read tools as a demo.
 
-### 3. Try it
+### 4. Try it
 
 In Claude, reference your blueprint by content path:
 > "What variables are on `/Game/AI/BP_TestEnemy`? Find any K2Node_VariableGet

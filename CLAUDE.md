@@ -46,6 +46,14 @@ the `bp-reader` skill in `.claude/skills/bp-reader/` covers patterns,
 the wire format, and per-tool guidance. This file covers building,
 testing, and maintaining the project itself.
 
+**Source of truth for skills + agents:**
+`Plugins/BlueprintReader/Claude/{agents,skills}/` ships with the
+plugin. The `.claude/` at the project root is a deployed copy —
+maintain by editing the plugin folder and running
+`Plugins/BlueprintReader/Scripts/Install-ClaudeAssets.ps1` (or
+`install-claude-assets.sh` on Unix). Keeping skills next to the code
+means a fresh plugin pull always brings matching docs.
+
 ## Repo layout
 
 ```
@@ -312,5 +320,10 @@ the discoverability list in lockstep.
   Copilot config snippets.
 - [wiki/](wiki/) — source of truth for the GitHub Wiki (manually
   pushed to `<repo>.wiki.git` on doc changes).
-- `.claude/skills/bp-reader/SKILL.md` — guidance for *using* the MCP
-  tools (this CLAUDE.md is for *maintaining* them).
+- `Plugins/BlueprintReader/Claude/` — skills + agents that ship with
+  the plugin (this is the source-of-truth for those files; `.claude/`
+  at the project root is a deployed copy synced via the install
+  script).
+- `Plugins/BlueprintReader/Claude/skills/bp-reader/SKILL.md` —
+  guidance for *using* the MCP tools (this CLAUDE.md is for
+  *maintaining* them).
