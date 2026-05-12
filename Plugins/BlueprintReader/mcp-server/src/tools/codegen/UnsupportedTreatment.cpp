@@ -51,6 +51,34 @@ const std::vector<Treatment>& Table() {
          "the BP's named exec outputs become OnXxx delegates that need "
          "manual UFUNCTION-bound handlers in C++."},
 
+        // Delay / RetriggerableDelay / DelayUntilNextTick — the
+        // CallFunction dispatch tags these as unsupported with an
+        // inline reason; the table entries add the canonical refactor
+        // hint pointing at FTimerManager. Matcher is substring, so the
+        // more-specific keys must come first — "Delay" alone would
+        // prefix-match "DelayUntilNextTick" otherwise.
+        {"target_function=DelayUntilNextTick",
+         UnsupportedClassification::Kind::TodoComment,
+         "",
+         "DelayUntilNextTick → "
+         "GetWorld()->GetTimerManager().SetTimerForNextTick("
+         "FTimerDelegate::CreateWeakLambda(this, [this](){ /* next-tick code */ }))."},
+        {"target_function=RetriggerableDelay",
+         UnsupportedClassification::Kind::TodoComment,
+         "",
+         "RetriggerableDelay → reuse an FTimerHandle: "
+         "GetWorld()->GetTimerManager().ClearTimer(Handle) then "
+         "SetTimer(Handle, this, &ThisClass::OnDelayElapsed, Duration, "
+         "/*bLoop=*/false). The retrigger semantics fall out of the "
+         "clear-then-set pattern."},
+        {"target_function=Delay",
+         UnsupportedClassification::Kind::TodoComment,
+         "",
+         "Latent Delay → split into FTimerHandle + "
+         "GetWorld()->GetTimerManager().SetTimer(Handle, this, "
+         "&ThisClass::OnDelayElapsed, Duration, /*bLoop=*/false). The "
+         "post-delay exec flow moves into the OnDelayElapsed function."},
+
         // ----- Anim graph nodes -----
         {"K2Node_AnimNode_",
          UnsupportedClassification::Kind::TodoComment,
@@ -114,6 +142,24 @@ UnsupportedClassification ClassifyUnsupported(const nlohmann::json& u) {
     if (!u.is_object()) return out;
     std::string nodeClass = u.value("node_class", "");
     std::string guid      = u.value("guid", "");
+
+    // First try a function-level matcher when the unsupported entry
+    // carries `target_function` — covers the latent-action shapes
+    // (CallFunction(Delay), CallFunction(RetriggerableDelay), …).
+    // Synthetic key = "target_function=<name>"; matched as a substring
+    // against the table.
+    if (u.contains("target_function") && u["target_function"].is_string()) {
+        std::string key = "target_function=" + u["target_function"].get<std::string>();
+        if (const Treatment* t = FindTreatment(key)) {
+            out.kind = t->kind;
+            out.note = t->note;
+            if (out.kind == UnsupportedClassification::Kind::Approximation) {
+                out.snippet = SubstituteTemplate(t->snippetTemplate, guid, nodeClass);
+            }
+            return out;
+        }
+    }
+
     if (const Treatment* t = FindTreatment(nodeClass)) {
         out.kind = t->kind;
         out.note = t->note;
