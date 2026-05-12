@@ -90,9 +90,21 @@ drop in as additional codegen + parser pairs without touching the IR.
 ```
 
 - **BP → C++** — `transpile_function` (single function) or
-  `transpile_blueprint` (whole class with UCLASS scaffolding +
-  UPROPERTY/UFUNCTION decoration + `GetLifetimeReplicatedProps`). Pair
-  with `write_generated_source` to drop `.h`/`.cpp` into
+  `transpile_blueprint` (whole class). End-to-end verified — generated
+  source compiles cleanly via UBT into the project's editor target.
+  Output picks up Epic's UE5 conventions: `UCLASS(MinimalAPI,
+  Blueprintable)` when no API macro, `TObjectPtr<X>` for UPROPERTY
+  object refs, `VisibleAnywhere/BlueprintReadOnly` for component
+  fields, constructor with `bReplicates = true` for replicated actors,
+  forward declarations before `.generated.h`, `UFUNCTION(BlueprintPure)
+  const` inference from FunctionEntry shape, `const FString& /
+  FVector&` args for heavy types, safety defaults on primitives
+  (`bool = false`, `int = 0`), synthetic returns when the BP body
+  doesn't reach a FunctionResult, `DOREPLIFETIME_CONDITION` from
+  RepCondition, `ReplicatedUsing=` + UFUNCTION OnRep_X callbacks
+  for RepNotify, sidecar warnings for UE-reserved name collisions
+  (`TakeDamage` shadowing AActor::TakeDamage, etc.). Pair with
+  `write_generated_source` to drop `.h`/`.cpp` into
   `<Project>/Source/<Module>/Generated/`.
 - **C++ → BP** — `parse_cpp_function` produces BPIR; pipe through
   `compile_function` to materialize the BP graph.

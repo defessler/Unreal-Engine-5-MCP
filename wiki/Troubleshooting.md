@@ -325,6 +325,37 @@ editor once before relying on the MCP server. Shader compile is the
 single biggest factor; once compiled into the DDC, commandlet startup
 drops by minutes.
 
+## `Attempted to create a package with name containing double slashes` running the commandlet from Git Bash / MSYS
+
+Symptom: invoking `UnrealEditor-Cmd.exe ... -Asset=/Game/AI/BP_TestEnemy`
+from a Git Bash / MSYS shell crashes with:
+
+```
+LogWindows: Error: appError called: Fatal error:
+  Attempted to create a package with name containing double slashes.
+  PackageName: //Game/AI/BP_TestEnemy
+```
+
+Cause: MSYS path translation. Git Bash sees `/Game/AI/...` and rewrites
+it to `C:/Program Files/Git/Game/AI/...` because the first segment
+looks like a Unix absolute path. Quoting with `'//Game/...'` makes
+MSYS leave it alone but UE then sees the literal `//Game/...` (with
+double slash) and rejects it.
+
+**Fix**: set `MSYS_NO_PATHCONV=1` for the call:
+
+```bash
+MSYS_NO_PATHCONV=1 "D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "D:/Projects/UE5_MCP/UE5_MCP.uproject" \
+  -run=BlueprintReader -Op=Read -Asset=/Game/AI/BP_TestEnemy -Out=D:/temp/out.json \
+  -nullrhi -nosplash -unattended -nopause
+```
+
+Or run from PowerShell / `cmd.exe` where the issue doesn't exist.
+The MCP server itself isn't affected — it uses `CreateProcessW`
+directly without path translation. This only bites when you invoke
+the commandlet by hand from a Bash shell.
+
 ## "ImportError: Could not load module" when launching Claude with the server
 
 You're pointing at a `Debug` build of `bp-reader-mcp.exe` from a
