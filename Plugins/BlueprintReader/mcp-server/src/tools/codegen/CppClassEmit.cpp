@@ -818,9 +818,23 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         I << "    Super::GetLifetimeReplicatedProps(OutLifetimeProps);\n";
         if (doc.contains("variables") && doc["variables"].is_array()) {
             for (const auto& v : doc["variables"]) {
-                if (v.value("replicated", false)) {
-                    I << "    DOREPLIFETIME(" << className << ", "
-                      << v.value("name", "Var") << ");\n";
+                if (!v.value("replicated", false)) continue;
+                std::string varName = v.value("name", "Var");
+                // BP's RepCondition field maps directly to a COND_*
+                // specifier in DOREPLIFETIME_CONDITION. When the field
+                // is absent or "None", emit unconditional DOREPLIFETIME.
+                std::string repCond = v.value("rep_condition", std::string{});
+                if (repCond.empty() || repCond == "None") {
+                    I << "    DOREPLIFETIME(" << className << ", " << varName << ");\n";
+                } else {
+                    // Normalize to COND_ prefix. BP spells it
+                    // "OwnerOnly" / "SkipOwner" / etc.; we accept either.
+                    std::string condSpecifier =
+                        (repCond.rfind("COND_", 0) == 0)
+                            ? repCond
+                            : ("COND_" + repCond);
+                    I << "    DOREPLIFETIME_CONDITION(" << className
+                      << ", " << varName << ", " << condSpecifier << ");\n";
                 }
             }
         }

@@ -338,6 +338,47 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== Replication conditions =============================================
+
+TEST_CASE("EmitCppClass: rep_condition=OwnerOnly → DOREPLIFETIME_CONDITION") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"},
+             {"replicated", true}, {"editable", true},
+             {"rep_condition", "OwnerOnly"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource,
+        "DOREPLIFETIME_CONDITION(ABP_Enemy_Generated, Health, COND_OwnerOnly)"));
+    CHECK_FALSE(Contains(out.implSource,
+        "DOREPLIFETIME(ABP_Enemy_Generated, Health)"));
+}
+
+TEST_CASE("EmitCppClass: rep_condition with explicit COND_ prefix → passes through") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"},
+             {"replicated", true},
+             {"rep_condition", "COND_SimulatedOnly"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "COND_SimulatedOnly"));
+    CHECK_FALSE(Contains(out.implSource, "COND_COND_"));  // no double-prefix
+}
+
+TEST_CASE("EmitCppClass: rep_condition=None or absent → unconditional DOREPLIFETIME") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","A"}, {"type","float"},
+             {"replicated", true}, {"rep_condition","None"}},
+        json{{"name","B"}, {"type","int"},
+             {"replicated", true}},  // no rep_condition at all
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "DOREPLIFETIME(ABP_Enemy_Generated, A)"));
+    CHECK(Contains(out.implSource, "DOREPLIFETIME(ABP_Enemy_Generated, B)"));
+}
+
 // ===== Interface implementation ============================================
 
 TEST_CASE("EmitCppClass: implements interfaces from BPIR interfaces[]") {
