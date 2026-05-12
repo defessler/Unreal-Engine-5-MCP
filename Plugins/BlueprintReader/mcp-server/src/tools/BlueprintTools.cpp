@@ -1587,7 +1587,14 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                     cat("text",      "FText."),
                     cat("object",    "UObject reference. `sub_category_object` = the UClass path.",
                         {}, "UClass path, e.g. /Script/Engine.Actor"),
+                    cat("soft_object", "Soft (deferred-load) UObject reference. C++ form is "
+                                       "TSoftObjectPtr<X>; survives package boundaries and "
+                                       "deleted target assets.",
+                        {}, "UClass path, e.g. /Script/Engine.Texture2D"),
                     cat("class",     "UClass reference. `sub_category_object` = the meta-class.",
+                        {}, "UClass path"),
+                    cat("soft_class", "Soft UClass reference. C++ form is TSoftClassPtr<X>; "
+                                      "useful for lazy-loaded ability/weapon class references.",
                         {}, "UClass path"),
                     cat("interface", "Interface reference.",
                         {}, "UClass path of the interface"),
