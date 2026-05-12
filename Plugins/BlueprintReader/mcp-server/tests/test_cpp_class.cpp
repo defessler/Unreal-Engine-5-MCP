@@ -338,6 +338,30 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== Interface implementation ============================================
+
+TEST_CASE("EmitCppClass: implements interfaces from BPIR interfaces[]") {
+    auto cls = MakeMinimalClass();
+    cls["interfaces"] = json::array({
+        "Damageable", "BPI_Interactable", "/Script/Game.UPickupable",
+    });
+    auto out = EmitCppClass(cls);
+    // All three forms normalize to the I-prefix.
+    CHECK(Contains(out.headerSource,
+        "class ABP_Enemy_Generated : public ACharacter, "
+        "public IDamageable, "
+        "public IInteractable, "
+        "public IPickupable {"));
+}
+
+TEST_CASE("EmitCppClass: no interfaces → no extra inheritance entries") {
+    auto out = EmitCppClass(MakeMinimalClass());
+    // Bare parent, no interface listing.
+    CHECK(Contains(out.headerSource,
+        "class ABP_Enemy_Generated : public ACharacter {"));
+    CHECK_FALSE(Contains(out.headerSource, ", public I"));
+}
+
 // ===== BlueprintPure inference ============================================
 
 TEST_CASE("EmitCppClass: function with metadata.pure → BlueprintPure + const") {

@@ -679,6 +679,36 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     }
     if (!forwardDecls.empty()) H << "\n";
 
+    // BP-implemented interfaces — emit them in the inheritance list.
+    // UE convention: interface types are named `IFoo` (header form);
+    // the BP-side reference uses the `UFoo` UClass shim. We accept
+    // either form in BPIR and normalize to the `I` prefix.
+    std::vector<std::string> interfaceClasses;
+    if (doc.contains("interfaces") && doc["interfaces"].is_array()) {
+        for (const auto& iface : doc["interfaces"]) {
+            if (!iface.is_string()) continue;
+            std::string name = iface.get<std::string>();
+            // Strip /Script/Module. path prefix.
+            if (auto dot = name.find_last_of('.'); dot != std::string::npos) {
+                name = name.substr(dot + 1);
+            }
+            // Normalize prefix to `I`. BP can carry `BPI_X`, `UX`, `IX`,
+            // or bare `X`.
+            if (name.size() >= 2 && name[0] == 'I' &&
+                name[1] >= 'A' && name[1] <= 'Z') {
+                // Already I-prefixed.
+            } else if (name.size() >= 2 && name[0] == 'U' &&
+                       name[1] >= 'A' && name[1] <= 'Z') {
+                name[0] = 'I';
+            } else if (name.size() > 4 && name.substr(0, 4) == "BPI_") {
+                name = "I" + name.substr(4);
+            } else {
+                name = "I" + name;
+            }
+            interfaceClasses.push_back(name);
+        }
+    }
+
     // .generated.h must be the LAST include in any UCLASS-bearing header.
     H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
 
@@ -695,7 +725,11 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     }
     H << "class ";
     if (!opts.moduleApiMacro.empty()) H << opts.moduleApiMacro << " ";
-    H << className << " : public " << parentClass << " {\n";
+    H << className << " : public " << parentClass;
+    for (const auto& iface : interfaceClasses) {
+        H << ", public " << iface;
+    }
+    H << " {\n";
     H << "    GENERATED_BODY()\n";
     H << "public:\n";
 
