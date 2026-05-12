@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -174,6 +175,62 @@ const std::map<std::string, OpReverse>& OpReverseMap() {
     return m;
 }
 
+// ----- WorldContext injection table ---------------------------------------
+// BP hides the WorldContextObject pin on these functions and passes
+// `this` implicitly during compile. The C++ signatures still require
+// the world-context object as the first argument, so we must inject it
+// when transpiling. List is intentionally narrow — only well-known UE5
+// helpers; missing entries get rendered without the world arg and the
+// agent can patch if needed.
+const std::set<std::string>& WorldContextFunctions() {
+    static const std::set<std::string> s = {
+        // KismetSystemLibrary
+        "KismetSystemLibrary::PrintString",
+        "KismetSystemLibrary::PrintText",
+        "KismetSystemLibrary::PrintWarning",
+        "KismetSystemLibrary::SphereTraceSingle",
+        "KismetSystemLibrary::SphereTraceMulti",
+        "KismetSystemLibrary::LineTraceSingle",
+        "KismetSystemLibrary::LineTraceMulti",
+        "KismetSystemLibrary::BoxTraceSingle",
+        "KismetSystemLibrary::BoxTraceMulti",
+        "KismetSystemLibrary::CapsuleTraceSingle",
+        "KismetSystemLibrary::CapsuleTraceMulti",
+        "KismetSystemLibrary::DrawDebugLine",
+        "KismetSystemLibrary::DrawDebugBox",
+        "KismetSystemLibrary::DrawDebugSphere",
+        "KismetSystemLibrary::DrawDebugString",
+        "KismetSystemLibrary::DrawDebugArrow",
+        "KismetSystemLibrary::GetGameTimeInSeconds",
+        "KismetSystemLibrary::K2_SetTimer",
+        // GameplayStatics
+        "GameplayStatics::GetPlayerController",
+        "GameplayStatics::GetPlayerPawn",
+        "GameplayStatics::GetPlayerCharacter",
+        "GameplayStatics::GetPlayerCameraManager",
+        "GameplayStatics::GetGameMode",
+        "GameplayStatics::GetGameState",
+        "GameplayStatics::GetGameInstance",
+        "GameplayStatics::SpawnActor",
+        "GameplayStatics::SpawnActorAtLocation",
+        "GameplayStatics::SpawnEmitterAtLocation",
+        "GameplayStatics::SpawnSoundAtLocation",
+        "GameplayStatics::SpawnSound2D",
+        "GameplayStatics::PlaySoundAtLocation",
+        "GameplayStatics::PlaySound2D",
+        "GameplayStatics::OpenLevel",
+        "GameplayStatics::GetAllActorsOfClass",
+        "GameplayStatics::GetAllActorsWithTag",
+        "GameplayStatics::GetActorOfClass",
+        "GameplayStatics::ApplyDamage",
+        "GameplayStatics::ApplyPointDamage",
+        "GameplayStatics::ApplyRadialDamage",
+        // KismetMaterialLibrary (rare in actor BPs but world-aware)
+        "KismetMaterialLibrary::CreateDynamicMaterialInstance",
+    };
+    return s;
+}
+
 // ----- Emitter state ------------------------------------------------------
 struct Emitter {
     std::ostringstream out;
@@ -301,12 +358,37 @@ struct Emitter {
         if (fnName == "__bpr_get_data_table_row") {
             return "/* GetDataTableRow appears in statement position only */";
         }
+        // World-context injection: BP hides the WorldContextObject pin
+        // on most UKismetSystemLibrary / KismetMathLibrary / Gameplay-
+        // statics helpers via `HidePin=WorldContextObject` +
+        // `DefaultToSelf=WorldContextObject`. The function still takes
+        // it as its first argument at the C++ level — we inject `this`
+        // so the generated call compiles. List captures the
+        // commonly-hit functions; agent can edit the call if needed.
+        const auto& worldCtx = WorldContextFunctions();
+        bool needsThis = worldCtx.count(fnName) > 0;
+        // Also resolve unqualified-name calls — BPIR strips the qualifier
+        // for trivial calls so we recheck the bare name.
+        if (!needsThis) {
+            auto colon = fnName.rfind("::");
+            std::string bare = (colon == std::string::npos) ? fnName : fnName.substr(colon + 2);
+            std::string keyBare = "::" + bare;
+            for (const auto& k : worldCtx) {
+                if (k.size() >= keyBare.size() &&
+                    k.compare(k.size() - keyBare.size(), keyBare.size(), keyBare) == 0) {
+                    needsThis = true;
+                    break;
+                }
+            }
+        }
+
         // Default: render as Foo(a, b, c). If the name is qualified
         // (Owner::Func), keep the qualifier — the agent / user resolves
         // include + scope.
         std::string args;
+        bool first = true;
+        if (needsThis) { args = "this"; first = false; }
         if (e.contains("args") && e["args"].is_object()) {
-            bool first = true;
             for (auto& [_, v] : e["args"].items()) {
                 if (!first) args += ", ";
                 first = false;
