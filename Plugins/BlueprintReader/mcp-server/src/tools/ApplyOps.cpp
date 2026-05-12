@@ -676,10 +676,79 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     // with `op_index` so the caller can attribute warnings to a specific
     // batch operation.
     std::map<std::string, std::size_t> guidToOpIndex;
+    // Issue #8: when an op that mints a slot (`id` field) fails, every
+    // downstream op referencing `$<slotId>` previously got a generic
+    // "slot ... has not been bound" error. Track failed-slot reasons
+    // here so we can surface a much more useful message linking the
+    // downstream failure back to its upstream cause.
+    std::map<std::string, std::string, std::less<>> failedSlotReasons;
+
+    // Walk an op JSON and report the first `$slot` reference that
+    // points at a slot in `failedSlotReasons`. Returns empty string if
+    // every ref resolves cleanly (either bound, or doesn't exist).
+    auto findFailedSlotRef = [&](const nlohmann::json& op) -> std::string {
+        static constexpr const char* kRefFields[] = {
+            "from_node", "to_node", "node_id",
+        };
+        for (const char* key : kRefFields) {
+            auto it = op.find(key);
+            if (it == op.end()) continue;
+            std::string slotId;
+            if (it->is_string()) {
+                const auto& s = it->get_ref<const std::string&>();
+                if (!s.empty() && s.front() == '$') slotId = s.substr(1);
+            } else if (it->is_object()) {
+                auto refIt = it->find("ref");
+                if (refIt != it->end() && refIt->is_string()) {
+                    slotId = refIt->get<std::string>();
+                }
+            }
+            if (slotId.empty()) continue;
+            if (slots.find(slotId) != slots.end()) continue;  // bound
+            auto fIt = failedSlotReasons.find(slotId);
+            if (fIt != failedSlotReasons.end()) {
+                return fmt::format(
+                    "field \"{}\" references slot \"${}\", which was supposed to be "
+                    "bound by an earlier op that failed: {}",
+                    key, slotId, fIt->second);
+            }
+        }
+        return {};
+    };
+
     auto runDispatch = [&]() {
         for (std::size_t i = 0; i < ops.size(); ++i) {
             const auto& op = ops[i];
             std::size_t prevSlotCount = slots.size();
+            // Pre-check: if this op references a slot bound to a
+            // previously failed op, short-circuit with a rich error
+            // (issue #8). Skips dispatching entirely so we don't bother
+            // the backend with a doomed call.
+            std::string cascadedReason = findFailedSlotRef(op);
+            if (!cascadedReason.empty()) {
+                ++failed;
+                if (atomic) {
+                    throw bpr::backends::BlueprintReaderError(fmt::format(
+                        "apply_ops failed at op[{}] (op=\"{}\"): {}",
+                        i,
+                        op.contains("op") && op["op"].is_string()
+                            ? op["op"].get<std::string>() : "<missing>",
+                        cascadedReason));
+                }
+                results.push_back({
+                    {"ok", false},
+                    {"op_index", i},
+                    {"error", cascadedReason},
+                    {"cause", "upstream-slot-failed"},
+                });
+                // If this op itself names a slot, propagate the failure
+                // forward so the next dependent op gets the same rich
+                // diagnostic chain.
+                if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
+                    failedSlotReasons[idIt->get<std::string>()] = cascadedReason;
+                }
+                continue;
+            }
             try {
                 results.push_back(DispatchOp(reader, op, slots));
                 ++succeeded;
@@ -693,6 +762,12 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
                 }
             } catch (const std::exception& e) {
                 ++failed;
+                // If this op named a slot, record why it failed so the
+                // pre-check above can surface this reason to dependents.
+                if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
+                    failedSlotReasons[idIt->get<std::string>()] = fmt::format(
+                        "op[{}] failed: {}", i, e.what());
+                }
                 if (atomic) {
                     throw bpr::backends::BlueprintReaderError(fmt::format(
                         "apply_ops failed at op[{}] (op=\"{}\"): {}",
