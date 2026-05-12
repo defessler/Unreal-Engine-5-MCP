@@ -209,6 +209,16 @@ struct FBPVariable
     UPROPERTY() FString    Category;
     UPROPERTY() bool       bIsReplicated = false;
     UPROPERTY() bool       bIsEditable   = false;
+    // Extended metadata (Loop batch 2 — optional fields for richer
+    // codegen). RepCondition is BP's "Replication Condition" dropdown
+    // (None / InitialOnly / OwnerOnly / SkipOwner / SimulatedOnly /
+    // AutonomousOnly / SimulatedOrPhysics / InitialOrOwner / Custom);
+    // ExposeOnSpawn is the "Expose On Spawn" checkbox in BP variable
+    // details; RepNotifyFunc is the name of the OnRep_X callback when
+    // the variable has ReplicatedUsing/RepNotify enabled.
+    UPROPERTY() FString    RepCondition;
+    UPROPERTY() bool       bExposeOnSpawn = false;
+    UPROPERTY() FString    RepNotifyFunc;
 };
 #else
 struct BPVariable
@@ -219,6 +229,9 @@ struct BPVariable
     BPROptionalString Category;
     bool IsReplicated = false;
     bool IsEditable   = false;
+    BPROptionalString RepCondition;
+    bool ExposeOnSpawn = false;
+    BPROptionalString RepNotifyFunc;
 };
 #endif
 
@@ -490,6 +503,18 @@ inline void to_json(nlohmann::json& j, const BPVariable& v)
         {"is_replicated", v.IsReplicated},
         {"is_editable",   v.IsEditable},
     };
+    // Optional fields — only emit when non-default so existing wire
+    // consumers stay compatible. Old clients reading this don't see
+    // anything unfamiliar; new clients reading old payloads default.
+    if (v.RepCondition.has_value() && !v.RepCondition->empty()) {
+        j["rep_condition"] = *v.RepCondition;
+    }
+    if (v.ExposeOnSpawn) {
+        j["expose_on_spawn"] = true;
+    }
+    if (v.RepNotifyFunc.has_value() && !v.RepNotifyFunc->empty()) {
+        j["rep_notify_func"] = *v.RepNotifyFunc;
+    }
 }
 inline void from_json(const nlohmann::json& j, BPVariable& v)
 {
@@ -499,6 +524,16 @@ inline void from_json(const nlohmann::json& j, BPVariable& v)
     j.at("category").get_to(v.Category);
     j.at("is_replicated").get_to(v.IsReplicated);
     j.at("is_editable").get_to(v.IsEditable);
+    // Optional — older payloads omit these.
+    if (auto it = j.find("rep_condition"); it != j.end() && it->is_string()) {
+        v.RepCondition = it->get<std::string>();
+    }
+    if (auto it = j.find("expose_on_spawn"); it != j.end() && it->is_boolean()) {
+        v.ExposeOnSpawn = it->get<bool>();
+    }
+    if (auto it = j.find("rep_notify_func"); it != j.end() && it->is_string()) {
+        v.RepNotifyFunc = it->get<std::string>();
+    }
 }
 
 inline void to_json(nlohmann::json& j, const BPFunctionSummary& v)

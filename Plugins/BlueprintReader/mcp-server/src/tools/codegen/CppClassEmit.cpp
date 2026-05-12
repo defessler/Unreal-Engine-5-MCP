@@ -351,12 +351,31 @@ std::string BuildUPropertyList(const nlohmann::json& varDecl) {
         // BP variables are always Blueprint-visible.
         specs.push_back("BlueprintReadWrite");
     }
+    // Replication: prefer ReplicatedUsing= when a rep-notify callback
+    // is set on the BP variable — that's what BP's "RepNotify" toggle
+    // turns into at compile time. Falls back to plain Replicated when
+    // the variable is replicated but doesn't carry a notify function.
     if (varDecl.value("replicated", false)) {
-        specs.push_back("Replicated");
+        std::string notifyFn;
+        if (auto it = varDecl.find("rep_notify_func");
+            it != varDecl.end() && it->is_string()) {
+            notifyFn = it->get<std::string>();
+        }
+        if (!notifyFn.empty()) {
+            specs.push_back(fmt::format("ReplicatedUsing={}", notifyFn));
+        } else {
+            specs.push_back("Replicated");
+        }
     }
     if (auto it = varDecl.find("category"); it != varDecl.end() && it->is_string()
         && !it->get_ref<const std::string&>().empty()) {
         specs.push_back(fmt::format(R"(Category="{}")", it->get<std::string>()));
+    }
+    // ExposeOnSpawn → UPROPERTY meta=(ExposeOnSpawn="true"). BP's
+    // "Expose On Spawn" checkbox surfaces the variable on Spawn-style
+    // creation nodes — same meta key works for C++ callers.
+    if (varDecl.value("expose_on_spawn", false)) {
+        specs.push_back(R"(meta=(ExposeOnSpawn="true"))");
     }
     std::string out;
     for (std::size_t i = 0; i < specs.size(); ++i) {
@@ -762,6 +781,25 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     // GetLifetimeReplicatedProps signature when any var is replicated.
     if (anyReplicated) {
         H << "    virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;\n\n";
+    }
+
+    // OnRep_X callbacks for any RepNotify variables. UE's reflection
+    // requires these be UFUNCTION-decorated so the replication system
+    // can find them by name and the BP can override them.
+    if (doc.contains("variables") && doc["variables"].is_array()) {
+        bool emittedAny = false;
+        for (const auto& v : doc["variables"]) {
+            std::string notifyFn;
+            if (auto it = v.find("rep_notify_func");
+                it != v.end() && it->is_string()) {
+                notifyFn = it->get<std::string>();
+            }
+            if (notifyFn.empty()) continue;
+            H << "    UFUNCTION()\n";
+            H << "    void " << notifyFn << "();\n";
+            emittedAny = true;
+        }
+        if (emittedAny) H << "\n";
     }
 
     // UFUNCTION decls + collision-warning sweep.
