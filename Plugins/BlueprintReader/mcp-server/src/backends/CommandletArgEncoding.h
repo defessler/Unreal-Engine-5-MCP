@@ -93,15 +93,29 @@ inline std::wstring QuoteWindowsArg(std::wstring_view in) {
 }
 
 // Dispatcher: pick the right quoting strategy per arg. UE's FParse::Value
-// only kicks in for `-Key=Value` args, so inner-quote those for whitespace
-// values (issue #10). Positional args like the uproject path have no `=`
-// and UE doesn't FParse them — they just need to come through the
-// CreateProcessW → CommandLineToArgvW round trip intact, which is what
-// QuoteWindowsArg does. Codex review on PR #52 caught the regression
-// where ALL args (including the uproject path) went through the FParse
-// encoder, splitting `C:\Unreal Projects\Foo.uproject` on the space.
+// only kicks in for `-Key=Value` flag args, so inner-quote those for
+// whitespace values (issue #10). Everything else — positional paths,
+// bare flags — needs standard Windows outer quoting so the
+// CreateProcessW → CommandLineToArgvW round trip keeps the arg as one
+// argv entry.
+//
+// Detection is "starts with `-` AND contains `="; just checking for `=`
+// alone misroutes positional paths whose name happens to include `=`
+// (e.g. `C:\Foo=Unreal Projects\Game.uproject`, which is a legal NTFS
+// path). Codex review on PR #61 caught that edge case — the original
+// dispatcher would have split it on the embedded `=` as if it were a
+// key/value pair and broken commandlet launch for that directory.
+//
+// History:
+//   PR #52 original: ALL args → FParse encoder → broke positional paths
+//     with spaces (`C:\Unreal Projects\Foo.uproject`)
+//   PR #61 fixup: `=` switch → broke positional paths with literal `=`
+//   This commit: `-` prefix + `=` switch → handles both
 inline std::wstring EncodeArg(std::wstring_view arg) {
-    if (arg.find(L'=') != std::wstring_view::npos) {
+    const bool bLooksLikeOption =
+        !arg.empty() && arg.front() == L'-' &&
+        arg.find(L'=') != std::wstring_view::npos;
+    if (bLooksLikeOption) {
         return EncodeArgForFParse(arg);
     }
     return QuoteWindowsArg(arg);
