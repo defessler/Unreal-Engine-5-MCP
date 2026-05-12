@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace bpr::tools {
 
@@ -352,6 +353,21 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
 
 namespace {
 
+// Trim trailing zeros from a BP-serialized float string. UE serializes
+// "100.0" as "100.000000" — we render that as "100.0f" rather than
+// "100.000000f" so the generated C++ reads cleanly. Preserves a single
+// trailing zero after the decimal point ("0" -> "0.0", not "0.").
+std::string TrimFloatDefault(std::string_view in) {
+    std::string s(in);
+    auto dot = s.find('.');
+    if (dot == std::string::npos) return s + ".0";
+    // Trim trailing zeros after the decimal point, but keep at least
+    // one digit after the dot so we don't end up with bare "100.".
+    // We scan from the right while we're past `dot+1` and the char is '0'.
+    while (s.size() > dot + 2 && s.back() == '0') s.pop_back();
+    return s;
+}
+
 // Render a BPIR variable as a UPROPERTY decl + initializer.
 //   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Stats", Replicated)
 //   float Health = 100.0f;
@@ -366,24 +382,56 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
         // Defensive: we can't parse arbitrary BP default strings to
         // C++ initializers, but for primitives the BP serialization
         // matches C++ literal syntax closely enough (e.g. "100.000000"
-        // → "100.000000f", "true" → "true", "/Script/..." object refs
+        // → "100.0f", "true" → "true", "/Script/..." object refs
         // we punt on).
         if (defaultStr == "true" || defaultStr == "false") {
             line += fmt::format(" = {}", defaultStr);
         } else if (cppType == "float" || cppType == "double") {
-            line += fmt::format(" = {}f", defaultStr);
+            // BP often serializes floats with trailing zeros — trim
+            // for readability. Mark with `f` only on float (not double).
+            std::string trimmed = TrimFloatDefault(defaultStr);
+            line += (cppType == "float")
+                ? fmt::format(" = {}f", trimmed)
+                : fmt::format(" = {}",  trimmed);
         } else if (cppType.find("int") == 0 || cppType == "uint8") {
             // Strip trailing decimals from BP's "0.000000" form on int fields.
             std::string trimmed = defaultStr;
             auto dot = trimmed.find('.');
             if (dot != std::string::npos) trimmed = trimmed.substr(0, dot);
             line += fmt::format(" = {}", trimmed);
+        } else if (cppType == "FString") {
+            line += fmt::format(" = TEXT(\"{}\")", defaultStr);
+        } else if (cppType == "FName") {
+            line += fmt::format(" = TEXT(\"{}\")", defaultStr);
         }
         // Other types: skip the inline default. Constructor body or
         // BeginPlay can set them later.
     }
     line += ";\n";
     return line;
+}
+
+// UE base-class methods that are commonly virtual in the lineage —
+// emitting our own `UFUNCTION() bool TakeDamage(float)` shadows the
+// inherited `virtual float AActor::TakeDamage(float, FDamageEvent, ...)`
+// instead of overriding it. We detect these and add a sidecar warning
+// so the agent knows to either rename or refactor to the real
+// override signature.
+const std::unordered_set<std::string>& UeReservedMethodNames() {
+    static const std::unordered_set<std::string> s = {
+        // AActor
+        "TakeDamage", "Tick", "BeginPlay", "EndPlay", "PostInitProperties",
+        "PreInitializeComponents", "PostInitializeComponents", "Destroyed",
+        "GetActorLocation", "SetActorLocation", "GetActorRotation",
+        "SetActorRotation", "GetActorScale3D", "SetActorScale3D",
+        // APawn
+        "PossessedBy", "UnPossessed", "Restart",
+        // ACharacter
+        "Jump", "StopJumping", "Landed", "Falling", "OnLanded",
+        // UObject
+        "PostLoad", "PostInitProperties", "Serialize",
+    };
+    return s;
 }
 
 // Render UFUNCTION decl for the header.
@@ -527,15 +575,51 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         if (!doc["variables"].empty()) H << "\n";
     }
 
+    // Detect whether we're an Actor-derived class — drives both the
+    // constructor (bReplicates) emit and the collision check against
+    // reserved virtual methods.
+    bool isActorDerived = !parentClass.empty() && parentClass[0] == 'A';
+
+    // Constructor: required when the class needs runtime configuration
+    // we can express in C++ (e.g. enabling replication so the
+    // DOREPLIFETIME registrations actually take effect). Without
+    // `bReplicates = true`, registering replicated UPROPERTYs is a no-op
+    // at runtime — silently wrong, very hard to debug. Emit one
+    // whenever we have replicated vars on an Actor-derived class.
+    bool emitConstructor = isActorDerived && anyReplicated;
+    if (emitConstructor) {
+        H << "    " << className << "();\n\n";
+    }
+
     // GetLifetimeReplicatedProps signature when any var is replicated.
     if (anyReplicated) {
         H << "    virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;\n\n";
     }
 
-    // UFUNCTION decls.
+    // UFUNCTION decls + collision-warning sweep.
     if (doc.contains("functions") && doc["functions"].is_array()) {
         for (const auto& fn : doc["functions"]) {
             H << RenderUFunctionDecl(fn);
+            // Collision check — emitting our own `UFUNCTION() bool
+            // TakeDamage(float)` shadows the inherited UE virtual rather
+            // than overriding it. Surface a sidecar note so the agent
+            // knows to rename or convert to a real override.
+            std::string fnName = fn.value("name", "");
+            if (UeReservedMethodNames().count(fnName)) {
+                nlohmann::json warn = {
+                    {"node_class", "<name-collision>"},
+                    {"function",   fnName},
+                    {"parent",     parentClass},
+                    {"reason",
+                        fmt::format(
+                            "Generated UFUNCTION '{}' shadows the inherited UE "
+                            "virtual method on '{}'. Rename (e.g. '{}{}') or "
+                            "refactor to the real override signature.",
+                            fnName, parentClass, "Bp_", fnName)},
+                    {"treatment", "todo_comment"},
+                };
+                out.notes.push_back(std::move(warn));
+            }
         }
     }
     H << "};\n";
@@ -549,6 +633,16 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         I << "#include \"Net/UnrealNetwork.h\"\n";
     }
     I << "\n";
+
+    // Constructor body: enable replication so the DOREPLIFETIME calls
+    // below actually register at runtime. Without this, every
+    // Replicated UPROPERTY silently fails to replicate — one of the
+    // top BP-to-C++ port footguns.
+    if (emitConstructor) {
+        I << className << "::" << className << "() {\n";
+        I << "    bReplicates = true;\n";
+        I << "}\n\n";
+    }
 
     if (anyReplicated) {
         I << "void " << className << "::GetLifetimeReplicatedProps("
