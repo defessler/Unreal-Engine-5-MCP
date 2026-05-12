@@ -88,9 +88,13 @@ std::string MapInner(std::string_view inner, bool forMember) {
             return std::string("U") + std::string(bare);
         };
 
-        // Wrap rendered class with TObjectPtr<> for member context,
-        // bare-pointer for arg / local context.
-        auto wrap = [forMember](const std::string& cls) {
+        const bool isSoft = (name == "soft_object");
+        // Wrap rendered class for member context. Soft refs always use
+        // TSoftObjectPtr (their whole point is deferred loading + safe
+        // disk references); hard refs use TObjectPtr in member context,
+        // raw pointer in arg / local context.
+        auto wrap = [forMember, isSoft](const std::string& cls) {
+            if (isSoft) return std::string("TSoftObjectPtr<") + cls + ">";
             return forMember
                 ? std::string("TObjectPtr<") + cls + ">"
                 : cls + "*";
@@ -112,6 +116,13 @@ std::string MapInner(std::string_view inner, bool forMember) {
         return wrap(renderBare(bare));
     }
     if (name == "class" || name == "soft_class") {
+        // Soft class refs survive package boundaries — TSoftClassPtr is
+        // the canonical UE5 type. Hard class refs use TSubclassOf which
+        // gives compile-time type safety + the editor's class picker.
+        if (name == "soft_class") {
+            if (sub.empty()) return "TSoftClassPtr<UObject>";
+            return std::string("TSoftClassPtr<") + std::string(sub) + ">";
+        }
         if (sub.empty()) return "UClass*";
         return std::string("TSubclassOf<") + std::string(sub) + ">";
     }
