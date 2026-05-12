@@ -5,19 +5,31 @@ Blueprint-introspection / mutation / BP↔C++ transpile tools to MCP
 clients (Claude Code, Claude Desktop, Copilot, ChatGPT bridge). Two
 halves:
 
-- **`Plugins/BlueprintReader/`** — Editor-only UE plugin:
-  - `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — dispatches
-    every read + write op (`-Op=List|Read|Graph|Function|Variables|
-    Components|Find|AddVariable|...`). Long-lived `-Daemon` mode reads
-    newline-delimited commandlet-arg lines from stdin so one editor
-    process serves many tool calls.
-  - `BlueprintReaderLiveServer` — TCP listener that lets the MCP server
-    talk to a running editor without spawning a second commandlet
-    daemon. Auto-publishes port + token via
-    `<Project>/Saved/bp-reader-live.json`.
-  - `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
-    synthesizes `Content/AI/BP_TestEnemy.uasset` and `BP_TestPickup.uasset`
-    used by the live integration tests.
+- **`Plugins/BlueprintReader/`** — two-module UE plugin (correct
+  isolation: `Type:"Editor"` modules are stripped from non-editor
+  targets by UBT automatically; runtime module ships in both):
+  - **`BlueprintReaderEditor`** (Type=Editor) — full BP introspection
+    + write tools. Loaded only in editor builds.
+    - `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — dispatches
+      every read + write op (`-Op=List|Read|Graph|Function|Variables|
+      Components|Find|AddVariable|...`). Long-lived `-Daemon` mode reads
+      newline-delimited commandlet-arg lines from stdin so one editor
+      process serves many tool calls.
+    - `BlueprintReaderLiveServer` — TCP listener that lets the MCP server
+      talk to a running editor without spawning a second commandlet
+      daemon. Auto-publishes port + token via
+      `<Project>/Saved/bp-reader-live.json`.
+    - `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
+      synthesizes `Content/AI/BP_TestEnemy.uasset` and
+      `BP_TestPickup.uasset` used by the live integration tests.
+  - **`BlueprintReaderRuntime`** (Type=Runtime) — read-only BP
+    introspection via UClass reflection. Loads in editor AND packaged
+    builds. Reads asset-registry entries, parent class, interfaces,
+    UPROPERTY-reflected variables (with CDO defaults), UFUNCTION
+    signatures, components from SCS / CDO. Cannot read source-level
+    K2 graphs (stripped during cook) — `graphs[]` returns empty.
+    Wired through two console commands for in-game triage:
+    `bp_reader.list <Path>` and `bp_reader.read <AssetPath>`.
 - **`Plugins/BlueprintReader/mcp-server/`** — Standalone C++20 MCP
   server, vendored inside the plugin so the whole thing ships as one
   unit. JSON-RPC 2.0 over stdio. Backends: `mock` (fixtures only, no
@@ -43,6 +55,9 @@ UE5_MCP/                                      ← project root
 ├── Plugins/BlueprintReader/                    plugin ships as one unit
 │   ├── BlueprintReader.uplugin                 PreBuildSteps run Build-MCPServer.ps1
 │   ├── Scripts/Build-MCPServer.ps1             plugin-driven cmake build
+│   ├── Source/BlueprintReaderRuntime/          runtime BP introspection (loads in cooked builds)
+│   │   ├── Public/                             BlueprintRuntimeIntrospector, JSON output
+│   │   └── Private/                            impls + bp_reader.{list,read} console cmds
 │   ├── Source/BlueprintReaderEditor/
 │   │   ├── Public/                             BlueprintReaderTypes, Introspector,
 │   │   │                                       WireJson, LiveServer, *Commandlet.h
