@@ -16,6 +16,11 @@
 	"EnabledByDefault": true,
 	"Modules": [
 		{
+			"Name": "BlueprintReaderRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "BlueprintReaderEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"

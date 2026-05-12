@@ -20,6 +20,21 @@ Two backends:
   (one editor process reused across calls) so per-call cost is ~30 ms after
   the initial ~5 s editor cold start.
 
+The plugin ships as two modules with proper isolation:
+- **`BlueprintReaderEditor`** (`Type:"Editor"`) — full BP introspection
+  + write tools. Loaded only in editor builds; UBT excludes it from
+  packaged Game / Server / Client targets automatically.
+- **`BlueprintReaderRuntime`** (`Type:"Runtime"`) — read-only BP
+  introspection via UClass reflection. Loads in both editor and
+  packaged builds, so you can introspect a shipped game's blueprints
+  (asset-registry list, class hierarchy, interfaces, UPROPERTY
+  variables with CDO defaults, UFUNCTION signatures, components from
+  SCS / CDO). Source-level K2 graphs aren't available in cooked
+  builds (stripped during cook), so `graphs[]` comes back empty —
+  everything else round-trips. Two console commands wired:
+  `bp_reader.list <Path>` and `bp_reader.read <AssetPath>` so you can
+  triage cooked-game BP shapes without leaving the in-game console.
+
 ## Tools
 
 119 tools across 21 categories — see the
