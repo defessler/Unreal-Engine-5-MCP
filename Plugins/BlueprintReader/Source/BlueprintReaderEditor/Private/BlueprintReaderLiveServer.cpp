@@ -280,6 +280,57 @@ TUniquePtr<FServerState> GState;
 FLiveServer::FLiveServer() {}
 FLiveServer::~FLiveServer() { Stop(); }
 
+// Helper: try to bind+listen on a given port. On success populates
+// OutSocket + OutBoundPort and returns true. On failure logs the
+// reason, destroys any partial socket, and returns false so the
+// caller can retry with a different port.
+static bool TryBindAndListen(ISocketSubsystem* Sub, int32 PortToTry,
+                             FSocket*& OutSocket, int32& OutBoundPort)
+{
+    OutSocket = Sub->CreateSocket(NAME_Stream, TEXT("BPRLive"),
+                                  FNetworkProtocolTypes::IPv4);
+    if (!OutSocket)
+    {
+        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: CreateSocket failed"));
+        return false;
+    }
+    // SO_REUSEADDR before bind: lets us reclaim the same port immediately
+    // after a previous editor instance exits, even while its socket is
+    // still in TIME_WAIT (~30-60 s window). Without this, killing the
+    // editor and relaunching almost always falls back to ephemeral
+    // because the cached port is technically "in use" by the kernel.
+    // Loopback-only bind makes the security implication negligible —
+    // the only thing that can bind to 127.0.0.1:<our port> is something
+    // running with our user credentials, which already has full access
+    // to our process anyway.
+    OutSocket->SetReuseAddr(true);
+    TSharedRef<FInternetAddr> BindAddr = Sub->CreateInternetAddr();
+    BindAddr->SetIp(0x7F000001);  // 127.0.0.1 in network-order-agnostic form
+    BindAddr->SetPort(FMath::Max(0, PortToTry));
+    if (!OutSocket->Bind(*BindAddr))
+    {
+        // Common: port-in-use after a crashed editor that didn't free
+        // the cached port (TIME_WAIT) or a real port conflict. Caller
+        // decides whether to fall back to ephemeral.
+        UE_LOG(LogBlueprintReaderLive, Log,
+            TEXT("FLiveServer: bind to 127.0.0.1:%d declined"), PortToTry);
+        Sub->DestroySocket(OutSocket);
+        OutSocket = nullptr;
+        return false;
+    }
+    if (!OutSocket->Listen(8))
+    {
+        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: listen() failed"));
+        Sub->DestroySocket(OutSocket);
+        OutSocket = nullptr;
+        return false;
+    }
+    TSharedRef<FInternetAddr> BoundAddr = Sub->CreateInternetAddr();
+    OutSocket->GetAddress(*BoundAddr);
+    OutBoundPort = BoundAddr->GetPort();
+    return true;
+}
+
 bool FLiveServer::Start(int32 Port)
 {
     if (Listener.IsValid())
@@ -299,15 +350,42 @@ bool FLiveServer::Start(int32 Port)
         }
     }
 
-    // Resolve port: explicit arg > env var > 0 (kernel picks ephemeral).
+    // Resolve port. Priority:
+    //   1. Explicit `Port` arg (test / programmatic override)
+    //   2. `BP_READER_LIVE_PORT` env var
+    //   3. Persistent cache from a previous successful bind (this is
+    //      what gives "relaunch keeps the same port" behavior — MCP
+    //      clients that already know the port don't need to re-probe
+    //      the handshake file after every editor restart)
+    //   4. 0 → kernel picks an ephemeral port
+    //
+    // The cache is best-effort: if the cached port is now occupied
+    // (another editor instance, a process that grabbed it during the
+    // shutdown gap, port still in TIME_WAIT after a crash), we fall
+    // back to ephemeral and overwrite the cache with the new port.
     int32 RequestedPort = Port;
+    bool bPortFromExplicitSource = (Port != 0);
     if (RequestedPort == 0)
     {
         FString EnvPort = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_PORT"));
-        if (!EnvPort.IsEmpty()) RequestedPort = FCString::Atoi(*EnvPort);
+        if (!EnvPort.IsEmpty())
+        {
+            RequestedPort = FCString::Atoi(*EnvPort);
+            bPortFromExplicitSource = true;
+        }
     }
-    // RequestedPort 0 means "let the kernel pick a free port" — no longer
-    // a "disabled" sentinel.
+    int32 CachedPortAttempted = 0;
+    if (RequestedPort == 0 && !bPortFromExplicitSource)
+    {
+        const int32 Cached = ReadCachedPort();
+        if (Cached > 0)
+        {
+            RequestedPort = Cached;
+            CachedPortAttempted = Cached;
+            UE_LOG(LogBlueprintReaderLive, Display,
+                TEXT("FLiveServer: trying cached port %d from previous run"), Cached);
+        }
+    }
 
     // Resolve token: env var override > random 128-bit GUID.
     ExpectedToken = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LIVE_TOKEN"));
@@ -320,44 +398,39 @@ bool FLiveServer::Start(int32 Port)
                       + FGuid::NewGuid().ToString(EGuidFormats::Digits);
     }
 
-    // Loopback-only bind. We bind the socket ourselves (rather than
-    // using FTcpListener's FIPv4Endpoint constructor) so we can pass
-    // port 0 and discover the kernel-picked port via GetAddress.
     ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
     if (!SocketSubsystem)
     {
         UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: no socket subsystem"));
         return false;
     }
-    ListenerSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("BPRLive"),
-                                                   FNetworkProtocolTypes::IPv4);
-    if (!ListenerSocket)
+
+    // First bind attempt — at RequestedPort (cached, env-var, or 0).
+    if (!TryBindAndListen(SocketSubsystem, RequestedPort, ListenerSocket, BoundPort))
     {
-        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: CreateSocket failed"));
-        return false;
+        // Bind failure paths:
+        //  - Explicit source (env var / arg) → don't second-guess the
+        //    user; surface the error so they notice the port conflict.
+        //  - Cached source → silently fall back to ephemeral. The cache
+        //    is a hint, not a requirement, and dropping back is the
+        //    whole point of having a fallback.
+        //  - Otherwise (port was already 0) → unrecoverable.
+        if (bPortFromExplicitSource || CachedPortAttempted == 0)
+        {
+            UE_LOG(LogBlueprintReaderLive, Error,
+                TEXT("FLiveServer: bind failed on requested port %d"), RequestedPort);
+            return false;
+        }
+        UE_LOG(LogBlueprintReaderLive, Display,
+            TEXT("FLiveServer: cached port %d unavailable; falling back to ephemeral"),
+            CachedPortAttempted);
+        if (!TryBindAndListen(SocketSubsystem, 0, ListenerSocket, BoundPort))
+        {
+            UE_LOG(LogBlueprintReaderLive, Error,
+                TEXT("FLiveServer: ephemeral fallback also failed"));
+            return false;
+        }
     }
-    TSharedRef<FInternetAddr> BindAddr = SocketSubsystem->CreateInternetAddr();
-    BindAddr->SetIp(0x7F000001);  // 127.0.0.1 in network-order-agnostic form
-    BindAddr->SetPort(FMath::Max(0, RequestedPort));
-    if (!ListenerSocket->Bind(*BindAddr))
-    {
-        UE_LOG(LogBlueprintReaderLive, Error,
-            TEXT("FLiveServer: bind to 127.0.0.1:%d failed (port in use?)"), RequestedPort);
-        SocketSubsystem->DestroySocket(ListenerSocket);
-        ListenerSocket = nullptr;
-        return false;
-    }
-    if (!ListenerSocket->Listen(8))
-    {
-        UE_LOG(LogBlueprintReaderLive, Error, TEXT("FLiveServer: listen() failed"));
-        SocketSubsystem->DestroySocket(ListenerSocket);
-        ListenerSocket = nullptr;
-        return false;
-    }
-    // Discover the actual bound port — needed when RequestedPort was 0.
-    TSharedRef<FInternetAddr> BoundAddr = SocketSubsystem->CreateInternetAddr();
-    ListenerSocket->GetAddress(*BoundAddr);
-    BoundPort = BoundAddr->GetPort();
 
     // Hand the prebound socket to FTcpListener. Note: FSocket& ctor
     // does NOT take ownership — we destroy ListenerSocket in Stop().
@@ -367,6 +440,16 @@ bool FLiveServer::Start(int32 Port)
     GState = MakeUnique<FServerState>();
     UE_LOG(LogBlueprintReaderLive, Display,
         TEXT("FLiveServer listening on 127.0.0.1:%d"), BoundPort);
+
+    // Persist the bound port for the next launch. Skip when an env var
+    // or explicit arg forced the port — that caller wants control and
+    // shouldn't have their next run silently overridden by us. When
+    // the cached port worked, the write is a no-op-shaped overwrite
+    // (same value); harmless.
+    if (!bPortFromExplicitSource)
+    {
+        WriteCachedPort(BoundPort);
+    }
 
     // Drop the handshake file so the MCP server can discover port +
     // token automatically. Failure here is non-fatal — explicit env-var
@@ -455,6 +538,61 @@ bool FLiveServer::WriteHandshakeFile()
     UE_LOG(LogBlueprintReaderLive, Display,
         TEXT("Wrote live-handshake file: %s (port=%d)"), *Path, BoundPort);
     return true;
+}
+
+FString FLiveServer::PortCacheFilePath()
+{
+    // Separate file from the handshake — the handshake is deleted on
+    // editor shutdown so MCP probes fail fast against a dead editor;
+    // the port cache survives so the next launch can reuse the port.
+    return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("bp-reader-live-port.json"));
+}
+
+int32 FLiveServer::ReadCachedPort()
+{
+    const FString Path = PortCacheFilePath();
+    if (!IFileManager::Get().FileExists(*Path)) return 0;
+    FString Body;
+    if (!FFileHelper::LoadFileToString(Body, *Path)) return 0;
+
+    // Minimal one-key JSON, parsed by the same JsonReader pattern the
+    // rest of the plugin uses. Tolerant of pretty-printed or compact
+    // forms; any malformed payload returns 0 (treat as cache miss).
+    TSharedPtr<FJsonObject> Obj;
+    TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Body);
+    if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) return 0;
+    int32 Port = 0;
+    Obj->TryGetNumberField(TEXT("port"), Port);
+
+    // Sanity: must be a legal user-space TCP port. Reject negatives,
+    // zero (means "ephemeral", not a real cache), and privileged
+    // ports (<1024) which we should never have bound to in the first
+    // place but defend against corrupted caches.
+    if (Port < 1024 || Port > 65535) return 0;
+    return Port;
+}
+
+void FLiveServer::WriteCachedPort(int32 Port)
+{
+    if (Port < 1024 || Port > 65535)
+    {
+        // Don't overwrite the cache with garbage. The bind path
+        // shouldn't ever produce an out-of-range port, but if it
+        // somehow did we'd rather keep last good value than persist
+        // bad data.
+        return;
+    }
+    const FString Path = PortCacheFilePath();
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+    const FString Json = FString::Printf(TEXT("{\"port\":%d}\n"), Port);
+    if (!FFileHelper::SaveStringToFile(Json, *Path,
+            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+            &IFileManager::Get(), FILEWRITE_EvenIfReadOnly))
+    {
+        UE_LOG(LogBlueprintReaderLive, Verbose,
+            TEXT("Could not write port cache %s; next launch will be ephemeral"),
+            *Path);
+    }
 }
 
 void FLiveServer::DeleteHandshakeFile()
