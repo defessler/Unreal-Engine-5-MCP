@@ -287,7 +287,23 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
     auto match = [&](const BPNode& n) {
         if (!matchKind(n)) return false;
         if (query.empty()) return true;
-        return ContainsCI(n.Class, query) || ContainsCI(n.Title, query);
+        if (ContainsCI(n.Class, query) || ContainsCI(n.Title, query)) return true;
+        // Also match against meta.targetFunction / meta.variableName so
+        // searches by function name find nodes whose title is operator-
+        // aliased (e.g. Greater_IntInt → "integer > integer"). Issue #12.
+        if (n.Meta.is_object()) {
+            // Accept both camelCase (what the plugin emits) and snake_case
+            // (what the mock fixtures use). Either is a valid wire shape;
+            // the discrepancy predates this fix.
+            for (const char* key : {"targetFunction", "function_name",
+                                    "variableName",   "variable_name"}) {
+                auto it = n.Meta.find(key);
+                if (it != n.Meta.end() && it->is_string()) {
+                    if (ContainsCI(it->get<std::string>(), query)) return true;
+                }
+            }
+        }
+        return false;
     };
     // find_node spans every graph in the BP, so each hit carries the
     // graph it lives in — otherwise the caller has no way to reach

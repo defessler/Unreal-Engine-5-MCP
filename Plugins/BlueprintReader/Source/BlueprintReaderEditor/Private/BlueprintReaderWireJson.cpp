@@ -237,7 +237,38 @@ namespace
 			{
 				const bool bClassMatch = N.ClassName.ToLower().Contains(LowerQuery);
 				const bool bTitleMatch = N.Title.ToLower().Contains(LowerQuery);
-				if (!bClassMatch && !bTitleMatch) continue;
+				// Also match against meta.targetFunction (CallFunction /
+				// CallParentFunction) and meta.targetVariable
+				// (VariableGet/Set). Operator nodes like
+				// K2Node_CallFunction whose function is Greater_IntInt
+				// render as "integer > integer" — the agent that just
+				// spawned the node via `add_node function=Greater_IntInt`
+				// would naturally search for "Greater" and miss the hit
+				// without this fallback (issue #12).
+				bool bExtrasMatch = false;
+				if (!bClassMatch && !bTitleMatch)
+				{
+					// Accept both camelCase (the canonical plugin emit
+					// names) and snake_case (the mock-fixture variants)
+					// — keeps live + mock backends matching identically
+					// regardless of which side the query goes through.
+					const TCHAR* ExtrasKeys[] = {
+						TEXT("targetFunction"), TEXT("function_name"),
+						TEXT("variableName"),   TEXT("variable_name"),
+					};
+					for (const TCHAR* Key : ExtrasKeys)
+					{
+						if (const FString* V = N.Extras.Find(Key))
+						{
+							if (V->ToLower().Contains(LowerQuery))
+							{
+								bExtrasMatch = true;
+								break;
+							}
+						}
+					}
+				}
+				if (!bClassMatch && !bTitleMatch && !bExtrasMatch) continue;
 			}
 			// find_node spans every graph in the blueprint, so each hit
 			// needs to carry the graph it came from — otherwise the
