@@ -33,6 +33,8 @@
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "HAL/PlatformMisc.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
@@ -534,7 +536,36 @@ namespace
 		const bool bOk = UPackage::SavePackage(Package, BP, *FileName, Args);
 		if (!bOk)
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("SavePackage failed: %s"), *FileName);
+			// SavePackage failure under the commandlet is most often a
+			// Windows sharing violation — the Unreal Editor is open and
+			// holds an exclusive write handle on the .uasset (issue #2).
+			// Probe by trying to open the file for exclusive write
+			// ourselves; if that fails, surface a specific message
+			// pointing at the right fix (close the editor, or use the
+			// auto/live backend which talks to the editor in-process and
+			// doesn't hit the file lock).
+			IFileHandle* Probe = FPlatformFileManager::Get().GetPlatformFile()
+				.OpenWrite(*FileName, /*bAppend=*/false, /*bAllowRead=*/false);
+			if (Probe == nullptr)
+			{
+				delete Probe;  // safe on nullptr
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("SavePackage failed: %s — file is locked. The Unreal Editor "
+					     "is probably open and holds an exclusive write handle. Either "
+					     "close the editor before running commandlet writes, or set "
+					     "BP_READER_BACKEND=auto so writes route through the editor's "
+					     "in-process TCP server (issue #2)."),
+					*FileName);
+			}
+			else
+			{
+				delete Probe;
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("SavePackage failed: %s — file is writable, so this isn't a "
+					     "file-lock issue; check the editor log above for the underlying "
+					     "compile/serialization error"),
+					*FileName);
+			}
 		}
 		return bOk;
 	}
