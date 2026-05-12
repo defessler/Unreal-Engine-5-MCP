@@ -82,6 +82,7 @@ struct BPPinLink
 {
     BPRString NodeId;
     BPRString PinId;
+    BPRString PinName;  // additive; older fixtures decode it as empty
 };
 struct BPPin
 {
@@ -414,12 +415,22 @@ inline void from_json(const nlohmann::json& j, BPPinType& v)
 
 inline void to_json(nlohmann::json& j, const BPPinLink& v)
 {
-    j = nlohmann::json{ {"node_id", v.NodeId}, {"pin_id", v.PinId} };
+    j = nlohmann::json{
+        {"node_id", v.NodeId},
+        {"pin_id",  v.PinId},
+        {"pin_name", v.PinName},
+    };
 }
 inline void from_json(const nlohmann::json& j, BPPinLink& v)
 {
     j.at("node_id").get_to(v.NodeId);
     j.at("pin_id").get_to(v.PinId);
+    // pin_name was added later — older wire shapes / fixtures may omit it.
+    if (j.contains("pin_name") && j["pin_name"].is_string()) {
+        j["pin_name"].get_to(v.PinName);
+    } else {
+        v.PinName.clear();
+    }
 }
 
 inline void to_json(nlohmann::json& j, const BPPin& v)
