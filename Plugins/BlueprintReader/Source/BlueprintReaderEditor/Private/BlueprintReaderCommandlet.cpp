@@ -2207,8 +2207,10 @@ namespace
 			// that expr's output). The wire model is "downstream-pointing":
 			// expressions point at the ones that feed them, so we flip to
 			// a "from→to" representation that matches the rest of our API.
-			for (FExpressionInput* In : E->GetInputsView())
+			// FExpressionInputIterator replaces GetInputsView (deprecated 5.5).
+			for (FExpressionInputIterator It{ E }; It; ++It)
 			{
+				FExpressionInput* In = It.Input;
 				if (!In || !In->Expression) continue;
 				auto C = MakeShared<FJsonObject>();
 				C->SetStringField(TEXT("from_node"), In->Expression->GetName());
