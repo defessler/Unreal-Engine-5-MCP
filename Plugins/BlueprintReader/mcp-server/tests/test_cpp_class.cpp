@@ -338,6 +338,39 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== BlueprintPure inference ============================================
+
+TEST_CASE("EmitCppClass: function with metadata.pure → BlueprintPure + const") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name","GetHealth"},
+            {"metadata", json{{"pure", true}}},
+            {"outputs", json::array({json{{"name","Result"},{"type","float"}}})},
+            {"body",    json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "UFUNCTION(BlueprintPure)"));
+    CHECK(Contains(out.headerSource, "float GetHealth() const;"));
+    CHECK(Contains(out.implSource,   "float ABP_Enemy_Generated::GetHealth() const {"));
+}
+
+TEST_CASE("EmitCppClass: function without metadata.pure → BlueprintCallable, no const") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name","DoStuff"},
+            {"outputs", json::array({json{{"name","Result"},{"type","float"}}})},
+            {"body",    json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "UFUNCTION(BlueprintCallable)"));
+    CHECK(Contains(out.headerSource, "float DoStuff();"));
+    CHECK_FALSE(Contains(out.headerSource, "const;"));
+}
+
 // ===== Forward declarations (UE convention: forward-decl in .h, include in .cpp)
 
 TEST_CASE("EmitCppClass: UPROPERTY object refs add forward declarations") {
