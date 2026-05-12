@@ -126,9 +126,20 @@ TEST_CASE("EmitCppClass: minimal class produces compile-shaped header") {
     CHECK(Contains(out.headerSource, "#include \"CoreMinimal.h\""));
     CHECK(Contains(out.headerSource, "GameFramework/Character.h"));
     CHECK(Contains(out.headerSource, "BP_Enemy_Generated.generated.h"));
-    CHECK(Contains(out.headerSource, "UCLASS(Blueprintable)"));
+    // No module API macro passed → MinimalAPI keeps Cast<> working
+    // across modules without exporting every symbol.
+    CHECK(Contains(out.headerSource, "UCLASS(MinimalAPI, Blueprintable)"));
     CHECK(Contains(out.headerSource, "class ABP_Enemy_Generated : public ACharacter"));
     CHECK(Contains(out.headerSource, "GENERATED_BODY()"));
+}
+
+TEST_CASE("EmitCppClass: module_api_macro present → no MinimalAPI") {
+    CppClassEmitOptions opts;
+    opts.moduleApiMacro = "MYGAME_API";
+    auto out = EmitCppClass(MakeMinimalClass(), opts);
+    CHECK(Contains(out.headerSource, "UCLASS(Blueprintable)"));
+    CHECK_FALSE(Contains(out.headerSource, "MinimalAPI"));
+    CHECK(Contains(out.headerSource, "class MYGAME_API ABP_Enemy_Generated"));
 }
 
 TEST_CASE("EmitCppClass: variables emit UPROPERTY decls + initializers") {
@@ -325,6 +336,68 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     // "100.000000" → "100.0f", not "100.000000f".
     CHECK(Contains(out.headerSource, "Health = 100.0f"));
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
+}
+
+// ===== TObjectPtr for UPROPERTY object members (UE5 convention) ============
+
+TEST_CASE("EmitCppClass: UPROPERTY object refs wrap in TObjectPtr<>") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","AggroTarget"}, {"type","object:Actor"},
+             {"editable", true}, {"category","AI"}},
+    });
+    auto out = EmitCppClass(cls);
+    // Epic switched the canonical UPROPERTY pointer form in 5.0 — raw
+    // pointers still compile but TObjectPtr is the recommended convention.
+    CHECK(Contains(out.headerSource, "TObjectPtr<AActor> AggroTarget;"));
+    CHECK_FALSE(Contains(out.headerSource, "AActor* AggroTarget"));
+}
+
+TEST_CASE("EmitCppClass: TArray of object refs also wraps inner element with TObjectPtr") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Enemies"}, {"type","[]object:Pawn"},
+             {"editable", true}, {"category","AI"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "TArray<TObjectPtr<APawn>> Enemies;"));
+}
+
+TEST_CASE("Codegen: function-arg pointer types stay raw (not TObjectPtr)") {
+    // TObjectPtr is ONLY for class members; func args + locals stay raw.
+    CHECK(MapBpirTypeToCpp("object:Actor") == "AActor*");
+    CHECK(MapBpirTypeToCppMember("object:Actor") == "TObjectPtr<AActor>");
+}
+
+// ===== Component-style UPROPERTY specifier inference =======================
+
+TEST_CASE("EmitCppClass: U*Component variables get VisibleAnywhere + BlueprintReadOnly") {
+    // UE convention: reassigning a Component pointer at runtime orphans
+    // the original, so we mark these VisibleAnywhere (editable cascade
+    // into the inner properties) + BlueprintReadOnly (BP can't swap
+    // out the ptr).
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Mesh"}, {"type","object:StaticMeshComponent"},
+             {"editable", true}, {"category","Visuals"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "VisibleAnywhere"));
+    CHECK(Contains(out.headerSource, "BlueprintReadOnly"));
+    CHECK_FALSE(Contains(out.headerSource, "EditAnywhere"));
+    CHECK_FALSE(Contains(out.headerSource, "BlueprintReadWrite"));
+}
+
+TEST_CASE("EmitCppClass: actor refs do NOT get the component-style specifiers") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Player"}, {"type","object:Actor"},
+             {"editable", true}, {"category","World"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "EditAnywhere"));
+    CHECK(Contains(out.headerSource, "BlueprintReadWrite"));
+    CHECK_FALSE(Contains(out.headerSource, "VisibleAnywhere"));
 }
 
 TEST_CASE("EmitCppClass: FString / FName defaults wrap with TEXT()") {
