@@ -140,10 +140,19 @@ void RegisterHandlers(jr::Server& server,
             return jr::Response::Ok(MakeToolTextContent(toolResult.dump(2),
                 /*isError=*/false, std::move(meta)));
         } catch (const std::exception& e) {
+            // Enrich the error envelope with the call args so the agent
+            // can see what triggered the failure without re-driving the
+            // call. Helpful for "I called transpile_blueprint on
+            // /Game/X and got 'asset not found'" diagnostics.
             nlohmann::json meta = {
                 {"elapsed_ms", elapsedMs()},
                 {"tool", name},
             };
+            // Include the args verbatim — for agents debugging a tool
+            // failure, the "what did I pass" context is exactly what
+            // they need. No filtering: MCP tool args don't carry
+            // credentials in this server.
+            if (!arguments.empty()) meta["args"] = arguments;
             return jr::Response::Ok(MakeToolTextContent(
                 fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
         }
