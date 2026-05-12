@@ -147,6 +147,23 @@ TEST_CASE("FindNode tags each hit with graph_name + graph_type (issue #6)") {
     CHECK_FALSE(j.contains("graph_type"));
 }
 
+TEST_CASE("FindNode query also matches meta.event_name (issue #12 extension)") {
+    // K2Node_Event titles are rendered with an "Event " prefix and
+    // sometimes humanized (e.g. "Event BeginPlay" for ReceiveBeginPlay).
+    // An agent searching for the underlying function name would miss
+    // the hit without the eventName fallback.
+    auto reader = bpr::test::MakeMockReader();
+    // BP_Enemy fixture has a K2Node_Event with title "Event BeginPlay"
+    // and meta.event_name "ReceiveBeginPlay".
+    auto hits = reader.FindNode("/Game/AI/BP_Enemy", "ReceiveBegin");
+    REQUIRE(hits.size() >= 1);
+    bool sawIt = false;
+    for (const auto& n : hits) {
+        if (n.Class == "K2Node_Event") { sawIt = true; break; }
+    }
+    CHECK(sawIt);
+}
+
 TEST_CASE("FindNode query also matches meta.function_name (issue #12)") {
     // Operator nodes (Greater_IntInt, Less_FloatFloat, EqualEqual_*)
     // render their title as the operator alias ("integer > integer",

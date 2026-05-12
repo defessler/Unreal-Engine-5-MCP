@@ -294,9 +294,13 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
         if (n.Meta.is_object()) {
             // Accept both camelCase (what the plugin emits) and snake_case
             // (what the mock fixtures use). Either is a valid wire shape;
-            // the discrepancy predates this fix.
+            // the discrepancy predates this fix. Coverage spans the K2
+            // node kinds whose underlying identifier differs from the
+            // rendered title: CallFunction (function_name), VariableGet/
+            // Set (variable_name), Event/CustomEvent (event_name).
             for (const char* key : {"targetFunction", "function_name",
-                                    "variableName",   "variable_name"}) {
+                                    "variableName",   "variable_name",
+                                    "eventName",      "event_name"}) {
                 auto it = n.Meta.find(key);
                 if (it != n.Meta.end() && it->is_string()) {
                     if (ContainsCI(it->get<std::string>(), query)) return true;
