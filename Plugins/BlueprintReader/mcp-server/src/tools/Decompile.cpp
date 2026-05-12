@@ -1026,6 +1026,59 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
         body = DecompileStatementsFrom(walker, startsAt, nullptr, visited);
     }
 
+    // Synthetic return: if the function returns a value but the
+    // decompile walk didn't reach a FunctionResult node, append a
+    // return statement using the output defaults. Happens when the
+    // BP author left an unwired return path or attached the
+    // FunctionResult to a side branch the walker didn't see. Without
+    // this the generated C++ has `bool TakeDamage() {}` — non-void
+    // with no return → compile error.
+    auto endsWithReturn = [&]() {
+        if (!body.is_array() || body.empty()) return false;
+        const auto& last = body.back();
+        return last.is_object() && last.contains("return");
+    };
+    if (!fn.Outputs.empty() && !endsWithReturn()) {
+        nlohmann::json defaultRet;
+        if (fn.Outputs.size() == 1) {
+            // Single-return: emit the value directly.
+            const auto& o = fn.Outputs[0];
+            std::string defStr = o.DefaultValue.value_or(std::string{});
+            // Render the default as a BPIR literal.
+            if (o.Type.Category == "bool") {
+                defaultRet = nlohmann::json{{"return", nlohmann::json{{"lit", defStr == "true"}}}};
+            } else if (o.Type.Category == "int" || o.Type.Category == "int64" ||
+                       o.Type.Category == "byte") {
+                int64_t v = 0;
+                try { v = defStr.empty() ? 0 : std::stoll(defStr); } catch (...) {}
+                defaultRet = nlohmann::json{{"return", nlohmann::json{{"lit", v}}}};
+            } else if (o.Type.Category == "real" || o.Type.Category == "float" ||
+                       o.Type.Category == "double") {
+                double v = 0.0;
+                try { v = defStr.empty() ? 0.0 : std::stod(defStr); } catch (...) {}
+                defaultRet = nlohmann::json{{"return", nlohmann::json{{"lit", v}}}};
+            } else if (o.Type.Category == "object" || o.Type.Category == "class" ||
+                       o.Type.Category == "soft_object" || o.Type.Category == "soft_class") {
+                defaultRet = nlohmann::json{{"return", nlohmann::json{{"lit", nullptr}}}};
+            } else {
+                // FString / FName / FText / struct: rely on a default-
+                // constructed temporary. Emit empty literal so codegen
+                // can render `return {};` or similar via type context.
+                defaultRet = nlohmann::json{{"return", nlohmann::json{{"lit", std::string{}}}}};
+            }
+        } else {
+            // Multi-return: emit empty literal vector — caller can patch.
+            // Better than no return at all.
+            nlohmann::json parts = nlohmann::json::array();
+            for (const auto& o : fn.Outputs) {
+                (void)o;
+                parts.push_back(nlohmann::json{{"lit", nullptr}});
+            }
+            defaultRet = nlohmann::json{{"return", parts}};
+        }
+        body.push_back(std::move(defaultRet));
+    }
+
     // Walk the resulting body to collect unsupported-node summary at
     // the top level for quick "what couldn't I represent?" agent reads.
     std::function<void(const nlohmann::json&)> collectUnsupported =
