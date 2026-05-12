@@ -314,6 +314,23 @@ TEST_CASE("Codegen: multi-output becomes out-ref params") {
     CHECK(Contains(out.source, "float& B"));
 }
 
+// ===== Destroy-actor sentinel =============================================
+
+TEST_CASE("Codegen: __bpr_destroy_actor with Target → Target->Destroy()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","__bpr_destroy_actor"},
+             {"args", json{{"Target", json{{"var","Enemy"}}}}}},
+    })));
+    CHECK(Contains(out.source, "Enemy->Destroy();"));
+}
+
+TEST_CASE("Codegen: __bpr_destroy_actor without Target → this->Destroy()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","__bpr_destroy_actor"}},
+    })));
+    CHECK(Contains(out.source, "this->Destroy();"));
+}
+
 // ===== Validation pass-through ============================================
 
 TEST_CASE("Codegen rejects malformed BPIR") {
