@@ -405,6 +405,54 @@ namespace
 
 	// ----- Shared helpers for write ops -------------------------------------
 
+	// Use the asset registry to figure out *why* the BP failed to load and
+	// log a specific diagnostic. The common case worth calling out
+	// explicitly is "parent class not compiled / missing module" (issue
+	// #3): the on-disk asset references a UClass that the commandlet
+	// can't resolve, so the BP's CDO construction blows up during load.
+	// Without this, the user sees only the generic LogLinker spam.
+	void DiagnoseFailedBlueprintLoad(const FString& AssetPath)
+	{
+		IAssetRegistry& Registry =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+		FAssetData Asset = Registry.GetAssetByObjectPath(FSoftObjectPath(AssetPath));
+		if (!Asset.IsValid())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("LoadMutableBlueprint: %s — asset not in registry; check the path"),
+				*AssetPath);
+			return;
+		}
+		const FString ParentClassTag =
+			Asset.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
+		if (ParentClassTag.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("LoadMutableBlueprint: %s — asset exists in registry but load failed; "
+				     "no parent_class tag to probe"),
+				*AssetPath);
+			return;
+		}
+		const FSoftObjectPath ParentRef(ParentClassTag);
+		UClass* ParentClass =
+			LoadObject<UClass>(nullptr, *ParentRef.ToString(), nullptr, LOAD_Quiet);
+		if (!ParentClass)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("LoadMutableBlueprint: %s — parent class %s could not be resolved. "
+				     "This typically means the C++ module declaring it is not compiled in "
+				     "this build (issue #3). Rebuild the project (Build.bat <TargetName> "
+				     "Win64 Development) before reading or writing this Blueprint."),
+				*AssetPath, *ParentClassTag);
+			return;
+		}
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("LoadMutableBlueprint: %s — parent class %s resolved but BP load still "
+			     "failed; check the editor log for the underlying PostLoad / "
+			     "ConstructDefaultObject error"),
+			*AssetPath, *ParentClassTag);
+	}
+
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
 		FString Resolved = AssetPath;
@@ -416,7 +464,12 @@ namespace
 				Resolved = Resolved + TEXT(".") + Leaf;
 			}
 		}
-		return LoadObject<UBlueprint>(nullptr, *Resolved);
+		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *Resolved);
+		if (!BP)
+		{
+			DiagnoseFailedBlueprintLoad(Resolved);
+		}
+		return BP;
 	}
 
 	UEdGraph* FindGraphByName(UBlueprint* BP, const FString& Name)
