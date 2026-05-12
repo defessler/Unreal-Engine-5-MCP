@@ -169,3 +169,31 @@ TEST_CASE("tools/call propagates handler error as MCP error envelope") {
     CHECK((*resp)["result"]["isError"] == true);
     CHECK_FALSE(resp->contains("error"));
 }
+
+TEST_CASE("tools/call error envelope includes args + tool name in _meta") {
+    // Agents debugging tool failures need to see what they passed —
+    // helps re-drive the failing call and frame the error context
+    // ("transpile_blueprint on /Game/X failed because…").
+    auto reader = test::MakeMockReader();
+    tools::ToolRegistry registry;
+    tools::RegisterBlueprintTools(registry, reader);
+
+    jsonrpc::Server server;
+    mcp::ServerInfo info;
+    mcp::RegisterHandlers(server, registry, info);
+
+    json req = {
+        {"jsonrpc", "2.0"}, {"id", 20}, {"method", "tools/call"},
+        {"params", json{
+            {"name", "read_blueprint"},
+            {"arguments", json{{"asset_path", "/Game/DoesNotExist"}}}
+        }}
+    };
+    auto resp = server.Dispatch(req);
+    REQUIRE(resp.has_value());
+    CHECK((*resp)["result"]["isError"] == true);
+    auto& meta = (*resp)["result"]["_meta"];
+    CHECK(meta["tool"] == "read_blueprint");
+    REQUIRE(meta.contains("args"));
+    CHECK(meta["args"]["asset_path"] == "/Game/DoesNotExist");
+}
