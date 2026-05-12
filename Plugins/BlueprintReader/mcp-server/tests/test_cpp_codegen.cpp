@@ -399,6 +399,29 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== Soft-reference type mapping ========================================
+
+TEST_CASE("Type mapping: soft_object → TSoftObjectPtr") {
+    // Soft refs are always TSoftObjectPtr (point is deferred loading
+    // + safe cross-package references) — context-independent.
+    CHECK(MapBpirTypeToCpp("soft_object:Texture2D") == "TSoftObjectPtr<UTexture2D>");
+    CHECK(MapBpirTypeToCppMember("soft_object:Texture2D") == "TSoftObjectPtr<UTexture2D>");
+    // Soft actor refs still get the A prefix.
+    CHECK(MapBpirTypeToCpp("soft_object:Actor") == "TSoftObjectPtr<AActor>");
+    // No subtype → bare UObject.
+    CHECK(MapBpirTypeToCpp("soft_object") == "TSoftObjectPtr<UObject>");
+}
+
+TEST_CASE("Type mapping: soft_class → TSoftClassPtr") {
+    CHECK(MapBpirTypeToCpp("soft_class:Pawn") == "TSoftClassPtr<Pawn>");
+    CHECK(MapBpirTypeToCpp("soft_class") == "TSoftClassPtr<UObject>");
+}
+
+TEST_CASE("Type mapping: hard class → TSubclassOf (unchanged)") {
+    CHECK(MapBpirTypeToCpp("class:Actor") == "TSubclassOf<Actor>");
+    CHECK(MapBpirTypeToCpp("class") == "UClass*");
+}
+
 // ===== Validation pass-through ============================================
 
 TEST_CASE("Codegen rejects malformed BPIR") {

@@ -207,6 +207,21 @@ nlohmann::json LiteralFromDefault(const BPPin& pin) {
 // if so, build the BPIR expression for its return / output.
 nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
                                     const BPPin& outputPin) {
+    // Knot (reroute) on data flow — pure passthrough. Walk back through
+    // the knot's input pin to find the real producer. Without this,
+    // value pins downstream of a reroute node lose their source.
+    if (producer.Class.find("K2Node_Knot") != std::string::npos) {
+        // Knots have one input pin and one output pin (both unnamed in
+        // the UI). Walk the input back to its source.
+        for (const auto& p : producer.Pins) {
+            if (p.Direction == "Input") {
+                return BuildExpression(w, producer, p);
+            }
+        }
+        // No input → treat as a default literal of the output pin's type.
+        return LiteralFromDefault(outputPin);
+    }
+
     if (producer.Class.find("K2Node_VariableGet") != std::string::npos) {
         std::string varName;
         if (producer.Meta.is_object()) {
@@ -676,6 +691,42 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
             ownerCl = n.Meta.value("targetClass",    std::string{});
         }
         std::string fqName = ownerCl.empty() ? fnName : (ownerCl + "::" + fnName);
+
+        // Latent action special-case: Delay can't be expressed as a
+        // single C++ statement (the post-delay code needs to live in
+        // a timer callback). Emit a TODO with the canonical hint so
+        // the agent knows what to refactor. Common LatentInfo-pinned
+        // call sites: KismetSystemLibrary::Delay, RetriggerableDelay,
+        // DelayUntilNextTick.
+        if (fnName == "Delay" || fnName == "RetriggerableDelay" ||
+            fnName == "DelayUntilNextTick") {
+            nlohmann::json fields = nlohmann::json::object();
+            // Capture the Duration pin if present so the manual
+            // refactor has a sensible default.
+            if (const BPPin* dp = w.GetPin(n, "Duration")) {
+                fields["duration"] = BuildExpression(w, n, *dp);
+            }
+            fields["target_function"] = fnName;
+            r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+                {"node_class", n.Class},
+                {"target_function", fnName},
+                {"guid", n.Id},
+                {"reason",
+                 "Latent action — split into FTimerHandle + "
+                 "GetWorld()->GetTimerManager().SetTimer(...) callback. "
+                 "The post-delay exec flow must move to the timer's "
+                 "bound function."},
+                {"fields", std::move(fields)},
+            }}};
+            // The exec continues after the timer fires, but in C++ that
+            // becomes a separate function — we don't try to walk past
+            // here from this position; treat as exec-terminating so the
+            // walker doesn't double-emit downstream statements as if
+            // they ran synchronously.
+            r.terminatesExec = true;
+            return r;
+        }
+
         nlohmann::json args = nlohmann::json::object();
         for (const auto& p : n.Pins) {
             if (p.Direction != "Input" || p.Type.Category == "exec") continue;
