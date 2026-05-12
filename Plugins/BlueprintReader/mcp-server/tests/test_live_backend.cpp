@@ -38,14 +38,19 @@ struct WsaInit {
 WsaInit& Wsa() { static WsaInit s; return s; }
 #endif
 
-// Tiny one-shot mock listener: spins up a thread, accepts one connection,
-// runs a scripted exchange, then closes. The script is a callback the
-// test provides.
+// Mock TCP listener used by the live-backend handshake/protocol tests.
+// Accepts one connection by default; pass a vector of scripts to handle
+// multiple sequential connections (each one handed to the next script
+// in order, used by the auth-fail-then-refresh test).
 class MockServer {
 public:
     using Script = std::function<void(SOCKET clientSock)>;
 
-    MockServer(Script script) : script_(std::move(script)) {
+    // Single-connection convenience ctor.
+    explicit MockServer(Script script)
+        : MockServer(std::vector<Script>{std::move(script)}) {}
+
+    explicit MockServer(std::vector<Script> scripts) : scripts_(std::move(scripts)) {
         Wsa();
         listenSock_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         REQUIRE(listenSock_ != INVALID_SOCKET);
@@ -57,12 +62,17 @@ public:
         int addrLen = sizeof(addr);
         REQUIRE(::getsockname(listenSock_, (sockaddr*)&addr, &addrLen) == 0);
         port_ = ntohs(addr.sin_port);
-        REQUIRE(::listen(listenSock_, 1) == 0);
+        // Listen backlog needs to accommodate as many connections as
+        // we have scripts. Cap at SOMAXCONN.
+        const int backlog = std::min<int>(static_cast<int>(scripts_.size()) + 1, SOMAXCONN);
+        REQUIRE(::listen(listenSock_, backlog) == 0);
         thread_ = std::thread([this] {
-            SOCKET client = ::accept(listenSock_, nullptr, nullptr);
-            if (client == INVALID_SOCKET) return;
-            try { script_(client); } catch (...) {}
-            ::closesocket(client);
+            for (auto& script : scripts_) {
+                SOCKET client = ::accept(listenSock_, nullptr, nullptr);
+                if (client == INVALID_SOCKET) return;
+                try { script(client); } catch (...) {}
+                ::closesocket(client);
+            }
         });
     }
     ~MockServer() {
@@ -74,7 +84,7 @@ public:
 private:
     SOCKET listenSock_;
     int port_;
-    Script script_;
+    std::vector<Script> scripts_;
     std::thread thread_;
 };
 
@@ -266,6 +276,66 @@ TEST_CASE("LiveBackend: handshake refresh skipped when path empty") {
     // cfg.handshakeFilePath intentionally empty
     LiveBlueprintReader reader(cfg);
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
+}
+
+TEST_CASE("LiveBackend: auth_fail triggers handshake re-read and retries") {
+    // PR #49 stabilized the editor port across restarts, which means an
+    // editor restart may keep the same port but produce a new auth
+    // token. The old code threw on auth_fail; the new code refreshes
+    // the handshake file (which now holds the fresh token) and retries
+    // once before giving up. Cover this with a two-phase mock: the
+    // first connection sends auth_fail (matching what a stale-token
+    // attempt would see), the second sends auth_ok after the reader
+    // has refreshed and re-presented the new token.
+    std::vector<MockServer::Script> scripts;
+    scripts.push_back([](SOCKET s) {
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        std::string authLine = ReadLine(s);
+        auto auth = nlohmann::json::parse(authLine, nullptr, false);
+        // The reader's first attempt presents the stale token from cfg_.
+        CHECK(auth["token"] == "stale-token");
+        SendLine(s, R"({"type":"auth_fail"})");
+    });
+    scripts.push_back([](SOCKET s) {
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        std::string authLine = ReadLine(s);
+        auto auth = nlohmann::json::parse(authLine, nullptr, false);
+        // After the refresh, the reader should send the new token.
+        CHECK(auth["token"] == "fresh-token");
+        SendLine(s, R"({"type":"auth_ok"})");
+        ReadLine(s);  // op frame
+        SendLine(s, nlohmann::json{
+            {"type","result"}, {"id",1}, {"code",0},
+            {"json", nlohmann::json::array()}
+        }.dump());
+    });
+    MockServer mock(std::move(scripts));
+
+    auto tempPath = std::filesystem::temp_directory_path() /
+        ("bp-reader-live-auth-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&mock)) + ".json");
+    // Handshake file has the SAME port the reader was configured with
+    // (matches the PR #49 stable-port story) but a NEW token.
+    nlohmann::json hs = {
+        {"version", 1},
+        {"host", "127.0.0.1"},
+        {"port", mock.port()},
+        {"token", "fresh-token"},
+    };
+    {
+        std::ofstream f(tempPath);
+        f << hs.dump();
+    }
+
+    LiveBlueprintReader::Config cfg;
+    cfg.host  = "127.0.0.1";
+    cfg.port  = mock.port();   // same port — editor restart kept it
+    cfg.token = "stale-token"; // old token — refresh should rotate it
+    cfg.handshakeFilePath = tempPath.string();
+    LiveBlueprintReader reader(cfg);
+
+    CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
+    std::filesystem::remove(tempPath);
 }
 
 TEST_CASE("LiveBackend: handshake refresh ignored when file points at same port") {
