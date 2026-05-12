@@ -4502,10 +4502,30 @@ namespace
 				if (P && P->PinId == AsGuid) return P;
 			}
 		}
-		// Fall back to name match.
+		// Fall back to FName match. This is the underlying pin name —
+		// matches the param-name of the UFUNCTION the pin came from,
+		// or the BP variable name for variable nodes. Always whitespace-
+		// free because UE FNames can't carry the friendly text.
 		for (UEdGraphPin* P : Node->Pins)
 		{
 			if (P && P->GetFName().ToString().Equals(Spec, ESearchCase::IgnoreCase))
+			{
+				return P;
+			}
+		}
+		// Final fallback: PinFriendlyName (the label the editor shows in
+		// the graph UI). This is what users typically type when they
+		// "see" a pin — for example, an Array Library node whose pin
+		// has FName "TargetArray" but displays as "Target Array", or a
+		// function with `DisplayName="Dummy Targets"` meta override.
+		// Required for issue #10: callers often pass the visible label.
+		for (UEdGraphPin* P : Node->Pins)
+		{
+			if (!P) continue;
+			const FString Friendly = P->PinFriendlyName.IsEmpty()
+				? FString()
+				: P->PinFriendlyName.ToString();
+			if (!Friendly.IsEmpty() && Friendly.Equals(Spec, ESearchCase::IgnoreCase))
 			{
 				return P;
 			}
