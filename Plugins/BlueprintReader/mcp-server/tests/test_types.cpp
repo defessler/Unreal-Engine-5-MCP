@@ -61,8 +61,8 @@ TEST_CASE("BPPin carries inline linked_to array (issue #5)") {
     p.Name = "Then";
     p.Direction = "Output";
     p.Type.Category = "exec";
-    BPPinLink l1{"target-node-guid", "target-pin-guid"};
-    BPPinLink l2{"second-node-guid", "second-pin-guid"};
+    BPPinLink l1{"target-node-guid", "target-pin-guid", "execute"};
+    BPPinLink l2{"second-node-guid", "second-pin-guid", "ExecutePin"};
     p.LinkedTo.push_back(l1);
     p.LinkedTo.push_back(l2);
 
@@ -72,11 +72,16 @@ TEST_CASE("BPPin carries inline linked_to array (issue #5)") {
     REQUIRE(j["linked_to"].size() == 2);
     CHECK(j["linked_to"][0]["node_id"] == "target-node-guid");
     CHECK(j["linked_to"][0]["pin_id"] == "target-pin-guid");
+    // pin_name is part of the wire shape now — agents can verify wiring
+    // by name without a follow-up get_node call.
+    CHECK(j["linked_to"][0]["pin_name"] == "execute");
+    CHECK(j["linked_to"][1]["pin_name"] == "ExecutePin");
 
     auto back = RoundTrip(p);
     REQUIRE(back.LinkedTo.size() == 2);
     CHECK(back.LinkedTo[0].NodeId == "target-node-guid");
     CHECK(back.LinkedTo[1].PinId == "second-pin-guid");
+    CHECK(back.LinkedTo[0].PinName == "execute");
 
     // Older wire shape (no `linked_to` key) decodes as empty without
     // throwing — backward compat with pre-#5 fixtures.
@@ -92,6 +97,17 @@ TEST_CASE("BPPin carries inline linked_to array (issue #5)") {
     };
     auto legacyDecoded = legacy.get<BPPin>();
     CHECK(legacyDecoded.LinkedTo.empty());
+
+    // Pre-pin_name wire shape (just node_id + pin_id) also decodes — a
+    // forward-compat guarantee for any older client/server versions.
+    nlohmann::json legacyLink = {
+        {"node_id", "n"}, {"pin_id", "p"},
+        // pin_name omitted
+    };
+    auto linkBack = legacyLink.get<BPPinLink>();
+    CHECK(linkBack.NodeId == "n");
+    CHECK(linkBack.PinId == "p");
+    CHECK(linkBack.PinName.empty());
 }
 
 TEST_CASE("BPPosition uses x/y keys") {
