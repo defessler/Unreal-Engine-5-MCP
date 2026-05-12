@@ -399,6 +399,32 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== FormatText sentinel =================================================
+
+TEST_CASE("Codegen: __bpr_format_text with args → FFormatNamedArguments + FText::Format") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Greeting"},
+             {"to",   json{{"call","__bpr_format_text"},
+                            {"format","Hello {Name}!"},
+                            {"args", json{{"Name", json{{"var","PlayerName"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "FFormatNamedArguments Args;"));
+    CHECK(Contains(out.source, "Args.Add(TEXT(\"Name\"), PlayerName);"));
+    CHECK(Contains(out.source, "FText::Format("));
+    CHECK(Contains(out.source, "NSLOCTEXT"));
+    CHECK(Contains(out.source, "Hello {Name}!"));
+}
+
+TEST_CASE("Codegen: __bpr_format_text without args → bare FText::FromString") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Greeting"},
+             {"to",   json{{"call","__bpr_format_text"},
+                            {"format","Hello world"}}}}
+    })));
+    CHECK(Contains(out.source, "FText::FromString(TEXT(\"Hello world\"))"));
+    CHECK_FALSE(Contains(out.source, "FFormatNamedArguments"));
+}
+
 // ===== Name aliases =======================================================
 
 TEST_CASE("Codegen: KismetSystemLibrary::IsValid → bare IsValid()") {
