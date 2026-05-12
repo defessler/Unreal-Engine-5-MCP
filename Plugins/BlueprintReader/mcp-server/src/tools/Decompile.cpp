@@ -530,6 +530,74 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         return r;
     }
 
+    // DestroyActor — common BP node, maps cleanly to `Target->Destroy()`.
+    // The Target pin is optional; absent = self. We carry the target
+    // expression in args["Target"] for CppEmit to render.
+    if (n.Class.find("K2Node_DestroyActor") != std::string::npos) {
+        nlohmann::json args = nlohmann::json::object();
+        if (const BPPin* tp = w.GetPin(n, "Target")) {
+            args["Target"] = BuildExpression(w, n, *tp);
+        }
+        nlohmann::json stmt = {{"call", "__bpr_destroy_actor"}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        r.statement = std::move(stmt);
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
+    // Knot (reroute) — pure passthrough; emit nothing, follow the exec
+    // out. Knots also appear in data flow where BuildExpression handles
+    // them; here we only see them on exec paths (rare but possible).
+    if (n.Class.find("K2Node_Knot") != std::string::npos) {
+        r.next = w.FollowExec(n, "then");
+        r.statement = nlohmann::json::object();  // skipped by caller
+        return r;
+    }
+
+    // Switch (K2Node_SwitchEnum / SwitchInteger / SwitchString / SwitchName).
+    // Each case is a named exec output pin; we emit `{switch, cases, default}`
+    // which CppEmit's `switch` form already renders.
+    if (n.Class.find("K2Node_Switch") != std::string::npos) {
+        // Selector input pin — by convention "Selection" or
+        // "TargetExpression" depending on subclass. Try both.
+        const BPPin* selPin = w.GetPin(n, "Selection");
+        if (!selPin) selPin = w.GetPin(n, "TargetExpression");
+        if (!selPin) {
+            // Walk pins for the first non-exec input as a fallback.
+            for (const auto& p : n.Pins) {
+                if (p.Direction == "Input" && p.Type.Category != "exec") {
+                    selPin = &p;
+                    break;
+                }
+            }
+        }
+        nlohmann::json switchExpr = selPin
+            ? BuildExpression(w, n, *selPin)
+            : nlohmann::json{{"lit", 0}};
+
+        nlohmann::json cases = nlohmann::json::object();
+        nlohmann::json defaultBody;
+        bool hasDefault = false;
+        for (const auto& p : n.Pins) {
+            if (p.Direction != "Output" || p.Type.Category != "exec") continue;
+            if (p.Name == "Default") {
+                const BPNode* defStart = w.FollowExec(n, "Default");
+                std::set<std::string> v;
+                defaultBody = DecompileStatementsFrom(w, defStart, stopAt, v);
+                hasDefault = true;
+            } else {
+                const BPNode* caseStart = w.FollowExec(n, p.Name);
+                std::set<std::string> v;
+                cases[p.Name] = DecompileStatementsFrom(w, caseStart, stopAt, v);
+            }
+        }
+        nlohmann::json stmt = {{"switch", switchExpr}, {"cases", cases}};
+        if (hasDefault) stmt["default"] = defaultBody;
+        r.statement = std::move(stmt);
+        r.terminatesExec = true;
+        return r;
+    }
+
     // AddComponent — same shape as SpawnActorFromClass. Carries the
     // template type + transform; CppEmit emits a NewObject +
     // RegisterComponent + AttachToComponent block.
