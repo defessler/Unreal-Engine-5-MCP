@@ -804,6 +804,37 @@ std::string MapBpirTypeToCppMember(std::string_view bpirType) {
     return MapTypeRecursive(bpirType, /*forMember=*/true);
 }
 
+std::string MapBpirTypeToCppArg(std::string_view bpirType) {
+    // Wrap heavy types with `const X&`. Categories that should be
+    // by-value: bool, byte, int, int64, float, real, double, exec
+    // (void), and object/class refs (already pointers / small handles).
+    // Everything else (string, name, text, structs, containers) is
+    // const-ref.
+    std::string base = MapTypeRecursive(bpirType, /*forMember=*/false);
+    auto isLightweight = [](std::string_view t) {
+        // Strip optional container/wrapper.
+        auto head = t;
+        if (auto pos = head.find_last_of('>'); pos != std::string_view::npos) {
+            // Compound type — never lightweight.
+            return false;
+        }
+        // FName fits in a register — pass by value by convention.
+        if (head == "FName") return true;
+        // Primitives.
+        if (head == "bool" || head == "uint8" || head == "int32" ||
+            head == "int64" || head == "uint16" || head == "uint32" ||
+            head == "uint64" || head == "int16" || head == "int8" ||
+            head == "float" || head == "double" || head == "void") {
+            return true;
+        }
+        // Pointer types end in `*`.
+        if (!head.empty() && head.back() == '*') return true;
+        return false;
+    };
+    if (isLightweight(base)) return base;
+    return std::string("const ") + base + "&";
+}
+
 CppEmitResult EmitCppFunctionBody(const nlohmann::json& doc, CppEmitOptions opts) {
     ValidateBpir(doc);
     if (!IsBpirFunction(doc)) {
@@ -840,7 +871,7 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
         for (const auto& in : doc["inputs"]) {
             if (!first) args += ", ";
             first = false;
-            args += MapBpirTypeToCpp(in.value("type", "void"));
+            args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
             args += in.value("name", "Arg");
         }
@@ -850,7 +881,7 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
         doc["outputs"].size() > 1) {
         for (const auto& out : doc["outputs"]) {
             if (!args.empty()) args += ", ";
-            args += MapBpirTypeToCpp(out.value("type", "void"));
+            args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
             args += out.value("name", "Out");
         }

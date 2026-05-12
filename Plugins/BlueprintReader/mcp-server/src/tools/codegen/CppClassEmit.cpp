@@ -505,7 +505,7 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
         for (const auto& in : fn["inputs"]) {
             if (!first) args += ", ";
             first = false;
-            args += MapBpirTypeToCpp(in.value("type", "void"));
+            args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
             args += in.value("name", "Arg");
         }
@@ -514,7 +514,7 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
         fn["outputs"].size() > 1) {
         for (const auto& out : fn["outputs"]) {
             if (!args.empty()) args += ", ";
-            args += MapBpirTypeToCpp(out.value("type", "void"));
+            args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
             args += out.value("name", "Out");
         }
@@ -552,7 +552,7 @@ std::string RenderUFunctionImpl(const std::string& className,
         for (const auto& in : fn["inputs"]) {
             if (!first) args += ", ";
             first = false;
-            args += MapBpirTypeToCpp(in.value("type", "void"));
+            args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
             args += in.value("name", "Arg");
         }
@@ -561,7 +561,7 @@ std::string RenderUFunctionImpl(const std::string& className,
         fn["outputs"].size() > 1) {
         for (const auto& out : fn["outputs"]) {
             if (!args.empty()) args += ", ";
-            args += MapBpirTypeToCpp(out.value("type", "void"));
+            args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
             args += out.value("name", "Out");
         }
