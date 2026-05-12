@@ -4,7 +4,6 @@
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderLogSink.h"
 #include "BlueprintReaderWireJson.h"
-#include "Components/SceneComponent.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 
@@ -18,12 +17,9 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "FileHelpers.h"
-#include "GameFramework/PlayerStart.h"
 #include "HAL/IConsoleManager.h"
 #include "IAssetTools.h"
 #include "JsonObjectConverter.h"
-#include "Misc/OutputDeviceArchiveWrapper.h"
-#include "Misc/OutputDeviceConsole.h"
 #include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
 #include "UObject/UObjectIterator.h"
@@ -91,7 +87,6 @@
 #include "Engine/DataAsset.h"
 // AnimBlueprint authoring (Stage 4).
 #include "Animation/AnimBlueprint.h"
-#include "Animation/AnimBlueprintGeneratedClass.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
