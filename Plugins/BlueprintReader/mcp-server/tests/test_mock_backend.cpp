@@ -121,6 +121,32 @@ TEST_CASE("FindNode searches both event graph and function graphs") {
     CHECK(print[0].Title == "Print String");
 }
 
+TEST_CASE("FindNode tags each hit with graph_name + graph_type (issue #6)") {
+    // Each find_node hit must carry the graph it came from. get_node,
+    // delete_node, and wire_pins all require -Graph= — the agent had
+    // no other way to find that out from a find_node result.
+    auto reader = bpr::test::MakeMockReader();
+    auto hits = reader.FindNode("/Game/AI/BP_Enemy", "");
+    REQUIRE(!hits.empty());
+    for (const auto& n : hits) {
+        CHECK(n.GraphName.has_value());
+        CHECK_FALSE(n.GraphName->empty());
+        CHECK(n.GraphType.has_value());
+        CHECK_FALSE(n.GraphType->empty());
+    }
+    // The graph_name field is wire-emitted only when populated — a
+    // BPNode coming back from get_node (where the caller already knows
+    // the graph) must serialize without the key, so existing wire
+    // consumers stay unaffected.
+    BPNode noGraph;
+    noGraph.Id = "abc";
+    noGraph.Class = "K2Node_X";
+    noGraph.Title = "X";
+    nlohmann::json j = noGraph;
+    CHECK_FALSE(j.contains("graph_name"));
+    CHECK_FALSE(j.contains("graph_type"));
+}
+
 TEST_CASE("FindNode kind filter narrows results") {
     auto reader = bpr::test::MakeMockReader();
     // Empty query + kind-only should still match.
