@@ -73,6 +73,12 @@ nlohmann::json VariableDeclToJson(const BPVariable& v) {
     if (v.Category && !v.Category->empty())        j["category"]    = *v.Category;
     if (v.IsReplicated)                            j["replicated"]  = true;
     if (v.IsEditable)                              j["editable"]    = true;
+    // Batch 2 wire-format extensions — pass through so CppClassEmit
+    // can render UPROPERTY meta=(ExposeOnSpawn=true),
+    // ReplicatedUsing=OnRep_X, and DOREPLIFETIME_CONDITION specifiers.
+    if (v.RepCondition && !v.RepCondition->empty()) j["rep_condition"]   = *v.RepCondition;
+    if (v.ExposeOnSpawn)                            j["expose_on_spawn"] = true;
+    if (v.RepNotifyFunc && !v.RepNotifyFunc->empty()) j["rep_notify_func"] = *v.RepNotifyFunc;
     return j;
 }
 
