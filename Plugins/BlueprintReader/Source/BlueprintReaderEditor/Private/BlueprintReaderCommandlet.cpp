@@ -4552,18 +4552,41 @@ namespace
 			return 4;
 		}
 
+		// Route through the schema's TryCreateConnection rather than calling
+		// MakeLinkTo directly. The schema entry point:
+		//   1. Re-runs CanCreateConnection and honors every response code
+		//      (BREAK_OTHERS_A/B/AB, MAKE_WITH_CONVERSION_NODE,
+		//      MAKE_WITH_PROMOTION) the same way the editor's drag-drop
+		//      handler does.
+		//   2. Calls PinConnectionListChanged on both owning nodes after
+		//      a successful link — this is the hook K2 wildcard nodes
+		//      (UK2Node_CallArrayFunction, UK2Node_Select, etc.) use to
+		//      propagate the concrete type from a typed source pin into
+		//      every linked wildcard slot. Without this hook, the array
+		//      library nodes' TargetArray pin stays `wildcard` after
+		//      wire_pins and the BP fails to compile (issue #11:
+		//      "The type of Target Array is undetermined").
 		const UEdGraphSchema* Schema = Graph->GetSchema();
-		if (Schema)
+		if (!Schema)
 		{
-			const FPinConnectionResponse Resp = Schema->CanCreateConnection(FromPin, ToPin);
-			if (Resp.Response == CONNECT_RESPONSE_DISALLOW)
-			{
-				UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: schema rejected: %s"),
-					*Resp.Message.ToString());
-				return 1;
-			}
+			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: graph has no schema"));
+			return 1;
 		}
-		FromPin->MakeLinkTo(ToPin);
+		const FPinConnectionResponse Resp = Schema->CanCreateConnection(FromPin, ToPin);
+		if (Resp.Response == CONNECT_RESPONSE_DISALLOW)
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: schema rejected: %s"),
+				*Resp.Message.ToString());
+			return 1;
+		}
+		const bool bMade = Schema->TryCreateConnection(FromPin, ToPin);
+		if (!bMade)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("WirePins: TryCreateConnection returned false despite CanCreateConnection=%d"),
+				(int32)Resp.Response);
+			return 1;
+		}
 
 		if (!MaybeCompileAndSave(BP)) return 5;
 		return EmitOk(OutputPath, bPretty);
