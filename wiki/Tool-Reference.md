@@ -156,6 +156,30 @@ graphs.
 }
 ```
 
+The query matches against the node's class, rendered title, AND
+`meta.targetFunction` / `meta.function_name` / `meta.variableName` /
+`meta.eventName`. That's important for operator nodes whose underlying
+identifier differs from the displayed title — e.g. searching for
+`"Greater_FloatFloat"` finds K2 nodes rendered as `"Greater (float)"`,
+and `"ReceiveBeginPlay"` finds the event node titled `"Event BeginPlay"`.
+
+Each hit carries `graph_name` and `graph_type` so the caller can
+immediately feed the result into `get_node` / `delete_node` /
+`wire_pins` (all of which require `graph_name`) — no second round trip
+to `read_blueprint` to resolve the graph.
+
+```jsonc
+// Response shape (per hit, simplified):
+{
+  "id":         "<node-guid>",
+  "class":      "K2Node_CallFunction",
+  "title":      "Greater (float)",
+  "graph_name": "EventGraph",
+  "graph_type": "EventGraph",
+  "meta": { "kind": "CallFunction", "function_name": "Greater_FloatFloat" }
+}
+```
+
 ### `get_node`
 Fetch a single node by GUID. Same shape as one entry from `get_graph`'s
 nodes array. Cheaper than re-fetching the whole graph after a mutation
@@ -166,6 +190,20 @@ when all you need is "did the wire I just made stick?" Pairs with
 { "asset_path":"/Game/AI/BP_TestEnemy",
   "graph_name":"EventGraph", "node_id":"<guid>" }
 ```
+
+Each pin in the response carries its own `linked_to` array — a per-pin
+view of incoming/outgoing connections — so you can verify wiring from
+a single `get_node` call without a separate `get_graph` for the
+graph-level `connections[]` array. Entries are
+`{node_id, pin_id, pin_name}`; `pin_id` is the canonical reference for
+follow-up ops, `pin_name` is for human-readable assertions.
+
+DynamicCast nodes whose target class is missing (deleted, renamed, or
+in an uncompiled module) carry `meta.castBroken: "true"`. Their title
+becomes literally `"Bad cast node"` and the output pin's
+`sub_category_object` is null, but `castBroken` is the reliable
+detection signal — pair with `find_node(kind="DynamicCast")` and
+filter on it.
 
 ### `find_overriders`
 Structural query across BPs under `path` (defaults to `/Game`). Filter by
