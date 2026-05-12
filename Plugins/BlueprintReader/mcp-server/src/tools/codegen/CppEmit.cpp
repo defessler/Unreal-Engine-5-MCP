@@ -17,33 +17,40 @@ namespace {
 // Inverse of TypeShorthand.cpp's parser. Bidirectional with a caveat:
 // some BPPinType shapes don't have a clean shorthand round-trip
 // (multi-level template types), but the common surface does.
+//
+// `forMember` toggles UE5's TObjectPtr<> wrapping for class-member
+// UObject* fields — Epic recommends since 5.0 and the editor reflects
+// pointer fields more efficiently when wrapped. Function args and
+// local pointers stay raw (TObjectPtr is only for member properties).
 
-std::string MapInner(std::string_view inner);
+std::string MapInner(std::string_view inner, bool forMember);
 
-std::string MapTypeRecursive(std::string_view t) {
+std::string MapTypeRecursive(std::string_view t, bool forMember) {
     // Container prefix dispatch.
     if (t.size() >= 2 && t[0] == '[' && t[1] == ']') {
-        return std::string("TArray<") + MapTypeRecursive(t.substr(2)) + ">";
+        // TArray of pointers inside a UPROPERTY also benefits from
+        // TObjectPtr at the element level — propagate the flag.
+        return std::string("TArray<") + MapTypeRecursive(t.substr(2), forMember) + ">";
     }
     // {}T form (set, post-prefix): two-char prefix + rest.
     if (t.size() >= 2 && t[0] == '{' && t[1] == '}') {
-        return std::string("TSet<") + MapTypeRecursive(t.substr(2)) + ">";
+        return std::string("TSet<") + MapTypeRecursive(t.substr(2), forMember) + ">";
     }
     // {K:V} or {T} form (the matching-brace variants TypeShorthand also accepts).
     if (t.size() >= 2 && t[0] == '{' && t.back() == '}') {
         std::string_view inner = t.substr(1, t.size() - 2);
         auto colon = inner.find(':');
         if (colon == std::string_view::npos) {
-            return std::string("TSet<") + MapTypeRecursive(inner) + ">";
+            return std::string("TSet<") + MapTypeRecursive(inner, forMember) + ">";
         }
         return std::string("TMap<") +
-               MapTypeRecursive(inner.substr(0, colon)) + ", " +
-               MapTypeRecursive(inner.substr(colon + 1)) + ">";
+               MapTypeRecursive(inner.substr(0, colon), forMember) + ", " +
+               MapTypeRecursive(inner.substr(colon + 1), forMember) + ">";
     }
-    return MapInner(t);
+    return MapInner(t, forMember);
 }
 
-std::string MapInner(std::string_view inner) {
+std::string MapInner(std::string_view inner, bool forMember) {
     auto colon = inner.find(':');
     std::string_view name = (colon == std::string_view::npos) ? inner : inner.substr(0, colon);
     std::string_view sub  = (colon == std::string_view::npos) ? std::string_view{} : inner.substr(colon + 1);
@@ -61,12 +68,38 @@ std::string MapInner(std::string_view inner) {
     if (name == "exec")    return "void";
 
     if (name == "object" || name == "soft_object") {
-        if (sub.empty()) return "UObject*";
+        // Helper: render the bare class name with its UE prefix.
+        auto renderBare = [](std::string_view bare) -> std::string {
+            // Already-prefixed: A/U followed by another uppercase letter.
+            if (bare.size() >= 2 &&
+                (bare[0] == 'A' || bare[0] == 'U') &&
+                (bare[1] >= 'A' && bare[1] <= 'Z')) {
+                return std::string(bare);
+            }
+            // Actor-derived heuristic.
+            if (bare == "Actor" ||
+                (bare.size() > 5 && bare.substr(bare.size() - 5) == "Actor") ||
+                bare == "Pawn" || bare == "Character" ||
+                bare == "Controller" || bare == "PlayerController" ||
+                bare == "PlayerState" || bare == "GameMode" ||
+                bare == "GameState" || bare == "HUD") {
+                return std::string("A") + std::string(bare);
+            }
+            return std::string("U") + std::string(bare);
+        };
+
+        // Wrap rendered class with TObjectPtr<> for member context,
+        // bare-pointer for arg / local context.
+        auto wrap = [forMember](const std::string& cls) {
+            return forMember
+                ? std::string("TObjectPtr<") + cls + ">"
+                : cls + "*";
+        };
+
+        if (sub.empty()) return wrap("UObject");
 
         // Strip /Script/Module.ClassName path prefix down to bare
-        // ClassName. Decompile carries SubCategoryObject through as the
-        // full UE path on object refs (e.g. "/Script/Engine.Actor"); we
-        // only want the trailing class for our prefix heuristic.
+        // ClassName.
         std::string_view bare = sub;
         if (auto dot = bare.find_last_of('.'); dot != std::string_view::npos) {
             bare = bare.substr(dot + 1);
@@ -76,29 +109,7 @@ std::string MapInner(std::string_view inner) {
             bare.substr(bare.size() - 2) == "_C") {
             bare = bare.substr(0, bare.size() - 2);
         }
-
-        // Detect "already has UE prefix": A/U followed by another
-        // uppercase letter, total length ≥ 2. E.g. "AActor", "UWidget"
-        // are already prefixed; "Actor", "Widget" are not (single
-        // capital then lowercase).
-        auto isAlreadyPrefixed = [](std::string_view n) {
-            return n.size() >= 2 &&
-                   (n[0] == 'A' || n[0] == 'U') &&
-                   (n[1] >= 'A' && n[1] <= 'Z');
-        };
-        if (isAlreadyPrefixed(bare)) return std::string(bare) + "*";
-
-        // Actor-derived heuristic: bare "Actor", classes ending in
-        // "Actor", or well-known A-prefixed types.
-        if (bare == "Actor" ||
-            (bare.size() > 5 && bare.substr(bare.size() - 5) == "Actor") ||
-            bare == "Pawn" || bare == "Character" ||
-            bare == "Controller" || bare == "PlayerController" ||
-            bare == "PlayerState" || bare == "GameMode" ||
-            bare == "GameState" || bare == "HUD") {
-            return std::string("A") + std::string(bare) + "*";
-        }
-        return std::string("U") + std::string(bare) + "*";
+        return wrap(renderBare(bare));
     }
     if (name == "class" || name == "soft_class") {
         if (sub.empty()) return "UClass*";
@@ -549,7 +560,11 @@ struct Emitter {
 } // namespace
 
 std::string MapBpirTypeToCpp(std::string_view bpirType) {
-    return MapTypeRecursive(bpirType);
+    return MapTypeRecursive(bpirType, /*forMember=*/false);
+}
+
+std::string MapBpirTypeToCppMember(std::string_view bpirType) {
+    return MapTypeRecursive(bpirType, /*forMember=*/true);
 }
 
 CppEmitResult EmitCppFunctionBody(const nlohmann::json& doc, CppEmitOptions opts) {
