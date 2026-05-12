@@ -289,14 +289,24 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
         if (query.empty()) return true;
         return ContainsCI(n.Class, query) || ContainsCI(n.Title, query);
     };
+    // find_node spans every graph in the BP, so each hit carries the
+    // graph it lives in — otherwise the caller has no way to reach
+    // get_node / delete_node / wire_pins on the result (issue #6).
+    auto tagAndPush = [&out](const BPNode& src, std::string_view graphName,
+                             std::string_view graphType) {
+        BPNode copy = src;
+        copy.GraphName = std::string(graphName);
+        copy.GraphType = std::string(graphType);
+        out.push_back(std::move(copy));
+    };
     for (const auto& g : entry.graphs) {
         for (const auto& n : g.Nodes) {
-            if (match(n)) out.push_back(n);
+            if (match(n)) tagAndPush(n, g.Name, g.Type);
         }
     }
     for (const auto& f : entry.functions) {
         for (const auto& n : f.Graph.Nodes) {
-            if (match(n)) out.push_back(n);
+            if (match(n)) tagAndPush(n, f.Graph.Name, "Function");
         }
     }
     return out;
