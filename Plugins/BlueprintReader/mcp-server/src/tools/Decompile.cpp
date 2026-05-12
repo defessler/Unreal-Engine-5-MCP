@@ -262,6 +262,26 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
         if (!args.empty()) out["args"] = std::move(args);
         return out;
     }
+    // GetClassDefaults → `GetDefault<T>()->Field` or
+    // `Class->GetDefaultObject<T>()->Field`. The K2 node has a Class
+    // input + one output pin per CDO field. We expose this via a
+    // structured sentinel call that CppEmit unpacks at render time.
+    if (producer.Class.find("K2Node_GetClassDefaults") != std::string::npos) {
+        const BPPin* classPin = w.GetPin(producer, "Class");
+        nlohmann::json classExpr = classPin
+            ? BuildExpression(w, producer, *classPin)
+            : nlohmann::json{{"lit", nullptr}};
+        // The output pin we're tracing identifies which field on the
+        // CDO is being read.
+        return nlohmann::json{
+            {"call", "__bpr_get_class_defaults"},
+            {"args", nlohmann::json{
+                {"Class", classExpr},
+                {"Field", nlohmann::json{{"lit", outputPin.Name}}},
+            }},
+        };
+    }
+
     // FormatText: BP has a `Format` input pin (the format string with
     // {Name} placeholders) plus one input pin per named argument. The
     // C++ form is FText::Format(LOCTEXT(..., "Hello {Name}"), Args)
@@ -623,6 +643,85 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         if (!args.empty()) stmt["args"] = std::move(args);
         r.statement = std::move(stmt);
         r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
+    // CallParentFunction → `Super::FunctionName(args)`. BP authors
+    // use this node when overriding a parent class's BlueprintNativeEvent
+    // and want to call the C++ base implementation; the C++ idiom is
+    // `Super::FunctionName(args)`.
+    if (n.Class.find("K2Node_CallParentFunction") != std::string::npos) {
+        std::string fnName;
+        if (n.Meta.is_object()) {
+            fnName = n.Meta.value("targetFunction", std::string{});
+            if (fnName.empty()) fnName = n.Meta.value("functionReference", std::string{});
+        }
+        nlohmann::json args = nlohmann::json::object();
+        for (const auto& p : n.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            if (p.Name == "self") continue;
+            args[p.Name] = BuildExpression(w, n, p);
+        }
+        nlohmann::json stmt = {{"call", "Super::" + fnName}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        r.statement = std::move(stmt);
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
+    // MultiGate — opens N output exec paths in sequence/random, like a
+    // stateful switch. No clean single-statement C++ idiom; we emit a
+    // TODO with the canonical refactor (member int32 + switch). The
+    // BP node's pin count is captured so the agent gets context.
+    if (n.Class.find("K2Node_MultiGate") != std::string::npos) {
+        nlohmann::json fields = nlohmann::json::object();
+        if (n.Meta.is_object()) fields = n.Meta;
+        // Count the output exec pins (one per gate).
+        int gateCount = 0;
+        for (const auto& p : n.Pins) {
+            if (p.Direction == "Output" && p.Type.Category == "exec") gateCount++;
+        }
+        fields["gate_count"] = gateCount;
+        r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+            {"node_class", n.Class},
+            {"guid", n.Id},
+            {"reason",
+             "MultiGate — stateful exec router. Add an int32 member to "
+             "track the current gate, increment per call, switch on it. "
+             "Outputs to gate0..N follow."},
+            {"fields", std::move(fields)},
+        }}};
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
+    // LoadAsset / LoadAssetClass / LoadAssetBlocking — async asset
+    // loading. The C++ idiom uses FStreamableManager via
+    // UAssetManager::GetStreamableManager().RequestAsyncLoad().
+    // Like Delay, the exec continues in a callback — not single-
+    // statement-able. Emit a structured TODO with the canonical
+    // refactor.
+    if (n.Class.find("K2Node_LoadAsset") != std::string::npos) {
+        nlohmann::json fields = nlohmann::json::object();
+        if (n.Meta.is_object()) fields = n.Meta;
+        if (const BPPin* ap = w.GetPin(n, "Asset")) {
+            fields["asset_pin"] = BuildExpression(w, n, *ap);
+        }
+        bool isClass = n.Class.find("Class") != std::string::npos;
+        r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+            {"node_class", n.Class},
+            {"guid", n.Id},
+            {"reason",
+             isClass
+                ? "LoadAssetClass — split into FStreamableManager async "
+                  "load callback. UAssetManager::GetStreamableManager()"
+                  ".RequestAsyncLoad(SoftClassPath, FStreamableDelegate)."
+                : "LoadAsset — split into FStreamableManager async load "
+                  "callback. UAssetManager::GetStreamableManager()"
+                  ".RequestAsyncLoad(SoftObjectPath, FStreamableDelegate)."},
+            {"fields", std::move(fields)},
+        }}};
+        r.terminatesExec = true;
         return r;
     }
 

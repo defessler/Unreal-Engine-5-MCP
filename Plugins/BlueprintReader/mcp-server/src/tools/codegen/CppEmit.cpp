@@ -502,6 +502,9 @@ struct Emitter {
         if (fnName == "__bpr_format_text") {
             return EmitFormatText(e);
         }
+        if (fnName == "__bpr_get_class_defaults") {
+            return EmitGetClassDefaults(e);
+        }
         // GetDataTableRow is statement-form (carries success+fail blocks)
         // — the statement dispatcher handles it directly; we'd only see
         // it here if someone misuses the sentinel in an expression slot.
@@ -634,6 +637,24 @@ struct Emitter {
         // via the LHS UPROPERTY type. Cast<> on the result is the agent's
         // job (we can't infer the target type from BPIR alone).
         return fmt::format("NewObject<UObject>({}, {})", outer, cls);
+    }
+
+    // GetClassDefaults → `Class->GetDefaultObject<UObject>()->Field`.
+    // The class expression comes from the Class arg; the Field arg
+    // carries the BP output-pin name (which is the CDO's property
+    // name). When the class is statically known (a literal class ref),
+    // `GetDefault<T>()->Field` is shorter — but we don't have strong
+    // type info, so we emit the runtime form.
+    std::string EmitGetClassDefaults(const nlohmann::json& e) {
+        auto a = (e.contains("args") && e["args"].is_object())
+                     ? e["args"] : nlohmann::json::object();
+        std::string cls = a.contains("Class") ? EmitExpr(a["Class"]) : "nullptr";
+        std::string field = "Field";
+        if (a.contains("Field") && a["Field"].is_object() &&
+            a["Field"].contains("lit") && a["Field"]["lit"].is_string()) {
+            field = a["Field"]["lit"].get<std::string>();
+        }
+        return fmt::format("{}->GetDefaultObject<UObject>()->{}", cls, field);
     }
 
     // FormatText → `FText::Format(NSLOCTEXT("BPR", "...", "..."),
