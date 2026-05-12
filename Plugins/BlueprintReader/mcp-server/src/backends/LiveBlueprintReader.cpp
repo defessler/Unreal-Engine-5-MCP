@@ -185,56 +185,110 @@ static SocketType ConnectOnce(const std::string& host, int port) {
     return s;
 }
 
+// One connect + handshake pass. Leaves socket_ + handshakeOk_
+// untouched on failure (caller decides whether to retry). The
+// retryWorthwhile hint distinguishes "the editor probably restarted,
+// re-read the handshake file" from "something is structurally wrong"
+// — see the AttemptResult declaration in LiveBlueprintReader.h.
+LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake() {
+    SocketType s = ConnectOnce(cfg_.host, cfg_.port);
+    if (s == kInvalidSocket) {
+        return {false, /*retryWorthwhile=*/true, fmt::format(
+            "connect to {}:{} failed", cfg_.host, cfg_.port)};
+    }
+
+    auto& buf = BufFor(s).b;
+    buf.clear();
+
+    std::string hello;
+    try {
+        hello = RecvLine(s, buf);
+    } catch (const std::exception& e) {
+#if defined(_WIN32)
+        closesocket(s);
+#else
+        close(s);
+#endif
+        // Protocol-level failure on a fresh connect typically means the
+        // server we connected to isn't the editor — a refresh probably
+        // won't help, so don't burn a retry on it.
+        return {false, /*retryWorthwhile=*/false, fmt::format(
+            "reading hello frame failed: {}", e.what())};
+    }
+    auto helloJson = nlohmann::json::parse(hello, nullptr, /*allow_exceptions=*/false);
+    if (!helloJson.is_object() || helloJson.value("type", "") != "hello") {
+#if defined(_WIN32)
+        closesocket(s);
+#else
+        close(s);
+#endif
+        return {false, false, fmt::format(
+            "expected hello frame, got: {}", hello)};
+    }
+
+    nlohmann::json authMsg = { {"type", "auth"}, {"token", cfg_.token} };
+    std::string authLine = authMsg.dump() + "\n";
+    try {
+        SendAll(s, authLine.data(), authLine.size());
+    } catch (const std::exception& e) {
+#if defined(_WIN32)
+        closesocket(s);
+#else
+        close(s);
+#endif
+        return {false, true, fmt::format("auth send failed: {}", e.what())};
+    }
+
+    std::string authResp;
+    try {
+        authResp = RecvLine(s, buf);
+    } catch (const std::exception& e) {
+#if defined(_WIN32)
+        closesocket(s);
+#else
+        close(s);
+#endif
+        return {false, true, fmt::format("auth response read failed: {}", e.what())};
+    }
+    auto authJson = nlohmann::json::parse(authResp, nullptr, false);
+    std::string respType = authJson.is_object() ? authJson.value("type", "") : "";
+    if (respType != "auth_ok") {
+#if defined(_WIN32)
+        closesocket(s);
+#else
+        close(s);
+#endif
+        // Auth failure on stable-port restarts (PR #49) means the token
+        // rotated — a handshake refresh fixes it. retryWorthwhile=true.
+        return {false, true, fmt::format(
+            "auth failed (server response: {})", authResp)};
+    }
+
+    // Success — commit the socket.
+    socket_ = static_cast<intptr_t>(s);
+    handshakeOk_ = true;
+    return {true, false, {}};
+}
+
 void LiveBlueprintReader::EnsureConnected() {
     if (handshakeOk_) return;
 
     // Up to two attempts: first with current cfg_, second after re-
-    // reading the handshake file if the first failed. Covers the
-    // "editor restarted, new port" case (issue #9) without needing to
-    // bounce the MCP server.
-    SocketType s = ConnectOnce(cfg_.host, cfg_.port);
-    if (s == kInvalidSocket) {
-        if (RefreshFromHandshakeFile()) {
-            s = ConnectOnce(cfg_.host, cfg_.port);
-        }
+    // reading the handshake file if the first failed in a way that
+    // a refresh could plausibly fix (connect-refused or auth-failed).
+    // Covers BOTH "editor restarted, new port" and "editor restarted,
+    // same port but new token" — the latter is the PR #49 stable-port
+    // case (issue #9).
+    AttemptResult r = TryConnectAndHandshake();
+    if (!r.ok && r.retryWorthwhile && RefreshFromHandshakeFile()) {
+        r = TryConnectAndHandshake();
     }
-    if (s == kInvalidSocket) {
+    if (!r.ok) {
         throw BlueprintReaderError(fmt::format(
-            "LiveBlueprintReader: connect to {}:{} failed — is the editor "
-            "running with BP_READER_LIVE_PORT set?",
-            cfg_.host, cfg_.port));
+            "LiveBlueprintReader: {} — is the editor running with "
+            "BP_READER_LIVE_PORT/TOKEN published in Saved/bp-reader-live.json?",
+            r.error));
     }
-    socket_ = static_cast<intptr_t>(s);
-
-    // Handshake: read hello, send auth, read auth_ok.
-    auto& buf = BufFor(s).b;
-    buf.clear();
-    std::string hello = RecvLine(s, buf);
-    auto helloJson = nlohmann::json::parse(hello, nullptr, /*allow_exceptions=*/false);
-    if (!helloJson.is_object() || helloJson.value("type", "") != "hello") {
-        Disconnect();
-        throw BlueprintReaderError(fmt::format(
-            "LiveBlueprintReader: expected hello frame, got: {}", hello));
-    }
-
-    nlohmann::json authMsg = {
-        {"type", "auth"},
-        {"token", cfg_.token},
-    };
-    std::string authLine = authMsg.dump() + "\n";
-    SendAll(s, authLine.data(), authLine.size());
-
-    std::string authResp = RecvLine(s, buf);
-    auto authJson = nlohmann::json::parse(authResp, nullptr, false);
-    std::string respType = authJson.is_object() ? authJson.value("type", "") : "";
-    if (respType != "auth_ok") {
-        Disconnect();
-        throw BlueprintReaderError(fmt::format(
-            "LiveBlueprintReader: auth failed (server response: {}). "
-            "Check that BP_READER_LIVE_TOKEN is identical in the editor's "
-            "process env and the MCP server's process env.", authResp));
-    }
-    handshakeOk_ = true;
 }
 
 nlohmann::json LiveBlueprintReader::RunOp(const std::vector<std::string>& args) {
