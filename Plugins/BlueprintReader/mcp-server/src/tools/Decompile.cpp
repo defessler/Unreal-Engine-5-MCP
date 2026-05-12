@@ -402,9 +402,16 @@ struct DecompileResult {
     bool terminatesExec = false;  // return / break / continue / dangling
 };
 
+// `visited` is intentionally [[maybe_unused]] here: each statement-form
+// recursion below creates its own fresh visited set (then-branch,
+// else-branch, switch cases, for-each body, cast success/fail blocks).
+// Diamond-shaped exec flow can legitimately revisit the same node from
+// multiple branches, so sharing one visited set would produce false-
+// positive "exec-cycle" reports. The DecompileStatementsFrom caller's
+// visited set is the one that owns cycle detection at this level.
 DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
                                    const BPNode* stopAt,
-                                   std::set<std::string>& visited);
+                                   [[maybe_unused]] std::set<std::string>& visited);
 
 nlohmann::json DecompileStatementsFrom(const Walker& w,
                                        const BPNode* start,
@@ -438,7 +445,7 @@ nlohmann::json DecompileStatementsFrom(const Walker& w,
 
 DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
                                    const BPNode* stopAt,
-                                   std::set<std::string>& visited) {
+                                   [[maybe_unused]] std::set<std::string>& visited) {
     DecompileResult r;
 
     // FunctionEntry: structural — skip and follow `then`.
