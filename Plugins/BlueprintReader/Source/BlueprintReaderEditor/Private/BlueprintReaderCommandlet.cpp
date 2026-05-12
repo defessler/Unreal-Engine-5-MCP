@@ -33,8 +33,9 @@
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
-#include "HAL/PlatformFileManager.h"
-#include "GenericPlatform/GenericPlatformFile.h"
+#if PLATFORM_WINDOWS
+    #include "Windows/WindowsHWrapper.h"
+#endif
 #include "HAL/PlatformMisc.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
@@ -93,7 +94,11 @@
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReader, Log, All);
+// Definition for the LogBlueprintReader category declared in
+// BlueprintIntrospector.h. Was DEFINE_LOG_CATEGORY_STATIC originally —
+// non-static now so the introspector can UE_LOG into it (issue #58
+// follow-up; diagnostic needed to fire on the read path too).
+DEFINE_LOG_CATEGORY(LogBlueprintReader);
 
 UBlueprintReaderCommandlet::UBlueprintReaderCommandlet()
 {
@@ -407,72 +412,6 @@ namespace
 
 	// ----- Shared helpers for write ops -------------------------------------
 
-	// Use the asset registry to figure out *why* the BP failed to load and
-	// log a specific diagnostic. The common case worth calling out
-	// explicitly is "parent class not compiled / missing module" (issue
-	// #3): the on-disk asset references a UClass that the commandlet
-	// can't resolve, so the BP's CDO construction blows up during load.
-	// Without this, the user sees only the generic LogLinker spam.
-	void DiagnoseFailedBlueprintLoad(const FString& AssetPath)
-	{
-		IAssetRegistry& Registry =
-			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-		FAssetData Asset = Registry.GetAssetByObjectPath(FSoftObjectPath(AssetPath));
-		if (!Asset.IsValid())
-		{
-			UE_LOG(LogBlueprintReader, Error,
-				TEXT("LoadMutableBlueprint: %s — asset not in registry; check the path"),
-				*AssetPath);
-			return;
-		}
-		// Issue #4: bp-reader only handles UBlueprint / UWidgetBlueprint
-		// assets. If the asset on disk is a UPrimaryDataAsset descendant
-		// (DA_*.uasset) or any other non-Blueprint asset class, the
-		// LoadObject<UBlueprint> cast returns null even though the asset
-		// itself loaded fine. Detect that and emit a clear message
-		// pointing the caller at the right tool.
-		const UClass* AssetClass = Asset.GetClass();
-		if (AssetClass && !AssetClass->IsChildOf(UBlueprint::StaticClass()))
-		{
-			UE_LOG(LogBlueprintReader, Error,
-				TEXT("LoadMutableBlueprint: %s — asset is %s, not a UBlueprint. bp-reader "
-				     "only handles Blueprint assets (UBlueprint / UWidgetBlueprint). "
-				     "Data Assets (UPrimaryDataAsset descendants), DataTables, Curves, "
-				     "Materials, etc. are not supported here — inspect them via the "
-				     "editor or raw asset serialization (issue #4)."),
-				*AssetPath, *AssetClass->GetName());
-			return;
-		}
-		const FString ParentClassTag =
-			Asset.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
-		if (ParentClassTag.IsEmpty())
-		{
-			UE_LOG(LogBlueprintReader, Error,
-				TEXT("LoadMutableBlueprint: %s — asset exists in registry but load failed; "
-				     "no parent_class tag to probe"),
-				*AssetPath);
-			return;
-		}
-		const FSoftObjectPath ParentRef(ParentClassTag);
-		UClass* ParentClass =
-			LoadObject<UClass>(nullptr, *ParentRef.ToString(), nullptr, LOAD_Quiet);
-		if (!ParentClass)
-		{
-			UE_LOG(LogBlueprintReader, Error,
-				TEXT("LoadMutableBlueprint: %s — parent class %s could not be resolved. "
-				     "This typically means the C++ module declaring it is not compiled in "
-				     "this build (issue #3). Rebuild the project (Build.bat <TargetName> "
-				     "Win64 Development) before reading or writing this Blueprint."),
-				*AssetPath, *ParentClassTag);
-			return;
-		}
-		UE_LOG(LogBlueprintReader, Error,
-			TEXT("LoadMutableBlueprint: %s — parent class %s resolved but BP load still "
-			     "failed; check the editor log for the underlying PostLoad / "
-			     "ConstructDefaultObject error"),
-			*AssetPath, *ParentClassTag);
-	}
-
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
 		FString Resolved = AssetPath;
@@ -487,7 +426,12 @@ namespace
 		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *Resolved);
 		if (!BP)
 		{
-			DiagnoseFailedBlueprintLoad(Resolved);
+			// Diagnostic lives in BlueprintIntrospector — see header. We
+			// call the same routine from FBlueprintIntrospector::Read so
+			// read-only failures (which never enter LoadMutableBlueprint)
+			// get the same error trace. Codex review on PR #58 flagged
+			// the read-path gap.
+			FBlueprintIntrospector::DiagnoseFailedBlueprintLoad(Resolved);
 		}
 		return BP;
 	}
@@ -608,35 +552,57 @@ namespace
 		if (!bOk)
 		{
 			// SavePackage failure under the commandlet is most often a
-			// Windows sharing violation — the Unreal Editor is open and
-			// holds an exclusive write handle on the .uasset (issue #2).
-			// Probe by trying to open the file for exclusive write
-			// ourselves; if that fails, surface a specific message
-			// pointing at the right fix (close the editor, or use the
-			// auto/live backend which talks to the editor in-process and
-			// doesn't hit the file lock).
-			IFileHandle* Probe = FPlatformFileManager::Get().GetPlatformFile()
-				.OpenWrite(*FileName, /*bAppend=*/false, /*bAllowRead=*/false);
-			if (Probe == nullptr)
+			// Windows sharing violation — the editor is open and holds
+			// an exclusive write handle on the .uasset (issue #2). Probe
+			// via raw Win32 CreateFileW with OPEN_EXISTING and no share
+			// flags — fails with ERROR_SHARING_VIOLATION (32) when the
+			// file is locked, never creates/truncates the asset. (The
+			// initial PR used IPlatformFile::OpenWrite, which truncates
+			// on success — turning a non-lock save failure into asset
+			// corruption. Codex review on PR #59 caught this.)
+#if PLATFORM_WINDOWS
+			const FString LockHint =
+				TEXT("close the editor before running commandlet writes, or set "
+				     "BP_READER_BACKEND=auto so writes route through the editor's "
+				     "in-process TCP server (issue #2)");
+			HANDLE Probe = ::CreateFileW(*FileName,
+				GENERIC_READ | GENERIC_WRITE,
+				0,                        // no share — fail if anyone has it open
+				nullptr,
+				OPEN_EXISTING,            // never create or truncate
+				FILE_ATTRIBUTE_NORMAL,
+				nullptr);
+			if (Probe == INVALID_HANDLE_VALUE)
 			{
-				delete Probe;  // safe on nullptr
-				UE_LOG(LogBlueprintReader, Error,
-					TEXT("SavePackage failed: %s — file is locked. The Unreal Editor "
-					     "is probably open and holds an exclusive write handle. Either "
-					     "close the editor before running commandlet writes, or set "
-					     "BP_READER_BACKEND=auto so writes route through the editor's "
-					     "in-process TCP server (issue #2)."),
-					*FileName);
+				const DWORD Err = ::GetLastError();
+				if (Err == ERROR_SHARING_VIOLATION)
+				{
+					UE_LOG(LogBlueprintReader, Error,
+						TEXT("SavePackage failed: %s — file is locked (sharing violation). %s"),
+						*FileName, *LockHint);
+				}
+				else
+				{
+					UE_LOG(LogBlueprintReader, Error,
+						TEXT("SavePackage failed: %s — could not open file for diagnostic probe "
+						     "(Win32 error %lu). %s"),
+						*FileName, Err, *LockHint);
+				}
 			}
 			else
 			{
-				delete Probe;
+				::CloseHandle(Probe);
 				UE_LOG(LogBlueprintReader, Error,
-					TEXT("SavePackage failed: %s — file is writable, so this isn't a "
+					TEXT("SavePackage failed: %s — file opens cleanly, so this isn't a "
 					     "file-lock issue; check the editor log above for the underlying "
 					     "compile/serialization error"),
 					*FileName);
 			}
+#else
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SavePackage failed: %s — check the editor log for the underlying error"),
+				*FileName);
+#endif
 		}
 		return bOk;
 	}

@@ -8,7 +8,9 @@
 
 #include "backends/CommandletArgEncoding.h"
 
+using bpr::backends::detail::EncodeArg;
 using bpr::backends::detail::EncodeArgForFParse;
+using bpr::backends::detail::QuoteWindowsArg;
 
 TEST_CASE("EncodeArgForFParse: flag without '=' passes through") {
     CHECK(EncodeArgForFParse(L"-Compact") == L"-Compact");
@@ -68,6 +70,41 @@ TEST_CASE("EncodeArgForFParse: key with no leading '-' still works") {
     // transform. The plugin call sites all include `-`, but the
     // encoder is robust either way.
     CHECK(EncodeArgForFParse(L"Foo=Bar Baz") == L"Foo=\"Bar Baz\"");
+}
+
+// ---- EncodeArg dispatcher (PR #52 Codex follow-up) -----------------------
+// The dispatcher routes -Key=Value args through FParse-style inner quoting
+// (so UE's FParse::Value reads whitespace values intact) and positional
+// args through standard Windows outer quoting (so CommandLineToArgvW
+// keeps paths like `C:\Unreal Projects\Foo.uproject` whole). Codex
+// flagged the original PR #52 where ALL args went through the FParse
+// encoder, splitting positional project paths on spaces.
+
+TEST_CASE("EncodeArg: positional path with spaces gets Windows outer quoting") {
+    // The uproject path is the first positional arg after the exe and
+    // contains no `=`. It MUST come out wrapped in outer quotes so
+    // CommandLineToArgvW round-trips it as one argv entry.
+    CHECK(EncodeArg(L"C:\\Unreal Projects\\Foo.uproject") ==
+          L"\"C:\\Unreal Projects\\Foo.uproject\"");
+}
+
+TEST_CASE("EncodeArg: positional path without spaces passes through bare") {
+    CHECK(EncodeArg(L"C:\\Projects\\Foo.uproject") ==
+          L"C:\\Projects\\Foo.uproject");
+}
+
+TEST_CASE("EncodeArg: -Key=Value with whitespace still uses inner quoting") {
+    // Same path as EncodeArgForFParse for `=`-bearing args — verify the
+    // dispatcher doesn't accidentally route them through QuoteWindowsArg
+    // (which would produce `\"-FromPin=Dummy Targets\"` and break FParse).
+    CHECK(EncodeArg(L"-FromPin=Dummy Targets") ==
+          L"-FromPin=\"Dummy Targets\"");
+}
+
+TEST_CASE("EncodeArg: bare flag without '=' or whitespace passes through") {
+    // -Daemon, -nullrhi, etc. — no `=`, no spaces, no quoting needed.
+    CHECK(EncodeArg(L"-Daemon") == L"-Daemon");
+    CHECK(EncodeArg(L"-nullrhi") == L"-nullrhi");
 }
 
 TEST_CASE("EncodeArgForFParse: full WirePins arg line round-trips via UE FParse") {
