@@ -56,4 +56,13 @@ CppEmitResult EmitCppFunction(const nlohmann::json& bpirFunctionDoc,
 // passes (CppClassEmit's UPROPERTY decls) can reuse it.
 std::string MapBpirTypeToCpp(std::string_view bpirType);
 
+// UPROPERTY-context variant: same as MapBpirTypeToCpp but wraps object
+// references in `TObjectPtr<>` per UE5 convention (since 5.0, Epic
+// recommends TObjectPtr for class-member UObject* properties; raw
+// pointers still work but trip Epic-internal lint and miss the editor
+// optimization). Use for class data members (UPROPERTY decls). Function
+// arguments and local variables still use raw pointers — TObjectPtr is
+// only for headers' UPROPERTY-marked fields.
+std::string MapBpirTypeToCppMember(std::string_view bpirType);
+
 } // namespace bpr::tools

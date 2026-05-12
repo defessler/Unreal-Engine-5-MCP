@@ -299,13 +299,58 @@ std::string PrefixClassName(std::string_view bpName, std::string_view parentClas
     return std::string(1, ChoosePrefixFor(parentClass)) + clean;
 }
 
+// Best-effort: detect whether a BP variable's type is a UE component
+// reference. Component UPROPERTYs follow a different convention from
+// data UPROPERTYs (`VisibleAnywhere, BlueprintReadOnly` rather than
+// `EditAnywhere, BlueprintReadWrite`) because re-assigning the
+// component pointer at runtime would orphan the original — but the
+// component's inner properties should still be editable via the
+// details panel cascade.
+//
+// Heuristic: bpirType is "object:X" where X is U*Component (after the
+// usual path-strip and prefix-detection logic). Returns true for
+// UStaticMeshComponent, USceneComponent, UCharacterMovementComponent,
+// etc. — anything ending in "Component".
+bool LooksLikeComponentType(std::string_view bpirType) {
+    // Strip object:/soft_object: prefix.
+    std::string_view t = bpirType;
+    auto colon = t.find(':');
+    if (colon == std::string_view::npos) return false;
+    std::string_view head = t.substr(0, colon);
+    if (head != "object" && head != "soft_object") return false;
+    std::string_view sub = t.substr(colon + 1);
+    if (auto dot = sub.find_last_of('.'); dot != std::string_view::npos) {
+        sub = sub.substr(dot + 1);
+    }
+    if (sub.size() > 2 && sub.substr(sub.size() - 2) == "_C") {
+        sub = sub.substr(0, sub.size() - 2);
+    }
+    return sub.size() > 9 &&
+           sub.substr(sub.size() - 9) == "Component";
+}
+
 std::string BuildUPropertyList(const nlohmann::json& varDecl) {
     std::vector<std::string> specs;
-    if (varDecl.value("editable", false)) {
-        specs.push_back("EditAnywhere");
+    const std::string typeStr = varDecl.value("type", "");
+    const bool isComponent = LooksLikeComponentType(typeStr);
+
+    // Component fields take a different specifier path — see
+    // LooksLikeComponentType comment. Data fields take EditAnywhere /
+    // BlueprintReadWrite when editable; non-editable data still gets
+    // BlueprintReadWrite (matches BP semantics — vars are visible to BP
+    // graphs by default).
+    if (isComponent) {
+        // Always visible in editor + BlueprintReadOnly. UE convention
+        // for SCS-attached and CreateDefaultSubobject components alike.
+        specs.push_back("VisibleAnywhere");
+        specs.push_back("BlueprintReadOnly");
+    } else {
+        if (varDecl.value("editable", false)) {
+            specs.push_back("EditAnywhere");
+        }
+        // BP variables are always Blueprint-visible.
+        specs.push_back("BlueprintReadWrite");
     }
-    // BP variables are always Blueprint-visible.
-    specs.push_back("BlueprintReadWrite");
     if (varDecl.value("replicated", false)) {
         specs.push_back("Replicated");
     }
@@ -374,7 +419,9 @@ std::string TrimFloatDefault(std::string_view in) {
 std::string RenderUPropertyDecl(const nlohmann::json& v) {
     std::string specs = BuildUPropertyList(v);
     std::string typeStr = v.value("type", "void");
-    std::string cppType = MapBpirTypeToCpp(typeStr);
+    // UPROPERTY-context type: wraps UObject* members with TObjectPtr<>
+    // per UE5 convention (Epic recommends since 5.0).
+    std::string cppType = MapBpirTypeToCppMember(typeStr);
     std::string name    = v.value("name", "Var");
     std::string defaultStr = v.value("default", std::string{});
     std::string line = fmt::format("    UPROPERTY({})\n    {} {}", specs, cppType, name);
@@ -557,8 +604,17 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     // .generated.h must be the LAST include in any UCLASS-bearing header.
     H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
 
-    // UCLASS line.
-    H << "UCLASS(Blueprintable)\n";
+    // UCLASS line. When the caller didn't pass a MODULE_API macro, fall
+    // back to `UCLASS(MinimalAPI)` so other modules can still Cast<>
+    // this class without us exporting every symbol — UE's standard
+    // pattern for "Blueprintable but not part of the module's ABI".
+    // When a real API macro is provided, plain `UCLASS(Blueprintable)`
+    // with the macro on the class line is correct.
+    if (opts.moduleApiMacro.empty()) {
+        H << "UCLASS(MinimalAPI, Blueprintable)\n";
+    } else {
+        H << "UCLASS(Blueprintable)\n";
+    }
     H << "class ";
     if (!opts.moduleApiMacro.empty()) H << opts.moduleApiMacro << " ";
     H << className << " : public " << parentClass << " {\n";
