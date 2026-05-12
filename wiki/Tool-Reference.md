@@ -691,11 +691,9 @@ qualified-name calls.
 
 ### `transpile_blueprint`
 Whole BP class → compilable UE C++ `.h`/`.cpp` pair. Composes
-`decompile_blueprint` + class-emit: emits a `UCLASS()` decl with
-`UPROPERTY()` decoration (Replicated / EditAnywhere / Category specifiers
-inferred from BP variable metadata), `UFUNCTION()` decls, function
-bodies, and `GetLifetimeReplicatedProps()` registration when any
-variable is Replicated.
+`decompile_blueprint` + class-emit. End-to-end verified against
+real BPs + UBT — the generated source compiles cleanly into the
+project's editor target.
 
 ```json
 { "asset_path":         "/Game/AI/BP_Enemy",
@@ -712,9 +710,91 @@ place of the BP entirely.
 Returns `{ok, class_name, header_file, impl_file, header_source,
 impl_source, notes, sidecar, sidecar_file, unsupported_count}`. The
 **sidecar** is JSON describing every unsupported / approximated node
-(timelines, latent actions, async actions, anim/Niagara graphs) plus
-`manual_steps` for triage; write it next to the `.h/.cpp` so the agent
-can iterate over what's left to port.
+plus `manual_steps` for triage; write it next to the `.h/.cpp` so the
+agent can iterate over what's left to port.
+
+**What the generated code does right** (out of the box, no
+hand-editing required):
+
+- **`UCLASS(MinimalAPI, Blueprintable)`** when no `module_api_macro`
+  is passed — so `Cast<>` still works from other modules without
+  exporting every symbol. With a macro, plain `UCLASS(Blueprintable)`
+  + the macro on the class line.
+- **`TObjectPtr<X>` for UPROPERTY object refs** (UE5 convention since
+  5.0). Function arg pointers stay raw `X*`. Soft refs use
+  `TSoftObjectPtr<X>` / `TSoftClassPtr<X>` consistently.
+- **`VisibleAnywhere, BlueprintReadOnly`** for U*Component UPROPERTYs;
+  data fields use `EditAnywhere, BlueprintReadWrite`.
+- **Constructor with `bReplicates = true`** when Actor-derived + any
+  Replicated UPROPERTY (without this, DOREPLIFETIME registrations are
+  a silent no-op at runtime).
+- **`DOREPLIFETIME_CONDITION(Class, Var, COND_*)`** when the BP
+  variable carries a RepCondition (OwnerOnly, SkipOwner, etc.).
+  `ReplicatedUsing=OnRep_X` + `UFUNCTION() void OnRep_X()` when the
+  variable has RepNotify.
+- **Forward declarations** for UPROPERTY-referenced types before
+  `.generated.h` (UE convention: forward-decl in .h, include in .cpp).
+- **`UFUNCTION(BlueprintPure)` + `const` member function** inferred
+  when the BP function has no exec output on FunctionEntry + has a
+  return value.
+- **`const FString&` / `const FVector&` / `const TArray<X>&` args**
+  per Epic's "anything larger than FVector → const ref" perf
+  convention. Primitives + FName + pointers pass by value.
+- **Safety defaults for primitives**: `bool = false`, `int32 = 0`,
+  `float = 0` even when BP carried `default_value: null`
+  (uninitialized primitives are undefined behavior in C++).
+- **Synthesized return** at the end of any non-void function whose
+  body walk didn't hit a FunctionResult — uses the output defaults
+  (`return false;` from BP's `bool Killed = false` output).
+
+**BP node lowerings beyond the basics** (each K2 node maps to its
+canonical C++ idiom):
+
+- `KismetMathLibrary::Add_VectorVector` → `A + B` (and Multiply,
+  Subtract, etc. for Vector / Vector2D / Rotator + comparisons)
+- `KismetMathLibrary::Add_IntInt`, `EqualEqual_FloatFloat`,
+  `BooleanAND`/`OR`/`Not_PreBool` → C++ operators
+- `KismetSystemLibrary::IsValid` → bare `IsValid()`
+- `KismetSystemLibrary::PrintString` (+ trace / draw debug helpers,
+  `GameplayStatics::GetPlayerController` etc.) → injects `this` as
+  WorldContextObject so the call compiles
+- `KismetArrayLibrary::Array_Add(Arr, Item)` → `Arr.Add(Item)` (+
+  `Num()`, `Contains()`, `Remove()`, `IsValidIndex()`, etc.)
+- `KismetStringLibrary::ToUpper` / `Len` / `Contains` →
+  `Str.ToUpper()` / `Str.Len()` / etc.
+- `K2Node_DestroyActor` → `Target->Destroy()` (or `this->Destroy()`)
+- `K2Node_ConstructObjectFromClass` → `NewObject<UObject>(Outer, Class)`
+- `K2Node_GetClassDefaults` → `Class->GetDefaultObject<UObject>()->Field`
+- `K2Node_CallParentFunction` → `Super::Foo(args)`
+- `K2Node_FormatText` → `FText::Format(NSLOCTEXT(...), Args)` with
+  populated `FFormatNamedArguments`
+- `K2Node_ForEachLoop` / `WhileLoop` (BP macros) → range-based for /
+  while statements
+- `K2Node_Switch*` → C++ switch / case
+- `K2Node_DynamicCast` → `Cast<T>(obj)` (expression form) or the
+  if-cast-success pattern (statement form)
+- `K2Node_Knot` (reroute) → transparent passthrough on both exec +
+  data flow
+
+**Things that emit a TODO + sidecar refactor hint** (latent or
+stateful — no single-statement C++ equivalent):
+
+- `Delay` / `RetriggerableDelay` / `DelayUntilNextTick` → FTimerManager
+  pattern with the canonical SetTimer hint
+- `LoadAsset` / `LoadAssetClass` → FStreamableManager async load
+- `K2Node_MultiGate` → int32 state + switch refactor
+- `K2Node_Timeline` → UTimelineComponent member + PlayFromStart
+- `K2Node_AsyncAction` / `K2Node_LatentAbilityCall` → UAsyncAction
+  callback pattern
+- `K2Node_AnimNode_*` → move to UAnimInstance-derived class
+
+**Name-collision warnings** in the sidecar when BP overrides UE
+reserved virtual methods (`TakeDamage`, `Tick`, `BeginPlay`, `Jump`,
+etc.) — the generated UFUNCTION shadows the inherited virtual
+instead of overriding it (compiles with `-Woverloaded-virtual`, but
+the function never gets called via UE's damage / tick / event
+pipeline). The sidecar gives a rename hint (`Bp_TakeDamage`) or
+"refactor to the real override signature".
 
 ### `write_generated_source`
 Write a transpiled `.h` / `.cpp` into the project's `Source/` tree.

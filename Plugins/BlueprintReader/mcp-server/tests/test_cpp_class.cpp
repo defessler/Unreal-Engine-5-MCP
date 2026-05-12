@@ -338,6 +338,43 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== Safety defaults for primitive UPROPERTYs (E2E fix from PR #44) ======
+
+TEST_CASE("EmitCppClass: bool UPROPERTY with no default → = false (not UB)") {
+    // BP defaults bool to false; uninitialized primitive class members
+    // are undefined behavior in C++. We auto-emit the safety default.
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","bIsAlive"}, {"type","bool"}, {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "bool bIsAlive = false;"));
+}
+
+TEST_CASE("EmitCppClass: numeric UPROPERTY with no default → = 0") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Count"}, {"type","int"}},
+        json{{"name","Rate"},  {"type","float"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "int32 Count = 0"));
+    CHECK(Contains(out.headerSource, "float Rate = 0"));
+}
+
+TEST_CASE("EmitCppClass: object UPROPERTY with no default → no initializer "
+          "(TObjectPtr default-constructs to nullptr)") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Target"}, {"type","object:Actor"}, {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    // No explicit initializer for the pointer — TObjectPtr<> default ctor
+    // sets it to nullptr safely.
+    CHECK(Contains(out.headerSource, "TObjectPtr<AActor> Target;"));
+    CHECK_FALSE(Contains(out.headerSource, "Target = "));
+}
+
 // ===== ExposeOnSpawn + RepNotify ===========================================
 
 TEST_CASE("EmitCppClass: expose_on_spawn → UPROPERTY meta=(ExposeOnSpawn=\"true\")") {
