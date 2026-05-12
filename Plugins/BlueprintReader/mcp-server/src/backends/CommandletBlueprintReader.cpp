@@ -77,10 +77,11 @@ std::wstring QuoteArg(std::wstring_view in) {
     return out;
 }
 
-// Inner-quote `-Key=Value` args containing whitespace so UE's
-// FParse::Value reads the full value (issue #10). Logic + rationale
-// live in CommandletArgEncoding.h so the encoder is unit-testable
-// without UE.
+// Encoders live in CommandletArgEncoding.h so they're unit-testable
+// without bringing in UE. EncodeArg dispatches per-arg between
+// FParse-style inner quoting (for -Key=Value) and Windows outer
+// quoting (for positional args like the uproject path).
+using bpr::backends::detail::EncodeArg;
 using bpr::backends::detail::EncodeArgForFParse;
 
 std::wstring BuildCommandLine(const std::wstring& exe,
@@ -88,7 +89,7 @@ std::wstring BuildCommandLine(const std::wstring& exe,
     std::wstring cmd = QuoteArg(exe);
     for (const auto& a : args) {
         cmd.push_back(L' ');
-        cmd.append(EncodeArgForFParse(a));
+        cmd.append(EncodeArg(a));
     }
     return cmd;
 }
