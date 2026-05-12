@@ -626,6 +626,83 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         return r;
     }
 
+    // MacroInstance — BP's looping constructs (ForEachLoop,
+    // ForEachLoopWithBreak, ReverseForEachLoop, WhileLoop) are macro
+    // instances. We pattern-match the macro path to lower them to
+    // BPIR's native `for_each` / `while` forms. Unknown macros fall
+    // through to the unsupported path.
+    if (n.Class.find("K2Node_MacroInstance") != std::string::npos) {
+        std::string macroPath;
+        if (n.Meta.is_object()) {
+            macroPath = n.Meta.value("macro_path", std::string{});
+            if (macroPath.empty()) macroPath = n.Meta.value("MacroGraphReference", std::string{});
+            if (macroPath.empty()) macroPath = n.Meta.value("macroName", std::string{});
+        }
+        // Bare macro name (after the last `:` or `.`).
+        std::string bare = macroPath;
+        if (auto pos = bare.find_last_of(":."); pos != std::string::npos) {
+            bare = bare.substr(pos + 1);
+        }
+
+        auto isForEach = (bare == "ForEachLoop" || bare == "ForEachLoopWithBreak");
+        auto isReverseForEach = (bare == "ReverseForEachLoop");
+        auto isWhile = (bare == "WhileLoop");
+
+        if (isForEach || isReverseForEach) {
+            // ForEachLoop pins: input Array, output exec LoopBody +
+            // Completed, output data ArrayElement + ArrayIndex.
+            const BPPin* arrayPin = w.GetPin(n, "Array");
+            nlohmann::json arrayExpr = arrayPin
+                ? BuildExpression(w, n, *arrayPin)
+                : nlohmann::json{{"new_array", nlohmann::json::array()}};
+            const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
+            if (!bodyStart) bodyStart = w.FollowExec(n, "then");
+            std::set<std::string> v;
+            // stopAt = &n: stop if we somehow recurse back to the loop
+            // node (defensive; BP forEach bodies don't normally do that).
+            nlohmann::json body = DecompileStatementsFrom(w, bodyStart, &n, v);
+            nlohmann::json stmt = {
+                {"for_each", "Element"},  // matches the ArrayElement pin name
+                {"in",       arrayExpr},
+                {"body",     std::move(body)},
+            };
+            if (isReverseForEach) stmt["reverse"] = true;
+            r.statement = std::move(stmt);
+            // Continue past the loop on the Completed exec.
+            const BPNode* afterLoop = w.FollowExec(n, "Completed");
+            r.next = afterLoop;
+            return r;
+        }
+
+        if (isWhile) {
+            const BPPin* condPin = w.GetPin(n, "Condition");
+            nlohmann::json cond = condPin
+                ? BuildExpression(w, n, *condPin)
+                : nlohmann::json{{"lit", true}};
+            const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
+            if (!bodyStart) bodyStart = w.FollowExec(n, "then");
+            std::set<std::string> v;
+            nlohmann::json body = DecompileStatementsFrom(w, bodyStart, &n, v);
+            r.statement = {{"while", cond}, {"body", std::move(body)}};
+            r.next = w.FollowExec(n, "Completed");
+            return r;
+        }
+
+        // Unrecognized macro — fall through to the generic unsupported
+        // path with the macro_path captured so the sidecar is useful.
+        nlohmann::json fields = nlohmann::json::object();
+        if (n.Meta.is_object()) fields = n.Meta;
+        r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+            {"node_class", n.Class},
+            {"guid", n.Id},
+            {"reason", fmt::format("Unrecognized BP macro '{}'", bare)},
+            {"macro_path", macroPath},
+            {"fields", std::move(fields)},
+        }}};
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
     // DestroyActor — common BP node, maps cleanly to `Target->Destroy()`.
     // The Target pin is optional; absent = self. We carry the target
     // expression in args["Target"] for CppEmit to render.
