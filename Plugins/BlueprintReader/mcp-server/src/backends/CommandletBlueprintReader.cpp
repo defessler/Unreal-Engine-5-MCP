@@ -1,5 +1,7 @@
 #include "backends/CommandletBlueprintReader.h"
 
+#include "backends/CommandletArgEncoding.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -75,12 +77,18 @@ std::wstring QuoteArg(std::wstring_view in) {
     return out;
 }
 
+// Inner-quote `-Key=Value` args containing whitespace so UE's
+// FParse::Value reads the full value (issue #10). Logic + rationale
+// live in CommandletArgEncoding.h so the encoder is unit-testable
+// without UE.
+using bpr::backends::detail::EncodeArgForFParse;
+
 std::wstring BuildCommandLine(const std::wstring& exe,
                               const std::vector<std::wstring>& args) {
     std::wstring cmd = QuoteArg(exe);
     for (const auto& a : args) {
         cmd.push_back(L' ');
-        cmd.append(QuoteArg(a));
+        cmd.append(EncodeArgForFParse(a));
     }
     return cmd;
 }
@@ -739,13 +747,18 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wst
 
     auto outFile = TempJsonPath();
 
-    // Compose a single commandlet-arg line. Each arg is space-quoted as needed.
+    // Compose a single commandlet-arg line. Each arg is inner-quoted as
+    // needed for UE's FParse::Value (see EncodeArgForFParse). The daemon
+    // reads this line raw from stdin — no shell or CreateProcessW layer
+    // sits between us, so we don't want Windows-style outer quoting that
+    // would defeat FParse's inner-quote detection (issue #10).
     std::wstring line;
     for (const auto& a : opArgs) {
         if (!line.empty()) line.push_back(L' ');
-        line.append(QuoteArg(a));
+        line.append(EncodeArgForFParse(a));
     }
-    line.append(L" -Out=" + QuoteArg(outFile.wstring()));
+    if (!line.empty()) line.push_back(L' ');
+    line.append(EncodeArgForFParse(L"-Out=" + outFile.wstring()));
     line.append(L" -Compact\n");
 
     // RAII cleanup of the temp file: runs even if any throw between here
