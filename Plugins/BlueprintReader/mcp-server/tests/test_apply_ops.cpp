@@ -296,6 +296,39 @@ TEST_CASE("apply_ops: unknown slot ref fails clearly") {
                     bpr::backends::BlueprintReaderError);
 }
 
+TEST_CASE("apply_ops: cascade slot ref through failed op surfaces upstream cause (issue #8)") {
+    // When an op that names a slot fails, downstream ops referencing
+    // that slot get a richer error linking back to the upstream failure
+    // — rather than a generic "slot has not been bound" message.
+    FakeWritableReader r;
+    r.failOnWrite = true;
+    json ops = json::array({
+        // Op 0: add_node — fails (failOnWrite), but binds slot $n1.
+        json{{"op","add_node"}, {"id","n1"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"kind","CallFunction"}, {"x", 0}, {"y", 0},
+             {"function_owner","KismetSystemLibrary"},
+             {"function_name","PrintString"}},
+        // Op 1: wire_pins references $n1 — should fail with a message
+        // pointing at op 0 as the cause, not just "slot not bound".
+        json{{"op","wire_pins"},
+             {"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
+             {"from_node","$n1"}, {"from_pin","then"},
+             {"to_node",  "$n1"}, {"to_pin",  "exec"}},
+    });
+    auto out = bpr::tools::RunOps(r, ops, /*atomic=*/false);
+    CHECK(out["ok"] == false);
+    CHECK(out["failed"] == 2);
+    REQUIRE(out["results"].size() == 2);
+    // Op 1's error must mention the upstream op AND its slot.
+    REQUIRE(out["results"][1].contains("error"));
+    std::string err = out["results"][1]["error"].get<std::string>();
+    CHECK(err.find("$n1") != std::string::npos);
+    CHECK(err.find("earlier op") != std::string::npos);
+    CHECK(out["results"][1].contains("cause"));
+    CHECK(out["results"][1]["cause"] == "upstream-slot-failed");
+}
+
 TEST_CASE("apply_ops: atomic=false continues after failure") {
     FakeWritableReader r;
     r.failOnWrite = true;
