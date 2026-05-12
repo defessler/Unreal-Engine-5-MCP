@@ -11,7 +11,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
     add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /EHsc)
+    # Promote unused-variable / unused-parameter warnings to errors so
+    # they can't slip through into downstream consumers' build logs.
+    # The C4100 case that motivated this was the `visited` parameter in
+    # DecompileStatement — it compiled clean here at /W4 but surfaced
+    # as a warning in the MyGame consumer's build (different warning
+    # configuration). Now /we4100 makes us fail the build, forcing the
+    # fix on this side.
+    #   C4100: unreferenced formal parameter
+    #   C4101: unreferenced local variable
+    #   C4189: local variable initialized but not used
+    #   C4505: unreferenced local function has been removed
+    add_compile_options(/we4100 /we4101 /we4189 /we4505)
     add_definitions(-DNOMINMAX -D_CRT_SECURE_NO_WARNINGS)
+else()
+    # GCC / Clang — same intent, different flag spellings.
+    add_compile_options(-Wall -Wextra
+        -Werror=unused-parameter
+        -Werror=unused-variable
+        -Werror=unused-function)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -70,6 +88,7 @@ add_library(bp-reader-core STATIC
     src/backends/LiveBlueprintReader.cpp
     src/backends/AutoBlueprintReader.cpp
     src/backends/BackendFactory.cpp
+    src/util/SingleInstanceLock.cpp
 )
 target_include_directories(bp-reader-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
