@@ -250,6 +250,24 @@ The file inherits the project directory's NTFS / POSIX permissions —
 treat it like the project itself. Anyone who can read your project
 files can read the token.
 
+### Editor restart recovery
+
+The live backend re-reads the handshake file on connect failure and on
+auth failure, then retries once before surfacing an error to the agent.
+That means restarting the editor while the MCP server is running just
+works — no need to bounce the client. The two restart cases are both
+handled:
+- **Editor binds a new ephemeral port** → first connect refuses; the
+  reader re-reads `bp-reader-live.json` (new port + token) and retries.
+- **Editor reuses the same port but rotates the token** (common when
+  the port cache survives across runs) → first connect succeeds with
+  the stale token, auth fails; the reader re-reads the file and
+  retries with the fresh token.
+
+Pathological cases (bad hello frame, mid-handshake disconnect, etc.)
+skip the retry — refreshing wouldn't change anything — and the error
+bubbles immediately.
+
 ### Manual override (for fixed-port scenarios)
 
 Pick a port and a token, and set both in **two** places — the editor's

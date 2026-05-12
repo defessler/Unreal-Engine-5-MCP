@@ -120,13 +120,25 @@ includes the full pin list so you know the names exist).
 - **`list_variables`** — just the member-variable table. Cheaper than
   `read_blueprint` when that's all you need.
 - **`get_components`** — SCS component hierarchy with parent/child.
-- **`find_node`** — "where is X used?". Substring match on class+title;
-  optional `kind` filter narrows by K2 extras (`VariableGet`,
-  `CallFunction`, `Event`, `CustomEvent`, `Cast`, ...). Pass empty
-  `query` + a `kind` to enumerate all nodes of one kind.
+- **`find_node`** — "where is X used?". Substring match on class+title,
+  and also against `meta.targetFunction` / `meta.function_name` /
+  `meta.variableName` / `meta.eventName` — so a search for
+  `"Greater_FloatFloat"` finds operator nodes rendered as
+  `"Greater (float)"`, and `"ReceiveBeginPlay"` finds the event node
+  rendered as `"Event BeginPlay"`. Optional `kind` filter narrows by
+  K2 extras (`VariableGet`, `CallFunction`, `Event`, `CustomEvent`,
+  `Cast`, ...). Pass empty `query` + a `kind` to enumerate all nodes
+  of one kind. **Each hit carries `graph_name` + `graph_type`** so you
+  can feed it directly into `get_node` / `delete_node` / `wire_pins`
+  without a separate `read_blueprint` to enumerate graphs.
 - **`get_node`** — one node by GUID. Cheaper than re-fetching
   `get_graph` after a mutation when all you want is "did the wire
-  stick?". Pair with `find_node` (which gives you the GUID).
+  stick?". Each pin in the response carries an inline `linked_to`
+  array (`[{node_id, pin_id, pin_name}, ...]`) so you can verify
+  wiring without a separate `get_graph` for the graph-level
+  `connections[]` view. DynamicCast nodes with a missing target class
+  carry `meta.castBroken: "true"` — that's the reliable detection
+  signal for "Bad cast node" zombies (don't title-match).
 - **`find_overriders`** — cross-BP structural query. "Every BP that
   overrides BeginPlay" or "every ACharacter implementing IDamageable".
   Replaces the manual `list_blueprints` + N×`read_blueprint` loop.
