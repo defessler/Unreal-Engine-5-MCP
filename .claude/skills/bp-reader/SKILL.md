@@ -168,7 +168,7 @@ the **bp-batches** skill.
 add_variable {
   "asset_path": "/Game/AI/BP_TestEnemy",
   "name": "Health",
-  "type": "real:float",
+  "type": "float",
   "default": "100.0",
   "category": "Combat",
   "replicated": true,
