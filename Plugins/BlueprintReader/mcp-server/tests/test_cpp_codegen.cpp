@@ -399,6 +399,20 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== GetClassDefaults sentinel ===========================================
+
+TEST_CASE("Codegen: __bpr_get_class_defaults → Class->GetDefaultObject<UObject>()->Field") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","H"},
+             {"to", json{{"call","__bpr_get_class_defaults"},
+                          {"args", json{
+                              {"Class", json{{"var","WeaponClass"}}},
+                              {"Field", json{{"lit","MaxAmmo"}}}}}}}}
+    })));
+    CHECK(Contains(out.source,
+        "H = WeaponClass->GetDefaultObject<UObject>()->MaxAmmo;"));
+}
+
 // ===== Vector / Rotator math operator aliases ==============================
 
 TEST_CASE("Codegen: Add_VectorVector → A + B") {
