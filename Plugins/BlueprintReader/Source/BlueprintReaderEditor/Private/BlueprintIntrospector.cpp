@@ -332,7 +332,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(const FString& AssetPath)
 			Resolved = Resolved + TEXT(".") + Leaf;
 		}
 	}
-	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Resolved);
+	// Quiet the load — diagnostic below is the user-facing error on the
+	// failure path; the default LogLinker warning would just duplicate it.
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(
+		nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!Blueprint)
 	{
 		// `read_blueprint` is the most common entry point for issues #3
