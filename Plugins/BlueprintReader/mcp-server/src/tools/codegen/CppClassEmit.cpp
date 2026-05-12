@@ -448,6 +448,20 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
     std::string cppType = MapBpirTypeToCppMember(typeStr);
     std::string name    = v.value("name", "Var");
     std::string defaultStr = v.value("default", std::string{});
+    // Safety default for primitive UPROPERTYs: BP defaults bool to
+    // false, numerics to 0 — when BP doesn't carry an explicit value,
+    // we must still initialize because uninitialized primitive class
+    // members are undefined behavior in C++. Pointers / TObjectPtr
+    // default-construct to nullptr so they're safe without our help.
+    if (defaultStr.empty()) {
+        if (cppType == "bool") defaultStr = "false";
+        else if (cppType == "int32" || cppType == "int64" || cppType == "uint8" ||
+                 cppType == "uint16" || cppType == "uint32" || cppType == "uint64" ||
+                 cppType == "int16" || cppType == "int8") {
+            defaultStr = "0";
+        }
+        else if (cppType == "float" || cppType == "double") defaultStr = "0";
+    }
     std::string line = fmt::format("    UPROPERTY({})\n    {} {}", specs, cppType, name);
     if (!defaultStr.empty()) {
         // Defensive: we can't parse arbitrary BP default strings to
