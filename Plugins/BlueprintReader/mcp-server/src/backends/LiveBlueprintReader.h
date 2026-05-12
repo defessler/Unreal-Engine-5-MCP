@@ -49,6 +49,17 @@ public:
         std::string token;               // required (auth)
         std::chrono::seconds connectTimeout{5};
         std::chrono::seconds opTimeout{60};
+
+        // Optional path to `<Project>/Saved/bp-reader-live.json`. When
+        // set, the reader will re-read this file on connect failure
+        // (ECONNREFUSED — symptom of an editor restart that produced a
+        // new port/token). The cached cfg gets updated in-place + the
+        // connection is retried once before we surface a failure to
+        // the agent. Empty → no re-probe, stale-port failures bubble
+        // up as before. The auto backend always sets this; the static
+        // `live` backend wires it whenever BackendFactory could find
+        // the handshake file at construction time.
+        std::string handshakeFilePath;
     };
 
     explicit LiveBlueprintReader(Config cfg);
@@ -272,6 +283,13 @@ private:
     // when the editor isn't running yet.
     void EnsureConnected();
     void Disconnect();
+
+    // Re-read the editor's handshake file (`Saved/bp-reader-live.json`)
+    // and update cfg_.host/port/token in place if the values changed.
+    // Returns true when a real refresh happened — i.e. a retry might
+    // now succeed. Used by EnsureConnected to recover from editor
+    // restarts without needing to bounce the MCP server (issue #9).
+    bool RefreshFromHandshakeFile();
 
     Config cfg_;
     std::mutex mu_;
