@@ -399,6 +399,29 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== Name aliases =======================================================
+
+TEST_CASE("Codegen: KismetSystemLibrary::IsValid → bare IsValid()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"if", json{{"call","KismetSystemLibrary::IsValid"},
+                          {"args", json{{"Object", json{{"var","Target"}}}}}}},
+             {"then", json::array()}, {"else", json::array()}}
+    })));
+    CHECK(Contains(out.source, "IsValid(Target)"));
+    CHECK_FALSE(Contains(out.source, "KismetSystemLibrary::IsValid"));
+}
+
+TEST_CASE("Codegen: MakeLiteralXxx identity calls drop to bare literal") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","X"},
+             {"to", json{{"call","KismetSystemLibrary::MakeLiteralInt"},
+                          {"args", json{{"Value", json{{"lit", 42}}}}}}}}
+    })));
+    // The wrapping call disappears — render the literal directly.
+    CHECK(Contains(out.source, "X = 42;"));
+    CHECK_FALSE(Contains(out.source, "MakeLiteralInt"));
+}
+
 // ===== WorldContext injection =============================================
 
 TEST_CASE("Codegen: PrintString injects `this` as world context") {
