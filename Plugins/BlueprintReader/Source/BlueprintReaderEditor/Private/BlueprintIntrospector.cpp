@@ -1,5 +1,7 @@
 #include "BlueprintIntrospector.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SCS_Node.h"
@@ -11,6 +13,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Class.h"
 #include "UObject/ObjectMacros.h"
+#include "UObject/SoftObjectPath.h"
 
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
@@ -332,9 +335,75 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(const FString& AssetPath)
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Resolved);
 	if (!Blueprint)
 	{
+		// `read_blueprint` is the most common entry point for issues #3
+		// (uncompiled parent class) and #4 (non-Blueprint asset
+		// misrouted to bp-reader), so the diagnostic needs to fire here
+		// too — not just on the write path's LoadMutableBlueprint.
+		// Codex review on PR #58 caught the original miss.
+		DiagnoseFailedBlueprintLoad(Resolved);
 		return TOptional<FBlueprintInfo>();
 	}
 	return Read(Blueprint);
+}
+
+void FBlueprintIntrospector::DiagnoseFailedBlueprintLoad(const FString& AssetPath)
+{
+	IAssetRegistry& Registry =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	FAssetData Asset = Registry.GetAssetByObjectPath(FSoftObjectPath(AssetPath));
+	if (!Asset.IsValid())
+	{
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("LoadBlueprint: %s — asset not in registry; check the path"),
+			*AssetPath);
+		return;
+	}
+	// Issue #4: bp-reader only handles UBlueprint / UWidgetBlueprint
+	// assets. If the asset on disk is a UPrimaryDataAsset descendant
+	// (DA_*.uasset) or any other non-Blueprint asset class, the
+	// LoadObject<UBlueprint> cast returns null even though the asset
+	// itself loaded fine. Detect that and emit a clear message
+	// pointing the caller at the right tool.
+	const UClass* AssetClass = Asset.GetClass();
+	if (AssetClass && !AssetClass->IsChildOf(UBlueprint::StaticClass()))
+	{
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("LoadBlueprint: %s — asset is %s, not a UBlueprint. bp-reader "
+			     "only handles Blueprint assets (UBlueprint / UWidgetBlueprint). "
+			     "Data Assets (UPrimaryDataAsset descendants), DataTables, Curves, "
+			     "Materials, etc. are not supported here — inspect them via the "
+			     "editor or raw asset serialization (issue #4)."),
+			*AssetPath, *AssetClass->GetName());
+		return;
+	}
+	const FString ParentClassTag =
+		Asset.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
+	if (ParentClassTag.IsEmpty())
+	{
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("LoadBlueprint: %s — asset exists in registry but load failed; "
+			     "no parent_class tag to probe"),
+			*AssetPath);
+		return;
+	}
+	const FSoftObjectPath ParentRef(ParentClassTag);
+	UClass* ParentClass =
+		LoadObject<UClass>(nullptr, *ParentRef.ToString(), nullptr, LOAD_Quiet);
+	if (!ParentClass)
+	{
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("LoadBlueprint: %s — parent class %s could not be resolved. "
+			     "This typically means the C++ module declaring it is not compiled in "
+			     "this build (issue #3). Rebuild the project (Build.bat <TargetName> "
+			     "Win64 Development) before reading or writing this Blueprint."),
+			*AssetPath, *ParentClassTag);
+		return;
+	}
+	UE_LOG(LogBlueprintReader, Error,
+		TEXT("LoadBlueprint: %s — parent class %s resolved but BP load still "
+		     "failed; check the editor log for the underlying PostLoad / "
+		     "ConstructDefaultObject error"),
+		*AssetPath, *ParentClassTag);
 }
 
 TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
