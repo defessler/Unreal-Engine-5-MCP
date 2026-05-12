@@ -218,6 +218,14 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
             lc.host = cfg.liveHost;
             lc.port = cfg.liveProcPort;
             lc.token = cfg.liveToken;
+            // Wire the handshake-file path so the reader can self-
+            // refresh on connect failure (issue #9 — editor restart
+            // changes port + token, MCP server was stuck on stale
+            // values until restart).
+            if (!cfg.uproject.empty()) {
+                lc.handshakeFilePath =
+                    (cfg.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
+            }
             return std::make_unique<LiveBlueprintReader>(std::move(lc));
         }
         if (cfg.backend == "auto") {

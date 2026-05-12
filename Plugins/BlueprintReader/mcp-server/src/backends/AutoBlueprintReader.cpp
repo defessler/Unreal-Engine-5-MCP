@@ -164,6 +164,15 @@ std::unique_ptr<LiveBlueprintReader> AutoBlueprintReader::TryBuildLive() {
         }
     }
     if (lc.port == 0 || lc.token.empty()) return nullptr;
+    // Same self-refresh wiring as the static `live` backend (issue #9
+    // recovery). Auto's per-call probe also handles editor-restart
+    // recovery at the outer layer, but inner-layer refresh keeps a
+    // currently-live LiveBlueprintReader usable across an editor
+    // restart that happens between the probe and the next op.
+    if (!cfg_.uproject.empty()) {
+        lc.handshakeFilePath =
+            (cfg_.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
+    }
     return std::make_unique<LiveBlueprintReader>(std::move(lc));
 }
 
