@@ -399,6 +399,54 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== TArray / FString method-call aliases ================================
+
+TEST_CASE("Codegen: Array_Add → Array.Add(Item) method call") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","KismetArrayLibrary::Array_Add"},
+             {"args", json{{"TargetArray", json{{"var","Enemies"}}},
+                            {"NewItem",     json{{"var","Foo"}}}}}},
+    })));
+    CHECK(Contains(out.source, "Enemies.Add(Foo);"));
+}
+
+TEST_CASE("Codegen: Array_Length → Array.Num()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Count"},
+             {"to", json{{"call","KismetArrayLibrary::Array_Length"},
+                          {"args", json{{"TargetArray", json{{"var","Items"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Count = Items.Num();"));
+}
+
+TEST_CASE("Codegen: Array_Contains → Array.Contains(Item)") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"if", json{{"call","KismetArrayLibrary::Array_Contains"},
+                          {"args", json{{"TargetArray", json{{"var","Items"}}},
+                                          {"ItemToFind",  json{{"var","X"}}}}}}},
+             {"then", json::array()}, {"else", json::array()}}
+    })));
+    CHECK(Contains(out.source, "Items.Contains(X)"));
+}
+
+TEST_CASE("Codegen: Array_IsNotEmpty → !Array.IsEmpty()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"if", json{{"call","KismetArrayLibrary::Array_IsNotEmpty"},
+                          {"args", json{{"TargetArray", json{{"var","Items"}}}}}}},
+             {"then", json::array()}, {"else", json::array()}}
+    })));
+    CHECK(Contains(out.source, "!Items.IsEmpty()"));
+}
+
+TEST_CASE("Codegen: KismetStringLibrary::ToUpper → Str.ToUpper()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Upper"},
+             {"to", json{{"call","KismetStringLibrary::ToUpper"},
+                          {"args", json{{"SourceString", json{{"var","Name"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Upper = Name.ToUpper();"));
+}
+
 // ===== const& for heavy arg types ==========================================
 
 TEST_CASE("Codegen: FString / FText / FVector args use const& convention") {
