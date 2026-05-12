@@ -423,6 +423,24 @@ namespace
 				*AssetPath);
 			return;
 		}
+		// Issue #4: bp-reader only handles UBlueprint / UWidgetBlueprint
+		// assets. If the asset on disk is a UPrimaryDataAsset descendant
+		// (DA_*.uasset) or any other non-Blueprint asset class, the
+		// LoadObject<UBlueprint> cast returns null even though the asset
+		// itself loaded fine. Detect that and emit a clear message
+		// pointing the caller at the right tool.
+		const UClass* AssetClass = Asset.GetClass();
+		if (AssetClass && !AssetClass->IsChildOf(UBlueprint::StaticClass()))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("LoadMutableBlueprint: %s — asset is %s, not a UBlueprint. bp-reader "
+				     "only handles Blueprint assets (UBlueprint / UWidgetBlueprint). "
+				     "Data Assets (UPrimaryDataAsset descendants), DataTables, Curves, "
+				     "Materials, etc. are not supported here — inspect them via the "
+				     "editor or raw asset serialization (issue #4)."),
+				*AssetPath, *AssetClass->GetName());
+			return;
+		}
 		const FString ParentClassTag =
 			Asset.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
 		if (ParentClassTag.IsEmpty())
