@@ -373,6 +373,7 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
     // inference from BP metadata; v1 ships the common case and adds
     // explicit specifiers when the metadata carries them.
     bool sawExplicit = false;
+    bool isPure = false;
     if (fnDoc.contains("metadata") && fnDoc["metadata"].is_object()) {
         const auto& md = fnDoc["metadata"];
         if (md.contains("ufunction_specifiers") &&
@@ -384,9 +385,13 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
                 }
             }
         }
+        // Pure inference: Decompile sets metadata.pure=true when the
+        // BP's FunctionEntry has no exec output AND the function has
+        // a return value. Matches UE's BlueprintPure semantics.
+        isPure = md.value("pure", false);
     }
     if (!sawExplicit) {
-        specs.push_back("BlueprintCallable");
+        specs.push_back(isPure ? "BlueprintPure" : "BlueprintCallable");
     }
     std::string out;
     for (std::size_t i = 0; i < specs.size(); ++i) {
@@ -515,7 +520,16 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
         }
     }
     std::string fnName = fn.value("name", "Fn");
-    return fmt::format("    UFUNCTION({})\n    {} {}({});\n", specs, returnType, fnName, args);
+    // BlueprintPure → emit `const` on the member function. UE auto-
+    // derives the Pure-ness from const-ness when the function has a
+    // return value, so this keeps the two specifiers in lockstep.
+    bool isPure = false;
+    if (fn.contains("metadata") && fn["metadata"].is_object()) {
+        isPure = fn["metadata"].value("pure", false);
+    }
+    const char* constSuffix = isPure ? " const" : "";
+    return fmt::format("    UFUNCTION({})\n    {} {}({}){};\n",
+                       specs, returnType, fnName, args, constSuffix);
 }
 
 // Function-body emission for the .cpp side. Re-uses CppEmit but
@@ -554,12 +568,18 @@ std::string RenderUFunctionImpl(const std::string& className,
     }
     std::string fnName = fn.value("name", "Fn");
 
+    bool isPure = false;
+    if (fn.contains("metadata") && fn["metadata"].is_object()) {
+        isPure = fn["metadata"].value("pure", false);
+    }
+    const char* constSuffix = isPure ? " const" : "";
+
     auto bodyResult = EmitCppFunctionBody(fn, emitOpts);
     for (const auto& n : bodyResult.notes) accumulatedNotes.push_back(n);
 
     return fmt::format(
-        "{} {}::{}({}) {{\n{}}}\n",
-        returnType, className, fnName, args, bodyResult.source);
+        "{} {}::{}({}){} {{\n{}}}\n",
+        returnType, className, fnName, args, constSuffix, bodyResult.source);
 }
 
 } // namespace
