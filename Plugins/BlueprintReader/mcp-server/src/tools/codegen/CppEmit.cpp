@@ -267,6 +267,9 @@ struct Emitter {
         if (fnName == "__bpr_add_component") {
             return EmitAddComponent(e);
         }
+        if (fnName == "__bpr_destroy_actor") {
+            return EmitDestroyActor(e);
+        }
         // Default: render as Foo(a, b, c). If the name is qualified
         // (Owner::Func), keep the qualifier — the agent / user resolves
         // include + scope.
@@ -315,6 +318,24 @@ struct Emitter {
         return fmt::format(
             "[&]{{ FActorSpawnParameters p;\n{}    return GetWorld()->SpawnActor<AActor>({}, {}, p); }}()",
             params, clsExpr, xform);
+    }
+
+    // DestroyActor → `Target->Destroy()` (or `this->Destroy()` when
+    // Target is absent). The BP node's exec is statement-context, so
+    // CppEmit invokes this from a statement-form CallExpr; we render the
+    // expression and the caller drops a trailing semicolon.
+    std::string EmitDestroyActor(const nlohmann::json& e) {
+        auto a = (e.contains("args") && e["args"].is_object())
+                     ? e["args"] : nlohmann::json::object();
+        if (a.contains("Target")) {
+            std::string tgt = EmitExpr(a["Target"]);
+            // Self-target collapses to `this->Destroy()`; literal "this"
+            // shows up if BuildExpression emitted a `{self:nullptr}` shape
+            // upstream. Either way the rendering is the same.
+            if (tgt == "this") return "this->Destroy()";
+            return fmt::format("{}->Destroy()", tgt);
+        }
+        return "this->Destroy()";
     }
 
     // AddComponent → `NewObject<UActorComponent>(this) + RegisterComponent`.
