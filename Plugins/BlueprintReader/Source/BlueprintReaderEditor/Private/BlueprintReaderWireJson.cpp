@@ -76,9 +76,13 @@ namespace
 		// Emit each pin's outgoing/incoming connections inline so a
 		// `get_node` (or a fields-filtered `get_graph`) call gives the
 		// caller enough information to verify wiring without a separate
-		// `connections[]` lookup (issue #5). Each entry is the GUID of
-		// the linked node + the GUID of the linked pin; the caller can
-		// recover the pin name with a follow-up call if needed.
+		// `connections[]` lookup (issue #5). Each entry carries:
+		//   - node_id : GUID of the node the link goes to
+		//   - pin_id  : GUID of the pin on that node
+		//   - pin_name: human-readable name of the linked pin
+		// pin_name is additive — it lets an agent verify "is this pin
+		// connected to a slot named X?" without another get_node call,
+		// while pin_id remains the canonical reference for follow-up ops.
 		TArray<TSharedPtr<FJsonValue>> LinkedTo;
 		LinkedTo.Reserve(P.LinkedTo.Num());
 		for (const FBPPinLinkInfo& Link : P.LinkedTo)
@@ -87,6 +91,7 @@ namespace
 			L->SetStringField(TEXT("node_id"), Link.NodeGuid);
 			L->SetStringField(TEXT("pin_id"),
 				Link.PinId.IsEmpty() ? Link.PinName : Link.PinId);
+			L->SetStringField(TEXT("pin_name"), Link.PinName);
 			LinkedTo.Add(MakeShared<FJsonValueObject>(L));
 		}
 		Obj->SetArrayField(TEXT("linked_to"), LinkedTo);
