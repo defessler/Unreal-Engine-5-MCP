@@ -140,6 +140,20 @@ namespace
 			{
 				Extras.Add(TEXT("targetClass"), T->GetPathName());
 			}
+			else
+			{
+				// Broken cast — the target class was deleted, renamed, or
+				// belongs to an uncompiled module. The node still serializes
+				// (title becomes literally "Bad cast node") but is dead
+				// code: the cast always fails at runtime, every downstream
+				// branch is unreachable, and the output pin's type drops to
+				// wildcard (sub_category_object: null). Surface a clear
+				// signal so callers can detect this without title-string
+				// matching (issue #7). The agent can search via
+				//   find_node(kind="DynamicCast")
+				// and then filter on meta.castBroken == "true".
+				Extras.Add(TEXT("castBroken"), TEXT("true"));
+			}
 			Extras.Add(TEXT("isPureCast"), BoolToString(CastNode->IsNodePure()));
 			return;
 		}
