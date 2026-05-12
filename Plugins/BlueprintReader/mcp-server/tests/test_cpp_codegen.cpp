@@ -399,6 +399,33 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== const& for heavy arg types ==========================================
+
+TEST_CASE("Codegen: FString / FText / FVector args use const& convention") {
+    CHECK(MapBpirTypeToCppArg("string")       == "const FString&");
+    CHECK(MapBpirTypeToCppArg("text")         == "const FText&");
+    CHECK(MapBpirTypeToCppArg("struct:Vector") == "const FVector&");
+    CHECK(MapBpirTypeToCppArg("struct:Transform") == "const FTransform&");
+    // TArray / TSet / TMap → const&.
+    CHECK(MapBpirTypeToCppArg("[]int") == "const TArray<int32>&");
+    CHECK(MapBpirTypeToCppArg("{int:string}") == "const TMap<int32, FString>&");
+}
+
+TEST_CASE("Codegen: lightweight types pass by value (no const&)") {
+    // Primitives + FName (register-sized) + pointers pass by value.
+    CHECK(MapBpirTypeToCppArg("int")    == "int32");
+    CHECK(MapBpirTypeToCppArg("float")  == "float");
+    CHECK(MapBpirTypeToCppArg("bool")   == "bool");
+    CHECK(MapBpirTypeToCppArg("name")   == "FName");
+    CHECK(MapBpirTypeToCppArg("object:Actor") == "AActor*");
+}
+
+TEST_CASE("Codegen: function signature picks up const& for FVector arg") {
+    auto out = EmitCppFunction(MakeFn(json::array(),
+        {json{{"name","Location"},{"type","struct:Vector"}}}));
+    CHECK(Contains(out.source, "TestFn(const FVector& Location)"));
+}
+
 // ===== for_each form (ForEachLoop macro) ==================================
 
 TEST_CASE("Codegen: for_each form renders range-based for") {

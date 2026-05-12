@@ -65,4 +65,16 @@ std::string MapBpirTypeToCpp(std::string_view bpirType);
 // only for headers' UPROPERTY-marked fields.
 std::string MapBpirTypeToCppMember(std::string_view bpirType);
 
+// Function-argument context: same as MapBpirTypeToCpp but wraps types
+// where pass-by-value would copy a heavy buffer (FString, FText,
+// FVector and similar structs, TArray / TSet / TMap containers) with
+// `const X&`. Primitives (bool, int32, float, etc.) and pointers
+// (AActor*) pass unchanged.
+//
+// Epic's convention "anything larger than FVector → const ref" — we
+// apply it conservatively to all UE struct types since size signal
+// isn't carried in BPIR. Caller can override by editing the rendered
+// signature.
+std::string MapBpirTypeToCppArg(std::string_view bpirType);
+
 } // namespace bpr::tools
