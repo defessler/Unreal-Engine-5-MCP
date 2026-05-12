@@ -291,6 +291,18 @@ private:
     // restarts without needing to bounce the MCP server (issue #9).
     bool RefreshFromHandshakeFile();
 
+    // One connect + handshake attempt. Returns success/failure plus a
+    // hint about whether retrying after a handshake refresh might help.
+    // EnsureConnected calls this up to twice — refresh-and-retry covers
+    // both "new port" (connect refused) and "same port, new token"
+    // (auth_fail) editor-restart cases (issue #9).
+    struct AttemptResult {
+        bool ok;
+        bool retryWorthwhile;
+        std::string error;
+    };
+    AttemptResult TryConnectAndHandshake();
+
     Config cfg_;
     std::mutex mu_;
     intptr_t   socket_ = -1;  // typed as intptr_t to avoid winsock2.h in header
