@@ -22,6 +22,7 @@
 #include "JsonObjectConverter.h"
 #include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
+#include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectIterator.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -423,7 +424,13 @@ namespace
 				Resolved = Resolved + TEXT(".") + Leaf;
 			}
 		}
-		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *Resolved);
+		// LOAD_NoWarn + LOAD_Quiet suppresses the default LogLinker
+		// "Failed to load X" warning so that, on the failure path, the
+		// agent-facing diagnostic below is the ONLY error in the daemon
+		// tail — no duplicate noise to parse around. On success there's
+		// no extra logging either way.
+		UBlueprint* BP = LoadObject<UBlueprint>(
+			nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
 		if (!BP)
 		{
 			// Diagnostic lives in BlueprintIntrospector — see header. We
@@ -528,6 +535,16 @@ namespace
 	bool CompileAndSaveBlueprint(UBlueprint* BP,
 	                             TArray<TSharedPtr<FJsonValue>>* OutDiagnostics = nullptr)
 	{
+		// Anchor the BP against GC for the duration of compile + save.
+		// `FKismetEditorUtilities::CompileBlueprint` creates and destroys
+		// intermediate UObjects (BP nodes can be `MarkAsGarbage`'d during
+		// recompilation) — without an explicit anchor, a GC pass kicked
+		// off by the compiler could collect the BP itself if its outer
+		// package's reference graph has weak links to the world. In
+		// daemon mode this is rare but real; the anchor is a one-line
+		// defensive measure on the cold critical path.
+		TStrongObjectPtr<UBlueprint> Anchor(BP);
+
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 
 		FCompilerResultsLog Results;
