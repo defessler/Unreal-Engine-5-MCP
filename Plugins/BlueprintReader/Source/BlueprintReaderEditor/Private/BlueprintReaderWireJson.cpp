@@ -252,9 +252,16 @@ namespace
 					// names) and snake_case (the mock-fixture variants)
 					// — keeps live + mock backends matching identically
 					// regardless of which side the query goes through.
+					// Coverage spans the three main kinds of K2 node
+					// whose underlying identifier differs from the
+					// rendered title:
+					//   - CallFunction / CallParentFunction → targetFunction
+					//   - VariableGet / VariableSet → variableName
+					//   - Event / CustomEvent → eventName
 					const TCHAR* ExtrasKeys[] = {
 						TEXT("targetFunction"), TEXT("function_name"),
 						TEXT("variableName"),   TEXT("variable_name"),
+						TEXT("eventName"),      TEXT("event_name"),
 					};
 					for (const TCHAR* Key : ExtrasKeys)
 					{
