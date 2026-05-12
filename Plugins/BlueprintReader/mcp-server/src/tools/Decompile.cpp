@@ -262,6 +262,33 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
         if (!args.empty()) out["args"] = std::move(args);
         return out;
     }
+    // FormatText: BP has a `Format` input pin (the format string with
+    // {Name} placeholders) plus one input pin per named argument. The
+    // C++ form is FText::Format(LOCTEXT(..., "Hello {Name}"), Args)
+    // where Args is FFormatNamedArguments populated from the pins.
+    // We emit a structured sentinel call that CppEmit renders.
+    if (producer.Class.find("K2Node_FormatText") != std::string::npos) {
+        std::string formatStr;
+        nlohmann::json args = nlohmann::json::object();
+        for (const auto& p : producer.Pins) {
+            if (p.Direction != "Input") continue;
+            if (p.Name == "Format") {
+                // Format pin's literal string default. Build it as a lit.
+                if (p.DefaultValue && !p.DefaultValue->empty()) {
+                    formatStr = *p.DefaultValue;
+                }
+                continue;
+            }
+            // Skip exec / structural pins; named-arg pins are data inputs.
+            if (p.Type.Category == "exec") continue;
+            args[p.Name] = BuildExpression(w, producer, p);
+        }
+        nlohmann::json out = {{"call", "__bpr_format_text"}};
+        if (!formatStr.empty()) out["format"] = formatStr;
+        if (!args.empty()) out["args"] = std::move(args);
+        return out;
+    }
+
     if (producer.Class.find("K2Node_MakeArray") != std::string::npos) {
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& p : producer.Pins) {
