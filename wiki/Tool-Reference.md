@@ -530,6 +530,25 @@ Returns:
 `atomic: false` continues on errors; failed ops appear as `{ok:false, error:"..."}`
 in the per-op results array.
 
+**Cascade behavior on failed slots.** When an op that binds a named
+slot (`id: "foo"`) fails in a non-atomic batch, every downstream op
+referencing `$foo` (or transitively, a slot bound to another failed
+op) short-circuits with a richer error linking back to the upstream
+cause. Each cascaded result carries `cause: "upstream-slot-failed"`
+so the agent can distinguish cascades from native op failures:
+
+```jsonc
+{ "ok": false,
+  "op_index": 4,
+  "error": "field \"from_node\" references slot \"$mintedNode\", which was "
+           "supposed to be bound by an earlier op that failed: "
+           "op[2] failed: <original failure reason>",
+  "cause": "upstream-slot-failed" }
+```
+
+The dependent op's call to the backend is skipped entirely — saves a
+doomed daemon round-trip per cascaded op.
+
 **Single-recompile batching (A1).** Ops inside a batch *defer* their
 compile + save until the trailing `EndBatch` flush — N ops on the same
 BP collapse to 1 compile + 1 save. Mid-batch failure semantics are

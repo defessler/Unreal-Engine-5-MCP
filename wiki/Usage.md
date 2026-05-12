@@ -97,7 +97,7 @@ Patterns that compose well:
 | Spawn a Branch + wire exec           | `add_node` (kind=`branch`) → `wire_pins` (no `get_graph` round-trip — pins come back from `add_node`) |
 | Add a function that reads a var      | `add_function` → `add_function_input` (if needed) → `add_node` (`variable_get`) → `wire_pins` |
 | Refactor: rename + update call sites | `rename_variable` (graphs are auto-updated)                                |
-| Audit: where is X read?              | `find_node` with `class_filter: K2Node_VariableGet`, then `query: VarName` |
+| Audit: where is X read?              | `find_node` with `kind: "VariableGet"` and `query: "VarName"` |
 | Audit: who overrides BeginPlay?      | `find_overriders` with `function_name: BeginPlay`                          |
 | Inspect a single node by GUID        | `get_node` (cheaper than re-fetching the whole `get_graph`)                |
 

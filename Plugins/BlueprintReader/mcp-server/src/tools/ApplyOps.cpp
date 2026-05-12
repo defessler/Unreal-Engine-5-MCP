@@ -20,41 +20,63 @@ namespace {
 // wire_pins / set_node_position / delete_node refs in later ops.
 using SlotMap = std::map<std::string, std::string, std::less<>>;
 
-// Resolve a node-id field. Supported forms (in priority order):
-//   1. {"ref": "<id>"}       — explicit slot ref
-//   2. "$<id>"               — sigil-prefixed slot ref
-//   3. raw GUID string       — pass through unchanged
-// Throws if a slot ref doesn't resolve.
-std::string ResolveNodeRef(const nlohmann::json& field, const SlotMap& slots,
-                           std::string_view key) {
+// Inspect a node-id field and return the slot id it references, if any.
+// Returns std::nullopt for:
+//   - non-string, non-object values
+//   - strings that aren't `$<id>` prefixed (raw GUIDs)
+//   - malformed objects without a string "ref"
+//
+// Pure inspection — never throws. Used both by ResolveNodeRef (which
+// does the actual slot lookup + throws on miss) and by the failed-slot
+// pre-check in RunOps (which needs to peek at refs without bailing).
+std::optional<std::string> ExtractSlotRefId(const nlohmann::json& field) {
     if (field.is_object()) {
         auto it = field.find("ref");
-        if (it == field.end() || !it->is_string()) {
-            throw std::invalid_argument(fmt::format(
-                "field '{}' is an object but lacks a string \"ref\"", key));
+        if (it != field.end() && it->is_string()) {
+            return it->get<std::string>();
         }
-        const auto& id = it->get_ref<const std::string&>();
-        auto sit = slots.find(id);
-        if (sit == slots.end()) {
-            throw std::invalid_argument(fmt::format(
-                R"(field "{}" references slot "{}" which has not been bound — )"
-                "did an earlier op fail or did you typo the id?", key, id));
-        }
-        return sit->second;
+        return std::nullopt;
     }
     if (field.is_string()) {
         const auto& s = field.get_ref<const std::string&>();
         if (!s.empty() && s.front() == '$') {
-            std::string id = s.substr(1);
-            auto sit = slots.find(id);
-            if (sit == slots.end()) {
+            return s.substr(1);
+        }
+    }
+    return std::nullopt;
+}
+
+// Resolve a node-id field. Supported forms (in priority order):
+//   1. {"ref": "<id>"}       — explicit slot ref
+//   2. "$<id>"               — sigil-prefixed slot ref
+//   3. raw GUID string       — pass through unchanged
+// Throws if a slot ref doesn't resolve, or if the field shape is wrong.
+std::string ResolveNodeRef(const nlohmann::json& field, const SlotMap& slots,
+                           std::string_view key) {
+    if (auto slotId = ExtractSlotRefId(field); slotId.has_value()) {
+        auto sit = slots.find(*slotId);
+        if (sit == slots.end()) {
+            // Distinct messages for the two forms — keeps backward-compat
+            // with any callers grepping the error text.
+            if (field.is_string()) {
                 throw std::invalid_argument(fmt::format(
                     R"(field "{}" references slot "${}" which has not been bound)",
-                    key, id));
+                    key, *slotId));
             }
-            return sit->second;
+            throw std::invalid_argument(fmt::format(
+                R"(field "{}" references slot "{}" which has not been bound — )"
+                "did an earlier op fail or did you typo the id?", key, *slotId));
         }
-        return s;
+        return sit->second;
+    }
+    if (field.is_object()) {
+        // Object form without a usable "ref" string.
+        throw std::invalid_argument(fmt::format(
+            "field '{}' is an object but lacks a string \"ref\"", key));
+    }
+    if (field.is_string()) {
+        // Raw GUID passthrough — not a slot ref, not malformed.
+        return field.get_ref<const std::string&>();
     }
     throw std::invalid_argument(fmt::format(
         "field '{}' must be a string GUID, a $slot reference, or {{\"ref\":\"<id>\"}}",
@@ -683,9 +705,12 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
     // downstream failure back to its upstream cause.
     std::map<std::string, std::string, std::less<>> failedSlotReasons;
 
-    // Walk an op JSON and report the first `$slot` reference that
-    // points at a slot in `failedSlotReasons`. Returns empty string if
-    // every ref resolves cleanly (either bound, or doesn't exist).
+    // Walk an op JSON and report the first slot reference that points
+    // at a slot in `failedSlotReasons`. Returns empty string if every
+    // ref resolves cleanly (already bound, raw GUID, or unbound but
+    // not from a failed upstream). Uses the shared ExtractSlotRefId
+    // helper for ref detection so the parsing rules stay in sync with
+    // ResolveNodeRef.
     auto findFailedSlotRef = [&](const nlohmann::json& op) -> std::string {
         static constexpr const char* kRefFields[] = {
             "from_node", "to_node", "node_id",
@@ -693,24 +718,15 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
         for (const char* key : kRefFields) {
             auto it = op.find(key);
             if (it == op.end()) continue;
-            std::string slotId;
-            if (it->is_string()) {
-                const auto& s = it->get_ref<const std::string&>();
-                if (!s.empty() && s.front() == '$') slotId = s.substr(1);
-            } else if (it->is_object()) {
-                auto refIt = it->find("ref");
-                if (refIt != it->end() && refIt->is_string()) {
-                    slotId = refIt->get<std::string>();
-                }
-            }
-            if (slotId.empty()) continue;
-            if (slots.find(slotId) != slots.end()) continue;  // bound
-            auto fIt = failedSlotReasons.find(slotId);
+            auto slotId = ExtractSlotRefId(*it);
+            if (!slotId.has_value()) continue;     // raw GUID or malformed
+            if (slots.find(*slotId) != slots.end()) continue;  // already bound
+            auto fIt = failedSlotReasons.find(*slotId);
             if (fIt != failedSlotReasons.end()) {
                 return fmt::format(
                     "field \"{}\" references slot \"${}\", which was supposed to be "
                     "bound by an earlier op that failed: {}",
-                    key, slotId, fIt->second);
+                    key, *slotId, fIt->second);
             }
         }
         return {};

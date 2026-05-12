@@ -117,6 +117,33 @@ If the daemon genuinely dies and the server doesn't notice, the next
 call falls back to a one-shot subprocess and surfaces no error. Set
 `BP_READER_DAEMON=0` to force one-shot mode while debugging.
 
+## Commandlet write op failed — how do I read the diagnostic?
+
+The commandlet backend now classifies write failures into three
+named cases instead of dumping generic linker spam. Look at the tail
+of the daemon stderr (the MCP server surfaces this in the error
+envelope's `_meta`):
+
+- **"file is locked (sharing violation)"** — the Unreal Editor is
+  open and holds an exclusive write handle on the `.uasset`. Close
+  the editor, or set `BP_READER_BACKEND=auto` so writes route through
+  the editor's in-process TCP server (no file-lock conflict).
+- **"asset is `<ClassName>`, not a UBlueprint"** — bp-reader handles
+  Blueprint assets only. Data Assets (UPrimaryDataAsset descendants),
+  DataTables, Curves, Materials, etc. aren't supported. Inspect them
+  via the editor or raw asset serialization.
+- **"parent class `<Path>` could not be resolved"** — the on-disk
+  asset references a C++ class whose module isn't compiled in this
+  build. Rebuild the project (`Build.bat <TargetName> Win64
+  Development`) before reading or writing this Blueprint.
+- **"file opens cleanly, so this isn't a file-lock issue"** — the
+  save failed for some other reason (compile error, serialization
+  bug). Check the editor log above the diagnostic line for the
+  underlying error.
+
+The probe is non-destructive — uses raw Win32 CreateFileW with
+OPEN_EXISTING, never creates or truncates the asset.
+
 ## Editor doesn't show changes after a write tool call
 
 The change *is* on disk and compiled — you just need to re-focus the
@@ -138,14 +165,22 @@ target.
 
 ## `find_node` returns nothing for nodes I can see
 
-`find_node` does substring matches on **node titles** and **class
-names**, not pin labels. To find "every place I read `Health`", filter
-by `class_filter: "K2Node_VariableGet"` and `query: "Health"`.
+`find_node` does substring matches on the **class name**, the
+**rendered title**, AND a handful of meta fields:
+`meta.targetFunction` / `meta.function_name` (CallFunction nodes),
+`meta.variableName` / `meta.variable_name` (VariableGet/Set), and
+`meta.eventName` / `meta.event_name` (Event / CustomEvent). Pin labels
+are not searched.
 
-Use `kind: "variable_get"` instead of `class_filter` when you want both
-`K2Node_VariableGet` and `K2Node_VariableGetRef` (the read-by-ref
-variant). The mapping from `kind` to underlying class set is documented
-by the `list_node_kinds` meta tool.
+To find "every place I read `Health`", combine `query: "Health"` with
+`kind: "VariableGet"`. The query alone usually suffices because the
+underlying `meta.variableName` matches the variable identifier even
+when the title is humanized (e.g. "Get Health" → matches "Health"
+either way).
+
+The mapping from `kind` to the underlying K2 class set is documented
+by the `list_node_kinds` meta tool. `find_node` has no `class_filter`
+argument — use `kind` for narrowing.
 
 ## `list_blueprints` returns stale data after seeding
 
