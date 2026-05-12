@@ -175,6 +175,54 @@ const std::map<std::string, OpReverse>& OpReverseMap() {
     return m;
 }
 
+// ----- Method-call alias table --------------------------------------------
+// BP's UKismetArrayLibrary / KismetStringLibrary functions take the
+// container as a specifically-named argument; the C++ canonical form
+// is a method call on the container (`Array.Add(Item)` rather than
+// `Array_Add(Array, Item)`). Each entry maps the qualified BP name to
+// `{method, receiverArgKey}` — we look up the receiver by its arg
+// name (e.g. "TargetArray", "SourceString") rather than position, so
+// the alphabetical JSON-key iteration doesn't reshuffle the receiver
+// off the front.
+struct MethodAlias {
+    std::string method;
+    std::string receiverArg;
+};
+const std::map<std::string, MethodAlias>& MethodCallAliases() {
+    static const std::map<std::string, MethodAlias> m = {
+        // KismetArrayLibrary — receiver pin is "TargetArray"
+        {"KismetArrayLibrary::Array_Add",         {"Add",         "TargetArray"}},
+        {"KismetArrayLibrary::Array_AddUnique",   {"AddUnique",   "TargetArray"}},
+        {"KismetArrayLibrary::Array_Append",      {"Append",      "TargetArray"}},
+        {"KismetArrayLibrary::Array_Length",      {"Num",         "TargetArray"}},
+        {"KismetArrayLibrary::Array_IsEmpty",     {"IsEmpty",     "TargetArray"}},
+        {"KismetArrayLibrary::Array_IsNotEmpty",  {"IsEmpty",     "TargetArray"}},  // negated below
+        {"KismetArrayLibrary::Array_Contains",    {"Contains",    "TargetArray"}},
+        {"KismetArrayLibrary::Array_Find",        {"Find",        "TargetArray"}},
+        {"KismetArrayLibrary::Array_RemoveItem",  {"Remove",      "TargetArray"}},
+        {"KismetArrayLibrary::Array_RemoveIndex", {"RemoveAt",    "TargetArray"}},
+        {"KismetArrayLibrary::Array_Clear",       {"Empty",       "TargetArray"}},
+        {"KismetArrayLibrary::Array_Resize",      {"SetNum",      "TargetArray"}},
+        {"KismetArrayLibrary::Array_Reverse",     {"Reverse",     "TargetArray"}},
+        {"KismetArrayLibrary::Array_IsValidIndex",{"IsValidIndex","TargetArray"}},
+        {"KismetArrayLibrary::Array_LastIndex",   {"Num",         "TargetArray"}},
+        // KismetStringLibrary — receiver pin is "SourceString" (some
+        // overloads use "InString"; pre-check the alt below).
+        {"KismetStringLibrary::Len",              {"Len",         "SourceString"}},
+        {"KismetStringLibrary::ToLower",          {"ToLower",     "SourceString"}},
+        {"KismetStringLibrary::ToUpper",          {"ToUpper",     "SourceString"}},
+        {"KismetStringLibrary::TrimStart",        {"TrimStart",   "SourceString"}},
+        {"KismetStringLibrary::TrimEnd",          {"TrimEnd",     "SourceString"}},
+        {"KismetStringLibrary::IsEmpty",          {"IsEmpty",     "InString"}},
+        {"KismetStringLibrary::Contains",         {"Contains",    "SearchIn"}},
+        {"KismetStringLibrary::StartsWith",       {"StartsWith",  "SearchIn"}},
+        {"KismetStringLibrary::EndsWith",         {"EndsWith",    "SearchIn"}},
+        // TSet / TMap don't have a separate Kismet library; their BP
+        // ops route through K2Node_CallFunction directly on a set/map.
+    };
+    return m;
+}
+
 // ----- Qualified-name shortening table ------------------------------------
 // Some UE helpers have a clean unqualified C++ form (IsValid, GetWorld,
 // GetGameInstance, etc.) — BP routes through KismetSystemLibrary for the
@@ -339,6 +387,37 @@ struct Emitter {
 
     std::string EmitCallExpr(const nlohmann::json& e) {
         std::string fnName = e.value("call", "");
+        // Method-call alias: BP's UKismetArrayLibrary / StringLibrary
+        // helpers take the container as a named arg ("TargetArray",
+        // "SourceString", etc.); the C++ form is a method call
+        // (`Array.Add(Item)`). Look up the receiver pin by name (NOT
+        // by position — JSON object iteration is alphabetical, so
+        // positional lookup would reshuffle the receiver off the front).
+        if (auto methodIt = MethodCallAliases().find(fnName);
+            methodIt != MethodCallAliases().end()) {
+            const auto& alias = methodIt->second;
+            std::string receiver;
+            std::string rest;
+            bool first = true;
+            if (e.contains("args") && e["args"].is_object()) {
+                for (auto& [k, v] : e["args"].items()) {
+                    if (k == alias.receiverArg) {
+                        receiver = EmitExpr(v);
+                        continue;
+                    }
+                    if (!first) rest += ", ";
+                    first = false;
+                    rest += EmitExpr(v);
+                }
+            }
+            if (!receiver.empty()) {
+                std::string call = fmt::format("{}.{}({})", receiver, alias.method, rest);
+                if (fnName == "KismetArrayLibrary::Array_IsNotEmpty") {
+                    call = "!" + call;
+                }
+                return call;
+            }
+        }
         // Name aliases: BP routes IsValid / GetClass etc. through
         // KismetSystemLibrary, but the canonical C++ form is unqualified.
         // Empty alias → identity (drop the call, return the single arg
