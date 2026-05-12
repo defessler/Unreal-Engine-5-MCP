@@ -147,6 +147,34 @@ TEST_CASE("FindNode tags each hit with graph_name + graph_type (issue #6)") {
     CHECK_FALSE(j.contains("graph_type"));
 }
 
+TEST_CASE("FindNode query also matches meta.function_name (issue #12)") {
+    // Operator nodes (Greater_IntInt, Less_FloatFloat, EqualEqual_*)
+    // render their title as the operator alias ("integer > integer",
+    // "Greater (float)") so a query for the function name they were
+    // spawned with — "Greater_FloatFloat" — wouldn't find them
+    // without the meta.function_name / meta.targetFunction fallback.
+    auto reader = bpr::test::MakeMockReader();
+    // BP_Enemy fixture has a node with title "Greater (float)" and
+    // meta.function_name "Greater_FloatFloat".
+    auto byFnName = reader.FindNode("/Game/AI/BP_Enemy", "Greater_Float");
+    REQUIRE(byFnName.size() >= 1);
+    // The hit must be the right node — its meta carries the function.
+    bool sawIt = false;
+    for (const auto& n : byFnName) {
+        if (n.Meta.is_object()) {
+            auto it = n.Meta.find("function_name");
+            if (it != n.Meta.end() && it->is_string() &&
+                it->get<std::string>() == "Greater_FloatFloat") {
+                sawIt = true; break;
+            }
+        }
+    }
+    CHECK(sawIt);
+    // Title-only match still works (query that only appears in title).
+    auto byTitle = reader.FindNode("/Game/AI/BP_Enemy", "(float)");
+    CHECK(byTitle.size() >= 1);
+}
+
 TEST_CASE("FindNode kind filter narrows results") {
     auto reader = bpr::test::MakeMockReader();
     // Empty query + kind-only should still match.
