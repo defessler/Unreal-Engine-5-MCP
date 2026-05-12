@@ -9,7 +9,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <thread>
+
+#include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN
@@ -199,6 +204,95 @@ TEST_CASE("LiveBackend: connect to closed port throws on first op") {
     cfg.token = "tok";
     LiveBlueprintReader reader(cfg);  // construction is lazy — doesn't connect
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
+}
+
+// ---- Issue #9: stale-port recovery via handshake refresh ------------
+
+TEST_CASE("LiveBackend: connect failure triggers handshake re-read and retries") {
+    // Simulate the editor-restart scenario: the MCP server learned a
+    // stale port at startup, the editor is now listening on a different
+    // port. The handshake file points at the new port. We should
+    // recover automatically rather than throwing.
+    MockServer mock([](SOCKET s) {
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        ReadLine(s);
+        SendLine(s, R"({"type":"auth_ok"})");
+        ReadLine(s);  // op frame
+        SendLine(s, nlohmann::json{
+            {"type","result"}, {"id",1}, {"code",0},
+            {"json", nlohmann::json::array()}
+        }.dump());
+    });
+
+    // Write a handshake file pointing at the mock's actual port.
+    auto tempPath = std::filesystem::temp_directory_path() /
+        ("bp-reader-live-test-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&mock)) + ".json");
+    nlohmann::json hs = {
+        {"version", 1},
+        {"host", "127.0.0.1"},
+        {"port", mock.port()},
+        {"token", "fresh-token"},
+    };
+    {
+        std::ofstream f(tempPath);
+        f << hs.dump();
+    }
+
+    // Configure the reader with a STALE port (1 — refused) and STALE
+    // token. The reader should fail to connect, re-read the handshake,
+    // pick up the mock's real port + token, retry, and succeed.
+    LiveBlueprintReader::Config cfg;
+    cfg.host  = "127.0.0.1";
+    cfg.port  = 1;             // stale: connect refused
+    cfg.token = "stale-token";
+    cfg.handshakeFilePath = tempPath.string();
+    LiveBlueprintReader reader(cfg);
+
+    // If the refresh worked, ListBlueprints completes without throwing.
+    CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
+
+    std::filesystem::remove(tempPath);
+}
+
+TEST_CASE("LiveBackend: handshake refresh skipped when path empty") {
+    // Backward compat: the original Config has no handshake path. A
+    // connect failure should fall through to the existing error,
+    // not try to refresh (we don't have a path to read).
+    LiveBlueprintReader::Config cfg;
+    cfg.host = "127.0.0.1";
+    cfg.port = 1;
+    cfg.token = "t";
+    // cfg.handshakeFilePath intentionally empty
+    LiveBlueprintReader reader(cfg);
+    CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
+}
+
+TEST_CASE("LiveBackend: handshake refresh ignored when file points at same port") {
+    // If the handshake file holds the same values as cfg_ already does,
+    // the refresh is a no-op — the retry would fail identically and
+    // we should surface the original error rather than loop.
+    LiveBlueprintReader::Config cfg;
+    cfg.host  = "127.0.0.1";
+    cfg.port  = 1;
+    cfg.token = "t";
+    auto tempPath = std::filesystem::temp_directory_path() /
+        ("bp-reader-live-noop-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&cfg)) + ".json");
+    nlohmann::json hs = {
+        {"version", 1},
+        {"host", "127.0.0.1"},
+        {"port", 1},            // identical to cfg → refresh is a no-op
+        {"token", "t"},
+    };
+    {
+        std::ofstream f(tempPath);
+        f << hs.dump();
+    }
+    cfg.handshakeFilePath = tempPath.string();
+    LiveBlueprintReader reader(cfg);
+    CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
+    std::filesystem::remove(tempPath);
 }
 
 TEST_CASE("LiveBackend: op frame carries the canonical -Op=List shape") {
