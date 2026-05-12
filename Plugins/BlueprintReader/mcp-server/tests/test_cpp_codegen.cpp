@@ -399,6 +399,48 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== Vector / Rotator math operator aliases ==============================
+
+TEST_CASE("Codegen: Add_VectorVector → A + B") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Sum"},
+             {"to", json{{"call","KismetMathLibrary::Add_VectorVector"},
+                          {"args", json{{"A", json{{"var","Loc"}}},
+                                          {"B", json{{"var","Offset"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Sum = (Loc + Offset);"));
+}
+
+TEST_CASE("Codegen: Multiply_VectorFloat → V * F") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Scaled"},
+             {"to", json{{"call","KismetMathLibrary::Multiply_VectorFloat"},
+                          {"args", json{{"A", json{{"var","Vel"}}},
+                                          {"B", json{{"lit",2.0}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Scaled = (Vel * 2"));
+}
+
+TEST_CASE("Codegen: Concat_StrStr → Str + Str") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Msg"},
+             {"to", json{{"call","KismetStringLibrary::Concat_StrStr"},
+                          {"args", json{{"A", json{{"var","First"}}},
+                                          {"B", json{{"var","Second"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Msg = (First + Second);"));
+}
+
+TEST_CASE("Codegen: Add_RotatorRotator → R + R") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Combined"},
+             {"to", json{{"call","KismetMathLibrary::Add_RotatorRotator"},
+                          {"args", json{{"A", json{{"var","R1"}}},
+                                          {"B", json{{"var","R2"}}}}}}}}
+    })));
+    CHECK(Contains(out.source, "Combined = (R1 + R2);"));
+}
+
 // ===== TArray / FString method-call aliases ================================
 
 TEST_CASE("Codegen: Array_Add → Array.Add(Item) method call") {
