@@ -239,7 +239,14 @@ namespace
 				const bool bTitleMatch = N.Title.ToLower().Contains(LowerQuery);
 				if (!bClassMatch && !bTitleMatch) continue;
 			}
-			Out.Add(MakeShared<FJsonValueObject>(NodeToJson(N)));
+			// find_node spans every graph in the blueprint, so each hit
+			// needs to carry the graph it came from — otherwise the
+			// agent has no way to call get_node / delete_node / wire_pins
+			// (which all require -Graph=) on the result (issue #6).
+			TSharedRef<FJsonObject> NodeObj = NodeToJson(N);
+			NodeObj->SetStringField(TEXT("graph_name"), Graph.Name);
+			NodeObj->SetStringField(TEXT("graph_type"), Graph.WireType);
+			Out.Add(MakeShared<FJsonValueObject>(NodeObj));
 		}
 	}
 }
