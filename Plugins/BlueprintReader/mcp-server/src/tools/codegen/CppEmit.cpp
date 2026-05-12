@@ -281,6 +281,15 @@ struct Emitter {
         if (fnName == "__bpr_destroy_actor") {
             return EmitDestroyActor(e);
         }
+        if (fnName == "__bpr_construct_object_from_class") {
+            return EmitConstructObjectFromClass(e);
+        }
+        // GetDataTableRow is statement-form (carries success+fail blocks)
+        // — the statement dispatcher handles it directly; we'd only see
+        // it here if someone misuses the sentinel in an expression slot.
+        if (fnName == "__bpr_get_data_table_row") {
+            return "/* GetDataTableRow appears in statement position only */";
+        }
         // Default: render as Foo(a, b, c). If the name is qualified
         // (Owner::Func), keep the qualifier — the agent / user resolves
         // include + scope.
@@ -329,6 +338,59 @@ struct Emitter {
         return fmt::format(
             "[&]{{ FActorSpawnParameters p;\n{}    return GetWorld()->SpawnActor<AActor>({}, {}, p); }}()",
             params, clsExpr, xform);
+    }
+
+    // GetDataTableRow → `if (auto* Row = DataTable->FindRow<FRowType>(
+    // RowName, "BPR")) { /* success */ } else { /* fail */ }`. The row
+    // struct type comes from the BPIR `row_struct` field when the BP
+    // node carries it; otherwise we default to `FTableRowBase` and let
+    // the agent retype.
+    void EmitGetDataTableRow(const nlohmann::json& s) {
+        auto a = (s.contains("args") && s["args"].is_object())
+                     ? s["args"] : nlohmann::json::object();
+        std::string dt   = a.contains("DataTable") ? EmitExpr(a["DataTable"]) : "DataTable";
+        std::string row  = a.contains("RowName")   ? EmitExpr(a["RowName"])   : R"(TEXT(""))";
+        std::string rowStruct = s.value("row_struct", std::string{});
+        if (rowStruct.empty()) rowStruct = "FTableRowBase";
+        // Strip path prefix on row struct (BP encodes as `/Script/X.FFoo`).
+        if (auto dot = rowStruct.find_last_of('.'); dot != std::string::npos) {
+            rowStruct = rowStruct.substr(dot + 1);
+        }
+        // Ensure F prefix on the struct name.
+        if (!rowStruct.empty() && rowStruct[0] != 'F') rowStruct = "F" + rowStruct;
+
+        Line(fmt::format(
+            "if (auto* Row = {}->FindRow<{}>({}, TEXT(\"BPR\")))", dt, rowStruct, row));
+        Line("{");
+        ++indentLevel;
+        if (s.contains("success")) EmitStatementList(s["success"]);
+        --indentLevel;
+        Line("}");
+        if (s.contains("fail") && !s["fail"].empty()) {
+            Line("else");
+            Line("{");
+            ++indentLevel;
+            EmitStatementList(s["fail"]);
+            --indentLevel;
+            Line("}");
+        }
+    }
+
+    // ConstructObjectFromClass → `NewObject<UObject>(Outer, Class)`. The
+    // BP node's Class pin carries the class to instantiate (typed
+    // expression — we render it as-is and trust the caller's type).
+    // Without an Outer pin, we default to `this` which is the most
+    // common case (actor-scoped BPs).
+    std::string EmitConstructObjectFromClass(const nlohmann::json& e) {
+        auto a = (e.contains("args") && e["args"].is_object())
+                     ? e["args"] : nlohmann::json::object();
+        std::string outer = a.contains("Outer") ? EmitExpr(a["Outer"]) : std::string("this");
+        std::string cls   = a.contains("Class") ? EmitExpr(a["Class"]) : std::string("UObject::StaticClass()");
+        // We don't have a strong type signal at the call site — keep the
+        // template arg as UObject and let the assignment context narrow
+        // via the LHS UPROPERTY type. Cast<> on the result is the agent's
+        // job (we can't infer the target type from BPIR alone).
+        return fmt::format("NewObject<UObject>({}, {})", outer, cls);
     }
 
     // DestroyActor → `Target->Destroy()` (or `this->Destroy()` when
@@ -408,6 +470,14 @@ struct Emitter {
             return;
         }
         if (form == "call") {
+            // Special statement-form sentinel: GetDataTableRow carries
+            // success/fail blocks like a cast — emit the FindRow lookup
+            // and dispatch into the success block when the row is found.
+            std::string fnName = s.value("call", "");
+            if (fnName == "__bpr_get_data_table_row") {
+                EmitGetDataTableRow(s);
+                return;
+            }
             // Statement form — discard return value.
             std::string call = EmitCallExpr(s);
             // Strip the surrounding parens if it's an operator (rare in

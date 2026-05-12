@@ -331,6 +331,74 @@ TEST_CASE("Codegen: __bpr_destroy_actor without Target → this->Destroy()") {
     CHECK(Contains(out.source, "this->Destroy();"));
 }
 
+// ===== ConstructObjectFromClass sentinel ==================================
+
+TEST_CASE("Codegen: __bpr_construct_object_from_class → NewObject<UObject>(Outer, Class)") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Spawned"},
+             {"to",   json{{"call","__bpr_construct_object_from_class"},
+                            {"args", json{{"Class", json{{"var","MyClass"}}},
+                                          {"Outer", json{{"var","Owner"}}}}}}}},
+    })));
+    CHECK(Contains(out.source, "Spawned = NewObject<UObject>(Owner, MyClass)"));
+}
+
+TEST_CASE("Codegen: __bpr_construct_object_from_class without Outer → defaults to `this`") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set","Spawned"},
+             {"to",   json{{"call","__bpr_construct_object_from_class"},
+                            {"args", json{{"Class", json{{"var","MyClass"}}}}}}}},
+    })));
+    CHECK(Contains(out.source, "NewObject<UObject>(this, MyClass)"));
+}
+
+// ===== GetDataTableRow sentinel ===========================================
+
+TEST_CASE("Codegen: __bpr_get_data_table_row with row_struct → FindRow<F...> + branches") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","__bpr_get_data_table_row"},
+             {"args", json{{"DataTable", json{{"var","ItemTable"}}},
+                            {"RowName",   json{{"lit", "Sword01"}}}}},
+             {"row_struct", "ItemRow"},
+             {"success", json::array({
+                 json{{"set","Item"}, {"to", json{{"var","Row"}}}}
+             })},
+             {"fail", json::array({
+                 json{{"return", nullptr}}
+             })}}
+    })));
+    // FindRow call with right template + RowName arg + context string.
+    CHECK(Contains(out.source, "ItemTable->FindRow<FItemRow>"));
+    CHECK(Contains(out.source, R"(TEXT("Sword01"))"));
+    CHECK(Contains(out.source, R"(TEXT("BPR"))"));
+    // Both branches.
+    CHECK(Contains(out.source, "Item = Row;"));
+    CHECK(Contains(out.source, "else"));
+    CHECK(Contains(out.source, "return;"));
+}
+
+TEST_CASE("Codegen: __bpr_get_data_table_row without row_struct → falls back to FTableRowBase") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","__bpr_get_data_table_row"},
+             {"args", json{{"DataTable", json{{"var","T"}}},
+                            {"RowName",   json{{"lit", "X"}}}}},
+             {"success", json::array()}, {"fail", json::array()}}
+    })));
+    CHECK(Contains(out.source, "FindRow<FTableRowBase>"));
+}
+
+TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on row_struct") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","__bpr_get_data_table_row"},
+             {"args", json{{"DataTable", json{{"var","T"}}},
+                            {"RowName",   json{{"lit", "X"}}}}},
+             // Path-form + missing F prefix; emitter should normalize.
+             {"row_struct", "/Script/Game.ItemRow"},
+             {"success", json::array()}, {"fail", json::array()}}
+    })));
+    CHECK(Contains(out.source, "FindRow<FItemRow>"));
+}
+
 // ===== Validation pass-through ============================================
 
 TEST_CASE("Codegen rejects malformed BPIR") {
