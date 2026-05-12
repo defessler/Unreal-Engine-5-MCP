@@ -117,3 +117,27 @@ TEST_CASE("BuildSidecar: malformed entries don't crash") {
     });
     CHECK_NOTHROW(BuildSidecar("/Game/X", {"X.h"}, notes));
 }
+
+TEST_CASE("ClassifyUnsupported: target_function=Delay gets FTimerManager hint") {
+    // The Decompile pass stamps target_function on latent CallFunction
+    // unsupported entries. ClassifyUnsupported pulls that synthetic
+    // matcher key and routes to the FTimerManager refactor hint.
+    json u = json::object({
+        {"node_class","K2Node_CallFunction"},
+        {"target_function","Delay"},
+        {"guid","d-1"},
+    });
+    auto cls = ClassifyUnsupported(u);
+    CHECK(cls.kind == UnsupportedClassification::Kind::TodoComment);
+    CHECK(Contains(cls.note, "FTimerHandle"));
+    CHECK(Contains(cls.note, "SetTimer"));
+}
+
+TEST_CASE("ClassifyUnsupported: target_function=RetriggerableDelay also matches") {
+    json u = json::object({
+        {"node_class","K2Node_CallFunction"},
+        {"target_function","RetriggerableDelay"},
+    });
+    auto cls = ClassifyUnsupported(u);
+    CHECK(Contains(cls.note, "FTimerHandle"));
+}
