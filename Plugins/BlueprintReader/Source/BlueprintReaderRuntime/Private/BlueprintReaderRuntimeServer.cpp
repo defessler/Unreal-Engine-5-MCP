@@ -348,6 +348,49 @@ FRuntimeServer* GetRuntimeServer() { return GRuntimeServer.Get(); }
 FRuntimeServer::FRuntimeServer() {}
 FRuntimeServer::~FRuntimeServer() { Stop(); }
 
+// Same shape as the editor live server's TryBindAndListen — kept
+// internal here so the two listeners don't have to share code (their
+// modules are intentionally independent so the runtime side doesn't
+// drag editor deps into cooked builds).
+static bool TryBindAndListenRuntime(ISocketSubsystem* Sub, int32 PortToTry,
+                                     FSocket*& OutSocket, int32& OutBoundPort)
+{
+	OutSocket = Sub->CreateSocket(NAME_Stream, TEXT("BPRRuntime"),
+	                              FNetworkProtocolTypes::IPv4);
+	if (!OutSocket)
+	{
+		UE_LOG(LogBlueprintReaderRuntime, Error, TEXT("CreateSocket failed"));
+		return false;
+	}
+	// SO_REUSEADDR — same TIME_WAIT-bypass rationale as the editor live
+	// server. Without this, a packaged game crash leaves the cached
+	// port unreachable for 30-60 s and the next launch silently moves
+	// to ephemeral, defeating the stable-port goal.
+	OutSocket->SetReuseAddr(true);
+	TSharedRef<FInternetAddr> BindAddr = Sub->CreateInternetAddr();
+	BindAddr->SetIp(0x7F000001);  // 127.0.0.1
+	BindAddr->SetPort(FMath::Max(0, PortToTry));
+	if (!OutSocket->Bind(*BindAddr))
+	{
+		UE_LOG(LogBlueprintReaderRuntime, Log,
+			TEXT("Bind to 127.0.0.1:%d declined"), PortToTry);
+		Sub->DestroySocket(OutSocket);
+		OutSocket = nullptr;
+		return false;
+	}
+	if (!OutSocket->Listen(8))
+	{
+		UE_LOG(LogBlueprintReaderRuntime, Error, TEXT("Listen() failed"));
+		Sub->DestroySocket(OutSocket);
+		OutSocket = nullptr;
+		return false;
+	}
+	TSharedRef<FInternetAddr> BoundAddr = Sub->CreateInternetAddr();
+	OutSocket->GetAddress(*BoundAddr);
+	OutBoundPort = BoundAddr->GetPort();
+	return true;
+}
+
 bool FRuntimeServer::Start(int32 Port)
 {
 	if (Listener.IsValid())
@@ -356,12 +399,34 @@ bool FRuntimeServer::Start(int32 Port)
 		return true;
 	}
 
-	// Resolve port.
+	// Port resolution: explicit arg > env var > cached preferred port
+	// > 0. The cache survives shutdown so successive game launches try
+	// the same port — see the editor side's identical comment for the
+	// rationale. Cache is a hint: fall back to ephemeral on bind
+	// failure and overwrite the cache with whatever the kernel
+	// picked.
 	int32 RequestedPort = Port;
+	bool bPortFromExplicitSource = (Port != 0);
 	if (RequestedPort == 0)
 	{
 		FString EnvPort = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_RUNTIME_PORT"));
-		if (!EnvPort.IsEmpty()) RequestedPort = FCString::Atoi(*EnvPort);
+		if (!EnvPort.IsEmpty())
+		{
+			RequestedPort = FCString::Atoi(*EnvPort);
+			bPortFromExplicitSource = true;
+		}
+	}
+	int32 CachedPortAttempted = 0;
+	if (RequestedPort == 0 && !bPortFromExplicitSource)
+	{
+		const int32 Cached = ReadCachedPort();
+		if (Cached > 0)
+		{
+			RequestedPort = Cached;
+			CachedPortAttempted = Cached;
+			UE_LOG(LogBlueprintReaderRuntime, Display,
+				TEXT("Trying cached port %d from previous run"), Cached);
+		}
 	}
 
 	// Resolve token.
@@ -378,34 +443,27 @@ bool FRuntimeServer::Start(int32 Port)
 		UE_LOG(LogBlueprintReaderRuntime, Error, TEXT("No socket subsystem"));
 		return false;
 	}
-	ListenerSocket = Sub->CreateSocket(NAME_Stream, TEXT("BPRRuntime"),
-	                                    FNetworkProtocolTypes::IPv4);
-	if (!ListenerSocket)
+
+	if (!TryBindAndListenRuntime(Sub, RequestedPort, ListenerSocket, BoundPort))
 	{
-		UE_LOG(LogBlueprintReaderRuntime, Error, TEXT("CreateSocket failed"));
-		return false;
+		// Same fallback logic as the editor side: cached miss → retry
+		// ephemeral; explicit miss → bail to surface the conflict.
+		if (bPortFromExplicitSource || CachedPortAttempted == 0)
+		{
+			UE_LOG(LogBlueprintReaderRuntime, Error,
+				TEXT("Bind failed on requested port %d"), RequestedPort);
+			return false;
+		}
+		UE_LOG(LogBlueprintReaderRuntime, Display,
+			TEXT("Cached port %d unavailable; falling back to ephemeral"),
+			CachedPortAttempted);
+		if (!TryBindAndListenRuntime(Sub, 0, ListenerSocket, BoundPort))
+		{
+			UE_LOG(LogBlueprintReaderRuntime, Error,
+				TEXT("Ephemeral fallback also failed"));
+			return false;
+		}
 	}
-	TSharedRef<FInternetAddr> BindAddr = Sub->CreateInternetAddr();
-	BindAddr->SetIp(0x7F000001);  // 127.0.0.1
-	BindAddr->SetPort(FMath::Max(0, RequestedPort));
-	if (!ListenerSocket->Bind(*BindAddr))
-	{
-		UE_LOG(LogBlueprintReaderRuntime, Error,
-			TEXT("Bind to 127.0.0.1:%d failed"), RequestedPort);
-		Sub->DestroySocket(ListenerSocket);
-		ListenerSocket = nullptr;
-		return false;
-	}
-	if (!ListenerSocket->Listen(8))
-	{
-		UE_LOG(LogBlueprintReaderRuntime, Error, TEXT("Listen() failed"));
-		Sub->DestroySocket(ListenerSocket);
-		ListenerSocket = nullptr;
-		return false;
-	}
-	TSharedRef<FInternetAddr> BoundAddr = Sub->CreateInternetAddr();
-	ListenerSocket->GetAddress(*BoundAddr);
-	BoundPort = BoundAddr->GetPort();
 
 	Listener = MakeUnique<FTcpListener>(*ListenerSocket);
 	Listener->OnConnectionAccepted().BindRaw(this, &FRuntimeServer::OnIncomingConnection);
@@ -413,6 +471,11 @@ bool FRuntimeServer::Start(int32 Port)
 	GState = MakeUnique<FServerState>();
 	UE_LOG(LogBlueprintReaderRuntime, Display,
 		TEXT("Runtime BP listener on 127.0.0.1:%d"), BoundPort);
+
+	if (!bPortFromExplicitSource)
+	{
+		WriteCachedPort(BoundPort);
+	}
 
 	HandshakeWritten = WriteHandshakeFile();
 	return true;
@@ -528,6 +591,49 @@ void FRuntimeServer::DeleteHandshakeFile()
 {
 	const FString Path = HandshakeFilePath();
 	IFileManager::Get().Delete(*Path, /*bRequireExists*/false);
+}
+
+FString FRuntimeServer::PortCacheFilePath()
+{
+	// Separate filename from the editor side so a packaged game running
+	// alongside an open editor doesn't trample the editor's cached
+	// port choice (each side prefers stability for its own clients).
+	return FPaths::Combine(FPaths::ProjectSavedDir(),
+	                       TEXT("bp-reader-runtime-port.json"));
+}
+
+int32 FRuntimeServer::ReadCachedPort()
+{
+	const FString Path = PortCacheFilePath();
+	if (!IFileManager::Get().FileExists(*Path)) return 0;
+	FString Body;
+	if (!FFileHelper::LoadFileToString(Body, *Path)) return 0;
+
+	TSharedPtr<FJsonObject> Obj;
+	TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Body);
+	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) return 0;
+	int32 Port = 0;
+	Obj->TryGetNumberField(TEXT("port"), Port);
+	// Reject malformed / privileged-port caches. See editor-side
+	// ReadCachedPort for the same defense.
+	if (Port < 1024 || Port > 65535) return 0;
+	return Port;
+}
+
+void FRuntimeServer::WriteCachedPort(int32 Port)
+{
+	if (Port < 1024 || Port > 65535) return;
+	const FString Path = PortCacheFilePath();
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+	const FString Json = FString::Printf(TEXT("{\"port\":%d}\n"), Port);
+	if (!FFileHelper::SaveStringToFile(Json, *Path,
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+		&IFileManager::Get(), FILEWRITE_EvenIfReadOnly))
+	{
+		UE_LOG(LogBlueprintReaderRuntime, Verbose,
+			TEXT("Could not write port cache %s; next launch will be ephemeral"),
+			*Path);
+	}
 }
 
 // ---------------------------------------------------------------------------
