@@ -4,9 +4,12 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN
@@ -132,24 +135,70 @@ void LiveBlueprintReader::Disconnect() {
     handshakeOk_ = false;
 }
 
-void LiveBlueprintReader::EnsureConnected() {
-    if (handshakeOk_) return;
-
-    SocketType s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == kInvalidSocket) {
-        throw BlueprintReaderError("LiveBlueprintReader: socket() failed");
+// Try to read `<Project>/Saved/bp-reader-live.json` and refresh cfg_'s
+// host/port/token in place. Returns true when the file existed, parsed,
+// and produced a different (host,port,token) than the current cfg_ —
+// i.e. when the editor restarted and is now listening on a different
+// port. Returns false on "no handshake file" / "same as before" / "any
+// parse failure" — callers treat that as "nothing to retry with."
+bool LiveBlueprintReader::RefreshFromHandshakeFile() {
+    if (cfg_.handshakeFilePath.empty()) return false;
+    std::error_code ec;
+    if (!std::filesystem::exists(cfg_.handshakeFilePath, ec)) return false;
+    std::ifstream f(cfg_.handshakeFilePath);
+    if (!f) return false;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    nlohmann::json j;
+    try { j = nlohmann::json::parse(ss.str()); }
+    catch (...) { return false; }
+    std::string newHost  = j.value("host",  std::string("127.0.0.1"));
+    int         newPort  = j.value("port",  0);
+    std::string newToken = j.value("token", std::string());
+    if (newPort <= 0 || newToken.empty()) return false;
+    if (newHost == cfg_.host && newPort == cfg_.port && newToken == cfg_.token) {
+        return false;  // identical to current — nothing to retry with
     }
+    cfg_.host  = std::move(newHost);
+    cfg_.port  = newPort;
+    cfg_.token = std::move(newToken);
+    return true;
+}
+
+// Try to connect to cfg_.host:cfg_.port. Returns the connected socket
+// on success, kInvalidSocket on failure. Caller handles teardown.
+static SocketType ConnectOnce(const std::string& host, int port) {
+    SocketType s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == kInvalidSocket) return s;
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(cfg_.port));
-    inet_pton(AF_INET, cfg_.host.c_str(), &addr.sin_addr);
-
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
     if (::connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
 #if defined(_WIN32)
         closesocket(s);
 #else
         close(s);
 #endif
+        return kInvalidSocket;
+    }
+    return s;
+}
+
+void LiveBlueprintReader::EnsureConnected() {
+    if (handshakeOk_) return;
+
+    // Up to two attempts: first with current cfg_, second after re-
+    // reading the handshake file if the first failed. Covers the
+    // "editor restarted, new port" case (issue #9) without needing to
+    // bounce the MCP server.
+    SocketType s = ConnectOnce(cfg_.host, cfg_.port);
+    if (s == kInvalidSocket) {
+        if (RefreshFromHandshakeFile()) {
+            s = ConnectOnce(cfg_.host, cfg_.port);
+        }
+    }
+    if (s == kInvalidSocket) {
         throw BlueprintReaderError(fmt::format(
             "LiveBlueprintReader: connect to {}:{} failed — is the editor "
             "running with BP_READER_LIVE_PORT set?",
