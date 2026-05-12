@@ -399,6 +399,21 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== for_each form (ForEachLoop macro) ==================================
+
+TEST_CASE("Codegen: for_each form renders range-based for") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"for_each","Element"},
+             {"in",   json{{"var","Enemies"}}},
+             {"body", json::array({
+                 json{{"call","Element::DoDamage"},
+                      {"args", json{{"x", json{{"lit",10}}}}}}
+             })}}
+    })));
+    CHECK(Contains(out.source, "for (auto& Element : Enemies)"));
+    CHECK(Contains(out.source, "Element::DoDamage(10);"));
+}
+
 // ===== FormatText sentinel =================================================
 
 TEST_CASE("Codegen: __bpr_format_text with args → FFormatNamedArguments + FText::Format") {
