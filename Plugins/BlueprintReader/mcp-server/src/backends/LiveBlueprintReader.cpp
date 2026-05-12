@@ -88,17 +88,48 @@ std::string RecvLine(SocketType s, std::string& pending) {
 
 // Per-instance read buffer. Wrap in a struct so RecvLine's `pending` ref
 // has somewhere persistent to live across calls without leaking buffer
-// state into the public header.
+// state into the public header. The map is thread_local because UE
+// commandlet daemon clients run from a single MCP-server thread per
+// reader — but Disconnect() must erase the entry, or a reused socket
+// fd (after editor restart) would pick up stale `pending` bytes from
+// the dead session and misframe the next response.
 struct PendingBuf {
     std::string b;
 };
-PendingBuf& BufFor(SocketType s) {
-    // We have one socket per reader; this map is ridiculous overkill but
-    // keeps the impl simple. Real impl would carry the buffer as a class
-    // member — refactor if multiple sockets per reader ever happens.
-    thread_local std::map<SocketType, PendingBuf> bufs;
-    return bufs[s];
+using BufMap = std::map<SocketType, PendingBuf>;
+BufMap& BufsForThisThread() {
+    thread_local BufMap bufs;
+    return bufs;
 }
+PendingBuf& BufFor(SocketType s) {
+    return BufsForThisThread()[s];
+}
+void EraseBufFor(SocketType s) {
+    BufsForThisThread().erase(s);
+}
+
+// Close a socket portably. Used by Disconnect and ScopedSocket.
+inline void CloseSocketCompat(SocketType s) {
+    if (s == kInvalidSocket) return;
+#if defined(_WIN32)
+    closesocket(s);
+#else
+    close(s);
+#endif
+}
+
+// RAII guard for a socket fd. On scope exit the socket is closed unless
+// release() was called. Removes the seven `#if defined(_WIN32)` cleanup
+// blocks TryConnectAndHandshake otherwise needs on every failure branch.
+struct ScopedSocket {
+    SocketType s = kInvalidSocket;
+    explicit ScopedSocket(SocketType in) : s(in) {}
+    ~ScopedSocket() { CloseSocketCompat(s); }
+    ScopedSocket(const ScopedSocket&) = delete;
+    ScopedSocket& operator=(const ScopedSocket&) = delete;
+    SocketType release() { SocketType r = s; s = kInvalidSocket; return r; }
+    explicit operator bool() const { return s != kInvalidSocket; }
+};
 
 } // namespace
 
@@ -125,11 +156,12 @@ LiveBlueprintReader::~LiveBlueprintReader() {
 
 void LiveBlueprintReader::Disconnect() {
     if (socket_ != static_cast<intptr_t>(kInvalidSocket)) {
-#if defined(_WIN32)
-        closesocket(static_cast<SocketType>(socket_));
-#else
-        close(static_cast<SocketType>(socket_));
-#endif
+        const SocketType s = static_cast<SocketType>(socket_);
+        CloseSocketCompat(s);
+        // Drop the per-socket read buffer so a future reconnect that
+        // happens to get the same fd back from the kernel doesn't pick
+        // up leftover `pending` bytes from this dead session.
+        EraseBufFor(s);
         socket_ = static_cast<intptr_t>(kInvalidSocket);
     }
     handshakeOk_ = false;
@@ -165,50 +197,47 @@ bool LiveBlueprintReader::RefreshFromHandshakeFile() {
     return true;
 }
 
-// Try to connect to cfg_.host:cfg_.port. Returns the connected socket
-// on success, kInvalidSocket on failure. Caller handles teardown.
-static SocketType ConnectOnce(const std::string& host, int port) {
-    SocketType s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == kInvalidSocket) return s;
+// Open a TCP connection to host:port. Returns kInvalidSocket on failure.
+// CloseSocketCompat + ScopedSocket helpers live in the anonymous
+// namespace above so Disconnect (declared earlier) can reach them.
+namespace {
+SocketType ConnectOnce(const std::string& host, int port) {
+    ScopedSocket sock(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+    if (!sock) return kInvalidSocket;
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(static_cast<uint16_t>(port));
     inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
-    if (::connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
-        return kInvalidSocket;
+    if (::connect(sock.s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        return kInvalidSocket;  // ScopedSocket closes on scope exit
     }
-    return s;
+    return sock.release();
 }
+} // namespace
 
 // One connect + handshake pass. Leaves socket_ + handshakeOk_
 // untouched on failure (caller decides whether to retry). The
 // retryWorthwhile hint distinguishes "the editor probably restarted,
 // re-read the handshake file" from "something is structurally wrong"
 // — see the AttemptResult declaration in LiveBlueprintReader.h.
+//
+// All early-exit paths rely on ScopedSocket's destructor to close the
+// fd; we only `release()` once the handshake fully succeeds and the
+// caller takes ownership.
 LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake() {
-    SocketType s = ConnectOnce(cfg_.host, cfg_.port);
-    if (s == kInvalidSocket) {
+    ScopedSocket sock(ConnectOnce(cfg_.host, cfg_.port));
+    if (!sock) {
         return {false, /*retryWorthwhile=*/true, fmt::format(
             "connect to {}:{} failed", cfg_.host, cfg_.port)};
     }
 
-    auto& buf = BufFor(s).b;
+    auto& buf = BufFor(sock.s).b;
     buf.clear();
 
     std::string hello;
     try {
-        hello = RecvLine(s, buf);
+        hello = RecvLine(sock.s, buf);
     } catch (const std::exception& e) {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
         // Protocol-level failure on a fresh connect typically means the
         // server we connected to isn't the editor — a refresh probably
         // won't help, so don't burn a retry on it.
@@ -217,11 +246,6 @@ LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake()
     }
     auto helloJson = nlohmann::json::parse(hello, nullptr, /*allow_exceptions=*/false);
     if (!helloJson.is_object() || helloJson.value("type", "") != "hello") {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
         return {false, false, fmt::format(
             "expected hello frame, got: {}", hello)};
     }
@@ -229,43 +253,29 @@ LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake()
     nlohmann::json authMsg = { {"type", "auth"}, {"token", cfg_.token} };
     std::string authLine = authMsg.dump() + "\n";
     try {
-        SendAll(s, authLine.data(), authLine.size());
+        SendAll(sock.s, authLine.data(), authLine.size());
     } catch (const std::exception& e) {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
         return {false, true, fmt::format("auth send failed: {}", e.what())};
     }
 
     std::string authResp;
     try {
-        authResp = RecvLine(s, buf);
+        authResp = RecvLine(sock.s, buf);
     } catch (const std::exception& e) {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
         return {false, true, fmt::format("auth response read failed: {}", e.what())};
     }
     auto authJson = nlohmann::json::parse(authResp, nullptr, false);
     std::string respType = authJson.is_object() ? authJson.value("type", "") : "";
     if (respType != "auth_ok") {
-#if defined(_WIN32)
-        closesocket(s);
-#else
-        close(s);
-#endif
         // Auth failure on stable-port restarts (PR #49) means the token
         // rotated — a handshake refresh fixes it. retryWorthwhile=true.
         return {false, true, fmt::format(
             "auth failed (server response: {})", authResp)};
     }
 
-    // Success — commit the socket.
-    socket_ = static_cast<intptr_t>(s);
+    // Success — take ownership of the socket from ScopedSocket; the
+    // destructor will leave it alone.
+    socket_ = static_cast<intptr_t>(sock.release());
     handshakeOk_ = true;
     return {true, false, {}};
 }

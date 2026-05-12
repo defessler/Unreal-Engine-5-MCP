@@ -66,10 +66,13 @@ patterns the codegen emits. See
 | Backend       | Needs UE?    | Use case                                |
 |---------------|--------------|------------------------------------------|
 | `mock`        | No           | MCP server dev, smoke tests, demos.     |
-| `commandlet`  | Yes (built)  | Reading + editing real `.uasset` files. |
+| `commandlet`  | Yes (built)  | Reading + editing `.uasset` files with the editor **closed**. Spawns a `UnrealEditor-Cmd.exe` child process. |
+| `live`        | Yes, running | Reading + editing with the editor **open**. Connects to a TCP listener inside the running editor; no concurrent .uasset writes, sees unsaved edits. |
+| `auto`        | Either       | Probes per call. Routes to `live` when the editor is up, `commandlet` when it isn't. **This is the default** when a `.uproject` is auto-discovered. |
 
-Default is `mock`. Set `BP_READER_BACKEND=commandlet` plus engine/project
-paths to drive a real editor. See [Configuration](Configuration).
+Default is `auto` (or `mock` if no `.uproject` is auto-discovered).
+Set `BP_READER_BACKEND=<name>` to opt out of probing. See
+[Configuration](Configuration).
 
 ## Performance
 

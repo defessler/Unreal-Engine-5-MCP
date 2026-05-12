@@ -280,7 +280,10 @@ namespace
 					//   - CallFunction / CallParentFunction → targetFunction
 					//   - VariableGet / VariableSet → variableName
 					//   - Event / CustomEvent → eventName
-					const TCHAR* ExtrasKeys[] = {
+					//
+					// static constexpr so the array isn't reconstructed
+					// per node × per graph during a busy find_node scan.
+					static constexpr const TCHAR* ExtrasKeys[] = {
 						TEXT("targetFunction"), TEXT("function_name"),
 						TEXT("variableName"),   TEXT("variable_name"),
 						TEXT("eventName"),      TEXT("event_name"),
