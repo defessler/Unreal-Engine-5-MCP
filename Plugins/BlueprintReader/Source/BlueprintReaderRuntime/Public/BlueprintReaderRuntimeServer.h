@@ -72,6 +72,17 @@ private:
 	void DeleteHandshakeFile();
 	static FString HandshakeFilePath();
 
+	// Persistent "preferred port" cache — survives game/editor shutdown
+	// so the next launch tries the same port the previous run bound,
+	// keeping MCP clients on a stable target instead of forcing them to
+	// re-read the handshake after every restart. Path is
+	// `<Project>/Saved/bp-reader-runtime-port.json` (distinct from the
+	// editor's cache so a packaged build running alongside an editor
+	// doesn't trample). Both reads + writes are best-effort.
+	static FString PortCacheFilePath();
+	static int32   ReadCachedPort();
+	static void    WriteCachedPort(int32 Port);
+
 	TUniquePtr<FTcpListener> Listener;
 	FSocket* ListenerSocket = nullptr;
 	FString ExpectedToken;
