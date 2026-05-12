@@ -67,9 +67,17 @@ TEST_CASE("Discoverability: list_pin_categories returns categories + containers"
     auto out = f.Call("list_pin_categories", json::object());
     REQUIRE(out.contains("categories"));
     REQUIRE(out["categories"].is_array());
-    CHECK(out["categories"].size() >= 14);
+    CHECK(out["categories"].size() >= 16);  // soft_object + soft_class added
     REQUIRE(out.contains("containers"));
     CHECK(out["containers"].size() == 3);
+    // soft refs are first-class — verify they appear in the discovery list.
+    bool sawSoftObject = false, sawSoftClass = false;
+    for (const auto& c : out["categories"]) {
+        if (c.value("category", "") == "soft_object") sawSoftObject = true;
+        if (c.value("category", "") == "soft_class")  sawSoftClass  = true;
+    }
+    CHECK(sawSoftObject);
+    CHECK(sawSoftClass);
 }
 
 TEST_CASE("Write tools throw on the mock backend (read-only by design)") {
