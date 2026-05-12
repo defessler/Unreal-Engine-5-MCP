@@ -147,8 +147,9 @@ changes).
 Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
 ```
 
-~350 cases pass in <5 s; live cases auto-skip when env vars aren't set.
-CI runs this on every push that touches the mcp-server tree.
+~413 cases / 29000 assertions pass in <5 s; live cases auto-skip when
+env vars aren't set. CI runs this on every push that touches the
+mcp-server tree.
 
 ### Live (drives real `UnrealEditor-Cmd.exe`)
 
@@ -177,6 +178,15 @@ live tests; safe to re-run any time. Commit them after if the seed
 output changed.
 
 ## Common gotchas (learned the hard way)
+
+- **Git Bash / MSYS path translation.** Invoking `UnrealEditor-Cmd.exe`
+  directly from Git Bash with `-Asset=/Game/AI/BP_Foo` gets the
+  path rewritten to `C:/Program Files/Git/Game/AI/BP_Foo` by MSYS
+  (treats `/Game/...` as a Unix absolute path). UE then rejects the
+  package name. Set `MSYS_NO_PATHCONV=1` for the call, or run from
+  PowerShell / cmd.exe. The MCP server uses `CreateProcessW`
+  directly and isn't affected — this only bites when invoking the
+  commandlet by hand.
 
 - **`FParse::Value` and JSON values.** Anything passed as `-Foo=<json>`
   on a UE commandlet command line gets mangled because the inner
