@@ -103,6 +103,16 @@ private:
     // the delete path agree.
     static FString HandshakeFilePath();
 
+    // Persistent "preferred port" cache. Survives editor shutdown so
+    // the next launch can try the same port the previous run bound.
+    // Stays at `<Project>/Saved/bp-reader-live-port.json` — separate
+    // from the handshake file (which IS deleted on shutdown so MCP
+    // probes fail fast against a dead editor). Implementation in
+    // BlueprintReaderLiveServer.cpp.
+    static FString PortCacheFilePath();
+    static int32   ReadCachedPort();
+    static void    WriteCachedPort(int32 Port);
+
     TUniquePtr<FTcpListener> Listener;
     // FSocket pre-bound (so port 0 → kernel-picks-port works AND we can
     // see the actual port). Listener takes a reference; we own the
