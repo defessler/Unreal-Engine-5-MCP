@@ -175,6 +175,28 @@ const std::map<std::string, OpReverse>& OpReverseMap() {
     return m;
 }
 
+// ----- Qualified-name shortening table ------------------------------------
+// Some UE helpers have a clean unqualified C++ form (IsValid, GetWorld,
+// GetGameInstance, etc.) — BP routes through KismetSystemLibrary for the
+// boolean version, but C++ uses the global form. We rewrite these to
+// the unqualified form so the generated code reads idiomatically.
+const std::map<std::string, std::string>& NameAliases() {
+    static const std::map<std::string, std::string> m = {
+        {"KismetSystemLibrary::IsValid",       "IsValid"},
+        {"KismetSystemLibrary::IsValidClass",  "IsValid"},
+        {"KismetSystemLibrary::MakeLiteralInt",      ""},   // identity (returns the literal)
+        {"KismetSystemLibrary::MakeLiteralFloat",    ""},
+        {"KismetSystemLibrary::MakeLiteralBool",     ""},
+        {"KismetSystemLibrary::MakeLiteralString",   ""},
+        {"KismetSystemLibrary::MakeLiteralName",     ""},
+        {"KismetSystemLibrary::MakeLiteralText",     ""},
+        // GetClass node renders as `<obj>->GetClass()` not as a free call,
+        // but BP's GetObjectClass routes through this — render bare.
+        {"GameplayStatics::GetClass",          "GetClass"},
+    };
+    return m;
+}
+
 // ----- WorldContext injection table ---------------------------------------
 // BP hides the WorldContextObject pin on these functions and passes
 // `this` implicitly during compile. The C++ signatures still require
@@ -317,6 +339,21 @@ struct Emitter {
 
     std::string EmitCallExpr(const nlohmann::json& e) {
         std::string fnName = e.value("call", "");
+        // Name aliases: BP routes IsValid / GetClass etc. through
+        // KismetSystemLibrary, but the canonical C++ form is unqualified.
+        // Empty alias → identity (drop the call, return the single arg
+        // unchanged — for MakeLiteralXxx etc. that are no-ops in C++).
+        if (auto it = NameAliases().find(fnName); it != NameAliases().end()) {
+            if (it->second.empty()) {
+                // Identity: return the first non-self arg unchanged.
+                if (e.contains("args") && e["args"].is_object() && !e["args"].empty()) {
+                    auto firstIt = e["args"].begin();
+                    return EmitExpr(firstIt.value());
+                }
+                return "/* empty MakeLiteral */";
+            }
+            fnName = it->second;
+        }
         // Operator alias?
         if (opts.useOperatorAliases) {
             auto it = OpReverseMap().find(fnName);
