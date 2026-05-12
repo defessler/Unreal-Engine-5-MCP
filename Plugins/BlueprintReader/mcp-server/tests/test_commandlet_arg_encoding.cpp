@@ -69,3 +69,57 @@ TEST_CASE("EncodeArgForFParse: key with no leading '-' still works") {
     // encoder is robust either way.
     CHECK(EncodeArgForFParse(L"Foo=Bar Baz") == L"Foo=\"Bar Baz\"");
 }
+
+TEST_CASE("EncodeArgForFParse: full WirePins arg line round-trips via UE FParse") {
+    // Integration check: the daemon-line writer (CommandletBlueprintReader::
+    // RunOpDaemon) builds a single newline-terminated line by joining all
+    // op args with single spaces and feeding it to the daemon's stdin. The
+    // daemon then hands the whole line to UE FParse::Value, which extracts
+    // each `-Key=` value via case-insensitive substring search.
+    //
+    // This test simulates the joined line + the FParse pass without any UE
+    // dependency. The key invariant is that values with whitespace survive
+    // the join + the (simulated) FParse::Value scan with their full content
+    // intact.
+    auto encode = [](std::wstring_view a) {
+        return EncodeArgForFParse(a);
+    };
+    std::wstring line =
+        encode(L"-Op=WirePins") + L" " +
+        encode(L"-Asset=/Game/AI/BP_TestEnemy") + L" " +
+        encode(L"-Graph=EventGraph") + L" " +
+        encode(L"-FromNode=11111111-2222-3333-4444-555555555555") + L" " +
+        encode(L"-FromPin=Dummy Targets") + L" " +  // <-- the issue #10 case
+        encode(L"-ToNode=66666666-7777-8888-9999-aaaaaaaaaaaa") + L" " +
+        encode(L"-ToPin=Target Array");             // <-- another spaced name
+
+    // The relevant substring shapes (what FParse::Value will see) must
+    // appear in the joined line. We deliberately check the inner-quoted
+    // form (the only form FParse's quoted-value reader accepts).
+    CHECK(line.find(L"-FromPin=\"Dummy Targets\"") != std::wstring::npos);
+    CHECK(line.find(L"-ToPin=\"Target Array\"") != std::wstring::npos);
+    // And no-whitespace args stay bare — no spurious outer quoting that
+    // would slip past FParse and end up in the extracted value.
+    CHECK(line.find(L"-Op=WirePins ") != std::wstring::npos);
+    CHECK(line.find(L"-Asset=/Game/AI/BP_TestEnemy ") != std::wstring::npos);
+
+    // Simulate UE FParse::Value behavior on the joined line. UE's actual
+    // implementation: locate `Match` substring, advance past `=`, if next
+    // char is `"` read until matching `"`, else read until whitespace.
+    auto fparseValue = [&](std::wstring_view stream, std::wstring_view match) -> std::wstring {
+        auto pos = stream.find(match);
+        if (pos == std::wstring_view::npos) return {};
+        auto start = pos + match.size();
+        if (start < stream.size() && stream[start] == L'"') {
+            auto end = stream.find(L'"', start + 1);
+            if (end == std::wstring_view::npos) end = stream.size();
+            return std::wstring(stream.substr(start + 1, end - start - 1));
+        }
+        auto end = stream.find_first_of(L" \t\r\n", start);
+        if (end == std::wstring_view::npos) end = stream.size();
+        return std::wstring(stream.substr(start, end - start));
+    };
+    CHECK(fparseValue(line, L"FromPin=") == L"Dummy Targets");
+    CHECK(fparseValue(line, L"ToPin=")   == L"Target Array");
+    CHECK(fparseValue(line, L"Asset=")   == L"/Game/AI/BP_TestEnemy");
+}
