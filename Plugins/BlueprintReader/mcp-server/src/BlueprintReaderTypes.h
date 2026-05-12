@@ -131,6 +131,13 @@ struct BPNode
     BPROptionalString Comment;
     BPRArray<BPPin> Pins;
     BPRJson Meta = BPRJson::object();
+    // Populated only by `find_node` results (which span every graph in the
+    // BP). Empty in get_node / graph payloads, where the graph is implicit
+    // from the caller's request. Fixes issue #6 — agents previously had no
+    // way to call get_node/delete_node/wire_pins on a find_node hit because
+    // those ops all require -Graph= and the find result didn't include it.
+    BPROptionalString GraphName;
+    BPROptionalString GraphType;
 };
 #endif
 
@@ -436,6 +443,10 @@ inline void to_json(nlohmann::json& j, const BPNode& v)
         {"pins",     v.Pins},
         {"meta",     v.Meta},
     };
+    // GraphName/GraphType only appear on find_node hits — emit only when
+    // populated so get_node / graph payloads stay unchanged.
+    if (v.GraphName.has_value()) j["graph_name"] = *v.GraphName;
+    if (v.GraphType.has_value()) j["graph_type"] = *v.GraphType;
 }
 inline void from_json(const nlohmann::json& j, BPNode& v)
 {
@@ -447,6 +458,12 @@ inline void from_json(const nlohmann::json& j, BPNode& v)
     j.at("pins").get_to(v.Pins);
     if (j.contains("meta")) v.Meta = j.at("meta");
     else                    v.Meta = nlohmann::json::object();
+    if (j.contains("graph_name") && j["graph_name"].is_string()) {
+        v.GraphName = j["graph_name"].get<std::string>();
+    }
+    if (j.contains("graph_type") && j["graph_type"].is_string()) {
+        v.GraphType = j["graph_type"].get<std::string>();
+    }
 }
 
 inline void to_json(nlohmann::json& j, const BPConnection& v)
