@@ -11,7 +11,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
-#include "AssetRenameData.h"
+#include "IAssetTools.h"  // FAssetRenameData lives here, not in its own header
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/DataTable.h"
@@ -1216,7 +1216,7 @@ namespace
 		}
 
 		return EmitJson(
-			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			FBlueprintReaderWireJson::WriteArrayString(Items, bPretty),
 			OutputPath);
 	}
 
@@ -1261,7 +1261,10 @@ namespace
 			if (RowStruct && Pair.Value)
 			{
 				// Use FJsonObjectConverter to serialize the row struct.
-				auto Fields = MakeShared<FJsonObject>();
+				// Explicit type — UStructToJsonObject's by-ref overload wants
+				// a TSharedRef, but FJsonObject::Values needs a TSharedPtr for
+				// the merge loop below, so we keep a Ptr and pass .ToSharedRef().
+				TSharedPtr<FJsonObject> Fields = MakeShared<FJsonObject>();
 				FJsonObjectConverter::UStructToJsonObject(
 					RowStruct, Pair.Value, Fields.ToSharedRef(), 0, 0);
 				for (const auto& F : Fields->Values)
@@ -2005,7 +2008,7 @@ namespace
 		USCS_Node* OldParent = FindParentOfNode(SCS, Node);
 		if (OldParent)
 		{
-			OldParent->RemoveChildNodeFromPropertyName(Node->GetVariableName(), /*bRemoveInstanceData=*/false);
+			OldParent->RemoveChildNode(Node, /*bRemoveFromAllNodes=*/false);
 		}
 		else
 		{
@@ -2153,7 +2156,7 @@ namespace
 		}
 
 		return EmitJson(
-			FBlueprintReaderWireJson::WriteString(Items, bPretty),
+			FBlueprintReaderWireJson::WriteArrayString(Items, bPretty),
 			OutputPath);
 	}
 
@@ -2208,8 +2211,11 @@ namespace
 			// that expr's output). The wire model is "downstream-pointing":
 			// expressions point at the ones that feed them, so we flip to
 			// a "from→to" representation that matches the rest of our API.
-			for (FExpressionInput* In : E->GetInputsView())
+			// FExpressionInputIterator replaces the deprecated GetInputsView
+			// (UE 5.5+).
+			for (FExpressionInputIterator It{ E }; It; ++It)
 			{
+				FExpressionInput* In = It.Input;
 				if (!In || !In->Expression) continue;
 				auto C = MakeShared<FJsonObject>();
 				C->SetStringField(TEXT("from_node"), In->Expression->GetName());
@@ -2766,7 +2772,7 @@ namespace
 				A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunReadBehaviorTreeOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -2982,7 +2988,7 @@ namespace
 				A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunReadDataAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -3130,7 +3136,7 @@ namespace
 			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	// For ReadStateTree / mutations we keep the shape but stub out the
@@ -3446,7 +3452,7 @@ namespace
 		if (!Cls)
 		{
 			TArray<TSharedPtr<FJsonValue>> Empty;
-			return EmitJson(FBlueprintReaderWireJson::WriteString(Empty, bPretty), OutputPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Empty, bPretty), OutputPath);
 		}
 
 		TArray<TSharedPtr<FJsonValue>> Funcs;
@@ -3463,7 +3469,7 @@ namespace
 			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
 			Funcs.Add(MakeShared<FJsonValueObject>(F));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Funcs, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Funcs, bPretty), OutputPath);
 	}
 
 	int32 RunFocusActorOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -3481,7 +3487,9 @@ namespace
 					if (GEditor)
 					{
 						GEditor->SelectActor(*It, /*bSelected=*/true, /*bNotify=*/true);
-						GEditor->MoveViewportCamerasToActor(*It, /*bActiveViewportOnly=*/true);
+						// MoveViewportCamerasToActor expects AActor& (or TArray<AActor*>);
+						// the TActorIterator gives AActor*, so deref twice.
+						GEditor->MoveViewportCamerasToActor(**It, /*bActiveViewportOnly=*/true);
 						bFocused = true;
 					}
 					break;
@@ -3610,7 +3618,7 @@ namespace
 			Item->SetStringField(TEXT("parent_class"), A.AssetClassPath.ToString());
 			Items.Add(MakeShared<FJsonValueObject>(Item));
 		}
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Items, bPretty), OutputPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Items, bPretty), OutputPath);
 	}
 
 	int32 RunListNiagaraSystemsOp(const FString& Params, const FString& OutputPath, bool bPretty)
