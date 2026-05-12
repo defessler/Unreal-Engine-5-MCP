@@ -143,7 +143,8 @@ TEST_CASE("EmitCppClass: variables emit UPROPERTY decls + initializers") {
     });
     auto out = EmitCppClass(cls);
     CHECK(Contains(out.headerSource, "UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category=\"Stats\")"));
-    CHECK(Contains(out.headerSource, "float Health = 100.000000f;"));
+    // BP float "100.000000" trims to "100.0f" — see TrimFloatDefault.
+    CHECK(Contains(out.headerSource, "float Health = 100.0f;"));
     CHECK(Contains(out.headerSource, "bool bIsAlive = true;"));
     CHECK(Contains(out.headerSource, "int32 Score = 0;"));
 }
@@ -221,9 +222,11 @@ TEST_CASE("EmitCppClass: unknown parent class falls back to a project-local incl
 
 TEST_CASE("EmitCppClass: function body unsupported nodes propagate to top-level notes") {
     auto cls = MakeMinimalClass();
+    // Use a non-UE-reserved function name so we don't also pick up a
+    // <name-collision> warning here — this test is about Timeline.
     cls["functions"] = json::array({
         json{
-            {"version", 1}, {"kind", "function"}, {"name","Tick"},
+            {"version", 1}, {"kind", "function"}, {"name","RunTimeline"},
             {"body", json::array({
                 json{{"unsupported", json{{"node_class","K2Node_Timeline"},{"guid","abc"}}}}
             })},
@@ -243,4 +246,96 @@ TEST_CASE("EmitCppClass rejects malformed BPIR") {
 TEST_CASE("EmitCppClass rejects function-shaped doc") {
     json fn = {{"version", 1}, {"kind", "function"}, {"name","X"}, {"body", json::array()}};
     CHECK_THROWS_AS(EmitCppClass(fn), std::invalid_argument);
+}
+
+// ===== Constructor + replication wiring ===================================
+
+TEST_CASE("EmitCppClass: Actor + replicated UPROPERTY → emits constructor that sets bReplicates") {
+    auto cls = MakeMinimalClass();  // parent = ACharacter
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","real"},
+             {"replicated", true}, {"editable", true},
+             {"category", "Combat"}, {"default", "100.0"}},
+    });
+    auto out = EmitCppClass(cls);
+    // Header has the constructor decl.
+    CHECK(Contains(out.headerSource, "ABP_Enemy_Generated();"));
+    // Impl has the constructor body + bReplicates = true.
+    CHECK(Contains(out.implSource, "ABP_Enemy_Generated::ABP_Enemy_Generated()"));
+    CHECK(Contains(out.implSource, "bReplicates = true;"));
+    // Replication registration still emits as before.
+    CHECK(Contains(out.implSource, "DOREPLIFETIME(ABP_Enemy_Generated, Health)"));
+}
+
+TEST_CASE("EmitCppClass: Actor without replicated UPROPERTY → no constructor needed") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","real"}, {"replicated", false},
+             {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.headerSource, "ABP_Enemy_Generated();"));
+    CHECK_FALSE(Contains(out.implSource, "bReplicates = true;"));
+}
+
+TEST_CASE("EmitCppClass: UObject parent + replicated UPROPERTY → no bReplicates "
+          "(UObjects don't have the flag)") {
+    auto cls = MakeMinimalClass("UObject");
+    cls["variables"] = json::array({
+        json{{"name","X"}, {"type","int"}, {"replicated", true}, {"editable", false}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.implSource, "bReplicates = true;"));
+}
+
+// ===== Name-collision warning =============================================
+
+TEST_CASE("EmitCppClass: UFUNCTION shadowing AActor::TakeDamage emits a sidecar warning") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "TakeDamage"},
+            {"inputs", json::array({json{{"name","Amount"},{"type","real"}}})},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    // Code still generates (we don't auto-rename — could break BP-side
+    // expectations). The warning is in the sidecar.
+    CHECK(Contains(out.headerSource, "TakeDamage"));
+    bool foundCollision = false;
+    for (const auto& n : out.notes) {
+        if (n.value("node_class", "") == "<name-collision>") {
+            foundCollision = true;
+            CHECK(n.value("function", "") == "TakeDamage");
+        }
+    }
+    CHECK(foundCollision);
+}
+
+// ===== Default-value cleanup ==============================================
+
+TEST_CASE("EmitCppClass: float default trims trailing zeros") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","real"}, {"editable", true},
+             {"default", "100.000000"}},
+    });
+    auto out = EmitCppClass(cls);
+    // "100.000000" → "100.0f", not "100.000000f".
+    CHECK(Contains(out.headerSource, "Health = 100.0f"));
+    CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
+}
+
+TEST_CASE("EmitCppClass: FString / FName defaults wrap with TEXT()") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Greeting"}, {"type","string"}, {"editable", true},
+             {"default", "Hello, World"}},
+        json{{"name","Tag"},      {"type","name"},   {"editable", true},
+             {"default", "Player"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, R"(Greeting = TEXT("Hello, World"))"));
+    CHECK(Contains(out.headerSource, R"(Tag = TEXT("Player"))"));
 }
