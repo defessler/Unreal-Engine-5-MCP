@@ -819,6 +819,23 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
     nlohmann::json body;
     nlohmann::json unsupportedSummary = nlohmann::json::array();
 
+    // Pure-function detection: BP's pure functions render without an
+    // exec output on the FunctionEntry node — they're invoked lazily
+    // by their consumers. Mirrors UE's BlueprintPure detection:
+    // const + has-return. Codegen uses this to emit
+    // UFUNCTION(BlueprintPure) instead of BlueprintCallable.
+    bool isPureFunction = false;
+    if (entry && !fn.Outputs.empty()) {
+        bool hasExecOut = false;
+        for (const auto& p : entry->Pins) {
+            if (p.Direction == "Output" && p.Type.Category == "exec") {
+                hasExecOut = true;
+                break;
+            }
+        }
+        isPureFunction = !hasExecOut;
+    }
+
     if (!entry) {
         body = nlohmann::json::array();
     } else {
@@ -849,13 +866,15 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
         return arr;
     };
 
+    nlohmann::json metadata = {
+        {"asset_path", std::string(assetPath)},
+    };
+    if (isPureFunction) metadata["pure"] = true;
     nlohmann::json doc = {
         {"version", kBpirSchemaVersion},
         {"kind", "function"},
         {"name", fn.Name},
-        {"metadata", {
-            {"asset_path", std::string(assetPath)},
-        }},
+        {"metadata", std::move(metadata)},
         {"inputs",  varListToJson(fn.Inputs)},
         {"outputs", varListToJson(fn.Outputs)},
         {"locals",  varListToJson(fn.Locals)},
