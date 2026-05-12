@@ -601,6 +601,64 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 
     H << "#include \"" << ParentClassToHeader(parentClass) << "\"\n";
 
+    // Forward declarations for UPROPERTY-referenced object types.
+    // UE convention: forward declare in the header, include in the .cpp.
+    // Avoids pulling in every Component/Asset header into downstream
+    // translation units that just #include this generated header.
+    // Skip parent class (already included) and primitives (no decl
+    // needed). Component types get a `class` forward decl; we don't
+    // emit declarations for types we don't recognize as UObject-derived.
+    std::set<std::string> forwardDecls;
+    if (doc.contains("variables") && doc["variables"].is_array()) {
+        for (const auto& v : doc["variables"]) {
+            std::string typeStr = v.value("type", "");
+            // Extract the "X" out of "object:X" / "soft_object:X" / "[]object:X".
+            auto colon = typeStr.find(':');
+            if (colon == std::string::npos) continue;
+            std::string head = typeStr.substr(0, colon);
+            // Walk past TArray/TSet container prefixes.
+            // "[]object:X" head = "[]object". We want the leaf type only.
+            auto isObjectHead = [](std::string_view s) {
+                // Strip optional `[]` / `{}` container prefix.
+                while (s.size() >= 2 && (s[0] == '[' || s[0] == '{')) s = s.substr(2);
+                return s == "object" || s == "soft_object";
+            };
+            if (!isObjectHead(head)) continue;
+            std::string sub = typeStr.substr(colon + 1);
+            // Path strip.
+            if (auto dot = sub.find_last_of('.'); dot != std::string::npos) {
+                sub = sub.substr(dot + 1);
+            }
+            // _C strip.
+            if (sub.size() > 2 && sub.substr(sub.size() - 2) == "_C") {
+                sub = sub.substr(0, sub.size() - 2);
+            }
+            // Emit with prefix matching the type mapper's heuristic.
+            std::string fullName;
+            if (sub.size() >= 2 &&
+                (sub[0] == 'A' || sub[0] == 'U') &&
+                sub[1] >= 'A' && sub[1] <= 'Z') {
+                fullName = sub;
+            } else if (sub == "Actor" ||
+                       (sub.size() > 5 && sub.substr(sub.size() - 5) == "Actor") ||
+                       sub == "Pawn" || sub == "Character" ||
+                       sub == "Controller" || sub == "PlayerController" ||
+                       sub == "PlayerState" || sub == "GameMode" ||
+                       sub == "GameState" || sub == "HUD") {
+                fullName = "A" + sub;
+            } else {
+                fullName = "U" + sub;
+            }
+            // Skip if it's the parent class (already #included transitively).
+            if (fullName == parentClass) continue;
+            forwardDecls.insert(fullName);
+        }
+    }
+    for (const auto& fwd : forwardDecls) {
+        H << "class " << fwd << ";\n";
+    }
+    if (!forwardDecls.empty()) H << "\n";
+
     // .generated.h must be the LAST include in any UCLASS-bearing header.
     H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
 

@@ -530,6 +530,60 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         return r;
     }
 
+    // GetDataTableRow — common BP node for table-driven gameplay.
+    // Pins: DataTable (input), RowName (input), RowFound (output exec),
+    // OutRow (output struct), plus failure exec.
+    // C++ equivalent: `DataTable->FindRow<FRowType>(RowName, "context")`,
+    // returning a pointer that's null on miss. We carry the args; CppEmit
+    // renders the FindRow call + a nullness check that branches success/fail.
+    if (n.Class.find("K2Node_GetDataTableRow") != std::string::npos) {
+        nlohmann::json args = nlohmann::json::object();
+        if (const BPPin* p = w.GetPin(n, "DataTable")) args["DataTable"] = BuildExpression(w, n, *p);
+        if (const BPPin* p = w.GetPin(n, "RowName"))   args["RowName"]   = BuildExpression(w, n, *p);
+        // Try to capture the row struct type from node meta so CppEmit can
+        // render the template arg. Different UE versions stamp this under
+        // slightly different keys; check the common ones.
+        std::string rowStruct;
+        if (n.Meta.is_object()) {
+            rowStruct = n.Meta.value("row_struct", std::string{});
+            if (rowStruct.empty()) rowStruct = n.Meta.value("rowStruct", std::string{});
+            if (rowStruct.empty()) rowStruct = n.Meta.value("structType", std::string{});
+        }
+        const BPNode* foundStart  = w.FollowExec(n, "RowFound");
+        if (!foundStart) foundStart = w.FollowExec(n, "then");
+        const BPNode* missedStart = w.FollowExec(n, "RowNotFound");
+
+        std::set<std::string> succV, failV;
+        nlohmann::json foundBody  = DecompileStatementsFrom(w, foundStart,  stopAt, succV);
+        nlohmann::json missedBody = missedStart
+            ? DecompileStatementsFrom(w, missedStart, stopAt, failV)
+            : nlohmann::json::array();
+
+        nlohmann::json stmt = {{"call", "__bpr_get_data_table_row"}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        if (!rowStruct.empty()) stmt["row_struct"] = rowStruct;
+        stmt["success"] = std::move(foundBody);
+        stmt["fail"]    = std::move(missedBody);
+        r.statement = std::move(stmt);
+        r.terminatesExec = true;
+        return r;
+    }
+
+    // ConstructObjectFromClass — `NewObject<T>(Outer, Class)`. The Outer
+    // pin is named "Outer" or omitted (defaults to GetTransientPackage()
+    // in C++; we use `this` as a sensible default for actor-context BPs).
+    // The Class pin is the class to instantiate.
+    if (n.Class.find("K2Node_ConstructObjectFromClass") != std::string::npos) {
+        nlohmann::json args = nlohmann::json::object();
+        if (const BPPin* p = w.GetPin(n, "Class")) args["Class"] = BuildExpression(w, n, *p);
+        if (const BPPin* p = w.GetPin(n, "Outer")) args["Outer"] = BuildExpression(w, n, *p);
+        nlohmann::json stmt = {{"call", "__bpr_construct_object_from_class"}};
+        if (!args.empty()) stmt["args"] = std::move(args);
+        r.statement = std::move(stmt);
+        r.next = w.FollowExec(n, "then");
+        return r;
+    }
+
     // DestroyActor — common BP node, maps cleanly to `Target->Destroy()`.
     // The Target pin is optional; absent = self. We carry the target
     // expression in args["Target"] for CppEmit to render.

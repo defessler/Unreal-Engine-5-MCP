@@ -338,6 +338,50 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== Forward declarations (UE convention: forward-decl in .h, include in .cpp)
+
+TEST_CASE("EmitCppClass: UPROPERTY object refs add forward declarations") {
+    auto cls = MakeMinimalClass();  // parent ACharacter
+    cls["variables"] = json::array({
+        json{{"name","Mesh"},   {"type","object:StaticMeshComponent"},
+             {"editable", true}, {"category","Visuals"}},
+        json{{"name","Target"}, {"type","object:Actor"},
+             {"editable", true}, {"category","AI"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "class UStaticMeshComponent;"));
+    CHECK(Contains(out.headerSource, "class AActor;"));
+    // The forward decl must come BEFORE the .generated.h include —
+    // putting it after would be a UHT error.
+    auto fwdPos = out.headerSource.find("class UStaticMeshComponent;");
+    auto genPos = out.headerSource.find(".generated.h");
+    REQUIRE(fwdPos != std::string::npos);
+    REQUIRE(genPos != std::string::npos);
+    CHECK(fwdPos < genPos);
+}
+
+TEST_CASE("EmitCppClass: parent class is not double-declared as forward decl") {
+    auto cls = MakeMinimalClass();  // parent ACharacter
+    cls["variables"] = json::array({
+        json{{"name","Target"}, {"type","object:Character"},
+             {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    // ACharacter is the parent; it's #included transitively, not
+    // forward-declared.
+    CHECK_FALSE(Contains(out.headerSource, "class ACharacter;"));
+}
+
+TEST_CASE("EmitCppClass: TArray<TObjectPtr<X>> still forward-declares X") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Enemies"}, {"type","[]object:Pawn"},
+             {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "class APawn;"));
+}
+
 // ===== TObjectPtr for UPROPERTY object members (UE5 convention) ============
 
 TEST_CASE("EmitCppClass: UPROPERTY object refs wrap in TObjectPtr<>") {
