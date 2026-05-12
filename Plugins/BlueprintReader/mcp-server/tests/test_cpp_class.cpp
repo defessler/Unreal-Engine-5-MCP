@@ -338,6 +338,43 @@ TEST_CASE("EmitCppClass: float default trims trailing zeros") {
     CHECK_FALSE(Contains(out.headerSource, "100.000000f"));
 }
 
+// ===== ExposeOnSpawn + RepNotify ===========================================
+
+TEST_CASE("EmitCppClass: expose_on_spawn → UPROPERTY meta=(ExposeOnSpawn=\"true\")") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","StartHealth"}, {"type","float"}, {"editable", true},
+             {"expose_on_spawn", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "meta=(ExposeOnSpawn=\"true\")"));
+}
+
+TEST_CASE("EmitCppClass: rep_notify_func → ReplicatedUsing= + OnRep callback") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"},
+             {"replicated", true}, {"editable", true},
+             {"rep_notify_func", "OnRep_Health"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "ReplicatedUsing=OnRep_Health"));
+    CHECK_FALSE(Contains(out.headerSource, ", Replicated,"));  // no plain Replicated
+    // OnRep_X callback decl emitted in the header.
+    CHECK(Contains(out.headerSource, "UFUNCTION()"));
+    CHECK(Contains(out.headerSource, "void OnRep_Health();"));
+}
+
+TEST_CASE("EmitCppClass: replicated without rep_notify_func → plain Replicated") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Score"}, {"type","int"}, {"replicated", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "Replicated"));
+    CHECK_FALSE(Contains(out.headerSource, "ReplicatedUsing"));
+}
+
 // ===== Replication conditions =============================================
 
 TEST_CASE("EmitCppClass: rep_condition=OwnerOnly → DOREPLIFETIME_CONDITION") {
