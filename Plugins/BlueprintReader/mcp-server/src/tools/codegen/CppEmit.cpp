@@ -171,6 +171,37 @@ const std::map<std::string, OpReverse>& OpReverseMap() {
         {"KismetMathLibrary::EqualEqual_FloatFloat",{"==", 2}},
         {"KismetMathLibrary::Less_FloatFloat",   {"<",  2}},
         {"KismetMathLibrary::LessEqual_FloatFloat",{"<=", 2}},
+        // Vector arithmetic (FVector overloads binary operators).
+        {"KismetMathLibrary::Add_VectorVector",       {"+",  2}},
+        {"KismetMathLibrary::Subtract_VectorVector",  {"-",  2}},
+        {"KismetMathLibrary::Multiply_VectorVector",  {"*",  2}},
+        {"KismetMathLibrary::Multiply_VectorFloat",   {"*",  2}},
+        {"KismetMathLibrary::Multiply_VectorInt",     {"*",  2}},
+        {"KismetMathLibrary::Divide_VectorVector",    {"/",  2}},
+        {"KismetMathLibrary::Divide_VectorFloat",     {"/",  2}},
+        {"KismetMathLibrary::Divide_VectorInt",       {"/",  2}},
+        {"KismetMathLibrary::Negate_VectorVector",    {"-",  1}},
+        {"KismetMathLibrary::EqualEqual_VectorVector",{"==", 2}},
+        {"KismetMathLibrary::NotEqual_VectorVector",  {"!=", 2}},
+        // Vector2D arithmetic.
+        {"KismetMathLibrary::Add_Vector2DVector2D",      {"+", 2}},
+        {"KismetMathLibrary::Subtract_Vector2DVector2D", {"-", 2}},
+        {"KismetMathLibrary::Multiply_Vector2DFloat",    {"*", 2}},
+        // Rotator arithmetic (FRotator overloads + / -).
+        {"KismetMathLibrary::ComposeRotators",          {"+",  2}},  // BP name
+        {"KismetMathLibrary::Add_RotatorRotator",       {"+",  2}},
+        {"KismetMathLibrary::Subtract_RotatorRotator",  {"-",  2}},
+        {"KismetMathLibrary::Multiply_RotatorFloat",    {"*",  2}},
+        {"KismetMathLibrary::Multiply_RotatorInt",      {"*",  2}},
+        {"KismetMathLibrary::NegateRotator",            {"-",  1}},
+        {"KismetMathLibrary::EqualEqual_RotatorRotator",{"==", 2}},
+        {"KismetMathLibrary::NotEqual_RotatorRotator",  {"!=", 2}},
+        // String / Name / Text comparisons.
+        {"KismetStringLibrary::EqualEqual_StrStr",     {"==", 2}},
+        {"KismetStringLibrary::NotEqual_StrStr",       {"!=", 2}},
+        {"KismetStringLibrary::Concat_StrStr",         {"+",  2}},
+        {"KismetNameLibrary::EqualEqual_NameName",     {"==", 2}},
+        {"KismetNameLibrary::NotEqual_NameName",       {"!=", 2}},
     };
     return m;
 }
