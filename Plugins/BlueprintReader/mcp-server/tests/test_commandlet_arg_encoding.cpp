@@ -107,6 +107,20 @@ TEST_CASE("EncodeArg: bare flag without '=' or whitespace passes through") {
     CHECK(EncodeArg(L"-nullrhi") == L"-nullrhi");
 }
 
+TEST_CASE("EncodeArg: positional path with literal '=' still gets Windows quoting") {
+    // Codex review on PR #61 caught this: the dispatcher used to look
+    // only for `=` to decide FParse-vs-Windows. A legal NTFS path like
+    // `C:\Foo=Unreal Projects\Game.uproject` contains both `=` and a
+    // space, so the old logic split it as if it were a key/value pair
+    // and emitted `C:\Foo="Unreal Projects\Game.uproject"`, breaking
+    // commandlet launch. Detection now also requires a leading `-`.
+    CHECK(EncodeArg(L"C:\\Foo=Unreal Projects\\Game.uproject") ==
+          L"\"C:\\Foo=Unreal Projects\\Game.uproject\"");
+    // Also: positional path with `=` but no spaces stays bare.
+    CHECK(EncodeArg(L"C:\\Foo=Bar\\Game.uproject") ==
+          L"C:\\Foo=Bar\\Game.uproject");
+}
+
 TEST_CASE("EncodeArgForFParse: full WirePins arg line round-trips via UE FParse") {
     // Integration check: the daemon-line writer (CommandletBlueprintReader::
     // RunOpDaemon) builds a single newline-terminated line by joining all
