@@ -399,6 +399,35 @@ TEST_CASE("Codegen: __bpr_get_data_table_row strips path + ensures F prefix on r
     CHECK(Contains(out.source, "FindRow<FItemRow>"));
 }
 
+// ===== WorldContext injection =============================================
+
+TEST_CASE("Codegen: PrintString injects `this` as world context") {
+    // BP hides the WorldContextObject pin; the C++ signature requires it.
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","KismetSystemLibrary::PrintString"},
+             {"args", json{{"InString", json{{"lit","Hello"}}}}}},
+    })));
+    CHECK(Contains(out.source, "KismetSystemLibrary::PrintString(this, TEXT(\"Hello\"))"));
+}
+
+TEST_CASE("Codegen: GetAllActorsOfClass injects `this` as world context") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","GameplayStatics::GetAllActorsOfClass"},
+             {"args", json{{"ActorClass", json{{"var","Cls"}}},
+                            {"OutActors",  json{{"var","Out"}}}}}},
+    })));
+    CHECK(Contains(out.source, "GetAllActorsOfClass(this, Cls, Out)"));
+}
+
+TEST_CASE("Codegen: non-world-context calls don't inject `this`") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call","MyLib::DoStuff"},
+             {"args", json{{"x", json{{"lit",5}}}}}},
+    })));
+    CHECK(Contains(out.source, "MyLib::DoStuff(5)"));
+    CHECK_FALSE(Contains(out.source, "MyLib::DoStuff(this"));
+}
+
 // ===== Soft-reference type mapping ========================================
 
 TEST_CASE("Type mapping: soft_object → TSoftObjectPtr") {
