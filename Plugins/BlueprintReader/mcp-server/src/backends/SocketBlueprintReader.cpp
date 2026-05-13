@@ -1,4 +1,4 @@
-#include "backends/LiveBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 
 #include <fmt/core.h>
 
@@ -30,7 +30,7 @@ namespace bpr::backends {
 namespace {
 
 // On Windows, WSAStartup is required before any socket call. We refcount
-// across LiveBlueprintReader instances so the startup/cleanup pair is
+// across SocketBlueprintReader instances so the startup/cleanup pair is
 // balanced even if multiple readers exist (rare, but cheap to be right).
 #if defined(_WIN32)
 struct WsaScope {
@@ -56,7 +56,7 @@ void SendAll(SocketType s, const char* data, std::size_t len) {
                        static_cast<int>(std::min<std::size_t>(len - sent, 1 << 20)),
                        0);
         if (n <= 0) {
-            throw BlueprintReaderError("LiveBlueprintReader: socket write failed");
+            throw BlueprintReaderError("SocketBlueprintReader: socket write failed");
         }
         sent += static_cast<std::size_t>(n);
     }
@@ -80,7 +80,7 @@ std::string RecvLine(SocketType s, std::string& pending) {
         int n = ::recv(s, buf, sizeof(buf), 0);
         if (n <= 0) {
             throw BlueprintReaderError(
-                "LiveBlueprintReader: connection closed before frame complete");
+                "SocketBlueprintReader: connection closed before frame complete");
         }
         pending.append(buf, static_cast<std::size_t>(n));
     }
@@ -133,14 +133,14 @@ struct ScopedSocket {
 
 } // namespace
 
-LiveBlueprintReader::LiveBlueprintReader(Config cfg) : cfg_(std::move(cfg)) {
+SocketBlueprintReader::SocketBlueprintReader(Config cfg) : cfg_(std::move(cfg)) {
     if (cfg_.port <= 0) {
         throw BlueprintReaderError(
-            "LiveBlueprintReader: BP_READER_LIVE_PORT must be set to a valid port");
+            "SocketBlueprintReader: BP_READER_LIVE_PORT must be set to a valid port");
     }
     if (cfg_.token.empty()) {
         throw BlueprintReaderError(
-            "LiveBlueprintReader: BP_READER_LIVE_TOKEN must be set "
+            "SocketBlueprintReader: BP_READER_LIVE_TOKEN must be set "
             "(also required on the editor side; the values must match)");
     }
 #if defined(_WIN32)
@@ -150,11 +150,11 @@ LiveBlueprintReader::LiveBlueprintReader(Config cfg) : cfg_(std::move(cfg)) {
     // non-throwing when the editor isn't running yet.
 }
 
-LiveBlueprintReader::~LiveBlueprintReader() {
+SocketBlueprintReader::~SocketBlueprintReader() {
     Disconnect();
 }
 
-void LiveBlueprintReader::Disconnect() {
+void SocketBlueprintReader::Disconnect() {
     if (socket_ != static_cast<intptr_t>(kInvalidSocket)) {
         const SocketType s = static_cast<SocketType>(socket_);
         CloseSocketCompat(s);
@@ -173,7 +173,7 @@ void LiveBlueprintReader::Disconnect() {
 // i.e. when the editor restarted and is now listening on a different
 // port. Returns false on "no handshake file" / "same as before" / "any
 // parse failure" — callers treat that as "nothing to retry with."
-bool LiveBlueprintReader::RefreshFromHandshakeFile() {
+bool SocketBlueprintReader::RefreshFromHandshakeFile() {
     if (cfg_.handshakeFilePath.empty()) return false;
     std::error_code ec;
     if (!std::filesystem::exists(cfg_.handshakeFilePath, ec)) return false;
@@ -219,12 +219,12 @@ SocketType ConnectOnce(const std::string& host, int port) {
 // untouched on failure (caller decides whether to retry). The
 // retryWorthwhile hint distinguishes "the editor probably restarted,
 // re-read the handshake file" from "something is structurally wrong"
-// — see the AttemptResult declaration in LiveBlueprintReader.h.
+// — see the AttemptResult declaration in SocketBlueprintReader.h.
 //
 // All early-exit paths rely on ScopedSocket's destructor to close the
 // fd; we only `release()` once the handshake fully succeeds and the
 // caller takes ownership.
-LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake() {
+SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandshake() {
     ScopedSocket sock(ConnectOnce(cfg_.host, cfg_.port));
     if (!sock) {
         return {false, /*retryWorthwhile=*/true, fmt::format(
@@ -280,7 +280,7 @@ LiveBlueprintReader::AttemptResult LiveBlueprintReader::TryConnectAndHandshake()
     return {true, false, {}};
 }
 
-void LiveBlueprintReader::EnsureConnected() {
+void SocketBlueprintReader::EnsureConnected() {
     if (handshakeOk_) return;
 
     // Up to two attempts: first with current cfg_, second after re-
@@ -295,13 +295,13 @@ void LiveBlueprintReader::EnsureConnected() {
     }
     if (!r.ok) {
         throw BlueprintReaderError(fmt::format(
-            "LiveBlueprintReader: {} — is the editor running with "
+            "SocketBlueprintReader: {} — is the editor running with "
             "BP_READER_LIVE_PORT/TOKEN published in Saved/bp-reader-live.json?",
             r.error));
     }
 }
 
-nlohmann::json LiveBlueprintReader::RunOp(const std::vector<std::string>& args) {
+nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args) {
     std::lock_guard lock(mu_);
     EnsureConnected();
     SocketType s = static_cast<SocketType>(socket_);
@@ -332,7 +332,7 @@ nlohmann::json LiveBlueprintReader::RunOp(const std::vector<std::string>& args) 
     if (!j.is_object()) {
         Disconnect();
         throw BlueprintReaderError(
-            "LiveBlueprintReader: server response wasn't a JSON object");
+            "SocketBlueprintReader: server response wasn't a JSON object");
     }
     if (j.value("type", "") == "error") {
         throw BlueprintReaderError(fmt::format(
@@ -357,17 +357,17 @@ nlohmann::json LiveBlueprintReader::RunOp(const std::vector<std::string>& args) 
 // in BlueprintReaderTypes.h.
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListBlueprints(std::string_view path) {
+SocketBlueprintReader::ListBlueprints(std::string_view path) {
     std::vector<std::string> args = {"-Op=List"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     return RunOp(args).get<std::vector<BPAssetSummary>>();
 }
 
-BPMetadata LiveBlueprintReader::ReadBlueprint(std::string_view assetPath) {
+BPMetadata SocketBlueprintReader::ReadBlueprint(std::string_view assetPath) {
     return RunOp({"-Op=Read", "-Asset=" + std::string(assetPath)}).get<BPMetadata>();
 }
 
-BPGraph LiveBlueprintReader::GetGraph(std::string_view assetPath, std::string_view graphName) {
+BPGraph SocketBlueprintReader::GetGraph(std::string_view assetPath, std::string_view graphName) {
     return RunOp({
         "-Op=Graph",
         "-Asset=" + std::string(assetPath),
@@ -375,7 +375,7 @@ BPGraph LiveBlueprintReader::GetGraph(std::string_view assetPath, std::string_vi
     }).get<BPGraph>();
 }
 
-BPFunction LiveBlueprintReader::GetFunction(std::string_view assetPath, std::string_view fnName) {
+BPFunction SocketBlueprintReader::GetFunction(std::string_view assetPath, std::string_view fnName) {
     return RunOp({
         "-Op=Function",
         "-Asset=" + std::string(assetPath),
@@ -384,7 +384,7 @@ BPFunction LiveBlueprintReader::GetFunction(std::string_view assetPath, std::str
 }
 
 std::vector<BPVariable>
-LiveBlueprintReader::ListVariables(std::string_view assetPath) {
+SocketBlueprintReader::ListVariables(std::string_view assetPath) {
     return RunOp({
         "-Op=Variables",
         "-Asset=" + std::string(assetPath),
@@ -392,7 +392,7 @@ LiveBlueprintReader::ListVariables(std::string_view assetPath) {
 }
 
 std::vector<BPComponent>
-LiveBlueprintReader::GetComponents(std::string_view assetPath) {
+SocketBlueprintReader::GetComponents(std::string_view assetPath) {
     return RunOp({
         "-Op=Components",
         "-Asset=" + std::string(assetPath),
@@ -400,7 +400,7 @@ LiveBlueprintReader::GetComponents(std::string_view assetPath) {
 }
 
 std::vector<BPNode>
-LiveBlueprintReader::FindNode(std::string_view assetPath, std::string_view query,
+SocketBlueprintReader::FindNode(std::string_view assetPath, std::string_view query,
                               std::string_view kind) {
     std::vector<std::string> args = {
         "-Op=Find",
@@ -415,7 +415,7 @@ LiveBlueprintReader::FindNode(std::string_view assetPath, std::string_view query
 // Same op-args the commandlet daemon already accepts. Editor-side
 // dispatch happens on the game thread inside RunOneOp.
 
-void LiveBlueprintReader::AddVariable(std::string_view a, std::string_view n,
+void SocketBlueprintReader::AddVariable(std::string_view a, std::string_view n,
                                       const BPPinType& t, std::string_view dv,
                                       std::string_view cat, bool repl, bool edit) {
     std::vector<std::string> args = {
@@ -436,7 +436,7 @@ void LiveBlueprintReader::AddVariable(std::string_view a, std::string_view n,
     (void)RunOp(args);
 }
 
-void LiveBlueprintReader::SetNodePosition(std::string_view a, std::string_view g,
+void SocketBlueprintReader::SetNodePosition(std::string_view a, std::string_view g,
                                           std::string_view n, int x, int y) {
     (void)RunOp({
         "-Op=SetNodePosition",
@@ -448,7 +448,7 @@ void LiveBlueprintReader::SetNodePosition(std::string_view a, std::string_view g
     });
 }
 
-void LiveBlueprintReader::DeleteNode(std::string_view a, std::string_view g,
+void SocketBlueprintReader::DeleteNode(std::string_view a, std::string_view g,
                                      std::string_view n) {
     (void)RunOp({
         "-Op=DeleteNode",
@@ -458,7 +458,7 @@ void LiveBlueprintReader::DeleteNode(std::string_view a, std::string_view g,
     });
 }
 
-std::string LiveBlueprintReader::AddNode(std::string_view a, std::string_view g,
+std::string SocketBlueprintReader::AddNode(std::string_view a, std::string_view g,
                                          std::string_view k, int x, int y,
                                          const std::map<std::string, std::string, std::less<>>& extras) {
     std::vector<std::string> args = {
@@ -476,7 +476,7 @@ std::string LiveBlueprintReader::AddNode(std::string_view a, std::string_view g,
     return j.value("node_id", std::string{});
 }
 
-void LiveBlueprintReader::WirePins(std::string_view a, std::string_view g,
+void SocketBlueprintReader::WirePins(std::string_view a, std::string_view g,
                                    std::string_view fn, std::string_view fp,
                                    std::string_view tn, std::string_view tp) {
     (void)RunOp({
@@ -490,7 +490,7 @@ void LiveBlueprintReader::WirePins(std::string_view a, std::string_view g,
     });
 }
 
-void LiveBlueprintReader::DeleteVariable(std::string_view a, std::string_view n) {
+void SocketBlueprintReader::DeleteVariable(std::string_view a, std::string_view n) {
     (void)RunOp({
         "-Op=DeleteVariable",
         "-Asset=" + std::string(a),
@@ -498,7 +498,7 @@ void LiveBlueprintReader::DeleteVariable(std::string_view a, std::string_view n)
     });
 }
 
-void LiveBlueprintReader::RenameVariable(std::string_view a, std::string_view oldN,
+void SocketBlueprintReader::RenameVariable(std::string_view a, std::string_view oldN,
                                          std::string_view newN) {
     (void)RunOp({
         "-Op=RenameVariable",
@@ -509,7 +509,7 @@ void LiveBlueprintReader::RenameVariable(std::string_view a, std::string_view ol
 }
 
 IBlueprintReader::AddFunctionResult
-LiveBlueprintReader::AddFunction(std::string_view a, std::string_view n) {
+SocketBlueprintReader::AddFunction(std::string_view a, std::string_view n) {
     auto j = RunOp({
         "-Op=AddFunction",
         "-Asset=" + std::string(a),
@@ -521,7 +521,7 @@ LiveBlueprintReader::AddFunction(std::string_view a, std::string_view n) {
     return out;
 }
 
-void LiveBlueprintReader::AddFunctionInput(std::string_view a, std::string_view fn,
+void SocketBlueprintReader::AddFunctionInput(std::string_view a, std::string_view fn,
                                            std::string_view p, const BPPinType& t) {
     std::vector<std::string> args = {
         "-Op=AddFunctionInput",
@@ -538,7 +538,7 @@ void LiveBlueprintReader::AddFunctionInput(std::string_view a, std::string_view 
     (void)RunOp(args);
 }
 
-void LiveBlueprintReader::AddFunctionOutput(std::string_view a, std::string_view fn,
+void SocketBlueprintReader::AddFunctionOutput(std::string_view a, std::string_view fn,
                                             std::string_view p, const BPPinType& t) {
     std::vector<std::string> args = {
         "-Op=AddFunctionOutput",
@@ -555,7 +555,7 @@ void LiveBlueprintReader::AddFunctionOutput(std::string_view a, std::string_view
     (void)RunOp(args);
 }
 
-void LiveBlueprintReader::DeleteFunction(std::string_view a, std::string_view n) {
+void SocketBlueprintReader::DeleteFunction(std::string_view a, std::string_view n) {
     (void)RunOp({
         "-Op=DeleteFunction",
         "-Asset=" + std::string(a),
@@ -563,7 +563,7 @@ void LiveBlueprintReader::DeleteFunction(std::string_view a, std::string_view n)
     });
 }
 
-void LiveBlueprintReader::SetVariableDefault(std::string_view a, std::string_view n,
+void SocketBlueprintReader::SetVariableDefault(std::string_view a, std::string_view n,
                                              std::string_view d) {
     std::vector<std::string> args = {
         "-Op=SetVariableDefault",
@@ -575,7 +575,7 @@ void LiveBlueprintReader::SetVariableDefault(std::string_view a, std::string_vie
 }
 
 IBlueprintReader::CreateBlueprintResult
-LiveBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p) {
+SocketBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p) {
     auto j = RunOp({
         "-Op=CreateBlueprint",
         "-Asset=" + std::string(a),
@@ -587,7 +587,7 @@ LiveBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p) {
     return out;
 }
 
-void LiveBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,
+void SocketBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,
                                         std::string_view n, std::string_view pin,
                                         std::string_view v) {
     (void)RunOp({
@@ -600,7 +600,7 @@ void LiveBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,
     });
 }
 
-void LiveBlueprintReader::RetypeVariable(std::string_view a, std::string_view n,
+void SocketBlueprintReader::RetypeVariable(std::string_view a, std::string_view n,
                                          const BPPinType& t) {
     std::vector<std::string> args = {
         "-Op=RetypeVariable",
@@ -616,7 +616,7 @@ void LiveBlueprintReader::RetypeVariable(std::string_view a, std::string_view n,
     (void)RunOp(args);
 }
 
-void LiveBlueprintReader::SetVariableCategory(std::string_view a, std::string_view n,
+void SocketBlueprintReader::SetVariableCategory(std::string_view a, std::string_view n,
                                               std::string_view category) {
     std::vector<std::string> args = {
         "-Op=SetVariableCategory",
@@ -628,7 +628,7 @@ void LiveBlueprintReader::SetVariableCategory(std::string_view a, std::string_vi
 }
 
 IBlueprintReader::WriteGeneratedSourceResult
-LiveBlueprintReader::WriteGeneratedSource(std::string_view destPath,
+SocketBlueprintReader::WriteGeneratedSource(std::string_view destPath,
                                           std::string_view content,
                                           bool createDirs) {
     // Same temp-file trick the commandlet uses: the wire frame format
@@ -665,7 +665,7 @@ LiveBlueprintReader::WriteGeneratedSource(std::string_view destPath,
 }
 
 IBlueprintReader::DuplicateBlueprintResult
-LiveBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_view dest) {
+SocketBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_view dest) {
     auto j = RunOp({
         "-Op=DuplicateBlueprint",
         "-Asset=" + std::string(source),
@@ -681,7 +681,7 @@ LiveBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_vie
 // ----- Project + Content Browser ops ---------------------------------
 
 IBlueprintReader::ProjectMetadata
-LiveBlueprintReader::GetProjectMetadata() {
+SocketBlueprintReader::GetProjectMetadata() {
     auto j = RunOp({"-Op=GetProjectMetadata"});
     ProjectMetadata out;
     if (j.is_object()) {
@@ -696,7 +696,7 @@ LiveBlueprintReader::GetProjectMetadata() {
 }
 
 IBlueprintReader::SaveAllResult
-LiveBlueprintReader::SaveAll(bool dirtyOnly) {
+SocketBlueprintReader::SaveAll(bool dirtyOnly) {
     std::vector<std::string> args = {"-Op=SaveAll"};
     if (!dirtyOnly) args.push_back("-IncludeClean");
     auto j = RunOp(args);
@@ -713,7 +713,7 @@ LiveBlueprintReader::SaveAll(bool dirtyOnly) {
 }
 
 IBlueprintReader::MoveAssetResult
-LiveBlueprintReader::MoveAsset(std::string_view sourcePath,
+SocketBlueprintReader::MoveAsset(std::string_view sourcePath,
                                std::string_view destPath) {
     auto j = RunOp({
         "-Op=MoveAsset",
@@ -730,7 +730,7 @@ LiveBlueprintReader::MoveAsset(std::string_view sourcePath,
 }
 
 IBlueprintReader::DeleteAssetResult
-LiveBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
+SocketBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
     std::vector<std::string> args = {
         "-Op=DeleteAsset",
         "-Asset=" + std::string(assetPath),
@@ -751,7 +751,7 @@ LiveBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 }
 
 IBlueprintReader::CreateFolderResult
-LiveBlueprintReader::CreateFolder(std::string_view folderPath) {
+SocketBlueprintReader::CreateFolder(std::string_view folderPath) {
     auto j = RunOp({
         "-Op=CreateFolder",
         "-Path=" + std::string(folderPath),
@@ -765,7 +765,7 @@ LiveBlueprintReader::CreateFolder(std::string_view folderPath) {
 }
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListDataTables(std::string_view path) {
+SocketBlueprintReader::ListDataTables(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListDataTables"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -781,7 +781,7 @@ LiveBlueprintReader::ListDataTables(std::string_view path) {
 }
 
 IBlueprintReader::DataTableInfo
-LiveBlueprintReader::ReadDataTable(std::string_view assetPath) {
+SocketBlueprintReader::ReadDataTable(std::string_view assetPath) {
     auto j = RunOp({
         "-Op=ReadDataTable",
         "-Asset=" + std::string(assetPath),
@@ -803,7 +803,7 @@ LiveBlueprintReader::ReadDataTable(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddDataRowResult
-LiveBlueprintReader::AddDataRow(std::string_view assetPath,
+SocketBlueprintReader::AddDataRow(std::string_view assetPath,
                                 std::string_view rowName,
                                 const nlohmann::json& values,
                                 bool overwrite) {
@@ -839,7 +839,7 @@ LiveBlueprintReader::AddDataRow(std::string_view assetPath,
 }
 
 IBlueprintReader::SetDataRowValueResult
-LiveBlueprintReader::SetDataRowValue(std::string_view assetPath,
+SocketBlueprintReader::SetDataRowValue(std::string_view assetPath,
                                      std::string_view rowName,
                                      std::string_view fieldName,
                                      std::string_view value) {
@@ -864,7 +864,7 @@ LiveBlueprintReader::SetDataRowValue(std::string_view assetPath,
 // ----- Component (SCS) authoring -----------------------------------------
 
 IBlueprintReader::AddComponentResult
-LiveBlueprintReader::AddComponent(std::string_view assetPath,
+SocketBlueprintReader::AddComponent(std::string_view assetPath,
                                   std::string_view name,
                                   std::string_view componentClass,
                                   std::string_view parentName,
@@ -890,7 +890,7 @@ LiveBlueprintReader::AddComponent(std::string_view assetPath,
 }
 
 IBlueprintReader::RemoveComponentResult
-LiveBlueprintReader::RemoveComponent(std::string_view assetPath,
+SocketBlueprintReader::RemoveComponent(std::string_view assetPath,
                                      std::string_view name) {
     auto j = RunOp({"-Op=RemoveComponent",
                     "-Asset=" + std::string(assetPath),
@@ -903,7 +903,7 @@ LiveBlueprintReader::RemoveComponent(std::string_view assetPath,
 }
 
 IBlueprintReader::AttachComponentResult
-LiveBlueprintReader::AttachComponent(std::string_view assetPath,
+SocketBlueprintReader::AttachComponent(std::string_view assetPath,
                                      std::string_view name,
                                      std::string_view newParentName,
                                      std::string_view socket) {
@@ -925,7 +925,7 @@ LiveBlueprintReader::AttachComponent(std::string_view assetPath,
 }
 
 IBlueprintReader::SetComponentPropertyResult
-LiveBlueprintReader::SetComponentProperty(std::string_view assetPath,
+SocketBlueprintReader::SetComponentProperty(std::string_view assetPath,
                                           std::string_view componentName,
                                           std::string_view propertyName,
                                           std::string_view value) {
@@ -948,7 +948,7 @@ LiveBlueprintReader::SetComponentProperty(std::string_view assetPath,
 // ----- Live editor ops ---------------------------------------------------
 
 IBlueprintReader::ConsoleCommandResult
-LiveBlueprintReader::ConsoleCommand(std::string_view command) {
+SocketBlueprintReader::ConsoleCommand(std::string_view command) {
     auto j = RunOp({"-Op=ConsoleCommand",
                     "-Command=" + std::string(command)});
     ConsoleCommandResult out;
@@ -957,7 +957,7 @@ LiveBlueprintReader::ConsoleCommand(std::string_view command) {
 }
 
 IBlueprintReader::CVarValue
-LiveBlueprintReader::GetCVar(std::string_view name) {
+SocketBlueprintReader::GetCVar(std::string_view name) {
     auto j = RunOp({"-Op=GetCVar", "-Name=" + std::string(name)});
     CVarValue out;
     out.name = std::string(name);
@@ -970,7 +970,7 @@ LiveBlueprintReader::GetCVar(std::string_view name) {
 }
 
 IBlueprintReader::CVarValue
-LiveBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
+SocketBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
     auto j = RunOp({"-Op=SetCVar",
                     "-Name="  + std::string(name),
                     "-Value=" + std::string(value)});
@@ -985,7 +985,7 @@ LiveBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
 }
 
 IBlueprintReader::PieResult
-LiveBlueprintReader::PieStart(std::string_view mode) {
+SocketBlueprintReader::PieStart(std::string_view mode) {
     std::vector<std::string> args = {"-Op=PieStart"};
     if (!mode.empty()) args.push_back("-Mode=" + std::string(mode));
     auto j = RunOp(args);
@@ -997,7 +997,7 @@ LiveBlueprintReader::PieStart(std::string_view mode) {
     return out;
 }
 
-IBlueprintReader::PieResult LiveBlueprintReader::PieStop() {
+IBlueprintReader::PieResult SocketBlueprintReader::PieStop() {
     auto j = RunOp({"-Op=PieStop"});
     PieResult out;
     if (j.is_object()) out.stopped = j.value("stopped", false);
@@ -1005,7 +1005,7 @@ IBlueprintReader::PieResult LiveBlueprintReader::PieStop() {
 }
 
 IBlueprintReader::LiveCodingResult
-LiveBlueprintReader::LiveCodingCompile() {
+SocketBlueprintReader::LiveCodingCompile() {
     auto j = RunOp({"-Op=LiveCodingCompile"});
     LiveCodingResult out;
     if (j.is_object()) {
@@ -1016,7 +1016,7 @@ LiveBlueprintReader::LiveCodingCompile() {
 }
 
 IBlueprintReader::SelectionResult
-LiveBlueprintReader::GetSelectedActors() {
+SocketBlueprintReader::GetSelectedActors() {
     auto j = RunOp({"-Op=GetSelectedActors"});
     SelectionResult out;
     if (j.is_object()) {
@@ -1030,7 +1030,7 @@ LiveBlueprintReader::GetSelectedActors() {
 }
 
 IBlueprintReader::SelectionResult
-LiveBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
+SocketBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
                                   bool replace) {
     std::string joined;
     for (std::size_t i = 0; i < actorNames.size(); ++i) {
@@ -1052,7 +1052,7 @@ LiveBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
 }
 
 IBlueprintReader::SpawnActorResult
-LiveBlueprintReader::SpawnActor(std::string_view classPath,
+SocketBlueprintReader::SpawnActor(std::string_view classPath,
     double locX, double locY, double locZ,
     double rotPitch, double rotYaw, double rotRoll,
     double scaleX, double scaleY, double scaleZ) {
@@ -1077,7 +1077,7 @@ LiveBlueprintReader::SpawnActor(std::string_view classPath,
     return out;
 }
 
-void LiveBlueprintReader::SetActorTransform(std::string_view actorName,
+void SocketBlueprintReader::SetActorTransform(std::string_view actorName,
     double locX, double locY, double locZ,
     double rotPitch, double rotYaw, double rotRoll,
     double scaleX, double scaleY, double scaleZ) {
@@ -1097,7 +1097,7 @@ void LiveBlueprintReader::SetActorTransform(std::string_view actorName,
 }
 
 IBlueprintReader::DeleteActorResult
-LiveBlueprintReader::DeleteActor(std::string_view actorName) {
+SocketBlueprintReader::DeleteActor(std::string_view actorName) {
     auto j = RunOp({"-Op=DeleteActor", "-Name=" + std::string(actorName)});
     DeleteActorResult out;
     if (j.is_object()) out.deleted = j.value("deleted", false);
@@ -1105,7 +1105,7 @@ LiveBlueprintReader::DeleteActor(std::string_view actorName) {
 }
 
 IBlueprintReader::OutputLogResult
-LiveBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
+SocketBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
     std::vector<std::string> args = {"-Op=ReadOutputLog",
                                       "-Limit=" + std::to_string(limit)};
     if (!minSeverity.empty()) {
@@ -1130,7 +1130,7 @@ LiveBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
 }
 
 IBlueprintReader::AutomationRunResult
-LiveBlueprintReader::RunAutomationTests(std::string_view pattern) {
+SocketBlueprintReader::RunAutomationTests(std::string_view pattern) {
     std::vector<std::string> args = {"-Op=RunAutomationTests"};
     if (!pattern.empty()) args.push_back("-Pattern=" + std::string(pattern));
     auto j = RunOp(args);
@@ -1145,7 +1145,7 @@ LiveBlueprintReader::RunAutomationTests(std::string_view pattern) {
 // ----- Material authoring ------------------------------------------------
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListMaterials(std::string_view path) {
+SocketBlueprintReader::ListMaterials(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListMaterials"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1159,7 +1159,7 @@ LiveBlueprintReader::ListMaterials(std::string_view path) {
 }
 
 IBlueprintReader::MaterialInfo
-LiveBlueprintReader::ReadMaterial(std::string_view assetPath) {
+SocketBlueprintReader::ReadMaterial(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadMaterial", "-Asset=" + std::string(assetPath)});
     MaterialInfo out;
     out.assetPath = std::string(assetPath);
@@ -1194,7 +1194,7 @@ LiveBlueprintReader::ReadMaterial(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddMaterialExpressionResult
-LiveBlueprintReader::AddMaterialExpression(std::string_view assetPath,
+SocketBlueprintReader::AddMaterialExpression(std::string_view assetPath,
     std::string_view expressionClass, int x, int y) {
     auto j = RunOp({"-Op=AddMaterialExpression",
                     "-Asset=" + std::string(assetPath),
@@ -1209,7 +1209,7 @@ LiveBlueprintReader::AddMaterialExpression(std::string_view assetPath,
 }
 
 IBlueprintReader::ConnectMaterialResult
-LiveBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
+SocketBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
     std::string_view fromNodeId, std::string_view fromPin,
     std::string_view toNodeId, std::string_view toPin) {
     auto j = RunOp({"-Op=ConnectMaterialExpressions",
@@ -1225,7 +1225,7 @@ LiveBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
 }
 
 IBlueprintReader::SetMaterialParameterResult
-LiveBlueprintReader::SetMaterialParameter(std::string_view assetPath,
+SocketBlueprintReader::SetMaterialParameter(std::string_view assetPath,
     std::string_view parameterName, std::string_view value) {
     auto j = RunOp({"-Op=SetMaterialParameter",
                     "-Asset=" + std::string(assetPath),
@@ -1242,7 +1242,7 @@ LiveBlueprintReader::SetMaterialParameter(std::string_view assetPath,
 }
 
 IBlueprintReader::SetMIParameterResult
-LiveBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath,
+SocketBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath,
     std::string_view parameterName, std::string_view paramType,
     std::string_view value) {
     auto j = RunOp({"-Op=SetMaterialInstanceParameter",
@@ -1259,7 +1259,7 @@ LiveBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath,
 }
 
 IBlueprintReader::CompileMaterialResult
-LiveBlueprintReader::CompileMaterial(std::string_view assetPath) {
+SocketBlueprintReader::CompileMaterial(std::string_view assetPath) {
     auto j = RunOp({"-Op=CompileMaterial", "-Asset=" + std::string(assetPath)});
     CompileMaterialResult out;
     out.assetPath = std::string(assetPath);
@@ -1270,7 +1270,7 @@ LiveBlueprintReader::CompileMaterial(std::string_view assetPath) {
 // ----- UMG widget authoring ----------------------------------------------
 
 IBlueprintReader::WidgetBlueprintInfo
-LiveBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
+SocketBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadWidgetBlueprint", "-Asset=" + std::string(assetPath)});
     WidgetBlueprintInfo out;
     out.assetPath = std::string(assetPath);
@@ -1290,7 +1290,7 @@ LiveBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddWidgetResult
-LiveBlueprintReader::AddWidget(std::string_view assetPath,
+SocketBlueprintReader::AddWidget(std::string_view assetPath,
     std::string_view parentName, std::string_view widgetClass,
     std::string_view name) {
     std::vector<std::string> args = {"-Op=AddWidget",
@@ -1311,7 +1311,7 @@ LiveBlueprintReader::AddWidget(std::string_view assetPath,
 }
 
 IBlueprintReader::SetWidgetPropertyResult
-LiveBlueprintReader::SetWidgetProperty(std::string_view assetPath,
+SocketBlueprintReader::SetWidgetProperty(std::string_view assetPath,
     std::string_view widgetName, std::string_view propertyName,
     std::string_view value) {
     auto j = RunOp({"-Op=SetWidgetProperty",
@@ -1331,7 +1331,7 @@ LiveBlueprintReader::SetWidgetProperty(std::string_view assetPath,
 }
 
 IBlueprintReader::BindWidgetEventResult
-LiveBlueprintReader::BindWidgetEvent(std::string_view assetPath,
+SocketBlueprintReader::BindWidgetEvent(std::string_view assetPath,
     std::string_view widgetName, std::string_view eventName,
     std::string_view handlerFunction) {
     auto j = RunOp({"-Op=BindWidgetEvent",
@@ -1349,7 +1349,7 @@ LiveBlueprintReader::BindWidgetEvent(std::string_view assetPath,
 }
 
 IBlueprintReader::CompileWidgetBlueprintResult
-LiveBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
+SocketBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
     auto j = RunOp({"-Op=CompileWidgetBlueprint", "-Asset=" + std::string(assetPath)});
     CompileWidgetBlueprintResult out;
     out.assetPath = std::string(assetPath);
@@ -1360,7 +1360,7 @@ LiveBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
 // ----- Behavior Tree authoring (Stage 2) ---------------------------------
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListBehaviorTrees(std::string_view path) {
+SocketBlueprintReader::ListBehaviorTrees(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListBehaviorTrees"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1374,7 +1374,7 @@ LiveBlueprintReader::ListBehaviorTrees(std::string_view path) {
 }
 
 IBlueprintReader::BehaviorTreeInfo
-LiveBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
+SocketBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadBehaviorTree", "-Asset=" + std::string(assetPath)});
     BehaviorTreeInfo out;
     out.assetPath = std::string(assetPath);
@@ -1394,7 +1394,7 @@ LiveBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddBTNodeResult
-LiveBlueprintReader::AddBTNode(std::string_view assetPath,
+SocketBlueprintReader::AddBTNode(std::string_view assetPath,
     std::string_view parentNodeId, std::string_view nodeKind,
     std::string_view nodeClass) {
     std::vector<std::string> args = {"-Op=AddBTNode",
@@ -1412,7 +1412,7 @@ LiveBlueprintReader::AddBTNode(std::string_view assetPath,
 }
 
 IBlueprintReader::SetBTNodePropertyResult
-LiveBlueprintReader::SetBTNodeProperty(std::string_view assetPath,
+SocketBlueprintReader::SetBTNodeProperty(std::string_view assetPath,
     std::string_view nodeId, std::string_view propertyName,
     std::string_view value) {
     auto j = RunOp({"-Op=SetBTNodeProperty",
@@ -1432,7 +1432,7 @@ LiveBlueprintReader::SetBTNodeProperty(std::string_view assetPath,
 }
 
 IBlueprintReader::CompileBehaviorTreeResult
-LiveBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
+SocketBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
     auto j = RunOp({"-Op=CompileBehaviorTree", "-Asset=" + std::string(assetPath)});
     CompileBehaviorTreeResult out;
     out.assetPath = std::string(assetPath);
@@ -1443,7 +1443,7 @@ LiveBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
 // ----- DataAsset CRUD (Stage 2) ------------------------------------------
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListDataAssets(std::string_view path) {
+SocketBlueprintReader::ListDataAssets(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListDataAssets"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1457,7 +1457,7 @@ LiveBlueprintReader::ListDataAssets(std::string_view path) {
 }
 
 IBlueprintReader::DataAssetInfo
-LiveBlueprintReader::ReadDataAsset(std::string_view assetPath) {
+SocketBlueprintReader::ReadDataAsset(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadDataAsset", "-Asset=" + std::string(assetPath)});
     DataAssetInfo out;
     out.assetPath = std::string(assetPath);
@@ -1469,7 +1469,7 @@ LiveBlueprintReader::ReadDataAsset(std::string_view assetPath) {
 }
 
 IBlueprintReader::CreateDataAssetResult
-LiveBlueprintReader::CreateDataAsset(std::string_view assetPath,
+SocketBlueprintReader::CreateDataAsset(std::string_view assetPath,
     std::string_view className) {
     auto j = RunOp({"-Op=CreateDataAsset",
                     "-Asset=" + std::string(assetPath),
@@ -1485,7 +1485,7 @@ LiveBlueprintReader::CreateDataAsset(std::string_view assetPath,
 }
 
 IBlueprintReader::SetDataAssetPropertyResult
-LiveBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
+SocketBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
     std::string_view propertyName, std::string_view value) {
     auto j = RunOp({"-Op=SetDataAssetProperty",
                     "-Asset="    + std::string(assetPath),
@@ -1504,7 +1504,7 @@ LiveBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
 // ----- StateTree authoring (Stage 2) -------------------------------------
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListStateTrees(std::string_view path) {
+SocketBlueprintReader::ListStateTrees(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListStateTrees"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1518,7 +1518,7 @@ LiveBlueprintReader::ListStateTrees(std::string_view path) {
 }
 
 IBlueprintReader::StateTreeInfo
-LiveBlueprintReader::ReadStateTree(std::string_view assetPath) {
+SocketBlueprintReader::ReadStateTree(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadStateTree", "-Asset=" + std::string(assetPath)});
     StateTreeInfo out;
     out.assetPath = std::string(assetPath);
@@ -1545,7 +1545,7 @@ LiveBlueprintReader::ReadStateTree(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddStateTreeStateResult
-LiveBlueprintReader::AddStateTreeState(std::string_view assetPath,
+SocketBlueprintReader::AddStateTreeState(std::string_view assetPath,
     std::string_view parentStateId, std::string_view name) {
     std::vector<std::string> args = {"-Op=AddStateTreeState",
                                      "-Asset=" + std::string(assetPath),
@@ -1560,7 +1560,7 @@ LiveBlueprintReader::AddStateTreeState(std::string_view assetPath,
 }
 
 IBlueprintReader::SetStateTreeTransitionResult
-LiveBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
+SocketBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
     std::string_view fromStateId, std::string_view toStateId,
     std::string_view trigger) {
     auto j = RunOp({"-Op=SetStateTreeTransition",
@@ -1578,7 +1578,7 @@ LiveBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
 }
 
 IBlueprintReader::CompileStateTreeResult
-LiveBlueprintReader::CompileStateTree(std::string_view assetPath) {
+SocketBlueprintReader::CompileStateTree(std::string_view assetPath) {
     auto j = RunOp({"-Op=CompileStateTree", "-Asset=" + std::string(assetPath)});
     CompileStateTreeResult out;
     out.assetPath = std::string(assetPath);
@@ -1589,7 +1589,7 @@ LiveBlueprintReader::CompileStateTree(std::string_view assetPath) {
 // ----- Stage 3: profile / cook / class info / viewport ------------------
 
 IBlueprintReader::StartProfileResult
-LiveBlueprintReader::StartProfile(std::string_view mode) {
+SocketBlueprintReader::StartProfile(std::string_view mode) {
     auto j = RunOp({"-Op=StartProfile", "-Mode=" + std::string(mode)});
     StartProfileResult out;
     if (j.is_object()) {
@@ -1600,7 +1600,7 @@ LiveBlueprintReader::StartProfile(std::string_view mode) {
 }
 
 IBlueprintReader::StopProfileResult
-LiveBlueprintReader::StopProfile() {
+SocketBlueprintReader::StopProfile() {
     auto j = RunOp({"-Op=StopProfile"});
     StopProfileResult out;
     if (j.is_object()) {
@@ -1611,7 +1611,7 @@ LiveBlueprintReader::StopProfile() {
 }
 
 IBlueprintReader::StatGroupResult
-LiveBlueprintReader::GetStats(std::string_view group) {
+SocketBlueprintReader::GetStats(std::string_view group) {
     auto j = RunOp({"-Op=GetStats", "-Group=" + std::string(group)});
     StatGroupResult out;
     out.group = std::string(group);
@@ -1620,7 +1620,7 @@ LiveBlueprintReader::GetStats(std::string_view group) {
 }
 
 IBlueprintReader::ScreenshotResult
-LiveBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int height) {
+SocketBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int height) {
     auto j = RunOp({"-Op=TakeScreenshot",
                     "-Dest="   + std::string(destPath),
                     "-Width="  + std::to_string(width),
@@ -1634,7 +1634,7 @@ LiveBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int he
 }
 
 IBlueprintReader::CookResult
-LiveBlueprintReader::CookContent(std::string_view platform) {
+SocketBlueprintReader::CookContent(std::string_view platform) {
     auto j = RunOp({"-Op=CookContent", "-Platform=" + std::string(platform)});
     CookResult out;
     out.platform = std::string(platform);
@@ -1646,7 +1646,7 @@ LiveBlueprintReader::CookContent(std::string_view platform) {
 }
 
 IBlueprintReader::CookResult
-LiveBlueprintReader::PackageProject(std::string_view platform, std::string_view outputDir) {
+SocketBlueprintReader::PackageProject(std::string_view platform, std::string_view outputDir) {
     auto j = RunOp({"-Op=PackageProject",
                     "-Platform=" + std::string(platform),
                     "-Output="   + std::string(outputDir)});
@@ -1660,7 +1660,7 @@ LiveBlueprintReader::PackageProject(std::string_view platform, std::string_view 
 }
 
 IBlueprintReader::ClassInfo
-LiveBlueprintReader::IntrospectClass(std::string_view className) {
+SocketBlueprintReader::IntrospectClass(std::string_view className) {
     auto j = RunOp({"-Op=IntrospectClass", "-Class=" + std::string(className)});
     ClassInfo out;
     if (!j.is_object()) return out;
@@ -1690,7 +1690,7 @@ LiveBlueprintReader::IntrospectClass(std::string_view className) {
 }
 
 IBlueprintReader::FindClassResult
-LiveBlueprintReader::FindClass(std::string_view query) {
+SocketBlueprintReader::FindClass(std::string_view query) {
     auto j = RunOp({"-Op=FindClass", "-Query=" + std::string(query)});
     FindClassResult out;
     if (j.is_object()) {
@@ -1704,7 +1704,7 @@ LiveBlueprintReader::FindClass(std::string_view query) {
 }
 
 std::vector<IBlueprintReader::ClassFunctionInfo>
-LiveBlueprintReader::ListFunctions(std::string_view className) {
+SocketBlueprintReader::ListFunctions(std::string_view className) {
     auto j = RunOp({"-Op=ListFunctions", "-Class=" + std::string(className)});
     std::vector<ClassFunctionInfo> out;
     if (j.is_array()) {
@@ -1719,7 +1719,7 @@ LiveBlueprintReader::ListFunctions(std::string_view className) {
 }
 
 IBlueprintReader::FocusActorResult
-LiveBlueprintReader::FocusActor(std::string_view actorName) {
+SocketBlueprintReader::FocusActor(std::string_view actorName) {
     auto j = RunOp({"-Op=FocusActor", "-Actor=" + std::string(actorName)});
     FocusActorResult out;
     out.actorName = std::string(actorName);
@@ -1728,7 +1728,7 @@ LiveBlueprintReader::FocusActor(std::string_view actorName) {
 }
 
 IBlueprintReader::SetCameraResult
-LiveBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
+SocketBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
                                         double rp, double ry, double rr) {
     auto j = RunOp({"-Op=SetCameraTransform",
                     "-LX=" + std::to_string(lx),
@@ -1743,7 +1743,7 @@ LiveBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
 }
 
 IBlueprintReader::ViewportScreenshotResult
-LiveBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
+SocketBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
     auto j = RunOp({"-Op=TakeViewportScreenshot", "-Dest=" + std::string(destPath)});
     ViewportScreenshotResult out;
     if (j.is_object()) {
@@ -1754,7 +1754,7 @@ LiveBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
 }
 
 IBlueprintReader::SetShowFlagResult
-LiveBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
+SocketBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
     auto j = RunOp({"-Op=SetShowFlag",
                     "-Flag=" + std::string(flagName),
                     std::string("-Enabled=") + (enabled ? "1" : "0")});
@@ -1767,7 +1767,7 @@ LiveBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
 // ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph -------------------
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListNiagaraSystems(std::string_view path) {
+SocketBlueprintReader::ListNiagaraSystems(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListNiagaraSystems"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1779,7 +1779,7 @@ LiveBlueprintReader::ListNiagaraSystems(std::string_view path) {
 }
 
 IBlueprintReader::NiagaraSystemInfo
-LiveBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
+SocketBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadNiagaraSystem", "-Asset=" + std::string(assetPath)});
     NiagaraSystemInfo out;
     out.assetPath = std::string(assetPath);
@@ -1800,7 +1800,7 @@ LiveBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
 }
 
 IBlueprintReader::CreateNiagaraSystemResult
-LiveBlueprintReader::CreateNiagaraSystem(std::string_view assetPath) {
+SocketBlueprintReader::CreateNiagaraSystem(std::string_view assetPath) {
     auto j = RunOp({"-Op=CreateNiagaraSystem", "-Asset=" + std::string(assetPath)});
     CreateNiagaraSystemResult out;
     out.assetPath = std::string(assetPath);
@@ -1812,7 +1812,7 @@ LiveBlueprintReader::CreateNiagaraSystem(std::string_view assetPath) {
 }
 
 IBlueprintReader::SetNiagaraParameterResult
-LiveBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
+SocketBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
     std::string_view parameterName, std::string_view value) {
     auto j = RunOp({"-Op=SetNiagaraParameter",
                     "-Asset=" + std::string(assetPath),
@@ -1827,7 +1827,7 @@ LiveBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
 }
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListLevelSequences(std::string_view path) {
+SocketBlueprintReader::ListLevelSequences(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListLevelSequences"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1839,7 +1839,7 @@ LiveBlueprintReader::ListLevelSequences(std::string_view path) {
 }
 
 IBlueprintReader::LevelSequenceInfo
-LiveBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
+SocketBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadLevelSequence", "-Asset=" + std::string(assetPath)});
     LevelSequenceInfo out;
     out.assetPath = std::string(assetPath);
@@ -1859,7 +1859,7 @@ LiveBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddSequenceTrackResult
-LiveBlueprintReader::AddSequenceTrack(std::string_view assetPath,
+SocketBlueprintReader::AddSequenceTrack(std::string_view assetPath,
     std::string_view trackClass, std::string_view trackName) {
     auto j = RunOp({"-Op=AddSequenceTrack",
                     "-Asset=" + std::string(assetPath),
@@ -1874,7 +1874,7 @@ LiveBlueprintReader::AddSequenceTrack(std::string_view assetPath,
 }
 
 IBlueprintReader::SetSequencePlaybackRangeResult
-LiveBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
+SocketBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
     double startSeconds, double endSeconds) {
     auto j = RunOp({"-Op=SetSequencePlaybackRange",
                     "-Asset=" + std::string(assetPath),
@@ -1889,7 +1889,7 @@ LiveBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
 }
 
 IBlueprintReader::GameplayTagListResult
-LiveBlueprintReader::ListGameplayTags(std::string_view filter) {
+SocketBlueprintReader::ListGameplayTags(std::string_view filter) {
     std::vector<std::string> args = {"-Op=ListGameplayTags"};
     if (!filter.empty()) args.push_back("-Filter=" + std::string(filter));
     auto j = RunOp(args);
@@ -1903,7 +1903,7 @@ LiveBlueprintReader::ListGameplayTags(std::string_view filter) {
 }
 
 IBlueprintReader::AddGameplayTagResult
-LiveBlueprintReader::AddGameplayTag(std::string_view tagName,
+SocketBlueprintReader::AddGameplayTag(std::string_view tagName,
     std::string_view comment) {
     std::vector<std::string> args = {"-Op=AddGameplayTag",
                                      "-Tag=" + std::string(tagName)};
@@ -1919,7 +1919,7 @@ LiveBlueprintReader::AddGameplayTag(std::string_view tagName,
 }
 
 IBlueprintReader::AbilitySetInfo
-LiveBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
+SocketBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadAbilitySet", "-Asset=" + std::string(assetPath)});
     AbilitySetInfo out;
     out.assetPath = std::string(assetPath);
@@ -1936,7 +1936,7 @@ LiveBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
 }
 
 std::vector<BPAssetSummary>
-LiveBlueprintReader::ListAnimBlueprints(std::string_view path) {
+SocketBlueprintReader::ListAnimBlueprints(std::string_view path) {
     std::vector<std::string> args = {"-Op=ListAnimBlueprints"};
     if (!path.empty()) args.push_back("-Path=" + std::string(path));
     auto j = RunOp(args);
@@ -1948,7 +1948,7 @@ LiveBlueprintReader::ListAnimBlueprints(std::string_view path) {
 }
 
 IBlueprintReader::AnimBlueprintInfo
-LiveBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
+SocketBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
     auto j = RunOp({"-Op=ReadAnimBlueprint", "-Asset=" + std::string(assetPath)});
     AnimBlueprintInfo out;
     out.assetPath = std::string(assetPath);
@@ -1973,7 +1973,7 @@ LiveBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
 }
 
 IBlueprintReader::AddAnimStateResult
-LiveBlueprintReader::AddAnimState(std::string_view assetPath,
+SocketBlueprintReader::AddAnimState(std::string_view assetPath,
     std::string_view stateMachine, std::string_view stateName) {
     auto j = RunOp({"-Op=AddAnimState",
                     "-Asset="   + std::string(assetPath),
@@ -1988,7 +1988,7 @@ LiveBlueprintReader::AddAnimState(std::string_view assetPath,
 }
 
 IBlueprintReader::CompileAnimBlueprintResult
-LiveBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
+SocketBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
     auto j = RunOp({"-Op=CompileAnimBlueprint", "-Asset=" + std::string(assetPath)});
     CompileAnimBlueprintResult out;
     out.assetPath = std::string(assetPath);
@@ -1996,17 +1996,17 @@ LiveBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
     return out;
 }
 
-void LiveBlueprintReader::BeginBatch() {
+void SocketBlueprintReader::BeginBatch() {
     (void)RunOp({"-Op=BeginBatch"});
 }
 
-nlohmann::json LiveBlueprintReader::EndBatch(bool skipCompile) {
+nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile) {
     std::vector<std::string> args = {"-Op=EndBatch"};
     if (skipCompile) args.push_back("-Skip");
     return RunOp(args);
 }
 
-nlohmann::json LiveBlueprintReader::ShutdownDaemon() {
+nlohmann::json SocketBlueprintReader::ShutdownDaemon() {
     // Live mode has no daemon to shut down — the editor runs
     // independently of the MCP server's lifetime. The right "shutdown"
     // semantics here would be "close the socket connection", which
