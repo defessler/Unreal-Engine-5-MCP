@@ -96,6 +96,37 @@ public:
     // daemon terminate cleanly when something explicitly calls Stop().
     bool WantsShutdown() const { return bShuttingDown; }
 
+    // Async-signal-safe-ish shutdown request. ONLY flips bShuttingDown
+    // so the daemon's polling loop in RunDaemon notices and exits.
+    // Distinct from Stop() because Win32's console-control handler runs
+    // on a dedicated handler thread the OS injected into the process,
+    // and calling Stop() (which joins listener + connection threads)
+    // from that handler thread risks deadlock if any of those threads
+    // are currently blocked on a syscall the handler is also racing.
+    // The polling loop in RunDaemon owns the main thread, so once
+    // WantsShutdown() returns true it falls through to Stop() naturally
+    // — that's where the real teardown happens.
+    void RequestShutdown() { bShuttingDown = true; }
+
+    // Best-effort signal-context cleanup. Called from UE's
+    // ApplicationWillTerminateDelegate which fires inside UE's Win32
+    // console-control handler just before it TerminateProcess()'s the
+    // daemon. We CAN'T join threads here (no time), but we CAN
+    // synchronously delete the handshake file and close the OS lock
+    // handle so the next daemon launch on the same project sees a
+    // clean slate.
+    //
+    // Distinct from Stop():
+    //   - Stop() is the main-thread teardown path: joins listener +
+    //     connection threads, then deletes files + releases lock.
+    //   - TerminateOnSignal() is the handler-thread fast path: file
+    //     deletes + lock release only, skips thread joins because
+    //     TerminateProcess is about to kill them anyway.
+    //
+    // Idempotent and safe to call after Stop(). Sets bShuttingDown
+    // too so any code racing it sees the shutdown flag.
+    void TerminateOnSignal();
+
 private:
     // FTcpListener accept callback. Spawns a per-connection worker
     // thread; returns true so the listener keeps the connection (the
