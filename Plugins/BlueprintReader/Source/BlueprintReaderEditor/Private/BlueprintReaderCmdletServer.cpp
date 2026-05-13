@@ -452,6 +452,10 @@ bool FCmdletServer::Start(int32 Port)
 
 void FCmdletServer::Stop()
 {
+    // Signal the daemon main loop to exit. Set this before tearing
+    // down anything else so any code path that polls WantsShutdown()
+    // sees the request immediately.
+    bShuttingDown = true;
     // Drop the handshake file FIRST so MCP-server probes immediately
     // start failing rather than racing the listener teardown.
     if (HandshakeWritten)
