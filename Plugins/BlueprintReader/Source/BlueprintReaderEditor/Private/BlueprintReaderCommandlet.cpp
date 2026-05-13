@@ -5327,6 +5327,89 @@ int32 BlueprintReader::RunOneOpFromLiveServer(const FString& Params)
 
 namespace
 {
+// Pointer to the live FCmdletServer the daemon's polling loop owns.
+// Set before installing the Win32 console handler and cleared after
+// it's removed, so the handler is never called against a dangling
+// pointer. Static (not thread_local) because Win32 console handlers
+// are invoked on an OS-injected handler thread; every invocation
+// must see the same target.
+static BlueprintReader::FCmdletServer* GDaemonShutdownTarget = nullptr;
+
+// Win32 design note — registration timing + UE API patching:
+//
+// UE's `FWindowsPlatformMisc::SetGracefulTerminationHandler()` runs
+// during engine init. In non-shipping builds on x86, UE PATCHES the
+// `SetConsoleCtrlHandler` Win32 API with `mov eax, 1; ret` to prevent
+// third-party code (Perforce libs, etc.) from registering competing
+// handlers. THAT patch is guarded by an early-out:
+//   if (GetConsoleWindow() == nullptr) return;
+//
+// Initial hope: a daemon launched with `-unattended` + `-nullrhi`
+// would have `GetConsoleWindow() == nullptr`, UE would skip both
+// handler-install and API-patch, and we'd have a free
+// SetConsoleCtrlHandler to register on.
+//
+// Empirical result (verified by Python+CTRL_BREAK_EVENT test):
+// `GetConsoleWindow()` returns a real HWND for the daemon process,
+// UE DOES install its handler, UE DOES patch the API, our subsequent
+// registration call returns 1 from the patched stub but our handler
+// never gets invoked. UE's own handler then catches Ctrl-C, falls
+// through to TerminateProcess(0xc000013a) in unattended mode without
+// running ApplicationWillTerminateDelegate, and the daemon hard-dies
+// leaving the handshake + lock files behind.
+//
+// We keep the SetConsoleCtrlHandler registration anyway because it's
+// correct code that works in (a) shipping builds, (b) non-x86 builds,
+// (c) any future engine build where the API patch is removed. The
+// stale-file detection in Task 2.4 will catch the leaked-file case
+// on the next daemon launch.
+//
+// The actual graceful-shutdown path that DOES work today is the
+// polling-loop exit: anything that calls FCmdletServer::Stop() (or
+// flips bShuttingDown via the future idle-timeout in Task 4.2) gets
+// full cleanup including thread joins.
+//
+// Why RequestShutdown/TerminateOnSignal are separate from Stop():
+// the handler runs on a Win32-injected thread; Stop() joins listener
+// + connection threads and we can't safely block them in the handler
+// context. RequestShutdown flips the polling-loop flag (main thread
+// then calls Stop()); TerminateOnSignal does the minimum on-disk
+// cleanup we can synchronously complete before the default-handler
+// path TerminateProcess's us.
+
+// Win32 console-control handler. See "Win32 design note" above.
+// Returns 1 (Win32 TRUE) when the event was handled; `TRUE`/`FALSE`
+// macros are `#undef`'d here because UE's Windows-types-hiding
+// header chain unconditionally hides them.
+static BOOL WINAPI DaemonConsoleCtrlHandler(DWORD CtrlType)
+{
+	switch (CtrlType)
+	{
+		case CTRL_C_EVENT:
+		case CTRL_BREAK_EVENT:
+		case CTRL_CLOSE_EVENT:
+		case CTRL_LOGOFF_EVENT:
+		case CTRL_SHUTDOWN_EVENT:
+			if (GDaemonShutdownTarget)
+			{
+				UE_LOG(LogBlueprintReader, Display,
+					TEXT("Daemon received console-control signal (%lu); requesting graceful shutdown"),
+					CtrlType);
+				// Set the polling-loop flag first so the main thread
+				// notices on its next iteration (50ms).
+				GDaemonShutdownTarget->RequestShutdown();
+				// Synchronously delete the handshake + lock files in
+				// case the OS kills us before the main thread reaches
+				// Stop(). This is idempotent with Stop() running
+				// afterward.
+				GDaemonShutdownTarget->TerminateOnSignal();
+			}
+			return 1;
+		default:
+			return 0;
+	}
+}
+
 int32 RunDaemon()
 {
 	// The daemon used to read newline-delimited commandlet-arg lines
@@ -5355,11 +5438,52 @@ int32 RunDaemon()
 		TEXT("BlueprintReader daemon: cmdlet TCP server listening on 127.0.0.1:%d"),
 		Server.GetListenPort());
 
+	// Install the Win32 console-control handler so Ctrl-C / Ctrl-Break
+	// / console-close events have a chance to trigger graceful shutdown
+	// instead of a hard process kill (which would leave the handshake +
+	// lock files behind and confuse the MCP server's "is the daemon
+	// alive?" probe). Pass 1 (Win32 TRUE) — `TRUE`/`FALSE` macros are
+	// `#undef`'d here by UE's Windows-types-hiding header chain.
+	//
+	// IMPORTANT CAVEAT (empirically verified — see commit message):
+	// In non-shipping x86 builds, UE's
+	// `FWindowsPlatformMisc::SetGracefulTerminationHandler` PATCHES the
+	// SetConsoleCtrlHandler Win32 API with `mov eax, 1; ret` to prevent
+	// third-party code from registering competing handlers (Perforce
+	// being the original motivator). Our call below returns 1
+	// (success) from that patched stub but our handler is NEVER
+	// actually registered — the Win32 callback table remains
+	// UE-only. UE's own handler (in unattended mode) falls through
+	// to `TerminateProcess(0xc000013a)` without joining our threads
+	// or deleting our files.
+	//
+	// Net result: in non-shipping x86 builds, this registration is a
+	// no-op and Ctrl-C cleanup is best-effort (the OS reaps file
+	// handles on process exit, so the lifetime-lock IS released, but
+	// the handshake + lock FILES persist on disk and will need to be
+	// cleaned by the next daemon launch's stale-file detection).
+	// In shipping or non-x86 builds, UE doesn't patch the API and
+	// this registration works as written.
+	//
+	// We keep the registration anyway because (a) it's correct code
+	// that handles the cases UE doesn't sabotage, (b) the stale-file
+	// detection in Task 2.4 catches the leak case, and (c) the
+	// polling-loop shutdown path is what tests + future idle-timeout
+	// (Task 4.2) actually drive — that path always works.
+	GDaemonShutdownTarget = &Server;
+	if (!SetConsoleCtrlHandler(&DaemonConsoleCtrlHandler, 1))
+	{
+		UE_LOG(LogBlueprintReader, Warning,
+			TEXT("BlueprintReader daemon: SetConsoleCtrlHandler returned 0 "
+				 "(GetLastError=%lu); Ctrl-C path will not trigger graceful shutdown"),
+			GetLastError());
+	}
+
 	// Block here until graceful shutdown. The server runs its own
 	// accept + reader threads (spawned via FRunnableThread::Create in
 	// FCmdletServer), so we just need the daemon process to stay alive.
-	// Real shutdown triggers (idle timer, signal handler) are wired in
-	// Task 4.2.
+	// Real shutdown triggers (idle timer) will be wired later; the
+	// console-control handler above already handles Ctrl-C / close.
 	//
 	// We MUST pump the game thread's task queue here: FCmdletServer's
 	// per-connection threads dispatch op handlers via
@@ -5386,6 +5510,11 @@ int32 RunDaemon()
 		FTSTicker::GetCoreTicker().Tick(0.05f);
 		FPlatformProcess::Sleep(0.05f);
 	}
+
+	// Remove the handler before Stop() runs so a late-arriving Ctrl-C
+	// can't re-enter and race the main-thread teardown.
+	SetConsoleCtrlHandler(&DaemonConsoleCtrlHandler, 0);
+	GDaemonShutdownTarget = nullptr;
 
 	Server.Stop();
 	UE_LOG(LogBlueprintReader, Display,
