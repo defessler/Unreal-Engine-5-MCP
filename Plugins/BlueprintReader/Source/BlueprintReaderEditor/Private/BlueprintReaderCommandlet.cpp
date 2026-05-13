@@ -11,6 +11,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
+#include "Async/TaskGraphInterfaces.h"
+#include "Containers/Ticker.h"
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/DataTable.h"
@@ -5356,11 +5358,32 @@ int32 RunDaemon()
 	// Block here until graceful shutdown. The server runs its own
 	// accept + reader threads (spawned via FRunnableThread::Create in
 	// FCmdletServer), so we just need the daemon process to stay alive.
-	// Polling a bool at 50 ms granularity is plenty — the daemon's
-	// shutdown path is "set the flag, then return". Real shutdown
-	// triggers (idle timer, signal handler) are wired in Task 4.2.
+	// Real shutdown triggers (idle timer, signal handler) are wired in
+	// Task 4.2.
+	//
+	// We MUST pump the game thread's task queue here: FCmdletServer's
+	// per-connection threads dispatch op handlers via
+	// `AsyncTask(ENamedThreads::GameThread, ...)` so UObject mutation
+	// runs on the game thread. In a normal editor session the editor
+	// pumps the task graph naturally; in a commandlet daemon the only
+	// game-thread runner is this loop, so without an explicit
+	// ProcessThreadUntilIdle the queued tasks would sit forever and
+	// every op frame would time out. Also tick the core ticker so
+	// timer-driven engine subsystems (e.g. async asset registry
+	// callbacks) get serviced.
+	//
+	// IMPORTANT: must be `ENamedThreads::GameThread`, NOT
+	// `GameThread_Local`. Tasks queued via
+	// `AsyncTask(ENamedThreads::GameThread, ...)` land on the regular
+	// game-thread queue, not the "_Local" subqueue. Pumping only
+	// GameThread_Local from a commandlet drains nothing and the
+	// dispatched task never fires — manifested as every `op` frame
+	// hanging until the client times out. See the comment in
+	// FCmdletServer where the AsyncTask is issued.
 	while (!Server.WantsShutdown())
 	{
+		FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
+		FTSTicker::GetCoreTicker().Tick(0.05f);
 		FPlatformProcess::Sleep(0.05f);
 	}
 
