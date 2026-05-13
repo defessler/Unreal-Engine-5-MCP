@@ -457,6 +457,33 @@ bool FCmdletServer::Start(int32 Port)
     return true;
 }
 
+void FCmdletServer::TerminateOnSignal()
+{
+    // Best-effort synchronous cleanup invoked from the Win32
+    // console-control handler thread. We deliberately skip listener
+    // / connection thread joins (the main thread will do those in
+    // Stop() if the polling loop gets there; if the OS hard-kills
+    // us first, the kernel reaps them on process exit). What we DO
+    // need to do synchronously is delete the handshake file and
+    // release the OS-level lock — these are the on-disk artifacts
+    // that would otherwise mislead the NEXT daemon launch's "is one
+    // already running?" probe.
+    //
+    // Idempotent: safe to call after Stop() or twice in a row.
+    bShuttingDown = true;
+    if (HandshakeWritten)
+    {
+        DeleteHandshakeFile();
+        HandshakeWritten = false;
+    }
+    // ReleaseLifetimeLock CloseHandle's the OS-level lock handle and
+    // best-effort-deletes the lock file. Closing the handle releases
+    // the exclusive lock so the next daemon launch can acquire it
+    // even before the OS gets around to closing all our handles on
+    // process exit.
+    ReleaseLifetimeLock();
+}
+
 void FCmdletServer::Stop()
 {
     // Signal the daemon main loop to exit. Set this before tearing
