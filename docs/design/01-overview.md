@@ -1,0 +1,154 @@
+# 01 — Overview
+
+bp-reader is a Blueprint introspection and mutation surface for UE 5.7,
+exposed to MCP-aware coding agents (Claude Code, Claude Desktop, VS Code
+Copilot, ChatGPT bridges) as a JSON-RPC 2.0 stdio server. This document
+sketches what's in the repo and how the parts fit. The other three
+design docs zoom in:
+
+- [02-architecture.md](02-architecture.md) — component diagram, process
+  model, request lifecycle.
+- [03-plugin-internals.md](03-plugin-internals.md) — the UE editor side
+  (commandlet dispatch, live TCP server, introspector).
+- [04-mcp-server.md](04-mcp-server.md) — the standalone C++20 MCP
+  server (JSON-RPC, registry, telemetry).
+
+## Two halves of one shipping unit
+
+```
+Plugins/BlueprintReader/
+├── BlueprintReader.uplugin              PreBuildSteps run Build-MCPServer.ps1
+├── Source/
+│   ├── BlueprintReaderEditor/           UE 5.7 editor plugin (UnrealEd)
+│   └── BlueprintReaderRuntime/          opt-in cooked-runtime introspection
+└── mcp-server/                          standalone C++20 MCP server
+    ├── src/
+    ├── third_party/                     vendored: nlohmann_json, fmt, doctest
+    ├── CMakeLists.txt
+    └── vcpkg.json                       declared but not consumed by default
+```
+
+Both halves ship together as one UE plugin. The plugin's
+`PreBuildSteps` (`BlueprintReader.uplugin:30`) runs the CMake build of
+the MCP server during the editor build, so a single `Build.bat`
+invocation produces both the editor module and the `bp-reader-mcp.exe`
+binary.
+
+### Editor plugin — `BlueprintReaderEditor`
+
+UnrealEd-only module. Hosts the entry points that actually touch
+`UBlueprint` objects:
+
+- `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — the workhorse.
+  Dispatches every read and write op via a single `RunOneOp(Params)`
+  function. Long-lived `-Daemon` mode reads newline-delimited args from
+  stdin so one `UnrealEditor-Cmd.exe` process serves many tool calls
+  cheaply.
+- `BlueprintReaderLiveServer` — TCP listener that lets the MCP server
+  talk to a running editor without spawning a second commandlet daemon.
+  Auto-publishes port + token via `<Project>/Saved/bp-reader-live.json`.
+- `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
+  synthesizes `Content/AI/BP_TestEnemy.uasset` and
+  `BP_TestPickup.uasset` for live integration tests.
+
+### Runtime plugin — `BlueprintReaderRuntime`
+
+Optional, packaged-build-safe sibling. Reads what UE preserves through
+cook (UClass reflection, CDO defaults, UFunction signatures, asset
+registry) and exposes the same TCP protocol as the editor live server.
+Off by default; opt-in via the `bp.reader.listen` CVar. See
+`Source/BlueprintReaderRuntime/BlueprintReaderRuntime.Build.cs`.
+
+### Standalone MCP server — `mcp-server/`
+
+A C++20 stdio MCP server. JSON-RPC 2.0 frames in (newline-delimited or
+LSP-style `Content-Length`), tool result envelopes out. No UE
+dependency in this tree — it links against vendored
+`third_party/nlohmann_json`, `third_party/fmt`, and `third_party/doctest`
+(see [CMakeLists.txt:36-61](../../Plugins/BlueprintReader/mcp-server/CMakeLists.txt)).
+The tool handlers call into a `IBlueprintReader` interface; the
+concrete reader is chosen at startup based on environment.
+
+## The four backends
+
+The MCP server abstracts "how do I actually read or mutate this
+blueprint?" behind an `IBlueprintReader` interface
+(`src/backends/IBlueprintReader.h`). Four concrete implementations:
+
+| Backend | When | How |
+|---------|------|-----|
+| `mock` | no UE setup needed (CI, server development) | reads canned JSON from `mcp-server/fixtures/` |
+| `commandlet` | editor closed | spawns `UnrealEditor-Cmd.exe -run=BlueprintReader -Daemon`, talks to it over stdin/stdout |
+| `live` | editor open | connects to the editor's TCP listener (port + token from handshake file) |
+| `auto` | default when a `.uproject` is auto-discovered | probes per call: live if the editor's listener accepts, commandlet otherwise |
+
+Auto's per-call probe (with a 2s cache) is what makes the "open the
+editor in the middle of a session" workflow work without restarting
+the MCP server. See `src/backends/AutoBlueprintReader.cpp`. Backend
+selection logic lives in
+`src/backends/BackendFactory.cpp:196-266` — the same code also wraps
+the chosen reader with a TTL-keyed cache
+(`CachingBlueprintReader`) and an optional read-only guard
+(`ReadOnlyBlueprintReader`).
+
+## 119 tools across 21 categories
+
+The MCP server registers 119 tools at startup. The tests pin the
+expected count
+(`tests/test_tools.cpp:35`, `tests/test_mcp.cpp:90`). The categories,
+from the test breakdown:
+
+> 12 read + 22 write + 3 meta + 3 batch + 3 transpile + 9 project/asset
+> + 12 live editor + 1 automation + 7 material + 5 widget + 5 BT
+> + 4 DataAsset + 5 StateTree + 4 profile + 2 cook + 3 class info
+> + 4 viewport + 4 Niagara + 4 Sequencer + 3 GAS + 4 AnimGraph
+
+Tool names map 1:1 to `EOp` enum entries in
+`BlueprintReaderCommandlet.cpp` lines 115-244. The MCP server's tool
+descriptors live in `src/tools/BlueprintTools.cpp` (one
+`ToolDescriptor` block per tool, 116 of them) with three more added in
+`src/tools/ApplyOps.cpp` (`apply_ops`, `preview_ops`) and
+`src/tools/CompileFunction.cpp` (`compile_function`).
+
+Don't enumerate them here — call `tools/list` against the running
+server, or read `wiki/Tool-Reference.md`. Adding a new tool means
+plumbing through both halves; the checklist is in
+[CLAUDE.md → "Adding a new tool"](../../CLAUDE.md).
+
+## Wire format
+
+JSON keys are snake_case throughout. `BPNode.meta` is a real nested
+object (not a string-of-JSON). Empty optional strings serialize as
+JSON `null`, not `""`. The canonical types live in
+`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h` — same
+header is reused on the UE side via `#define WITH_UE` to surface
+USTRUCT mirrors for `FJsonObjectConverter`. See
+[02-architecture.md → "Key invariants"](02-architecture.md#key-invariants)
+for why this matters and where each invariant is enforced.
+
+Asset paths on the wire are always **package paths**
+(`/Game/AI/BP_Enemy`), never UE's internal object paths
+(`/Game/AI/BP_Enemy.BP_Enemy`). The plugin's
+`FBlueprintReaderWireJson::ToPackagePath` strips the trailing object
+suffix consistently
+(`Source/BlueprintReaderEditor/Private/BlueprintReaderWireJson.cpp:14-24`).
+
+## Where the docs live
+
+| Location | Purpose | Audience |
+|----------|---------|----------|
+| [`wiki/`](../../wiki) | source-of-truth for the GitHub Wiki; manually pushed to `<repo>.wiki.git` | end users (setup, tool reference, troubleshooting) |
+| [`docs/design/`](.) | technical design documents (you're reading one) | engineers reading or extending the codebase |
+| [`docs/tutorial/`](../tutorial) | step-by-step build-from-scratch | engineers learning how the system is constructed |
+| [`.claude/skills/bp-reader/`](../../.claude/skills/bp-reader) | Claude skill manifests describing *how to use* the tool surface | Claude agents (and humans reading them) |
+| [`CLAUDE.md`](../../CLAUDE.md) | maintainer cheat sheet (build flags, gotchas, "adding a new tool") | anyone modifying the project |
+| [`README.md`](../../README.md) | user-facing setup, MCP client config snippets, tool table | end users picking up the project |
+
+## See also
+
+- [02-architecture.md](02-architecture.md) — how the pieces talk.
+- [03-plugin-internals.md](03-plugin-internals.md) — UE-side guts.
+- [04-mcp-server.md](04-mcp-server.md) — server-side guts.
+- [CLAUDE.md](../../CLAUDE.md) — maintainer cheat sheet (the build
+  invariants and "common gotchas" are mandatory reading).
+- [README.md](../../README.md) — user-facing setup + tool table.
