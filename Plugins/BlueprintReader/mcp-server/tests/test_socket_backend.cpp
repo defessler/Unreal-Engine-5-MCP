@@ -265,6 +265,49 @@ TEST_CASE("LiveBackend: connect failure triggers handshake re-read and retries")
     std::filesystem::remove(tempPath);
 }
 
+TEST_CASE("SocketBackend(cmdlet): connects to bp-reader-cmdlet.json handshake (issue #66)") {
+    // Same wire shape as live, different handshake file name. The
+    // reader should attach to whichever path the caller supplies via
+    // Config::handshakeFilePath. Pins this for the multi-session
+    // shared-daemon work (PR #68 onwards): the daemon writes a
+    // bp-reader-cmdlet.json handshake mirroring bp-reader-live.json's
+    // shape, and SocketBlueprintReader must be transport-name-agnostic.
+    MockServer mock([](SOCKET s) {
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        ReadLine(s);  // auth
+        SendLine(s, R"({"type":"auth_ok"})");
+        ReadLine(s);  // op
+        SendLine(s, nlohmann::json{
+            {"type","result"}, {"id",1}, {"code",0},
+            {"json", nlohmann::json::array()}
+        }.dump());
+    });
+
+    auto tempPath = std::filesystem::temp_directory_path() /
+        ("bp-reader-cmdlet-test-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&mock)) + ".json");
+    nlohmann::json hs = {
+        {"version", 1},
+        {"host", "127.0.0.1"},
+        {"port", mock.port()},
+        {"token", "cmdlet-token"},
+    };
+    {
+        std::ofstream f(tempPath);
+        f << hs.dump();
+    }
+
+    SocketBlueprintReader::Config cfg;
+    cfg.host  = "127.0.0.1";
+    cfg.port  = mock.port();
+    cfg.token = "cmdlet-token";
+    cfg.handshakeFilePath = tempPath.string();
+    SocketBlueprintReader reader(cfg);
+
+    CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
+    std::filesystem::remove(tempPath);
+}
+
 TEST_CASE("LiveBackend: handshake refresh skipped when path empty") {
     // Backward compat: the original Config has no handshake path. A
     // connect failure should fall through to the existing error,
