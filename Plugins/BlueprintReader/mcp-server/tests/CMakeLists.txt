@@ -19,7 +19,7 @@ add_executable(bp-reader-tests
     test_type_shorthand.cpp
     test_apply_ops.cpp
     test_read_only.cpp
-    test_live_backend.cpp
+    test_socket_backend.cpp
     test_bpir.cpp
     test_decompile.cpp
     test_cpp_codegen.cpp
