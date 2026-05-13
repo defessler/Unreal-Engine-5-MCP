@@ -2,7 +2,7 @@
 #include "backends/AutoBlueprintReader.h"
 #include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
-#include "backends/LiveBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "backends/ReadOnlyBlueprintReader.h"
 #include "Env.h"
@@ -214,7 +214,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
             return r;
         }
         if (cfg.backend == "live") {
-            LiveBlueprintReader::Config lc;
+            SocketBlueprintReader::Config lc;
             lc.host = cfg.liveHost;
             lc.port = cfg.liveProcPort;
             lc.token = cfg.liveToken;
@@ -226,7 +226,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
                 lc.handshakeFilePath =
                     (cfg.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
             }
-            return std::make_unique<LiveBlueprintReader>(std::move(lc));
+            return std::make_unique<SocketBlueprintReader>(std::move(lc));
         }
         if (cfg.backend == "auto") {
             // Auto-routes per call: probe the live handshake; if the
