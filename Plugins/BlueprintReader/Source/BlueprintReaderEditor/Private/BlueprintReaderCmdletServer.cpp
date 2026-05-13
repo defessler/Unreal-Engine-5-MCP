@@ -266,6 +266,13 @@ struct FCmdletConnection
 
 // Cmdlet-server-internal state. We keep connections in a list under a
 // mutex so Stop() can shut them all down even while Accept fires.
+//
+// Note: prefixed with "Cmdlet" rather than the simpler `FServerState`
+// because BlueprintReaderLiveServer.cpp has a sibling FServerState in
+// its own anonymous namespace. Anonymous namespaces do NOT shield
+// against ODR when adaptive-unity builds merge the two .cpp files
+// into a single translation unit. Same goes for GCmdletState and
+// CmdletTryBindAndListen below — do not "clean up" the prefix.
 struct FCmdletServerState
 {
     FCriticalSection Mu;

@@ -50,6 +50,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/ThreadSafeBool.h"             // FThreadSafeBool for bShuttingDown
 #include "Interfaces/IPv4/IPv4Endpoint.h"  // FIPv4Endpoint used by accept callback
 
 class FSocket;
@@ -89,9 +90,9 @@ public:
     int32 GetListenPort() const { return BoundPort; }
 
     // Minimum-viable shutdown signal for the daemon's main loop.
-    // Set by Stop() and the destructor; the daemon spins on this and
-    // exits when it flips true. Idle-shutdown / signal-handler hooks
-    // (Task 4.2) will also flip this flag. For now it just lets the
+    // Set by Stop() (which the destructor also calls); the daemon spins
+    // on this and exits when it flips true. Idle-shutdown / signal-handler
+    // hooks (Task 4.2) will also flip this flag. For now it just lets the
     // daemon terminate cleanly when something explicitly calls Stop().
     bool WantsShutdown() const { return bShuttingDown; }
 
@@ -152,13 +153,9 @@ private:
     FString ExpectedToken;        // env-var override OR random GUID
     int32 BoundPort = 0;
     bool  HandshakeWritten = false;
-    // Set by Stop() / destructor. The daemon's main loop polls
-    // WantsShutdown() and exits when this flips true. Plain bool is OK
-    // here: the daemon main thread reads it, Stop() (called from the
-    // same thread on graceful shutdown, or from a signal-handler in
-    // the future) writes it; tearing reads of a single bool on x64 are
-    // not a concern.
-    bool  bShuttingDown = false;
+    // Atomic so the polling loop in RunDaemon's `while (!WantsShutdown())`
+    // can't be hoisted by LTO. Matches FLiveServer::bStopRequested.
+    FThreadSafeBool bShuttingDown = false;
 
     // OS-level handle to the lifetime-lock file. On Windows this is a
     // `HANDLE` from `CreateFileW`; stored as `void*` to keep this
