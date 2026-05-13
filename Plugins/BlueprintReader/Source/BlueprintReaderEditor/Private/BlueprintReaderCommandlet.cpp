@@ -1,6 +1,7 @@
 #include "BlueprintReaderCommandlet.h"
 
 #include "BlueprintIntrospector.h"
+#include "BlueprintReaderCmdletServer.h"
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderLogSink.h"
 #include "BlueprintReaderWireJson.h"
@@ -38,6 +39,7 @@
     #include "Windows/WindowsHWrapper.h"
 #endif
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
@@ -5325,70 +5327,46 @@ namespace
 {
 int32 RunDaemon()
 {
+	// The daemon used to read newline-delimited commandlet-arg lines
+	// from stdin and write `__BPR_DONE <code>__` back to stdout, with
+	// a single MCP-server parent on the other end of the pipe. That
+	// path forced N daemons against the same project for N concurrent
+	// MCP clients — they fought over the asset registry / DDC / .uasset
+	// files. The daemon now hosts FCmdletServer (a TCP listener with
+	// the same wire protocol the editor's live server speaks), so any
+	// number of MCP-server clients can multiplex through one daemon
+	// process. RunOneOpFromLiveServer (the same dispatch entry the
+	// live server uses) is invoked from the per-connection threads
+	// FCmdletServer spawns.
 	UE_LOG(LogBlueprintReader, Display,
-		TEXT("BlueprintReader daemon started; awaiting commandlet-arg lines on stdin"));
+		TEXT("BlueprintReader daemon: starting cmdlet TCP server"));
 
-	// Use Windows API directly for stdio so UE's runtime redirection (which
-	// can route C stdio through its log/output system) doesn't intercept the
-	// stream. We need raw bytes hitting the pipe in both directions.
-	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-	HANDLE hIn  = GetStdHandle(STD_INPUT_HANDLE);
-
-	auto WriteAll = [hOut](const char* s, DWORD n)
+	BlueprintReader::FCmdletServer Server;
+	if (!Server.Start())
 	{
-		while (n > 0)
-		{
-			DWORD wrote = 0;
-			if (!WriteFile(hOut, s, n, &wrote, nullptr) || wrote == 0) return false;
-			s += wrote;
-			n -= wrote;
-		}
-		return true;
-	};
-
-	const char ready[] = "__BPR_READY__\n";
-	WriteAll(ready, (DWORD)(sizeof(ready) - 1));
-
-	// Read a single line (terminated by '\n') from hIn into Out. Returns
-	// false on EOF / error.
-	auto ReadLine = [hIn](FString& Out) -> bool
-	{
-		Out.Reset();
-		char ch;
-		while (true)
-		{
-			DWORD got = 0;
-			if (!ReadFile(hIn, &ch, 1, &got, nullptr) || got == 0)
-			{
-				return !Out.IsEmpty();  // EOF: return what we have if any
-			}
-			if (ch == '\r') continue;
-			if (ch == '\n') return true;
-			Out.AppendChar(static_cast<TCHAR>(ch));
-		}
-	};
-
-	while (true)
-	{
-		FString Line;
-		if (!ReadLine(Line))
-		{
-			UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: stdin closed; exiting"));
-			return 0;
-		}
-		Line.TrimStartAndEndInline();
-		if (Line.IsEmpty()) continue;
-		if (Line.Equals(TEXT("QUIT"), ESearchCase::IgnoreCase))
-		{
-			UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: QUIT received"));
-			return 0;
-		}
-
-		UE_LOG(LogBlueprintReader, Display, TEXT("Daemon: received line: %s"), *Line);
-		const int32 Code = RunOneOp(Line);
-		const FString DoneStr = FString::Printf(TEXT("__BPR_DONE %d__\n"), Code);
-		const auto DoneAnsi = StringCast<ANSICHAR>(*DoneStr);
-		WriteAll(DoneAnsi.Get(), (DWORD)FCStringAnsi::Strlen(DoneAnsi.Get()));
+		UE_LOG(LogBlueprintReader, Error,
+			TEXT("BlueprintReader daemon: failed to start cmdlet TCP server"));
+		return 1;
 	}
+
+	UE_LOG(LogBlueprintReader, Display,
+		TEXT("BlueprintReader daemon: cmdlet TCP server listening on 127.0.0.1:%d"),
+		Server.GetListenPort());
+
+	// Block here until graceful shutdown. The server runs its own
+	// accept + reader threads (spawned via FRunnableThread::Create in
+	// FCmdletServer), so we just need the daemon process to stay alive.
+	// Polling a bool at 50 ms granularity is plenty — the daemon's
+	// shutdown path is "set the flag, then return". Real shutdown
+	// triggers (idle timer, signal handler) are wired in Task 4.2.
+	while (!Server.WantsShutdown())
+	{
+		FPlatformProcess::Sleep(0.05f);
+	}
+
+	Server.Stop();
+	UE_LOG(LogBlueprintReader, Display,
+		TEXT("BlueprintReader daemon: clean shutdown"));
+	return 0;
 }
 } // namespace
