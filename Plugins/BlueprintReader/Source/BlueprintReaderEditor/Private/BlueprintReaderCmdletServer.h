@@ -88,6 +88,13 @@ public:
     // was called with port 0 to mean "use env var" — caller can log it).
     int32 GetListenPort() const { return BoundPort; }
 
+    // Minimum-viable shutdown signal for the daemon's main loop.
+    // Set by Stop() and the destructor; the daemon spins on this and
+    // exits when it flips true. Idle-shutdown / signal-handler hooks
+    // (Task 4.2) will also flip this flag. For now it just lets the
+    // daemon terminate cleanly when something explicitly calls Stop().
+    bool WantsShutdown() const { return bShuttingDown; }
+
 private:
     // FTcpListener accept callback. Spawns a per-connection worker
     // thread; returns true so the listener keeps the connection (the
@@ -145,6 +152,13 @@ private:
     FString ExpectedToken;        // env-var override OR random GUID
     int32 BoundPort = 0;
     bool  HandshakeWritten = false;
+    // Set by Stop() / destructor. The daemon's main loop polls
+    // WantsShutdown() and exits when this flips true. Plain bool is OK
+    // here: the daemon main thread reads it, Stop() (called from the
+    // same thread on graceful shutdown, or from a signal-handler in
+    // the future) writes it; tearing reads of a single bool on x64 are
+    // not a concern.
+    bool  bShuttingDown = false;
 
     // OS-level handle to the lifetime-lock file. On Windows this is a
     // `HANDLE` from `CreateFileW`; stored as `void*` to keep this
