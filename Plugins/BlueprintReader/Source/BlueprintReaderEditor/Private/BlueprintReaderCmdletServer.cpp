@@ -266,12 +266,12 @@ struct FCmdletConnection
 
 // Cmdlet-server-internal state. We keep connections in a list under a
 // mutex so Stop() can shut them all down even while Accept fires.
-struct FServerState
+struct FCmdletServerState
 {
     FCriticalSection Mu;
     TArray<TUniquePtr<FCmdletConnection>> Connections;
 };
-TUniquePtr<FServerState> GState;
+TUniquePtr<FCmdletServerState> GCmdletState;
 
 } // anonymous namespace
 
@@ -282,7 +282,7 @@ FCmdletServer::~FCmdletServer() { Stop(); }
 // OutSocket + OutBoundPort and returns true. On failure logs the
 // reason, destroys any partial socket, and returns false so the
 // caller can retry with a different port.
-static bool TryBindAndListen(ISocketSubsystem* Sub, int32 PortToTry,
+static bool CmdletTryBindAndListen(ISocketSubsystem* Sub, int32 PortToTry,
                              FSocket*& OutSocket, int32& OutBoundPort)
 {
     OutSocket = Sub->CreateSocket(NAME_Stream, TEXT("BPRCmdlet"),
@@ -401,7 +401,7 @@ bool FCmdletServer::Start(int32 Port)
     }
 
     // First bind attempt — at RequestedPort (cached, env-var, or 0).
-    if (!TryBindAndListen(SocketSubsystem, RequestedPort, ListenerSocket, BoundPort))
+    if (!CmdletTryBindAndListen(SocketSubsystem, RequestedPort, ListenerSocket, BoundPort))
     {
         // Bind failure paths:
         //  - Explicit source (env var / arg) → don't second-guess the
@@ -418,7 +418,7 @@ bool FCmdletServer::Start(int32 Port)
         UE_LOG(LogBlueprintReaderCmdlet, Display,
             TEXT("FCmdletServer: cached port %d unavailable; falling back to ephemeral"),
             CachedPortAttempted);
-        if (!TryBindAndListen(SocketSubsystem, 0, ListenerSocket, BoundPort))
+        if (!CmdletTryBindAndListen(SocketSubsystem, 0, ListenerSocket, BoundPort))
         {
             UE_LOG(LogBlueprintReaderCmdlet, Error,
                 TEXT("FCmdletServer: ephemeral fallback also failed"));
@@ -432,7 +432,7 @@ bool FCmdletServer::Start(int32 Port)
     Listener = MakeUnique<FTcpListener>(*ListenerSocket);
     Listener->OnConnectionAccepted().BindRaw(this, &FCmdletServer::OnIncomingConnection);
 
-    GState = MakeUnique<FServerState>();
+    GCmdletState = MakeUnique<FCmdletServerState>();
     UE_LOG(LogBlueprintReaderCmdlet, Display,
         TEXT("FCmdletServer listening on 127.0.0.1:%d"), BoundPort);
 
@@ -476,19 +476,19 @@ void FCmdletServer::Stop()
         }
         ListenerSocket = nullptr;
     }
-    if (GState.IsValid())
+    if (GCmdletState.IsValid())
     {
-        FScopeLock Lock(&GState->Mu);
-        for (auto& Conn : GState->Connections)
+        FScopeLock Lock(&GCmdletState->Mu);
+        for (auto& Conn : GCmdletState->Connections)
         {
             if (Conn->Runnable) Conn->Runnable->Stop();
         }
-        for (auto& Conn : GState->Connections)
+        for (auto& Conn : GCmdletState->Connections)
         {
             if (Conn->Thread) Conn->Thread->WaitForCompletion();
         }
-        GState->Connections.Empty();
-        GState.Reset();
+        GCmdletState->Connections.Empty();
+        GCmdletState.Reset();
     }
     BoundPort = 0;
     ExpectedToken.Reset();
@@ -728,10 +728,10 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
     auto Conn = MakeUnique<FCmdletConnection>();
     Conn->Runnable = MoveTemp(Runnable);
     Conn->Thread = MoveTemp(Thread);
-    if (GState.IsValid())
+    if (GCmdletState.IsValid())
     {
-        FScopeLock Lock(&GState->Mu);
-        GState->Connections.Add(MoveTemp(Conn));
+        FScopeLock Lock(&GCmdletState->Mu);
+        GCmdletState->Connections.Add(MoveTemp(Conn));
     }
     return true;
 }
