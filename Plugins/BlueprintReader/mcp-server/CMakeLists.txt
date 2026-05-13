@@ -85,7 +85,7 @@ add_library(bp-reader-core STATIC
     src/backends/CommandletBlueprintReader.cpp
     src/backends/CachingBlueprintReader.cpp
     src/backends/ReadOnlyBlueprintReader.cpp
-    src/backends/LiveBlueprintReader.cpp
+    src/backends/SocketBlueprintReader.cpp
     src/backends/AutoBlueprintReader.cpp
     src/backends/BackendFactory.cpp
     src/util/SingleInstanceLock.cpp

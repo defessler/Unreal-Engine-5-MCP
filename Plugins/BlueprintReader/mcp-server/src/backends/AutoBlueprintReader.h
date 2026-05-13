@@ -42,7 +42,7 @@
 
 #include "backends/IBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
-#include "backends/LiveBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 
 #include <chrono>
 #include <filesystem>
@@ -145,9 +145,9 @@ private:
     // holds mu_.
     void Probe();
 
-    // Construct a LiveBlueprintReader from current cfg + handshake (or
+    // Construct a SocketBlueprintReader from current cfg + handshake (or
     // env-var fallbacks). Returns nullptr if nothing's discoverable.
-    std::unique_ptr<LiveBlueprintReader> TryBuildLive();
+    std::unique_ptr<SocketBlueprintReader> TryBuildLive();
 
     // Lazily build the commandlet on first need. Validation is
     // expensive (checks for the editor exe on disk); deferring means a
@@ -162,7 +162,7 @@ private:
     // commandlet inside is the raw reader.
     std::unique_ptr<CommandletBlueprintReader> commandlet_;
     // Live reader is recycled on probe transitions.
-    std::unique_ptr<LiveBlueprintReader> live_;
+    std::unique_ptr<SocketBlueprintReader> live_;
 
     // Last successful probe. When (now - lastProbe_) < probeTtl, we
     // reuse `useLive_` without re-checking.
