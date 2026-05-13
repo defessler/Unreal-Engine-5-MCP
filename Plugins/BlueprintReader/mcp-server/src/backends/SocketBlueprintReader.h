@@ -1,4 +1,4 @@
-// LiveBlueprintReader — talks to a running UE editor over TCP instead
+// SocketBlueprintReader — talks to a running UE editor over TCP instead
 // of spawning a UnrealEditor-Cmd commandlet daemon as a child process.
 //
 // Use case: you have the full editor open. Instead of running a second
@@ -29,7 +29,7 @@
 //  - Token mismatch → server closes connection after auth_fail; client
 //    throws on the next op call.
 //  - Mid-batch socket close → in-flight op throws; subsequent calls
-//    throw too. Caller must construct a new LiveBlueprintReader.
+//    throw too. Caller must construct a new SocketBlueprintReader.
 
 #pragma once
 
@@ -41,7 +41,7 @@
 
 namespace bpr::backends {
 
-class LiveBlueprintReader : public IBlueprintReader {
+class SocketBlueprintReader : public IBlueprintReader {
 public:
     struct Config {
         std::string host = "127.0.0.1";
@@ -62,11 +62,11 @@ public:
         std::string handshakeFilePath;
     };
 
-    explicit LiveBlueprintReader(Config cfg);
-    ~LiveBlueprintReader() override;
+    explicit SocketBlueprintReader(Config cfg);
+    ~SocketBlueprintReader() override;
 
-    LiveBlueprintReader(const LiveBlueprintReader&) = delete;
-    LiveBlueprintReader& operator=(const LiveBlueprintReader&) = delete;
+    SocketBlueprintReader(const SocketBlueprintReader&) = delete;
+    SocketBlueprintReader& operator=(const SocketBlueprintReader&) = delete;
 
     // ----- read tools -----------------------------------------------
     std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;

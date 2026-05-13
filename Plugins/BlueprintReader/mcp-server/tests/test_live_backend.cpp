@@ -1,11 +1,11 @@
-// Tests for LiveBlueprintReader's wire protocol against a mock TCP
+// Tests for SocketBlueprintReader's wire protocol against a mock TCP
 // server. Validates the handshake (hello → auth → auth_ok), the op
 // frame shape, and the result-frame parsing — without needing a real
 // UE editor running.
 
 #include <doctest/doctest.h>
 
-#include "backends/LiveBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 
 #include <atomic>
 #include <chrono>
@@ -141,11 +141,11 @@ TEST_CASE("LiveBackend: handshake hello/auth/auth_ok works") {
         SendLine(s, result.dump());
     });
 
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = mock.port();
     cfg.token = "secret123";
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     auto items = reader.ListBlueprints("/Game");
     REQUIRE(items.size() == 1);
     CHECK(items[0].AssetPath == "/Game/Test/BP_Mock");
@@ -160,11 +160,11 @@ TEST_CASE("LiveBackend: auth_fail closes connection and next op throws") {
         SendLine(s, R"({"type":"auth_fail"})");
     });
 
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = mock.port();
     cfg.token = "wrong-token";
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
 }
 
@@ -185,11 +185,11 @@ TEST_CASE("LiveBackend: server returns error frame surfaces as BlueprintReaderEr
         SendLine(s, err.dump());
     });
 
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = mock.port();
     cfg.token = "tok";
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     try {
         reader.ReadBlueprint("/Game/Bad");
         FAIL("expected throw");
@@ -200,19 +200,19 @@ TEST_CASE("LiveBackend: server returns error frame surfaces as BlueprintReaderEr
 }
 
 TEST_CASE("LiveBackend: missing token in config throws at construction") {
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = 8421;
     cfg.token = "";  // empty — should fail
-    CHECK_THROWS_AS(LiveBlueprintReader{cfg}, BlueprintReaderError);
+    CHECK_THROWS_AS(SocketBlueprintReader{cfg}, BlueprintReaderError);
 }
 
 TEST_CASE("LiveBackend: connect to closed port throws on first op") {
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = 1;  // privileged port no test infra binds; refuses connect
     cfg.token = "tok";
-    LiveBlueprintReader reader(cfg);  // construction is lazy — doesn't connect
+    SocketBlueprintReader reader(cfg);  // construction is lazy — doesn't connect
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
 }
 
@@ -252,12 +252,12 @@ TEST_CASE("LiveBackend: connect failure triggers handshake re-read and retries")
     // Configure the reader with a STALE port (1 — refused) and STALE
     // token. The reader should fail to connect, re-read the handshake,
     // pick up the mock's real port + token, retry, and succeed.
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host  = "127.0.0.1";
     cfg.port  = 1;             // stale: connect refused
     cfg.token = "stale-token";
     cfg.handshakeFilePath = tempPath.string();
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
 
     // If the refresh worked, ListBlueprints completes without throwing.
     CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
@@ -269,12 +269,12 @@ TEST_CASE("LiveBackend: handshake refresh skipped when path empty") {
     // Backward compat: the original Config has no handshake path. A
     // connect failure should fall through to the existing error,
     // not try to refresh (we don't have a path to read).
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1";
     cfg.port = 1;
     cfg.token = "t";
     // cfg.handshakeFilePath intentionally empty
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
 }
 
@@ -327,12 +327,12 @@ TEST_CASE("LiveBackend: auth_fail triggers handshake re-read and retries") {
         f << hs.dump();
     }
 
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host  = "127.0.0.1";
     cfg.port  = mock.port();   // same port — editor restart kept it
     cfg.token = "stale-token"; // old token — refresh should rotate it
     cfg.handshakeFilePath = tempPath.string();
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
 
     CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
     std::filesystem::remove(tempPath);
@@ -342,7 +342,7 @@ TEST_CASE("LiveBackend: handshake refresh ignored when file points at same port"
     // If the handshake file holds the same values as cfg_ already does,
     // the refresh is a no-op — the retry would fail identically and
     // we should surface the original error rather than loop.
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host  = "127.0.0.1";
     cfg.port  = 1;
     cfg.token = "t";
@@ -360,7 +360,7 @@ TEST_CASE("LiveBackend: handshake refresh ignored when file points at same port"
         f << hs.dump();
     }
     cfg.handshakeFilePath = tempPath.string();
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
     std::filesystem::remove(tempPath);
 }
@@ -379,9 +379,9 @@ TEST_CASE("LiveBackend: op frame carries the canonical -Op=List shape") {
             {"json", nlohmann::json::array()}
         }.dump());
     });
-    LiveBlueprintReader::Config cfg;
+    SocketBlueprintReader::Config cfg;
     cfg.host = "127.0.0.1"; cfg.port = mock.port(); cfg.token = "t";
-    LiveBlueprintReader reader(cfg);
+    SocketBlueprintReader reader(cfg);
     (void)reader.ListBlueprints("/Game/AI");
 
     auto frame = nlohmann::json::parse(capturedOpFrame);

@@ -60,7 +60,7 @@ std::optional<AutoHandshake> ReadHandshake(const std::filesystem::path& uproject
 // One-shot TCP connect with a short timeout — confirms the editor's
 // listener is actually accepting connections (not just that the
 // handshake file exists from a crashed editor). We don't do the
-// auth handshake here; LiveBlueprintReader does its own on first op.
+// auth handshake here; SocketBlueprintReader does its own on first op.
 bool TcpProbe(const std::string& host, int port,
               std::chrono::milliseconds timeout) {
 #if defined(_WIN32)
@@ -144,10 +144,10 @@ CommandletBlueprintReader& AutoBlueprintReader::EnsureCommandlet() {
     return *commandlet_;
 }
 
-std::unique_ptr<LiveBlueprintReader> AutoBlueprintReader::TryBuildLive() {
+std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildLive() {
     // Env-var values (passed through cfg_) take precedence over the
     // handshake file. If we have everything from env, build directly.
-    LiveBlueprintReader::Config lc;
+    SocketBlueprintReader::Config lc;
     lc.host  = cfg_.liveHost.empty() ? "127.0.0.1" : cfg_.liveHost;
     lc.port  = cfg_.livePort;
     lc.token = cfg_.liveToken;
@@ -167,13 +167,13 @@ std::unique_ptr<LiveBlueprintReader> AutoBlueprintReader::TryBuildLive() {
     // Same self-refresh wiring as the static `live` backend (issue #9
     // recovery). Auto's per-call probe also handles editor-restart
     // recovery at the outer layer, but inner-layer refresh keeps a
-    // currently-live LiveBlueprintReader usable across an editor
+    // currently-live SocketBlueprintReader usable across an editor
     // restart that happens between the probe and the next op.
     if (!cfg_.uproject.empty()) {
         lc.handshakeFilePath =
             (cfg_.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
     }
-    return std::make_unique<LiveBlueprintReader>(std::move(lc));
+    return std::make_unique<SocketBlueprintReader>(std::move(lc));
 }
 
 void AutoBlueprintReader::Probe() {
@@ -190,7 +190,7 @@ void AutoBlueprintReader::Probe() {
     // listening on the port before we commit. A stale handshake file
     // from a crashed editor would otherwise route us to a broken Live
     // until the file ages out.
-    LiveBlueprintReader::Config probeCfg;
+    SocketBlueprintReader::Config probeCfg;
     // We re-probe the candidate's host/port to validate.
     std::string probeHost;
     int probePort = 0;
@@ -217,7 +217,7 @@ void AutoBlueprintReader::Probe() {
 
     // If we already have a live_ reader pointing at the SAME port,
     // keep it — its socket may be hot. Otherwise replace.
-    // (LiveBlueprintReader doesn't expose its config publicly, so the
+    // (SocketBlueprintReader doesn't expose its config publicly, so the
     // simple-and-correct path is: rebuild on every probe transition.
     // The cost is one TCP handshake per editor open/close, not per
     // call.)
