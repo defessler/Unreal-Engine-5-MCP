@@ -12,8 +12,10 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_ENGINE_DIR`      | (unset → fail-fast for `commandlet`)   | Source-built engine root (the dir holding `Engine\Binaries\Win64\`).     |
 | `BP_READER_PROJECT`         | (unset → fail-fast for `commandlet`)   | Path to `.uproject`.                                                     |
 | `BP_READER_TIMEOUT_SECONDS` | `120`                                  | Per-tool-call subprocess timeout.                                        |
-| `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                          | How long the server waits for the editor daemon to reach READY on first launch. Bigger UE projects (lots of plugins, large content set, cold DDC) can take 5–10 minutes the first time. |
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                          | How long the server waits for the commandlet daemon to publish its handshake file on first launch. Bigger UE projects (lots of plugins, large content set, cold DDC) can take 5–10 minutes the first time. |
 | `BP_READER_DAEMON`          | `1` (on)                               | `0`/`false`/`no`/`off` to opt out of daemon mode.                        |
+| `BP_READER_DAEMON_IDLE_SECONDS` | `300`                              | Daemon exits cleanly after this many seconds with no connected MCP-server clients. Set higher if a slow workflow disconnects between calls and you want to avoid cold-restart cost; set lower to free editor memory faster after sessions end. |
+| `BP_READER_BATCH_ON_DISCONNECT` | `commit`                           | **Reserved — contract published, implementation deferred.** Future behavior: when an MCP-server socket closes mid-`apply_ops` batch, `commit` flushes pending state via `EndBatch(skipCompile=false)`; `discard` rolls back via `EndBatch(skipCompile=true)`. Until the per-BP write lock work lands, concurrent batches on the same BP across sessions are not yet isolated. Setting this env var today is a no-op. |
 | `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
 | `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Most useful value: `-EnableAllPlugins` — makes plugin-module load failures non-fatal so the editor starts up even when binary marketplace plugins (DLSS, Wwise, etc.) aren't built. See [Troubleshooting](Troubleshooting). |
 | `BP_READER_EDITOR_CONFIG`   | (empty → `Development`)                | Picks which `UnrealEditor-Cmd[-Win64-Config].exe` the daemon launches. Default unsets to `Development` (suffix-less). Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your `BlueprintReaderEditor` module is built in that config — UE only loads plugin DLLs whose suffix matches the running editor process. |
@@ -52,16 +54,26 @@ leave prewarm off and pay the cold start on first call.
 
 The commandlet backend defaults to **daemon mode**: one
 `UnrealEditor-Cmd.exe` process is launched on the first call and reused
-for every subsequent call until the MCP server exits. Per-call cost
-drops from ~5 s to ~30 ms.
+for every subsequent call. Per-call cost drops from ~5 s to ~30 ms.
+
+The daemon hosts a localhost TCP listener on an ephemeral port and
+publishes its port + auth token to
+`<Project>/Saved/bp-reader-cmdlet.json`. MCP servers attach to this
+listener through the same socket client that talks to the live editor.
 
 Mechanics:
-- Server pipes one newline-terminated commandlet-arg line per call to
-  the editor's stdin.
-- Plugin emits a `__BPR_DONE <code>__` sentinel on stdout when each call
-  finishes; server reads that to know the result file is ready.
-- If the daemon dies (crash, OOM, killed), the next call falls back to a
-  one-shot subprocess automatically — no error surfaced to the client.
+- First MCP server to need commandlet mode spawns the daemon (under a
+  spawn-coordination lock — see below) and attaches via TCP.
+- Subsequent MCP servers, against the same project, read the
+  handshake file and attach to the same daemon. **One daemon per
+  project, shared across all sessions.**
+- If the daemon dies (crash, OOM, killed), the next call's
+  attach-attempt reads a stale handshake (dead pid), spawns fresh,
+  and the user's call falls back to a one-shot subprocess for that
+  one call — no error surfaced to the client.
+- With no clients connected for `BP_READER_DAEMON_IDLE_SECONDS`
+  (default 300), the daemon exits cleanly and deletes its
+  handshake file. Next call cold-restarts a fresh daemon.
 
 Disable for debugging:
 
@@ -72,6 +84,62 @@ Disable for debugging:
   ...
 }
 ```
+
+### Cmdlet handshake files
+
+All in `<Project>/Saved/`, alongside `bp-reader-live.json`:
+
+| File | Purpose | Lifetime |
+|---|---|---|
+| `bp-reader-cmdlet.json` | Daemon handshake — same shape as the live one (`version`, `host`, `port`, `token`, `pid`, `started_at`). | Published when the daemon binds its TCP listener; deleted on graceful exit. |
+| `bp-reader-cmdlet.lock` | OS exclusive lifetime lock held by the daemon. | Auto-released by the OS on daemon process exit (clean or crash). |
+| `bp-reader-cmdlet-spawn.lock` | OS lock held by an MCP server during its spawn-attempt window only. | Released after spawn confirmation, or on MCP-server crash. |
+
+The two-lock model means concurrent first-time MCP-server arrivals
+don't race to spawn duplicate daemons. The spawn-lock winner calls
+`CreateProcessW`; any second arriver polls the handshake file.
+
+## Multi-session
+
+The MCP server is **no longer single-instance**. Two Claude Code or
+Copilot CLI sessions can both run `bp-reader-mcp.exe` against the
+same UE project at the same time — they each get their own MCP
+server process and share the one commandlet daemon for that project.
+
+Implications:
+- No need to close one Claude session before opening another against
+  the same project.
+- `Get-Process bp-reader-mcp*` shows one process per active session.
+  Only one `UnrealEditor-Cmd.exe` (the shared daemon).
+- Live mode is also multi-client — both sessions can connect to the
+  same open editor.
+- **Caveat:** the per-BP write lock and commit-partial-on-disconnect
+  follow-ups are deferred. Two sessions issuing `apply_ops` batches
+  on the SAME BP concurrently are not yet isolated. Different BPs:
+  fine. Same BP: serialize manually if it matters.
+
+### Exe rename
+
+A project named `UE5_MCP` builds **two** binaries under
+`Plugins/BlueprintReader/mcp-server/build/Release/`:
+
+- `bp-reader-mcp-UE5_MCP.exe` — the real binary, with the project
+  name in its filename so `tasklist /V` / `Get-Process` shows which
+  project the running MCP server belongs to.
+- `bp-reader-mcp.exe` — a hard link to the same file, for backward
+  compatibility.
+
+Existing `.mcp.json` configs that reference `bp-reader-mcp.exe` by
+full path keep working unchanged — the hard link resolves to the
+same on-disk bytes. New configs can opt into the project-suffixed
+name for clearer process attribution; both names launch the same
+program.
+
+`shutdown_daemon`, when invoked, terminates the daemon **for every
+session** against this project. The original use case (free file
+locks, force a fresh spawn) still works as before; just be aware
+that other sessions will pay the cold-restart cost on their next
+commandlet-mode call.
 
 ## Project scope vs user scope
 
@@ -120,10 +188,14 @@ each as its own MCP server (user scope):
 }
 ```
 
-Each server holds its own daemon process and binds to one project. Don't
-share a single MCP server entry across projects — the daemon's editor
-process has the project's modules loaded and switching projects mid-
-flight would require killing it.
+Each server entry binds to exactly one `.uproject`. Don't share a
+single MCP server entry across projects — the daemon's editor process
+has the project's modules loaded and switching projects mid-flight
+would require killing it.
+
+Within one project, multiple Claude/Copilot sessions launching MCP
+servers from the same entry share **one** daemon — the per-project
+shared-daemon model. Across projects, daemons are separate.
 
 (Note: enabling `BP_READER_PREWARM` on multiple registered servers means
 each one warms its own editor on session start — multiplied cost. Pick
@@ -135,13 +207,14 @@ Two separate timeouts:
 
 | Variable                            | Default | What it covers                                                                                                                                                          |
 |-------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `BP_READER_STARTUP_TIMEOUT_SECONDS` | 600 s   | Time the server waits for the editor daemon to print `__BPR_READY__` on its first launch. Big projects (many plugins, large content set, cold DDC) can take 5–10 minutes. |
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | 600 s   | Time the server waits for the commandlet daemon to publish its handshake file on first launch. Big projects (many plugins, large content set, cold DDC) can take 5–10 minutes. |
 | `BP_READER_TIMEOUT_SECONDS`         | 120 s   | Per-tool-call timeout once the daemon is hot. Tool calls return in ~30 ms typically; the timeout only matters for genuinely slow ops (large blueprint compiles).         |
 
-If you hit the **startup** timeout (`daemon failed to reach READY (waited up
-to Ns; bump BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects)`), bump
-that env var. The wait is one-time per MCP server lifetime — once the
-daemon hits READY, subsequent tool calls run under the per-call timeout.
+If you hit the **startup** timeout (`commandlet daemon: ... handshake
+never appeared within Ns (bump BP_READER_STARTUP_TIMEOUT_SECONDS for
+slower projects)`), bump that env var. The wait is one-time per daemon
+lifetime — once the daemon publishes its handshake, every MCP server
+that attaches to it pays only the per-call timeout.
 
 If you hit the **per-call** timeout regularly, warm the DDC by opening the
 project in the full editor once; commandlet-mode shader compiles run
