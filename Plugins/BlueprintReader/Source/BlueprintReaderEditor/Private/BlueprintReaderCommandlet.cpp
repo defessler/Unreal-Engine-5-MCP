@@ -1,5 +1,6 @@
 #include "BlueprintReaderCommandlet.h"
 
+#include "BatchContext.h"
 #include "BlueprintIntrospector.h"
 #include "BlueprintReaderCmdletServer.h"
 #include "BlueprintReaderJson.h"
@@ -635,17 +636,23 @@ namespace
 	// flushed by EndBatch in one pass — N×compile collapses to 1×compile per
 	// affected BP. Single-op (non-batch) callers see no behavior change.
 	//
-	// Daemon-scoped: the daemon is a single editor process so static state
-	// is fine. One-shot mode (subprocess-per-call) never opens a batch.
+	// **Per-connection** since PR #71 (multi-session): file-scope statics
+	// would let conn2's BeginBatch clobber conn1's pending set. Now the
+	// state lives in BlueprintReader::FBatchRegistry keyed by the thread-
+	// local current connection id (set by FConnectionScope around each
+	// dispatch). A zero connection id (legacy direct -run=BlueprintReader)
+	// gets its own slot — backwards compatible.
 	bool& BatchDeferFlag()
 	{
-		static bool bDefer = false;
-		return bDefer;
+		return BlueprintReader::FBatchRegistry::Get()
+			.GetOrCreate(BlueprintReader::GetCurrentConnectionId())
+			.bDeferCompile;
 	}
 	TArray<TWeakObjectPtr<UBlueprint>>& BatchPending()
 	{
-		static TArray<TWeakObjectPtr<UBlueprint>> Pending;
-		return Pending;
+		return BlueprintReader::FBatchRegistry::Get()
+			.GetOrCreate(BlueprintReader::GetCurrentConnectionId())
+			.Pending;
 	}
 
 	// Replaces the 12 direct CompileAndSaveBlueprint(BP) call sites. In
@@ -5315,15 +5322,67 @@ namespace BlueprintReader
 {
     // Forward decl of the anon-ns helper, hoisted to the same namespace
     // as our bridge so name lookup picks it up.
-    int32 RunOneOpFromLiveServer(const FString& Params);
+    int32 RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params);
 }
 namespace
 {
 int32 RunOneOp(const FString& Params);  // forward decl from earlier defn
 }
-int32 BlueprintReader::RunOneOpFromLiveServer(const FString& Params)
+int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params)
 {
+    // Pin the current connection id for the duration of this dispatch.
+    // BatchDeferFlag()/BatchPending() — and any future per-session state
+    // — read this id to look up their context in the registry. Restored
+    // on scope exit so nested or re-entrant calls behave correctly.
+    BlueprintReader::FConnectionScope Scope(ConnectionId);
     return RunOneOp(Params);
+}
+
+// Commit-partial-on-disconnect (Task 4.4). Called from the cmdlet /
+// live server's disconnect path on a server thread. Reaps the
+// connection's pending BPs and compiles them on the game thread.
+// `BP_READER_BATCH_ON_DISCONNECT=discard` drops them instead, matching
+// the strict-atomic-mode contract where clients want no half state.
+void BlueprintReader::FlushBatchForConnection(uint64 ConnectionId)
+{
+    if (ConnectionId == 0) return;
+    TArray<TWeakObjectPtr<UBlueprint>> Pending =
+        BlueprintReader::FBatchRegistry::Get().Discard(ConnectionId);
+    if (Pending.IsEmpty()) return;
+
+    const bool bSkipCompile =
+        FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_BATCH_ON_DISCONNECT"))
+            .Equals(TEXT("discard"), ESearchCase::IgnoreCase);
+    if (bSkipCompile)
+    {
+        UE_LOG(LogBlueprintReader, Display,
+            TEXT("Client %llu disconnected mid-batch; discarding %d pending BP(s) per BP_READER_BATCH_ON_DISCONNECT=discard"),
+            (unsigned long long)ConnectionId, Pending.Num());
+        return;
+    }
+
+    UE_LOG(LogBlueprintReader, Display,
+        TEXT("Client %llu disconnected mid-batch; flushing %d pending BP(s)"),
+        (unsigned long long)ConnectionId, Pending.Num());
+
+    // CompileAndSaveBlueprint requires the game thread. Schedule + wait
+    // — the server worker is exiting anyway, so a short block is fine,
+    // and the daemon's main poll loop is still pumping the task graph
+    // (it doesn't exit until ActiveConnections hits 0 AND idle elapses).
+    FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
+    AsyncTask(ENamedThreads::GameThread, [Pending, Done]()
+    {
+        for (const TWeakObjectPtr<UBlueprint>& Weak : Pending)
+        {
+            if (UBlueprint* BP = Weak.Get())
+            {
+                CompileAndSaveBlueprint(BP);
+            }
+        }
+        Done->Trigger();
+    });
+    Done->Wait();
+    FPlatformProcess::ReturnSynchEventToPool(Done);
 }
 
 namespace
