@@ -338,7 +338,20 @@ std::string TrimLines(const std::string& s, std::size_t maxLines) {
     return out;
 }
 
-std::filesystem::path TempJsonPath() {
+// FNV-1a 64-bit hash of an arbitrary string. Used to prefix temp-dir
+// scratch files with a project-derived tag so a glance at the temp
+// directory shows which project owns which files when multiple UE
+// projects are active.
+uint64_t FnvHash64(std::string_view s) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (char c : s) {
+        h ^= static_cast<uint8_t>(c);
+        h *= 0x100000001b3ull;
+    }
+    return h;
+}
+
+std::filesystem::path TempJsonPath(std::string_view projectTag) {
 #if defined(_WIN32)
     wchar_t buf[MAX_PATH];
     DWORD n = GetTempPathW(MAX_PATH, buf);
@@ -347,11 +360,14 @@ std::filesystem::path TempJsonPath() {
 #else
     std::filesystem::path tmp = std::filesystem::temp_directory_path();
 #endif
+    char prefix[32];
+    std::snprintf(prefix, sizeof(prefix), "%016llx",
+        static_cast<unsigned long long>(FnvHash64(projectTag)));
     std::random_device rd;
     std::mt19937_64 rng(rd());
     std::uniform_int_distribution<uint64_t> dist;
     std::ostringstream name;
-    name << "bp-reader-" << std::hex << dist(rng) << ".json";
+    name << "bp-reader-" << prefix << "-" << std::hex << dist(rng) << ".json";
     return tmp / name.str();
 }
 
@@ -580,7 +596,7 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
 }
 
 nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::wstring>& opArgs) {
-    auto outFile = TempJsonPath();
+    auto outFile = TempJsonPath(cfg_.uproject.string());
 
     std::vector<std::wstring> args;
     args.reserve(opArgs.size() + 8);
