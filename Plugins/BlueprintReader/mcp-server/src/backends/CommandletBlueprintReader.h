@@ -30,6 +30,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -58,6 +59,15 @@ public:
         std::string editorExtraArgs;               // appended to commandlet command
                                                    // line, whitespace-separated
         bool useDaemon = false;
+
+        // Test hook: when set, EnsureDaemonAttached invokes this instead
+        // of the built-in Win32 CreateProcessW spawn. Lets the spawn-race
+        // unit test (test_daemon_lifecycle.cpp) verify that two-lock
+        // coordination collapses concurrent spawn attempts to one without
+        // actually launching UnrealEditor-Cmd.exe. Production callers
+        // (BackendFactory) leave this empty — the real Win32 path runs.
+        std::function<void(const std::filesystem::path& uproject)>
+            spawnDaemonHook;
     };
 
     explicit CommandletBlueprintReader(Config cfg);
