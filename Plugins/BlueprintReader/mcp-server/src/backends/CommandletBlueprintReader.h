@@ -6,13 +6,17 @@
 //     -Op=<...>` per tool call. Each call pays the editor cold-start cost
 //     (~5–7 s on a Dev box).
 //   * Daemon (`Config::useDaemon = true`): spawn the editor once with
-//     `-run=BlueprintReader -Daemon` and reuse the same process across all
-//     calls. The plugin's daemon loop reads commandlet-arg lines from stdin,
-//     prints `__BPR_READY__` once at startup and `__BPR_DONE <code>__` after
-//     each command. Subsequent calls cost only the per-call work (~1 s).
+//     `-run=BlueprintReader -Daemon` and reuse the same process across
+//     all calls. The plugin's daemon publishes a TCP listener; this
+//     class attaches to (or spawns + attaches to) that listener via
+//     `SocketBlueprintReader`, so the heavy startup is paid once and
+//     subsequent calls cost only the per-call work (~1 s). Replaces
+//     the older stdin/stdout pipe protocol — the daemon owns its own
+//     I/O via TCP now (Phase 1 of the multi-session shared-daemon work).
 //
-// Both modes write JSON payloads to a temp file under %TEMP% so noisy
-// editor log output on stdout doesn't pollute it.
+// Both modes write JSON payloads to a temp file under %TEMP% for the
+// one-shot path so noisy editor log output on stdout doesn't pollute
+// it. The daemon path uses the socket's structured frame transport.
 //
 // Configuration (env, defaults set by ConfigFromEnv):
 //   * BP_READER_ENGINE_DIR       — path to the source-built engine
@@ -22,9 +26,11 @@
 #pragma once
 
 #include "backends/IBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 
 #include <chrono>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -264,41 +270,53 @@ public:
     // The next tool call auto-respawns via the existing fallback path.
     nlohmann::json ShutdownDaemon() override;
 
-    // Spin up the editor daemon now in a background thread. Tool calls that
-    // arrive before the daemon is READY block on the same daemonMutex_ used
-    // by RunOpDaemon, so this is racy-safe: a real call either completes the
-    // prewarm work itself (if it lost the race) or finds a hot daemon. No-op
-    // if useDaemon is false or the platform doesn't support daemon mode.
+    // Spin up the editor daemon now in a background thread. Tool calls
+    // that arrive before the daemon's TCP handshake file is published
+    // block on the same daemonMutex_ used by EnsureDaemonAttached, so
+    // this is racy-safe: a real call either completes the prewarm work
+    // itself (if it lost the race) or finds a hot daemon to attach to.
+    // No-op if useDaemon is false or the platform doesn't support
+    // daemon mode.
     void Prewarm();
 
 private:
-    // Dispatches to RunOpOneShot or RunOpDaemon. Always writes its JSON
-    // payload to a temp file under %TEMP% and returns the parsed JSON.
+    // Dispatches to RunOpOneShot or the daemon socket. Always writes its
+    // JSON payload to a temp file under %TEMP% (one-shot path) or
+    // routes the op-frame through SocketBlueprintReader (daemon path)
+    // and returns the parsed JSON.
     nlohmann::json RunOp(const std::vector<std::wstring>& opArgs);
 
     nlohmann::json RunOpOneShot(const std::vector<std::wstring>& opArgs);
-    nlohmann::json RunOpDaemon(const std::vector<std::wstring>& opArgs);
+
+    // Daemon-attach helpers. Try to attach to an existing daemon via
+    // `<Project>/Saved/bp-reader-cmdlet.json`; if none is alive, spawn
+    // one and wait for its handshake file. The race-naive Phase 2 path:
+    // two MCP servers spawning concurrently will fight over the
+    // lifetime lock on the editor side, and the loser will see a clean
+    // attach on retry. Two-lock spawn coordination lands in Phase 4.
+    std::unique_ptr<SocketBlueprintReader> TryAttachExistingDaemon() const;
+    SocketBlueprintReader& EnsureDaemonAttached();
+    void PollForHandshake(std::chrono::seconds timeout);
 
 #if defined(_WIN32)
-    void EnsureDaemon();
-    void TerminateDaemon();
-    // Drain daemonStdout_ into accumulator_ until `marker` appears (or the
-    // deadline hits). On success, consumes everything up to and including
-    // the marker. Returns the bytes consumed (excluding the marker).
-    // EnsureDaemon passes startupTimeout (longer); RunOpDaemon passes the
-    // per-call timeout.
-    std::string ReadUntilMarker(const std::string& marker, std::chrono::seconds timeout);
+    void SpawnDaemon();   // launches UnrealEditor-Cmd.exe -Daemon, no pipes
+    void TerminateDaemon(); // terminates the child we spawned (if any)
 
     HANDLE daemonProcess_ = nullptr;
-    HANDLE daemonStdin_   = nullptr;
-    HANDLE daemonStdout_  = nullptr;
-    std::string accumulator_;
+#else
+    void SpawnDaemon();   // throws on non-Windows
+    void TerminateDaemon();
 #endif
 
-    std::mutex daemonMutex_;  // serializes RunOpDaemon (one in-flight call max)
-    std::thread prewarmThread_;  // joined in destructor; running EnsureDaemon under daemonMutex_
+    std::mutex daemonMutex_;  // serializes EnsureDaemonAttached + spawn/respawn
+    std::thread prewarmThread_;  // joined in destructor
     Config cfg_;
     std::filesystem::path editorCmdExe_;
+
+    // Lazily populated by EnsureDaemonAttached. Cleared on shutdown or
+    // when the underlying TCP transport throws (the next call will
+    // re-attach or re-spawn).
+    std::unique_ptr<SocketBlueprintReader> socket_;
 };
 
 } // namespace bpr::backends
