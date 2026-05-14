@@ -183,10 +183,93 @@ Two modes, controlled by `Config::useDaemon`
 - **One-shot** — spawn `UnrealEditor-Cmd.exe -run=BlueprintReader -Op=...`
   per tool call. Each call pays the editor cold-start cost (~5–7 s on a
   dev box).
-- **Daemon** — spawn once with `-Daemon`, feed newline-delimited
-  commandlet-arg lines on stdin, read JSON paths back on stdout.
-  Subsequent calls cost ~1 s. Default-on; opt out with
-  `BP_READER_DAEMON=0`.
+- **Daemon** — spawn once with `-Daemon`. The daemon now hosts a
+  **localhost TCP listener** (same wire frames as the live editor's
+  `BlueprintReaderLiveServer`) and publishes its port + token to
+  `<Project>/Saved/bp-reader-cmdlet.json`. The MCP server attaches
+  through `SocketBlueprintReader` — the same socket client that talks
+  to the live editor — so the per-call cost drops to ~1 s. Default-on;
+  opt out with `BP_READER_DAEMON=0`.
+
+### Topology: one daemon, many MCP servers
+
+Each Claude Code / Copilot CLI session has its own MCP server process.
+The MCP-server-level single-instance lock that used to gate this was
+removed in the multi-session work; the lifetime lock now sits on the
+daemon. The result: **N MCP servers share ONE commandlet daemon per
+project**. The first MCP server to need commandlet mode spawns the
+daemon; every later arrival attaches to the same listener through the
+published handshake.
+
+```
+Session 1 client (Claude)  ──► bp-reader-mcp #1 ──┐
+Session 2 client (Claude)  ──► bp-reader-mcp #2 ──┤
+Session 3 client (Copilot) ──► bp-reader-mcp #3 ──┘
+                                                  │
+                       ┌──────────────────────────┴────────────────────┐
+                       ▼                                               ▼
+              UE editor's live TCP listener                  bp-reader-cmdlet daemon
+              (BlueprintReaderLiveServer)                    (UnrealEditor-Cmd -Daemon
+              Multi-client. Each MCP server                  hosting a TCP listener)
+              connects independently with auth.              ONE per project; shared
+                                                             across all sessions.
+```
+
+### Handshake files in `<Project>/Saved/`
+
+| File | Purpose | Lifetime |
+|---|---|---|
+| `bp-reader-live.json` | Live editor handshake (port + token + pid) | Created by live server on `StartupModule`; deleted on `ShutdownModule` |
+| `bp-reader-cmdlet.json` | Commandlet daemon handshake — mirrors the live one's shape | Created by daemon on TCP listen; deleted on graceful exit |
+| `bp-reader-cmdlet.lock` | Daemon's exclusive lifetime lock | Held by the daemon process; OS auto-releases on process exit (clean or crash) |
+| `bp-reader-cmdlet-spawn.lock` | MCP-server-held lock during a spawn-attempt window | Released after spawn confirmation or on MCP-server crash |
+
+The MCP-server-level single-instance lock that previously existed is
+**gone**. Concurrent MCP servers no longer block each other at all.
+
+### Spawn flow: two-lock coordination
+
+`CommandletBlueprintReader::EnsureDaemonAttached`
+(`CommandletBlueprintReader.cpp:792-875`) handles first-attach for
+each MCP server with a two-lock dance:
+
+1. **Try to attach.** Read `bp-reader-cmdlet.json`. If the pid is
+   live and a TCP probe succeeds → attach, done.
+2. **Race for `bp-reader-cmdlet-spawn.lock`** (separate from the
+   daemon's `bp-reader-cmdlet.lock` lifetime lock).
+   - **Got it:** re-check the handshake file (someone may have
+     spawned in the gap). If still no daemon, `CreateProcessW` a
+     fresh `UnrealEditor-Cmd -Daemon`, poll for the handshake until
+     `BP_READER_STARTUP_TIMEOUT_SECONDS`, then attach. Release the
+     spawn lock.
+   - **Didn't get it** (another MCP server is mid-spawn): poll the
+     handshake file every 250 ms until either it appears or the
+     timeout fires. Attach if it appeared.
+3. **Still nothing** → throw a clear error naming the failed step
+   and the timeout window used.
+
+Decoupling "daemon alive" from "daemon starting" is the lock model
+that closes the simultaneous-spawn race: only one MCP server can be
+inside the spawn window at a time, and any second arriver waits on
+the handshake instead of spawning a competing daemon. If the spawner
+itself crashes, the OS releases its spawn lock and a later arriver
+takes over.
+
+### Crash recovery
+
+A daemon that dies without graceful exit leaves the handshake file on
+disk but releases the lifetime lock. The next MCP server's step 1
+notices the dead pid (`bp-reader-cmdlet.json` carries it), ignores the
+handshake, and falls through to step 2 to spawn a fresh daemon. No
+manual cleanup needed.
+
+### Idle shutdown
+
+The daemon tracks active connections. When the last client disconnects
+it starts a `BP_READER_DAEMON_IDLE_SECONDS` timer (default 300). If no
+new connection arrives before it fires, the daemon stops accepting,
+deletes its handshake, and exits cleanly. A connection that arrives
+during the countdown cancels it.
 
 ### One-shot dispatch
 
@@ -245,48 +328,60 @@ the consumers are different: positional args go through
 immediately after `=` is `"`. The history comment at
 `CommandletArgEncoding.h:109-113` records two earlier regressions.
 
-### Daemon mode
+### Daemon mode (TCP transport)
 
-`EnsureDaemon` spawns one editor process with `-Daemon` and keeps three
-HANDLEs around: the process, its stdin (so we can feed it new
-commandlet-arg lines), and its stdout (so we can read framed
-responses).
+The daemon used to be a stdin/stdout child of each MCP server: one
+editor process per MCP server, fed newline-delimited
+commandlet-arg strings on stdin, scanned for `__BPR_READY__` and
+`__BPR_DONE <code>__` sentinels on stdout. That model is gone.
 
-The wire framing in daemon mode is line-oriented but uses sentinel
-markers rather than HTTP-style framing:
+Today's daemon is a TCP server. `RunDaemon` on the plugin side spins
+up the same listener pattern as `BlueprintReaderLiveServer`:
+loopback bind, ephemeral port, `SO_REUSEADDR`, per-connection
+runnable that handles auth then loops on op frames. The MCP-server
+side talks to it through `SocketBlueprintReader` — see [06 — Wire
+protocol](06-wire-protocol.md#op-frame-live--commandlet) for the
+frame catalog.
 
-- Editor emits `__BPR_READY__\n` once at startup.
-- Editor emits `__BPR_DONE <code>__\n` after each op completes.
-- The MCP-side `ReadUntilMarker` (`CommandletBlueprintReader.h:290`)
-  consumes everything up to and including the marker.
-
-The CLAUDE.md note about "don't put `__BPR_DONE` in any log message" is
-load-bearing — the marker scanner finds the first occurrence, so a help
-line mentioning the sentinel verbatim would short-circuit parsing.
+`EnsureDaemonAttached`
+(`CommandletBlueprintReader.cpp:792-875`) is the entry point. Per
+the two-lock flow above, it either attaches an existing daemon or
+spawns one and attaches. The returned `SocketBlueprintReader&` is
+reused for every subsequent op on this MCP server.
 
 ### Daemon failure recovery and prewarming
 
-If the daemon throws transport-level (`RunOpDaemon` failed but the
-asset itself isn't the problem,
-`CommandletBlueprintReader.cpp:415-432`), `RunOp` terminates the
-daemon and falls through to `RunOpOneShot` for that call. `AssetNotFound`
-passes through as-is; everything else is treated as transport. A dead
-daemon doesn't break the next call — `EnsureDaemon` respawns on the
-call after.
+If a socket call throws transport-level (the daemon died, the
+listener got hung up on, etc.), `RunOp` invalidates the cached
+`socket_` and falls through to `RunOpOneShot` for that call.
+`AssetNotFound` passes through as-is; everything else is treated as
+transport. A dead daemon doesn't break the next call — the next
+`EnsureDaemonAttached` re-runs the two-lock flow, sees the stale
+handshake (dead pid), and respawns.
 
 `Prewarm()` spins up the daemon on a background thread so the first
 real tool call doesn't pay cold-start latency. Opt in with
-`BP_READER_PREWARM=1`. The prewarm thread and `RunOpDaemon` share
-`daemonMutex_` so calls arriving before READY block on the same lock.
+`BP_READER_PREWARM=1`. The prewarm thread and the live-call path
+share `daemonMutex_`, so calls arriving before the spawn completes
+block on the same lock and inherit the now-warm socket.
 
 
-## Live backend
+## Socket backend (live + cmdlet)
 
-Source: `LiveBlueprintReader.h`, `LiveBlueprintReader.cpp`.
+Source: `SocketBlueprintReader.h`, `SocketBlueprintReader.cpp` —
+historically `LiveBlueprintReader`, renamed when the commandlet
+daemon switched to the same wire protocol. One client class targets
+two handshake files: `bp-reader-live.json` (in-editor listener) and
+`bp-reader-cmdlet.json` (commandlet daemon's listener). The frames
+on the wire are identical; the difference is which process is
+listening and how the MCP server discovered it.
 
-The live backend talks TCP to `BlueprintReaderLiveServer`, a TCP
-listener the plugin spins up inside the editor module. The contract:
-newline-delimited JSON, four message types, shared-token auth.
+`LiveBlueprintReader` is now a thin alias kept for source-level
+compatibility; new code should reference `SocketBlueprintReader`
+directly.
+
+The contract: newline-delimited JSON, four message types,
+shared-token auth.
 
 ### Why this exists
 
@@ -368,10 +463,12 @@ bytes from the dead session.
 Source: `AutoBlueprintReader.h`, `AutoBlueprintReader.cpp`.
 
 Auto is the default backend when a `.uproject` is auto-discovered
-(`BackendFactory.cpp:189-191`). On every tool call it probes for an
-open editor; if one's reachable, it routes to live, otherwise to
-commandlet. The decision is cached for `probeTtl` (default 2s) so
-back-to-back calls don't each pay a TCP connect attempt.
+(`BackendFactory.cpp:189-191`). On every tool call it probes both
+handshake files in priority order — `bp-reader-live.json` first, then
+`bp-reader-cmdlet.json` — and attaches to the first one that's actually
+listening. Live wins when an editor is open; cmdlet wins when only the
+shared daemon is up. The decision is cached for `probeTtl` (default 2s)
+so back-to-back calls don't each pay two TCP connect attempts.
 
 ### Probe sequence
 
@@ -431,8 +528,10 @@ from three sources, in priority order:
 3. **Defaults** — hardcoded fallbacks for everything else (`timeout=120s`,
    `daemon=true`, `cacheTtl=30s`, `host=127.0.0.1`).
 
-The handshake file (when present) feeds into step 2 for live-mode
-host/port/token.
+Both handshake files (when present) feed into step 2: `bp-reader-live.json`
+seeds live-mode host/port/token, `bp-reader-cmdlet.json` seeds
+commandlet-mode socket attachment. The auto backend's per-call probe
+re-reads both before each call (subject to its 2s cache).
 
 ### Env-var surface
 
@@ -446,8 +545,9 @@ The complete set, documented on `BackendConfig`
 | `BP_READER_ENGINE_DIR`              | auto-discovered | source-built engine root |
 | `BP_READER_PROJECT`                 | auto-discovered | `.uproject` path |
 | `BP_READER_TIMEOUT_SECONDS`         | 120           | per-call subprocess timeout |
-| `BP_READER_STARTUP_TIMEOUT_SECONDS` | 600           | daemon initial READY wait |
+| `BP_READER_STARTUP_TIMEOUT_SECONDS` | 600           | daemon initial handshake-publish wait |
 | `BP_READER_DAEMON`                  | true          | daemon mode (commandlet) |
+| `BP_READER_DAEMON_IDLE_SECONDS`     | 300           | daemon exits after N seconds idle (no active clients) |
 | `BP_READER_PREWARM`                 | false         | spawn daemon on startup |
 | `BP_READER_EDITOR_CONFIG`           | auto-detected | `Development` / `DebugGame` / ... |
 | `BP_READER_EDITOR_ARGS`             | empty         | extra commandlet args |
