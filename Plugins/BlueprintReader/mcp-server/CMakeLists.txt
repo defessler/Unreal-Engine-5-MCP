@@ -103,7 +103,33 @@ set_target_properties(bp-reader-core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ---------------------------------------------------------------------------
 add_executable(bp-reader-mcp src/main.cpp)
 target_link_libraries(bp-reader-mcp PRIVATE bp-reader-core)
-set_target_properties(bp-reader-mcp PROPERTIES OUTPUT_NAME "bp-reader-mcp")
+
+if(BP_READER_PROJECT_NAME)
+    set(BP_READER_EXE_NAME "bp-reader-mcp-${BP_READER_PROJECT_NAME}")
+else()
+    set(BP_READER_EXE_NAME "bp-reader-mcp")
+endif()
+set_target_properties(bp-reader-mcp PROPERTIES OUTPUT_NAME "${BP_READER_EXE_NAME}")
+
+# Always produce a canonical bp-reader-mcp(.exe) alongside the named
+# artifact so existing .mcp.json configs referencing the canonical name
+# continue to work. Hard-link on Windows (mklink /H — no admin needed);
+# create_hardlink on Unix.
+if(BP_READER_PROJECT_NAME)
+    if(WIN32)
+        # mklink is a cmd.exe builtin and rejects forward-slash paths
+        # (they look like /switch args), so wrap both paths in
+        # $<SHELL_PATH:...> to get native backslashes.
+        add_custom_command(TARGET bp-reader-mcp POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:bp-reader-mcp>/bp-reader-mcp.exe"
+            COMMAND cmd /c mklink /H "$<SHELL_PATH:$<TARGET_FILE_DIR:bp-reader-mcp>/bp-reader-mcp.exe>" "$<SHELL_PATH:$<TARGET_FILE:bp-reader-mcp>>"
+            COMMENT "Hard-linking canonical bp-reader-mcp.exe to ${BP_READER_EXE_NAME}.exe")
+    else()
+        add_custom_command(TARGET bp-reader-mcp POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_hardlink "$<TARGET_FILE:bp-reader-mcp>" "$<TARGET_FILE_DIR:bp-reader-mcp>/bp-reader-mcp"
+            COMMENT "Hard-linking canonical bp-reader-mcp to ${BP_READER_EXE_NAME}")
+    endif()
+endif()
 
 # Copy fixtures next to the executable so the default fixture-loading path
 # (./fixtures relative to the exe) just works after a build.
