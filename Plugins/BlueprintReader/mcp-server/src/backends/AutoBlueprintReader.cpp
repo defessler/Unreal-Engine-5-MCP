@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -27,18 +28,21 @@ namespace bpr::backends {
 
 namespace {
 
-// Re-read the editor's handshake file (same shape as
-// BackendFactory.cpp's ReadHandshakeFile, but Auto re-reads on every
-// probe so a freshly-launched editor's port + token are picked up
-// without needing an MCP server restart).
+// Re-read a handshake file (same shape as BackendFactory.cpp's
+// ReadHandshakeFile, but Auto re-reads on every probe so a
+// freshly-launched editor or daemon's port + token are picked up
+// without needing an MCP server restart). The filename varies:
+// `bp-reader-live.json` for the editor, `bp-reader-cmdlet.json` for
+// the commandlet daemon.
 struct AutoHandshake {
     std::string host;
     int         port = 0;
     std::string token;
 };
-std::optional<AutoHandshake> ReadHandshake(const std::filesystem::path& uproject) {
+std::optional<AutoHandshake> ReadHandshakeFile(const std::filesystem::path& uproject,
+                                               const char* filename) {
     if (uproject.empty()) return std::nullopt;
-    auto path = uproject.parent_path() / "Saved" / "bp-reader-live.json";
+    auto path = uproject.parent_path() / "Saved" / filename;
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) return std::nullopt;
     std::ifstream f(path);
@@ -55,6 +59,11 @@ std::optional<AutoHandshake> ReadHandshake(const std::filesystem::path& uproject
     hs.token = j.value("token", std::string());
     if (hs.port <= 0 || hs.token.empty()) return std::nullopt;
     return hs;
+}
+
+// Back-compat overload for callers that just want the live handshake.
+std::optional<AutoHandshake> ReadHandshake(const std::filesystem::path& uproject) {
+    return ReadHandshakeFile(uproject, "bp-reader-live.json");
 }
 
 // One-shot TCP connect with a short timeout — confirms the editor's
@@ -176,27 +185,41 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildLive() {
     return std::make_unique<SocketBlueprintReader>(std::move(lc));
 }
 
-void AutoBlueprintReader::Probe() {
-    // Build a candidate live config. Empty → no editor known about.
-    auto candidate = TryBuildLive();
-    if (!candidate) {
-        useLive_ = false;
-        live_.reset();
-        lastProbe_ = std::chrono::steady_clock::now();
-        return;
-    }
+std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildCmdlet() {
+    // Mirror of TryBuildLive but for the commandlet daemon's handshake
+    // file. Unlike the live path, env-var overrides don't apply here —
+    // the cmdlet daemon is project-local and there's no user-visible
+    // BP_READER_CMDLET_PORT/TOKEN knob. The handshake file is the only
+    // source of truth.
+    auto hs = ReadHandshakeFile(cfg_.uproject, "bp-reader-cmdlet.json");
+    if (!hs) return nullptr;
 
-    // The candidate has a port + token; confirm something is actually
-    // listening on the port before we commit. A stale handshake file
-    // from a crashed editor would otherwise route us to a broken Live
-    // until the file ages out.
-    SocketBlueprintReader::Config probeCfg;
-    // We re-probe the candidate's host/port to validate.
-    std::string probeHost;
-    int probePort = 0;
-    {
-        // Pull host/port out of the live reader. The Config we built
-        // above is the source of truth — re-read by reconstructing.
+    SocketBlueprintReader::Config sc;
+    sc.host  = hs->host.empty() ? "127.0.0.1" : hs->host;
+    sc.port  = hs->port;
+    sc.token = hs->token;
+    // Wire the handshake-file path through so the socket reader can
+    // self-refresh on connect-refused / auth-fail (issue #9 pattern,
+    // also applies when the daemon restarts).
+    if (!cfg_.uproject.empty()) {
+        sc.handshakeFilePath =
+            (cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json").string();
+    }
+    if (sc.port <= 0 || sc.token.empty()) return nullptr;
+    return std::make_unique<SocketBlueprintReader>(std::move(sc));
+}
+
+void AutoBlueprintReader::Probe() {
+    lastProbe_ = std::chrono::steady_clock::now();
+
+    // ----- 1. Try live (running editor with the BlueprintReader plugin loaded).
+    if (auto liveCandidate = TryBuildLive()) {
+        // The candidate has a port + token; confirm something is
+        // actually listening before we commit. A stale handshake file
+        // from a crashed editor would otherwise route us to a broken
+        // Live until the file ages out.
+        std::string probeHost;
+        int probePort = 0;
         auto hs = ReadHandshake(cfg_.uproject);
         if (cfg_.livePort != 0) {
             probePort = cfg_.livePort;
@@ -205,25 +228,38 @@ void AutoBlueprintReader::Probe() {
             probePort = hs->port;
             probeHost = hs->host.empty() ? "127.0.0.1" : hs->host;
         }
+        if (probePort > 0 &&
+            TcpProbe(probeHost, probePort, cfg_.probeConnectTimeout)) {
+            // If we already have a live_ reader, keep it — its socket
+            // may be hot. SocketBlueprintReader doesn't expose its
+            // config publicly, so we rebuild on every probe transition.
+            // Cost: one TCP handshake per editor open/close, not per call.
+            if (!live_) live_ = std::move(liveCandidate);
+            // Drop the cmdlet-socket route (live wins).
+            cmdletSocket_.reset();
+            route_ = Route::Live;
+            return;
+        }
     }
-    bool reachable = probePort > 0 &&
-                     TcpProbe(probeHost, probePort, cfg_.probeConnectTimeout);
-    if (!reachable) {
-        useLive_ = false;
-        live_.reset();
-        lastProbe_ = std::chrono::steady_clock::now();
-        return;
-    }
+    // No reachable live — drop any cached live reader so it's rebuilt
+    // on the next probe-success.
+    live_.reset();
 
-    // If we already have a live_ reader pointing at the SAME port,
-    // keep it — its socket may be hot. Otherwise replace.
-    // (SocketBlueprintReader doesn't expose its config publicly, so the
-    // simple-and-correct path is: rebuild on every probe transition.
-    // The cost is one TCP handshake per editor open/close, not per
-    // call.)
-    if (!live_) live_ = std::move(candidate);
-    useLive_ = true;
-    lastProbe_ = std::chrono::steady_clock::now();
+    // ----- 2. Try the commandlet daemon's TCP listener.
+    if (auto cmdletCandidate = TryBuildCmdlet()) {
+        auto hs = ReadHandshakeFile(cfg_.uproject, "bp-reader-cmdlet.json");
+        if (hs &&
+            TcpProbe(hs->host.empty() ? "127.0.0.1" : hs->host,
+                     hs->port, cfg_.probeConnectTimeout)) {
+            if (!cmdletSocket_) cmdletSocket_ = std::move(cmdletCandidate);
+            route_ = Route::CmdletSocket;
+            return;
+        }
+    }
+    cmdletSocket_.reset();
+
+    // ----- 3. No daemons available — fall back to spawning a commandlet.
+    route_ = Route::Commandlet;
 }
 
 IBlueprintReader& AutoBlueprintReader::Pick() {
@@ -231,7 +267,8 @@ IBlueprintReader& AutoBlueprintReader::Pick() {
     if (now - lastProbe_ >= cfg_.probeTtl) {
         Probe();
     }
-    if (useLive_ && live_) return *live_;
+    if (route_ == Route::Live && live_) return *live_;
+    if (route_ == Route::CmdletSocket && cmdletSocket_) return *cmdletSocket_;
     return EnsureCommandlet();
 }
 
@@ -240,7 +277,16 @@ std::string AutoBlueprintReader::SelectBackendForTesting() {
     // Force a fresh probe.
     lastProbe_ = std::chrono::steady_clock::time_point{};
     Probe();
-    return useLive_ ? "live" : "commandlet";
+    // CmdletSocket is reported as "commandlet" — semantically it routes
+    // to the commandlet path, just via the daemon's TCP listener
+    // instead of spawning a new commandlet. Test cases that care about
+    // the distinction should be added alongside this name.
+    switch (route_) {
+        case Route::Live:         return "live";
+        case Route::CmdletSocket: return "commandlet";
+        case Route::Commandlet:   return "commandlet";
+    }
+    return "commandlet";
 }
 
 // ===== Forwarders =========================================================
