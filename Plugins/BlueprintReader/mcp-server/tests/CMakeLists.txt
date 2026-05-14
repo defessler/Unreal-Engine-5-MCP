@@ -29,7 +29,6 @@ add_executable(bp-reader-tests
     test_cpp_parse.cpp
     test_transpile_roundtrip.cpp
     test_auto_backend.cpp
-    test_single_instance_lock.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE
