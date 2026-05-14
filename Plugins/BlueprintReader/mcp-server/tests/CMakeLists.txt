@@ -30,6 +30,7 @@ add_executable(bp-reader-tests
     test_transpile_roundtrip.cpp
     test_auto_backend.cpp
     test_multi_instance.cpp
+    test_daemon_lifecycle.cpp
 )
 target_link_libraries(bp-reader-tests PRIVATE bp-reader-core)
 target_include_directories(bp-reader-tests PRIVATE
