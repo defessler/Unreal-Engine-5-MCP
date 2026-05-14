@@ -15,7 +15,7 @@ if(MSVC)
     # they can't slip through into downstream consumers' build logs.
     # The C4100 case that motivated this was the `visited` parameter in
     # DecompileStatement — it compiled clean here at /W4 but surfaced
-    # as a warning in the MyGame consumer's build (different warning
+    # as a warning in a downstream consumer's build (different warning
     # configuration). Now /we4100 makes us fail the build, forcing the
     # fix on this side.
     #   C4100: unreferenced formal parameter
