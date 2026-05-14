@@ -69,6 +69,7 @@ add_library(bp-reader-core STATIC
     src/jsonrpc/Server.cpp
     src/jsonrpc/Mcp.cpp
     src/tools/ToolRegistry.cpp
+    src/tools/ToolCategories.cpp
     src/tools/BlueprintTools.cpp
     src/tools/JsonProjection.cpp
     src/tools/TypeShorthand.cpp

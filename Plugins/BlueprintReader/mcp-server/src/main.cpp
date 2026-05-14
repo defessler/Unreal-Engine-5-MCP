@@ -18,6 +18,7 @@
 #include "backends/BackendFactory.h"
 #include "backends/MockBlueprintReader.h"
 #include "Diagnostics.h"
+#include "Env.h"
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
@@ -293,6 +294,41 @@ int RunServerLoop() {
 
     tools::ToolRegistry registry;
     tools::RegisterBlueprintTools(registry, *reader);
+
+    // Optional env-var filter. Lets users with tool-count-capped MCP
+    // clients (GitHub Copilot caps at 128 tools across all servers +
+    // built-ins) pare the surface down to what they need. Both vars
+    // accept comma-separated tokens that are either tool names or
+    // category names (see tools/ToolCategories.cpp for the list).
+    //   BP_READER_TOOLS         allow-list; empty = "all tools"
+    //   BP_READER_TOOLS_EXCLUDE deny-list; subtracted after the allow step
+    auto splitCSV = [](const std::string& s) {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char c : s) {
+            if (c == ',' || c == ';' || c == ' ') {
+                if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+            } else {
+                cur.push_back(c);
+            }
+        }
+        if (!cur.empty()) out.push_back(cur);
+        return out;
+    };
+    const std::vector<std::string> allowSpec =
+        splitCSV(env::GetOrDefault("BP_READER_TOOLS"));
+    const std::vector<std::string> denySpec =
+        splitCSV(env::GetOrDefault("BP_READER_TOOLS_EXCLUDE"));
+    const size_t before = registry.Size();
+    registry.ApplyFilter(allowSpec, denySpec);
+    if (!allowSpec.empty() || !denySpec.empty()) {
+        std::cerr << "[bp-reader-mcp] tool filter: kept "
+                  << registry.Size() << " of " << before
+                  << " tools";
+        if (!allowSpec.empty()) std::cerr << " (allow=" << env::GetOrDefault("BP_READER_TOOLS") << ")";
+        if (!denySpec.empty())  std::cerr << " (deny="  << env::GetOrDefault("BP_READER_TOOLS_EXCLUDE") << ")";
+        std::cerr << "\n";
+    }
 
     jsonrpc::Server server;
     mcp::ServerInfo info;

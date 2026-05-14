@@ -8,6 +8,7 @@ add_executable(bp-reader-tests
     test_mcp.cpp
     test_mock_backend.cpp
     test_tools.cpp
+    test_tool_filter.cpp
     test_commandlet_backend.cpp
     test_commandlet_arg_encoding.cpp
     test_framing_stress.cpp
