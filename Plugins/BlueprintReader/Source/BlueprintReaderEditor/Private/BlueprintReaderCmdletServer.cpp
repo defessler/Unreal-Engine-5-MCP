@@ -50,8 +50,10 @@ TUniquePtr<FCmdletServer> GCmdletServer;
 class FCmdletConnectionRunnable : public FRunnable
 {
 public:
-    FCmdletConnectionRunnable(FSocket* InSocket, FString InExpectedToken)
-        : Socket(InSocket), ExpectedToken(MoveTemp(InExpectedToken)) {}
+    FCmdletConnectionRunnable(FSocket* InSocket, FString InExpectedToken,
+                              FCmdletServer* InServer)
+        : Socket(InSocket), ExpectedToken(MoveTemp(InExpectedToken)),
+          Server(InServer) {}
 
     ~FCmdletConnectionRunnable() override
     {
@@ -67,6 +69,16 @@ public:
 
     uint32 Run() override
     {
+        // Notify the server on every exit path (auth failure, EOF,
+        // explicit stop, etc.) so the idle-shutdown counter stays
+        // accurate. RAII guard avoids having to remember it at every
+        // `return 0` below.
+        struct FNotifyDisconnect
+        {
+            FCmdletServer* Srv;
+            ~FNotifyDisconnect() { if (Srv) Srv->OnClientDisconnected(); }
+        } DisconnectGuard{Server};
+
         // 1. Send hello.
         if (!SendFrame(MakeHello())) return 0;
 
@@ -251,6 +263,7 @@ private:
 
     FSocket* Socket = nullptr;
     FString ExpectedToken;
+    FCmdletServer* Server = nullptr;  // back-pointer for OnClientDisconnected
     FString PendingBuffer;
     FThreadSafeBool bStopRequested = false;
 };
@@ -284,6 +297,45 @@ TUniquePtr<FCmdletServerState> GCmdletState;
 
 FCmdletServer::FCmdletServer() {}
 FCmdletServer::~FCmdletServer() { Stop(); }
+
+bool FCmdletServer::WantsShutdown() const
+{
+    if (bShuttingDown) return true;
+
+    // Idle check: only fire once at least one client has fully
+    // connected + disconnected. Otherwise a fresh daemon with no
+    // clients yet would shut itself down immediately on the first
+    // poll, which is the opposite of useful — we want the daemon
+    // to stay up so the first MCP-server probe finds it.
+    if (ActiveConnections.GetValue() == 0)
+    {
+        const int64 SinceLast = LastDisconnectAtUnix.GetValue();
+        if (SinceLast > 0)
+        {
+            const int64 Now = FDateTime::UtcNow().ToUnixTimestamp();
+            if (Now - SinceLast >= static_cast<int64>(IdleSeconds))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void FCmdletServer::OnClientDisconnected()
+{
+    // Decrement first, then sample. FThreadSafeCounter::Decrement
+    // returns the new value, so when it hits zero we know we're the
+    // last connection out and the idle window should start.
+    const int32 Remaining = ActiveConnections.Decrement();
+    if (Remaining <= 0)
+    {
+        // Clamp at zero — defensive against any stray underflow path.
+        // FThreadSafeCounter::Set returns the previous value, ignore it.
+        if (Remaining < 0) ActiveConnections.Set(0);
+        LastDisconnectAtUnix.Set(FDateTime::UtcNow().ToUnixTimestamp());
+    }
+}
 
 // Helper: try to bind+listen on a given port. On success populates
 // OutSocket + OutBoundPort and returns true. On failure logs the
@@ -346,6 +398,31 @@ bool FCmdletServer::Start(int32 Port)
             UE_LOG(LogBlueprintReaderCmdlet, Display,
                 TEXT("BP_READER_CMDLET_DISABLED=1; cmdlet server skipped"));
             return false;
+        }
+    }
+
+    // Idle-shutdown timeout — override the 300s default via env. Reject
+    // values < 5s to prevent flapping (a too-small idle window means
+    // the daemon dies between back-to-back tool calls and respawns
+    // each time, defeating the point). Unparseable values are ignored
+    // silently — daemon still starts with the default.
+    {
+        FString IdleStr = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_DAEMON_IDLE_SECONDS"));
+        if (!IdleStr.IsEmpty())
+        {
+            const int32 Parsed = FCString::Atoi(*IdleStr);
+            if (Parsed >= 5)
+            {
+                IdleSeconds = Parsed;
+                UE_LOG(LogBlueprintReaderCmdlet, Display,
+                    TEXT("FCmdletServer: idle shutdown after %d s (env override)"), IdleSeconds);
+            }
+            else
+            {
+                UE_LOG(LogBlueprintReaderCmdlet, Warning,
+                    TEXT("FCmdletServer: BP_READER_DAEMON_IDLE_SECONDS=%s rejected (must be >= 5); using default %d s"),
+                    *IdleStr, IdleSeconds);
+            }
         }
     }
 
@@ -750,13 +827,23 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
     UE_LOG(LogBlueprintReaderCmdlet, Display,
         TEXT("Cmdlet client connected from %s"), *Endpoint.ToString());
 
-    auto Runnable = MakeUnique<FCmdletConnectionRunnable>(Socket, ExpectedToken);
+    // Increment the active-connection counter BEFORE spawning the
+    // worker thread so a fast-disconnect race (Run starts + exits
+    // before we record the connect) can't underflow the counter.
+    // OnClientDisconnected matches this with a fetch_sub in the
+    // runnable's exit guard.
+    ActiveConnections.Increment();
+
+    auto Runnable = MakeUnique<FCmdletConnectionRunnable>(Socket, ExpectedToken, this);
     auto* RunnablePtr = Runnable.Get();
     auto Thread = TUniquePtr<FRunnableThread>(FRunnableThread::Create(
         RunnablePtr, TEXT("BlueprintReaderCmdletConnection")));
     if (!Thread)
     {
         UE_LOG(LogBlueprintReaderCmdlet, Error, TEXT("Failed to spawn connection thread"));
+        // Thread never started, so the runnable's exit guard won't fire.
+        // Roll back the increment manually to keep the counter honest.
+        OnClientDisconnected();
         return false;
     }
     auto Conn = MakeUnique<FCmdletConnection>();
