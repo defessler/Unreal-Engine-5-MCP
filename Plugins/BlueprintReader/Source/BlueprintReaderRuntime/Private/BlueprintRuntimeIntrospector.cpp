@@ -1,5 +1,6 @@
 #include "BlueprintRuntimeIntrospector.h"
 
+#include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Components/ActorComponent.h"
@@ -11,6 +12,7 @@
 #include "GameFramework/Actor.h"
 #include "UObject/Class.h"
 #include "UObject/Package.h"
+#include "UObject/TextProperty.h"
 #include "UObject/UnrealType.h"
 
 // ----- Asset list ---------------------------------------------------------
