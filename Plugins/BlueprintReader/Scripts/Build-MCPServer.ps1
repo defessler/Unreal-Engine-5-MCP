@@ -82,9 +82,31 @@ if ($null -eq $cmake) {
 
 Write-Host "$tag Building MCP server at $mcpDir ..."
 
+# Walk up from $PSScriptRoot looking for a sibling .uproject so the
+# build artifact can be named bp-reader-mcp-<ProjectName>.exe instead
+# of the generic bp-reader-mcp.exe — gives users with multiple UE
+# projects open at once a glance-identifiable process in Task Manager.
+$pluginRoot = Split-Path -Parent $PSScriptRoot
+$candidate = $pluginRoot
+$projectName = ""
+for ($i = 0; $i -lt 5; $i++) {
+    $candidate = Split-Path -Parent $candidate
+    if (-not $candidate) { break }
+    $up = Get-ChildItem -Path $candidate -Filter '*.uproject' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($up) {
+        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($up.Name)
+        Write-Host "$tag detected project name '$projectName' from $($up.FullName)"
+        break
+    }
+}
+
 if (-not (Test-Path $buildDir)) {
     Write-Host "$tag Configuring CMake (first build)..."
-    & cmake -S $mcpDir -B $buildDir -G $Generator -A x64
+    $configureArgs = @('-S', $mcpDir, '-B', $buildDir, '-G', $Generator, '-A', 'x64')
+    if ($projectName) {
+        $configureArgs += "-DBP_READER_PROJECT_NAME=$projectName"
+    }
+    & cmake @configureArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Error "$tag cmake configure failed (exit $LASTEXITCODE)."
         exit $LASTEXITCODE
