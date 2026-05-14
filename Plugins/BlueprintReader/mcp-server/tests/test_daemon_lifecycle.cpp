@@ -195,4 +195,62 @@ TEST_CASE("CommandletBackend: simultaneous spawn attempts coalesce to one") {
     std::filesystem::remove_all(tempProjectDir, ec);
 }
 
+// Stale-handshake recovery: a handshake file from a crashed previous
+// daemon (its pid no longer exists) must NOT be reused. The pid-alive
+// check in TryAttachExistingDaemon should reject it, and the
+// CommandletBlueprintReader should fall through to the spawn path.
+TEST_CASE("CommandletBackend: stale handshake (dead pid) triggers fresh spawn") {
+    std::atomic<bool> spawnCalled{false};
+
+    auto tempProjectDir = std::filesystem::temp_directory_path() /
+        ("bp-reader-stale-handshake-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&spawnCalled)));
+    std::filesystem::create_directories(tempProjectDir / "Saved");
+
+    auto uproject = tempProjectDir / "Fake.uproject";
+    { std::ofstream f(uproject); f << "{}"; }
+
+    auto engineDir = tempProjectDir / "EngineFake";
+    auto binDir = engineDir / "Engine" / "Binaries" / "Win64";
+    std::filesystem::create_directories(binDir);
+    { std::ofstream f(binDir / "UnrealEditor-Cmd.exe"); f << ""; }
+
+    // Write a handshake claiming a daemon at a (probably) unused port
+    // with a pid that definitely doesn't exist on this machine
+    // (max-int32, far beyond any real PID). The pid-alive check should
+    // reject this and trigger fresh spawn — without ever probing the
+    // port (so it doesn't matter that nothing's listening).
+    nlohmann::json hs = {
+        {"version", 1},
+        {"host",    "127.0.0.1"},
+        {"port",    65530},
+        {"token",   "stale"},
+        {"pid",     0x7FFFFFFE},
+    };
+    {
+        std::ofstream f(tempProjectDir / "Saved" / "bp-reader-cmdlet.json");
+        f << hs.dump();
+    }
+
+    CommandletBlueprintReader::Config cfg;
+    cfg.engineDir       = engineDir;
+    cfg.uproject        = uproject;
+    cfg.useDaemon       = true;
+    cfg.startupTimeout  = 2s;
+    cfg.spawnDaemonHook = [&](const std::filesystem::path&) {
+        spawnCalled.store(true);
+        // Don't actually write a fresh handshake — let the test observe
+        // the spawn-call without succeeding at attach. The subsequent
+        // op will throw downstream, which the test swallows.
+    };
+
+    CommandletBlueprintReader reader(std::move(cfg));
+    try { (void)reader.ListBlueprints("/Game"); } catch (...) {}
+
+    CHECK(spawnCalled.load());
+
+    std::error_code ec;
+    std::filesystem::remove_all(tempProjectDir, ec);
+}
+
 #endif  // _WIN32
