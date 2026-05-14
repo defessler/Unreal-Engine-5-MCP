@@ -19,6 +19,46 @@ Pull these signals from the failure before guessing:
 3. **`_meta.elapsed_ms`** in the MCP envelope — per-call timing.
 4. **Backend in use** — `tools/list` + server stderr; or set
    `BP_READER_BACKEND` explicitly while debugging.
+5. **Which MCP server / project** — the exe is now
+   `bp-reader-mcp-<ProjectName>.exe` (e.g. `bp-reader-mcp-UE5_MCP.exe`)
+   alongside the canonical `bp-reader-mcp.exe` hard link. Check
+   `tasklist /V` or `Get-Process` to confirm which project the
+   server you're talking to belongs to.
+
+## Multi-session triage
+
+Multiple Claude/Copilot sessions can run against the same UE project
+concurrently — the MCP server-level single-instance lock is gone. A
+few things to know when debugging in that world:
+
+- **One daemon per project, shared across sessions.** The commandlet
+  daemon lives at `<Project>/Saved/bp-reader-cmdlet.json` (handshake)
+  with `bp-reader-cmdlet.lock` (lifetime lock) and
+  `bp-reader-cmdlet-spawn.lock` (held only during a spawn attempt).
+  If you see "daemon already running" symptoms, check the handshake
+  file's `pid` against `Get-Process UnrealEditor-Cmd`.
+- **`shutdown_daemon` is global now.** Calling it terminates the
+  daemon used by every session against this project, not just the
+  caller's. Other sessions whose next call needs commandlet mode
+  will transparently spawn a fresh daemon. Mention this if a user
+  asks "why did my other Claude window suddenly slow down?"
+- **Identifying your MCP server.** The exe is renamed at build time:
+  a project named `UE5_MCP` builds `bp-reader-mcp-UE5_MCP.exe`
+  alongside the canonical `bp-reader-mcp.exe` hard link. Existing
+  `.mcp.json` configs that reference the canonical name keep working.
+  `Get-Process bp-reader-mcp*` shows one per active session.
+- **Cross-session batch isolation is partial.** Per-connection state
+  (defer flag, pending-compile set) is isolated correctly. The
+  per-BP write lock (Task 4.3) and commit-partial-on-disconnect
+  policy (Task 4.4) are **deferred**. If you see weird
+  interleaved-edit symptoms when two sessions issue `apply_ops`
+  batches on the SAME BP concurrently, this is the gap. Workaround:
+  serialize batches manually across sessions if it matters.
+- **Daemon idle shutdown.** With no clients connected for
+  `BP_READER_DAEMON_IDLE_SECONDS` (default 300), the daemon exits
+  cleanly and deletes its handshake. Next call cold-starts a fresh
+  one. If you see unexpected ~7 s elapsed-ms on a call that should
+  be hot, this is probably why.
 
 ## Common errors → fixes
 
@@ -68,7 +108,8 @@ may be partial.
   `ok:false` whose `cause` is NOT `"upstream-slot-failed"` — that's
   the root.
 - If the in-memory state is bad, `shutdown_daemon` and the next call
-  cold-starts the editor with on-disk state.
+  cold-starts the editor with on-disk state. (Note: shared daemon —
+  this affects every session against this project, not just yours.)
 
 ### `commandlet exit=3` with a plugin callstack
 A plugin's `OnAssetRegistryLoadComplete` handler crashed (Niagara,
