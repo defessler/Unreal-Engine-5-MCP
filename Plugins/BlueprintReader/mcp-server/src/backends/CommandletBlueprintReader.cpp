@@ -371,6 +371,88 @@ std::string SecondsFromEnv(const char* key, std::string fallback) {
 #endif
 }
 
+// RAII exclusive file lock used to coordinate daemon spawn attempts
+// across MCP-server processes. Held only while one MCP server is
+// trying to bring up a daemon; OS auto-releases on process exit so a
+// crashed spawner doesn't permanently block other MCP servers.
+//
+// Windows: CreateFileW with dwShareMode=0 (same idiom the daemon uses
+// for its lifetime lock at Saved/bp-reader-cmdlet.lock — see the
+// editor side's AcquireLifetimeLock). FILE_FLAG_DELETE_ON_CLOSE makes
+// the lock file vanish when we release. POSIX: stub for now (daemon
+// ships Windows-only today; cross-platform path would use ::open +
+// ::flock(LOCK_EX|LOCK_NB)).
+class SpawnLock {
+public:
+    explicit SpawnLock(std::filesystem::path lockFile)
+        : lockFile_(std::move(lockFile)) {}
+    ~SpawnLock() { Release(); }
+    SpawnLock(const SpawnLock&) = delete;
+    SpawnLock& operator=(const SpawnLock&) = delete;
+
+    // Try to acquire the exclusive lock, polling until either acquired
+    // or `blockFor` elapses. Returns true on success.
+    bool TryAcquire(std::chrono::seconds blockFor);
+
+    bool IsHeld() const { return held_; }
+    void Release();
+
+private:
+    std::filesystem::path lockFile_;
+    bool held_ = false;
+#if defined(_WIN32)
+    void* handle_ = nullptr;  // HANDLE, opaque-typed to avoid leaking windows.h
+#endif
+};
+
+bool SpawnLock::TryAcquire(std::chrono::seconds blockFor) {
+#if defined(_WIN32)
+    // Make sure the parent directory exists; CreateFileW won't create
+    // intermediate directories and a missing Saved/ folder would map
+    // to ERROR_PATH_NOT_FOUND (not the "contended" error we'd retry on).
+    std::error_code mkec;
+    std::filesystem::create_directories(lockFile_.parent_path(), mkec);
+
+    const auto deadline = std::chrono::steady_clock::now() + blockFor;
+    while (true) {
+        std::wstring wpath = lockFile_.wstring();
+        HANDLE h = ::CreateFileW(wpath.c_str(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,                  // no sharing — exclusive
+            nullptr,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+            nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            handle_ = h;
+            held_ = true;
+            return true;
+        }
+        const DWORD err = ::GetLastError();
+        if (err != ERROR_SHARING_VIOLATION && err != ERROR_ACCESS_DENIED) {
+            return false;  // unexpected error — don't loop on it
+        }
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+#else
+    // POSIX stub — flock-based version is a follow-up.
+    (void)blockFor;
+    return true;  // pretend acquired
+#endif
+}
+
+void SpawnLock::Release() {
+    if (!held_) return;
+#if defined(_WIN32)
+    if (handle_) {
+        ::CloseHandle(static_cast<HANDLE>(handle_));
+        handle_ = nullptr;
+    }
+#endif
+    held_ = false;
+}
+
 } // namespace
 
 CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
@@ -703,27 +785,72 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
     socket_ = TryAttachExistingDaemon();
     if (socket_) return *socket_;
 
-    // No daemon found — spawn one and wait for its handshake file. The
-    // race-naive Phase 2 path: two MCP servers concurrently spawning
-    // here would both call CreateProcessW; the second daemon process
-    // would lose the editor-side lifetime lock and exit. Phase 4 adds
-    // a spawn-coordination lock on the client side to avoid the
-    // double-launch entirely.
-    SpawnDaemon();
-    PollForHandshake(cfg_.startupTimeout);
+    // No daemon found — race for the inter-process spawn lock to
+    // coordinate with other MCP servers that might also be trying to
+    // spawn. Two locks at play (per "Daemon lifecycle" in the
+    // multi-session plan):
+    //   * bp-reader-cmdlet.lock       — held by the daemon for its
+    //                                   lifetime; "is daemon alive?"
+    //   * bp-reader-cmdlet-spawn.lock — held by an MCP server during
+    //                                   its spawn attempt only; lets a
+    //                                   second arriver wait on the
+    //                                   handshake rather than
+    //                                   double-spawning.
+    //
+    // Decoupling "alive" from "starting up" is what closes the Phase 2
+    // race: if two MCP servers arrive at the same instant, only the
+    // spawn-lock winner calls CreateProcessW; the loser polls the
+    // handshake file that the winner is about to publish.
+    auto spawnLockPath = cfg_.uproject.parent_path() / "Saved" /
+        "bp-reader-cmdlet-spawn.lock";
+    SpawnLock spawnLock(spawnLockPath);
+    const bool acquired = spawnLock.TryAcquire(cfg_.startupTimeout);
 
-    socket_ = TryAttachExistingDaemon();
+    if (acquired) {
+        // Re-check inside the lock — someone else may have finished
+        // their spawn during our (zero or non-zero) wait.
+        socket_ = TryAttachExistingDaemon();
+        if (!socket_) {
+            // Production path uses the built-in Win32 SpawnDaemon. The
+            // test hook (Config::spawnDaemonHook) lets a unit test
+            // simulate spawn latency + handshake-file publication
+            // without actually launching UnrealEditor-Cmd.exe.
+            if (cfg_.spawnDaemonHook) {
+                cfg_.spawnDaemonHook(cfg_.uproject);
+            } else {
+                SpawnDaemon();
+            }
+            PollForHandshake(cfg_.startupTimeout);
+            socket_ = TryAttachExistingDaemon();
+        }
+        // SpawnLock destructor releases the lock when this scope
+        // exits — release happens AFTER PollForHandshake returns, so a
+        // late-arriving second MCP server sees the handshake file
+        // already in place (it'll just attach in TryAttachExistingDaemon
+        // and never even reach the spawn-lock contention path).
+    } else {
+        // Spawn-lock contended past our timeout. Another MCP server is
+        // (or was) mid-spawn — give the handshake one more chance to
+        // appear and attach if it did. PollForHandshake is safe to
+        // call without holding the spawn lock: it only reads the
+        // handshake file.
+        PollForHandshake(cfg_.startupTimeout);
+        socket_ = TryAttachExistingDaemon();
+    }
+
     if (!socket_) {
-        // SpawnDaemon launched a child but the handshake never landed.
-        // Tear the child down so the user can retry without an orphaned
-        // editor process hanging around.
+        // SpawnDaemon (or the hook) launched something but the
+        // handshake never landed, OR the contention timed out without a
+        // handshake. Tear our child down (if any) so the user can retry
+        // without an orphaned editor process.
 #if defined(_WIN32)
         TerminateDaemon();
 #endif
         throw BlueprintReaderError(fmt::format(
-            "commandlet daemon: spawn succeeded but handshake never "
-            "appeared within {}s (bump BP_READER_STARTUP_TIMEOUT_SECONDS "
-            "for slower projects); check {} for engine log tail",
+            "commandlet daemon: spawn-lock {}, handshake never appeared "
+            "within {}s (bump BP_READER_STARTUP_TIMEOUT_SECONDS for "
+            "slower projects); check {} for engine log tail",
+            acquired ? "acquired" : "contended",
             cfg_.startupTimeout.count(),
             (std::filesystem::temp_directory_path() /
              "bp-reader-mcp-daemon-failure.log").string()));
