@@ -215,13 +215,27 @@ private:
     FThreadSafeCounter64 LastDisconnectAtUnix;
     int32                IdleSeconds = 300;
 
+    // Monotonic counter handing each accepted socket a unique
+    // ConnectionId. Used by FBatchRegistry to key per-session state so
+    // two clients can run concurrent BeginBatch/EndBatch cycles without
+    // clobbering each other. 0 is reserved for "no session" (legacy
+    // direct -run= callers); increments start at 1.
+    FThreadSafeCounter64 NextConnectionId;
+
 public:
+    // Allocate the next ConnectionId. Called once per accepted socket
+    // in OnIncomingConnection.
+    uint64 AllocateConnectionId();
+
     // Called by the per-connection runnable when its Run() returns
-    // (client disconnected). Decrements the active-connections counter
-    // and, if it hit zero, stamps `LastDisconnectAtUnix` so the idle
-    // window starts ticking. Public so the runnable in the .cpp's
-    // anonymous namespace can reach it through a back-pointer.
-    void OnClientDisconnected();
+    // (client disconnected). Flushes any pending batched edits (Task
+    // 4.4 commit-partial), discards the FBatchRegistry slot, decrements
+    // the active-connections counter, and stamps `LastDisconnectAtUnix`
+    // if the counter hit zero so the idle window starts ticking. Public
+    // so the runnable in the .cpp's anonymous namespace can reach it
+    // through a back-pointer. Pass 0 for the early-failure path where
+    // no connection id was ever allocated (e.g. thread spawn failed).
+    void OnClientDisconnected(uint64 ConnectionId = 0);
 };
 
 // Module-level singleton accessor. The daemon owns one instance for
