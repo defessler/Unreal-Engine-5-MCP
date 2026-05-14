@@ -47,13 +47,18 @@ few things to know when debugging in that world:
   alongside the canonical `bp-reader-mcp.exe` hard link. Existing
   `.mcp.json` configs that reference the canonical name keep working.
   `Get-Process bp-reader-mcp*` shows one per active session.
-- **Cross-session batch isolation is partial.** Per-connection state
-  (defer flag, pending-compile set) is isolated correctly. The
-  per-BP write lock (Task 4.3) and commit-partial-on-disconnect
-  policy (Task 4.4) are **deferred**. If you see weird
-  interleaved-edit symptoms when two sessions issue `apply_ops`
-  batches on the SAME BP concurrently, this is the gap. Workaround:
-  serialize batches manually across sessions if it matters.
+- **Cross-session batch isolation is full.** Per-connection state
+  (defer flag, pending-compile set) is isolated. Cross-session BP
+  write lock is enforced — if you `begin_batch` and another session
+  already has the same BP open in its batch, your write op returns
+  `blueprint_locked_by_other_session` (exit code 6) with a
+  `held_by_connection` id and a retry hint. The in-memory BP is
+  untouched, so the holding session's pending state stays clean.
+  Disconnect releases ownership (the FBatchRegistry::Discard hook
+  reaps it alongside the context), so a crashed client doesn't keep
+  a BP locked forever. Commit-partial-on-disconnect is enabled by
+  default; set `BP_READER_BATCH_ON_DISCONNECT=discard` if you'd
+  rather the daemon drop pending edits when a client drops mid-batch.
 - **Daemon idle shutdown.** With no clients connected for
   `BP_READER_DAEMON_IDLE_SECONDS` (default 300), the daemon exits
   cleanly and deletes its handshake. Next call cold-starts a fresh
@@ -143,6 +148,25 @@ auth-fail, then retries once. So:
 - For automatic fallback to commandlet when no editor is open, use
   `BP_READER_BACKEND=auto` (the default when a `.uproject` is
   auto-discovered).
+
+### `blueprint_locked_by_other_session` (exit code 6)
+Another MCP session has this BP open in its own batch. Your write op
+refused rather than corrupting their pending state. Response carries:
+- `asset_path` — the BP that's locked
+- `held_by_connection` — opaque connection id of the holding session
+- `hint` — short retry guidance
+
+What to do:
+- **Wait + retry.** The other session will release on `end_batch` or
+  on disconnect. A bounded retry (e.g. 3 attempts with 1 s back-off)
+  handles brief contention.
+- **Target a different BP** in this batch if the workload allows it.
+- **Coordinate at the user level** if the same BP is genuinely
+  contended — two agents racing the same Blueprint is usually a
+  workflow accident.
+- This only fires when YOUR session is inside a batch. Single-op
+  writes (no `begin_batch`) skip the lock entirely — they commit
+  immediately, so there's no interleave window for them to lose.
 
 ### `wire_pins` schema rejection
 Error includes both pin types so you can self-correct in one turn:
