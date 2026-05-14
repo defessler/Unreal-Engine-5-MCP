@@ -14,9 +14,16 @@
 //      the file at ShutdownModule, so absence is a strong "no editor"
 //      signal.
 //   2. If file exists, attempt a one-shot TCP connect to the published
-//      host:port. Success → use Live; failure (refused / timeout) → use
-//      Commandlet (the file is stale from a crashed editor).
-//   3. Probe result is cached for `probeTtl` to amortize the
+//      host:port. Success → use Live; failure (refused / timeout) → fall
+//      through to the cmdlet check (the file is stale from a crashed
+//      editor).
+//   3. If no live editor, re-read `<ProjectDir>/Saved/bp-reader-cmdlet.json`
+//      (written by a commandlet daemon attached via TCP — Task 2.4).
+//      Success → use a SocketBlueprintReader pointing at that daemon,
+//      avoiding a second commandlet spawn; failure → fall through.
+//   4. No daemons available → fall back to spawning a commandlet via
+//      `CommandletBlueprintReader` (its own attach-or-spawn logic).
+//   5. Probe result is cached for `probeTtl` to amortize the
 //      file-read + connect cost across rapid back-to-back tool calls.
 //
 // Lifecycle:
@@ -149,10 +156,21 @@ private:
     // env-var fallbacks). Returns nullptr if nothing's discoverable.
     std::unique_ptr<SocketBlueprintReader> TryBuildLive();
 
+    // Same shape as TryBuildLive but targeting `bp-reader-cmdlet.json`
+    // — the handshake file the commandlet daemon publishes when running
+    // in TCP mode (Task 2.4). Returns nullptr when the file is absent,
+    // malformed, or the TCP listener isn't actually reachable. Lets
+    // Auto reuse an already-running daemon instead of spawning a
+    // second one through CommandletBlueprintReader.
+    std::unique_ptr<SocketBlueprintReader> TryBuildCmdlet();
+
     // Lazily build the commandlet on first need. Validation is
     // expensive (checks for the editor exe on disk); deferring means a
     // session that lives entirely on Live never pays it.
     CommandletBlueprintReader& EnsureCommandlet();
+
+    // Routing decision: which transport the most recent probe picked.
+    enum class Route { Commandlet, Live, CmdletSocket };
 
     Config cfg_;
     std::mutex mu_;
@@ -163,11 +181,15 @@ private:
     std::unique_ptr<CommandletBlueprintReader> commandlet_;
     // Live reader is recycled on probe transitions.
     std::unique_ptr<SocketBlueprintReader> live_;
+    // Socket reader pointing at the commandlet daemon's TCP listener
+    // (bp-reader-cmdlet.json). Same wire shape as live_; semantically
+    // routes to the commandlet path. Recycled on probe transitions.
+    std::unique_ptr<SocketBlueprintReader> cmdletSocket_;
 
     // Last successful probe. When (now - lastProbe_) < probeTtl, we
-    // reuse `useLive_` without re-checking.
+    // reuse `route_` without re-checking.
     std::chrono::steady_clock::time_point lastProbe_{};
-    bool useLive_ = false;
+    Route route_ = Route::Commandlet;
 };
 
 } // namespace bpr::backends
