@@ -5109,109 +5109,120 @@ int32 RunOneOp(const FString& Params)
 	const bool bPretty = !FParse::Param(*Params, TEXT("Compact"));
 	const FString OutputPath = ResolveOutputPath(Params);
 
-	if (Op == EOp::List)
+	// Table-driven dispatch for ops whose handler takes the uniform
+	// `(Params, OutputPath, bPretty)` signature. Adding a new op of this
+	// shape is a one-line addition here. The handful of read ops below
+	// (Read / Graph / Function / Variables / Components / Find / Legacy)
+	// stay in the switch — they need a pre-loaded FBlueprintInfo and
+	// have inline bodies, not function-call shapes.
+	using FOpHandler = int32(*)(const FString&, const FString&, bool);
+	static const struct { EOp Op; FOpHandler Handler; } kDispatchTable[] =
 	{
-		return RunListOp(Params, OutputPath, bPretty);
+		{ EOp::List,                       &RunListOp },
+		{ EOp::AddVariable,                &RunAddVariableOp },
+		{ EOp::SetNodePosition,            &RunSetNodePositionOp },
+		{ EOp::DeleteNode,                 &RunDeleteNodeOp },
+		{ EOp::AddNode,                    &RunAddNodeOp },
+		{ EOp::WirePins,                   &RunWirePinsOp },
+		{ EOp::DeleteVariable,             &RunDeleteVariableOp },
+		{ EOp::RenameVariable,             &RunRenameVariableOp },
+		{ EOp::AddFunction,                &RunAddFunctionOp },
+		{ EOp::AddFunctionInput,           &RunAddFunctionInputOp },
+		{ EOp::AddFunctionOutput,          &RunAddFunctionOutputOp },
+		{ EOp::DeleteFunction,             &RunDeleteFunctionOp },
+		{ EOp::SetVariableDefault,         &RunSetVariableDefaultOp },
+		{ EOp::BeginBatch,                 &RunBeginBatchOp },
+		{ EOp::EndBatch,                   &RunEndBatchOp },
+		{ EOp::CreateBlueprint,            &RunCreateBlueprintOp },
+		{ EOp::SetPinDefault,              &RunSetPinDefaultOp },
+		{ EOp::RetypeVariable,             &RunRetypeVariableOp },
+		{ EOp::SetVariableCategory,        &RunSetVariableCategoryOp },
+		{ EOp::DuplicateBlueprint,         &RunDuplicateBlueprintOp },
+		{ EOp::WriteGeneratedSource,       &RunWriteGeneratedSourceOp },
+		{ EOp::SaveAll,                    &RunSaveAllOp },
+		{ EOp::MoveAsset,                  &RunMoveAssetOp },
+		{ EOp::DeleteAsset,                &RunDeleteAssetOp },
+		{ EOp::CreateFolder,               &RunCreateFolderOp },
+		{ EOp::ListDataTables,             &RunListDataTablesOp },
+		{ EOp::ReadDataTable,              &RunReadDataTableOp },
+		{ EOp::ConsoleCommand,             &RunConsoleCommandOp },
+		{ EOp::GetCVar,                    &RunGetCVarOp },
+		{ EOp::SetCVar,                    &RunSetCVarOp },
+		{ EOp::PieStart,                   &RunPieStartOp },
+		{ EOp::PieStop,                    &RunPieStopOp },
+		{ EOp::LiveCodingCompile,          &RunLiveCodingCompileOp },
+		{ EOp::GetSelectedActors,          &RunGetSelectedActorsOp },
+		{ EOp::SetSelection,               &RunSetSelectionOp },
+		{ EOp::SpawnActor,                 &RunSpawnActorOp },
+		{ EOp::SetActorTransform,          &RunSetActorTransformOp },
+		{ EOp::DeleteActor,                &RunDeleteActorOp },
+		{ EOp::ReadOutputLog,              &RunReadOutputLogOp },
+		{ EOp::RunAutomationTests,         &RunRunAutomationTestsOp },
+		{ EOp::AddDataRow,                 &RunAddDataRowOp },
+		{ EOp::SetDataRowValue,            &RunSetDataRowValueOp },
+		{ EOp::AddComponent,               &RunAddComponentOp },
+		{ EOp::RemoveComponent,            &RunRemoveComponentOp },
+		{ EOp::AttachComponent,            &RunAttachComponentOp },
+		{ EOp::SetComponentProperty,       &RunSetComponentPropertyOp },
+		{ EOp::ListMaterials,              &RunListMaterialsOp },
+		{ EOp::ReadMaterial,               &RunReadMaterialOp },
+		{ EOp::AddMaterialExpression,      &RunAddMaterialExpressionOp },
+		{ EOp::ConnectMaterialExpressions, &RunConnectMaterialExpressionsOp },
+		{ EOp::SetMaterialParameter,       &RunSetMaterialParameterOp },
+		{ EOp::SetMaterialInstanceParameter, &RunSetMaterialInstanceParameterOp },
+		{ EOp::CompileMaterial,            &RunCompileMaterialOp },
+		{ EOp::ReadWidgetBlueprint,        &RunReadWidgetBlueprintOp },
+		{ EOp::AddWidget,                  &RunAddWidgetOp },
+		{ EOp::SetWidgetProperty,          &RunSetWidgetPropertyOp },
+		{ EOp::BindWidgetEvent,            &RunBindWidgetEventOp },
+		{ EOp::CompileWidgetBlueprint,     &RunCompileWidgetBlueprintOp },
+		{ EOp::ListBehaviorTrees,          &RunListBehaviorTreesOp },
+		{ EOp::ReadBehaviorTree,           &RunReadBehaviorTreeOp },
+		{ EOp::AddBTNode,                  &RunAddBTNodeOp },
+		{ EOp::SetBTNodeProperty,          &RunSetBTNodePropertyOp },
+		{ EOp::CompileBehaviorTree,        &RunCompileBehaviorTreeOp },
+		{ EOp::ListDataAssets,             &RunListDataAssetsOp },
+		{ EOp::ReadDataAsset,              &RunReadDataAssetOp },
+		{ EOp::CreateDataAsset,            &RunCreateDataAssetOp },
+		{ EOp::SetDataAssetProperty,       &RunSetDataAssetPropertyOp },
+		{ EOp::ListStateTrees,             &RunListStateTreesOp },
+		{ EOp::ReadStateTree,              &RunReadStateTreeOp },
+		{ EOp::AddStateTreeState,          &RunAddStateTreeStateOp },
+		{ EOp::SetStateTreeTransition,     &RunSetStateTreeTransitionOp },
+		{ EOp::CompileStateTree,           &RunCompileStateTreeOp },
+		{ EOp::StartProfile,               &RunStartProfileOp },
+		{ EOp::StopProfile,                &RunStopProfileOp },
+		{ EOp::GetStats,                   &RunGetStatsOp },
+		{ EOp::TakeScreenshot,             &RunTakeScreenshotOp },
+		{ EOp::CookContent,                &RunCookContentOp },
+		{ EOp::PackageProject,             &RunPackageProjectOp },
+		{ EOp::IntrospectClass,            &RunIntrospectClassOp },
+		{ EOp::FindClass,                  &RunFindClassOp },
+		{ EOp::ListFunctions,              &RunListFunctionsOp },
+		{ EOp::FocusActor,                 &RunFocusActorOp },
+		{ EOp::SetCameraTransform,         &RunSetCameraTransformOp },
+		{ EOp::TakeViewportScreenshot,     &RunTakeViewportScreenshotOp },
+		{ EOp::SetShowFlag,                &RunSetShowFlagOp },
+		{ EOp::ListNiagaraSystems,         &RunListNiagaraSystemsOp },
+		{ EOp::ReadNiagaraSystem,          &RunReadNiagaraSystemOp },
+		{ EOp::CreateNiagaraSystem,        &RunCreateNiagaraSystemOp },
+		{ EOp::SetNiagaraParameter,        &RunSetNiagaraParameterOp },
+		{ EOp::ListLevelSequences,         &RunListLevelSequencesOp },
+		{ EOp::ReadLevelSequence,          &RunReadLevelSequenceOp },
+		{ EOp::AddSequenceTrack,           &RunAddSequenceTrackOp },
+		{ EOp::SetSequencePlaybackRange,   &RunSetSequencePlaybackRangeOp },
+		{ EOp::ListGameplayTags,           &RunListGameplayTagsOp },
+		{ EOp::AddGameplayTag,             &RunAddGameplayTagOp },
+		{ EOp::ReadAbilitySet,             &RunReadAbilitySetOp },
+		{ EOp::ListAnimBlueprints,         &RunListAnimBlueprintsOp },
+		{ EOp::ReadAnimBlueprint,          &RunReadAnimBlueprintOp },
+		{ EOp::AddAnimState,               &RunAddAnimStateOp },
+		{ EOp::CompileAnimBlueprint,       &RunCompileAnimBlueprintOp },
+	};
+	for (const auto& Entry : kDispatchTable)
+	{
+		if (Entry.Op == Op) return Entry.Handler(Params, OutputPath, bPretty);
 	}
-	if (Op == EOp::AddVariable)     return RunAddVariableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetNodePosition) return RunSetNodePositionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteNode)      return RunDeleteNodeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddNode)         return RunAddNodeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::WirePins)        return RunWirePinsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteVariable)     return RunDeleteVariableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::RenameVariable)     return RunRenameVariableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddFunction)        return RunAddFunctionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddFunctionInput)   return RunAddFunctionInputOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddFunctionOutput)  return RunAddFunctionOutputOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteFunction)     return RunDeleteFunctionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetVariableDefault) return RunSetVariableDefaultOp(Params, OutputPath, bPretty);
-	if (Op == EOp::BeginBatch)         return RunBeginBatchOp(Params, OutputPath, bPretty);
-	if (Op == EOp::EndBatch)           return RunEndBatchOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CreateBlueprint)    return RunCreateBlueprintOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetPinDefault)      return RunSetPinDefaultOp(Params, OutputPath, bPretty);
-	if (Op == EOp::RetypeVariable)     return RunRetypeVariableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetVariableCategory)return RunSetVariableCategoryOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DuplicateBlueprint) return RunDuplicateBlueprintOp(Params, OutputPath, bPretty);
-	if (Op == EOp::WriteGeneratedSource) return RunWriteGeneratedSourceOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SaveAll)            return RunSaveAllOp(Params, OutputPath, bPretty);
-	if (Op == EOp::MoveAsset)          return RunMoveAssetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteAsset)        return RunDeleteAssetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CreateFolder)       return RunCreateFolderOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListDataTables)     return RunListDataTablesOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadDataTable)      return RunReadDataTableOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ConsoleCommand)     return RunConsoleCommandOp(Params, OutputPath, bPretty);
-	if (Op == EOp::GetCVar)            return RunGetCVarOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetCVar)            return RunSetCVarOp(Params, OutputPath, bPretty);
-	if (Op == EOp::PieStart)           return RunPieStartOp(Params, OutputPath, bPretty);
-	if (Op == EOp::PieStop)            return RunPieStopOp(Params, OutputPath, bPretty);
-	if (Op == EOp::LiveCodingCompile)  return RunLiveCodingCompileOp(Params, OutputPath, bPretty);
-	if (Op == EOp::GetSelectedActors)  return RunGetSelectedActorsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetSelection)       return RunSetSelectionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SpawnActor)         return RunSpawnActorOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetActorTransform)  return RunSetActorTransformOp(Params, OutputPath, bPretty);
-	if (Op == EOp::DeleteActor)        return RunDeleteActorOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadOutputLog)      return RunReadOutputLogOp(Params, OutputPath, bPretty);
-	if (Op == EOp::RunAutomationTests) return RunRunAutomationTestsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddDataRow)         return RunAddDataRowOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetDataRowValue)    return RunSetDataRowValueOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddComponent)       return RunAddComponentOp(Params, OutputPath, bPretty);
-	if (Op == EOp::RemoveComponent)    return RunRemoveComponentOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AttachComponent)    return RunAttachComponentOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetComponentProperty) return RunSetComponentPropertyOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListMaterials)                return RunListMaterialsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadMaterial)                 return RunReadMaterialOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddMaterialExpression)        return RunAddMaterialExpressionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ConnectMaterialExpressions)   return RunConnectMaterialExpressionsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetMaterialParameter)         return RunSetMaterialParameterOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetMaterialInstanceParameter) return RunSetMaterialInstanceParameterOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CompileMaterial)              return RunCompileMaterialOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadWidgetBlueprint)          return RunReadWidgetBlueprintOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddWidget)                    return RunAddWidgetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetWidgetProperty)            return RunSetWidgetPropertyOp(Params, OutputPath, bPretty);
-	if (Op == EOp::BindWidgetEvent)              return RunBindWidgetEventOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CompileWidgetBlueprint)       return RunCompileWidgetBlueprintOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListBehaviorTrees)            return RunListBehaviorTreesOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadBehaviorTree)             return RunReadBehaviorTreeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddBTNode)                    return RunAddBTNodeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetBTNodeProperty)            return RunSetBTNodePropertyOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CompileBehaviorTree)          return RunCompileBehaviorTreeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListDataAssets)               return RunListDataAssetsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadDataAsset)                return RunReadDataAssetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CreateDataAsset)              return RunCreateDataAssetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetDataAssetProperty)         return RunSetDataAssetPropertyOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListStateTrees)               return RunListStateTreesOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadStateTree)                return RunReadStateTreeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddStateTreeState)            return RunAddStateTreeStateOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetStateTreeTransition)       return RunSetStateTreeTransitionOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CompileStateTree)             return RunCompileStateTreeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::StartProfile)                 return RunStartProfileOp(Params, OutputPath, bPretty);
-	if (Op == EOp::StopProfile)                  return RunStopProfileOp(Params, OutputPath, bPretty);
-	if (Op == EOp::GetStats)                     return RunGetStatsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::TakeScreenshot)               return RunTakeScreenshotOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CookContent)                  return RunCookContentOp(Params, OutputPath, bPretty);
-	if (Op == EOp::PackageProject)               return RunPackageProjectOp(Params, OutputPath, bPretty);
-	if (Op == EOp::IntrospectClass)              return RunIntrospectClassOp(Params, OutputPath, bPretty);
-	if (Op == EOp::FindClass)                    return RunFindClassOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListFunctions)                return RunListFunctionsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::FocusActor)                   return RunFocusActorOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetCameraTransform)           return RunSetCameraTransformOp(Params, OutputPath, bPretty);
-	if (Op == EOp::TakeViewportScreenshot)       return RunTakeViewportScreenshotOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetShowFlag)                  return RunSetShowFlagOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListNiagaraSystems)           return RunListNiagaraSystemsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadNiagaraSystem)            return RunReadNiagaraSystemOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CreateNiagaraSystem)          return RunCreateNiagaraSystemOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetNiagaraParameter)          return RunSetNiagaraParameterOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListLevelSequences)           return RunListLevelSequencesOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadLevelSequence)            return RunReadLevelSequenceOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddSequenceTrack)             return RunAddSequenceTrackOp(Params, OutputPath, bPretty);
-	if (Op == EOp::SetSequencePlaybackRange)     return RunSetSequencePlaybackRangeOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListGameplayTags)             return RunListGameplayTagsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddGameplayTag)               return RunAddGameplayTagOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadAbilitySet)               return RunReadAbilitySetOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ListAnimBlueprints)           return RunListAnimBlueprintsOp(Params, OutputPath, bPretty);
-	if (Op == EOp::ReadAnimBlueprint)            return RunReadAnimBlueprintOp(Params, OutputPath, bPretty);
-	if (Op == EOp::AddAnimState)                 return RunAddAnimStateOp(Params, OutputPath, bPretty);
-	if (Op == EOp::CompileAnimBlueprint)         return RunCompileAnimBlueprintOp(Params, OutputPath, bPretty);
 
 	const FString AssetPath = ResolveAssetPath(Params);
 	if (AssetPath.IsEmpty())
