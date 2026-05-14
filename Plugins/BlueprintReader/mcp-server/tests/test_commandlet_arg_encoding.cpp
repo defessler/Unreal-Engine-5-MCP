@@ -122,11 +122,13 @@ TEST_CASE("EncodeArg: positional path with literal '=' still gets Windows quotin
 }
 
 TEST_CASE("EncodeArgForFParse: full WirePins arg line round-trips via UE FParse") {
-    // Integration check: the daemon-line writer (CommandletBlueprintReader::
-    // RunOpDaemon) builds a single newline-terminated line by joining all
-    // op args with single spaces and feeding it to the daemon's stdin. The
-    // daemon then hands the whole line to UE FParse::Value, which extracts
-    // each `-Key=` value via case-insensitive substring search.
+    // Integration check: when the cmdlet daemon receives an op frame
+    // it joins the structured args back into a single line and hands
+    // the whole line to UE FParse::Value, which extracts each `-Key=`
+    // value via case-insensitive substring search. Historically the
+    // MCP-side client did the join (RunOpDaemon, pre-PR #68 stdin/stdout
+    // transport); today the daemon does it after the TCP frame decode.
+    // The encoder semantics this test pins haven't changed.
     //
     // This test simulates the joined line + the FParse pass without any UE
     // dependency. The key invariant is that values with whitespace survive
