@@ -51,6 +51,8 @@
 
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"             // FThreadSafeBool for bShuttingDown
+#include "HAL/ThreadSafeCounter.h"          // FThreadSafeCounter for ActiveConnections
+#include "HAL/ThreadSafeCounter64.h"        // FThreadSafeCounter64 for LastDisconnectAtUnix
 #include "Interfaces/IPv4/IPv4Endpoint.h"  // FIPv4Endpoint used by accept callback
 
 class FSocket;
@@ -89,12 +91,16 @@ public:
     // was called with port 0 to mean "use env var" — caller can log it).
     int32 GetListenPort() const { return BoundPort; }
 
-    // Minimum-viable shutdown signal for the daemon's main loop.
-    // Set by Stop() (which the destructor also calls); the daemon spins
-    // on this and exits when it flips true. Idle-shutdown / signal-handler
-    // hooks (Task 4.2) will also flip this flag. For now it just lets the
-    // daemon terminate cleanly when something explicitly calls Stop().
-    bool WantsShutdown() const { return bShuttingDown; }
+    // Shutdown signal for the daemon's main loop. The daemon spins on
+    // this and exits when it flips true. Returns true when:
+    //   1. `bShuttingDown` has been set explicitly (Stop / RequestShutdown
+    //      / TerminateOnSignal — Ctrl-C handler etc.), or
+    //   2. The daemon has been idle: zero active connections AND at least
+    //      one client has connected+disconnected AND `IdleSeconds` have
+    //      elapsed since the last disconnect. Configured via the
+    //      `BP_READER_DAEMON_IDLE_SECONDS` env var (default 300s;
+    //      minimum 5s to avoid flapping).
+    bool WantsShutdown() const;
 
     // Async-signal-safe-ish shutdown request. ONLY flips bShuttingDown
     // so the daemon's polling loop in RunDaemon notices and exits.
@@ -192,6 +198,30 @@ private:
     // `HANDLE` from `CreateFileW`; stored as `void*` to keep this
     // header free of `<windows.h>`. Null when the lock is not held.
     void* LifetimeLockHandle = nullptr;
+
+    // Idle-shutdown bookkeeping. The accept callback increments
+    // `ActiveConnections`; the per-connection runnable decrements it +
+    // stamps `LastDisconnectAtUnix` when its Run() returns. When the
+    // active count is zero and `IdleSeconds` have elapsed since the
+    // last disconnect, `WantsShutdown()` returns true so the daemon
+    // exits gracefully. Env var `BP_READER_DAEMON_IDLE_SECONDS`
+    // overrides the default 300s (5 min); values below 5s are rejected.
+    //
+    // `LastDisconnectAtUnix == 0` is the "no client has ever connected"
+    // sentinel — keeps the daemon alive indefinitely on startup so the
+    // first MCP-server probe always finds it. Stamp uses
+    // `FDateTime::UtcNow().ToUnixTimestamp()`.
+    FThreadSafeCounter   ActiveConnections;
+    FThreadSafeCounter64 LastDisconnectAtUnix;
+    int32                IdleSeconds = 300;
+
+public:
+    // Called by the per-connection runnable when its Run() returns
+    // (client disconnected). Decrements the active-connections counter
+    // and, if it hit zero, stamps `LastDisconnectAtUnix` so the idle
+    // window starts ticking. Public so the runnable in the .cpp's
+    // anonymous namespace can reach it through a back-pointer.
+    void OnClientDisconnected();
 };
 
 // Module-level singleton accessor. The daemon owns one instance for
