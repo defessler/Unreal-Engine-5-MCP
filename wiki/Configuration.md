@@ -15,7 +15,7 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_STARTUP_TIMEOUT_SECONDS` | `600`                          | How long the server waits for the commandlet daemon to publish its handshake file on first launch. Bigger UE projects (lots of plugins, large content set, cold DDC) can take 5–10 minutes the first time. |
 | `BP_READER_DAEMON`          | `1` (on)                               | `0`/`false`/`no`/`off` to opt out of daemon mode.                        |
 | `BP_READER_DAEMON_IDLE_SECONDS` | `300`                              | Daemon exits cleanly after this many seconds with no connected MCP-server clients. Set higher if a slow workflow disconnects between calls and you want to avoid cold-restart cost; set lower to free editor memory faster after sessions end. |
-| `BP_READER_BATCH_ON_DISCONNECT` | `commit`                           | **Reserved — contract published, implementation deferred.** Future behavior: when an MCP-server socket closes mid-`apply_ops` batch, `commit` flushes pending state via `EndBatch(skipCompile=false)`; `discard` rolls back via `EndBatch(skipCompile=true)`. Until the per-BP write lock work lands, concurrent batches on the same BP across sessions are not yet isolated. Setting this env var today is a no-op. |
+| `BP_READER_BATCH_ON_DISCONNECT` | `commit`                           | When an MCP-server socket closes mid-batch, `commit` (default) flushes the connection's pending BPs via game-thread `CompileAndSaveBlueprint`; `discard` drops them without saving. Use `discard` for fail-closed semantics (no half-applied state on disk) at the cost of losing in-flight work; `commit` keeps best-effort progress. Cross-session BP write lock is now also enforced — concurrent writes to the same BP across sessions get a `blueprint_locked_by_other_session` error (exit code 6) instead of silently corrupting the holding session's pending state. See [Multi-session](#multi-session) for the full picture. |
 | `BP_READER_PREWARM`         | `0` (off)                              | `1`/`true`/`yes`/`on` to spawn the editor daemon on MCP startup in a background thread, hiding the cold-start cost. Requires `BP_READER_DAEMON` enabled (default). |
 | `BP_READER_EDITOR_ARGS`     | (empty)                                | Whitespace-separated args appended to `UnrealEditor-Cmd.exe`'s command line. Most useful value: `-EnableAllPlugins` — makes plugin-module load failures non-fatal so the editor starts up even when binary marketplace plugins (DLSS, Wwise, etc.) aren't built. See [Troubleshooting](Troubleshooting). |
 | `BP_READER_EDITOR_CONFIG`   | (empty → `Development`)                | Picks which `UnrealEditor-Cmd[-Win64-Config].exe` the daemon launches. Default unsets to `Development` (suffix-less). Set to `DebugGame` / `Debug` / `Test` / `Shipping` if your `BlueprintReaderEditor` module is built in that config — UE only loads plugin DLLs whose suffix matches the running editor process. |
@@ -113,10 +113,17 @@ Implications:
   Only one `UnrealEditor-Cmd.exe` (the shared daemon).
 - Live mode is also multi-client — both sessions can connect to the
   same open editor.
-- **Caveat:** the per-BP write lock and commit-partial-on-disconnect
-  follow-ups are deferred. Two sessions issuing `apply_ops` batches
-  on the SAME BP concurrently are not yet isolated. Different BPs:
-  fine. Same BP: serialize manually if it matters.
+- **Cross-session batch isolation is full.** Per-connection state
+  (defer flag, pending-compile set) is isolated. Cross-session BP
+  write lock is enforced — if your session is in an open batch and
+  another session already holds the lock on the same BP, your write
+  op gets `blueprint_locked_by_other_session` (exit code 6) with the
+  holding connection id + retry hint. The in-memory BP is untouched,
+  so the holding session's pending state stays clean. Disconnect
+  releases ownership so a crashed client can't keep a BP locked.
+  Commit-partial-on-disconnect is on by default; set
+  `BP_READER_BATCH_ON_DISCONNECT=discard` to drop pending edits
+  when a session drops mid-batch instead of flushing them.
 
 ### Exe rename
 
