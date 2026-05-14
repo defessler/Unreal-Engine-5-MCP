@@ -1622,13 +1622,16 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "shutdown_daemon";
         d.description =
-            "Tear down the backing editor daemon process. After this returns, "
-            "the project's file locks (DDC, asset registry, .uasset handles) "
-            "are released so you can launch the full UE editor. The next "
-            "read tool call auto-respawns the daemon — pay a one-time "
-            "cold-start cost (~5–30 s depending on project size). Pair with "
-            "BP_READER_READ_ONLY=1 if you want to keep the MCP server "
-            "running for queries while you work in the editor.\n\n"
+            "Force-terminate the backing editor daemon process. In shared-daemon "
+            "mode (the default), one daemon serves every MCP session against a "
+            "given project — so this affects EVERY session, not just yours. "
+            "Other sessions' next call simply spawns a fresh daemon (cold-start "
+            "cost ~5–30 s depending on project size). The original use cases "
+            "still work: releases the project's file locks (DDC, asset registry, "
+            ".uasset handles) so you can launch the full UE editor, or forces a "
+            "fresh spawn after upgrading the plugin. Pair with "
+            "BP_READER_READ_ONLY=1 if you want to keep the MCP server running "
+            "for queries while you work in the editor.\n\n"
             "Returns {ok, was_running, hint}. Idempotent: calling when no "
             "daemon is alive returns was_running:false without erroring.";
         d.input_schema = {{"type", "object"}, {"properties", nlohmann::json::object()}};
