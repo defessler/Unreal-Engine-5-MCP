@@ -22,7 +22,6 @@
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
 #include "tools/ToolRegistry.h"
-#include "util/SingleInstanceLock.h"
 
 #include <cstdio>
 #include <exception>
@@ -251,43 +250,13 @@ int RunServerLoop() {
     auto exeDir = ExecutableDir();
     auto cfg = backends::ConfigFromEnv(exeDir, std::cerr);
 
-    // Single-instance enforcement — one bp-reader-mcp.exe per
-    // .uproject. Multiple MCP clients (e.g. Claude Code + Claude
-    // Desktop + Copilot) each spawn their own server otherwise, which
-    // in turn spawns N competing UnrealEditor-Cmd daemons fighting
-    // for the same .uasset files / DDC / asset registry — a fast path
-    // to corrupted state. The lock is keyed on the project path, so
-    // running the server against two DIFFERENT projects in parallel is
-    // still supported (different lock files).
-    //
-    // Set BP_READER_ALLOW_MULTI=1 to skip the check (testing / running
-    // intentionally divergent server configs against the same project,
-    // e.g. one read-only + one read-write — caller is on the hook for
-    // not corrupting state).
-    util::SingleInstanceLock instanceLock(cfg.uproject);
-    {
-        const bool allowMulti = []() {
-            const char* v = std::getenv("BP_READER_ALLOW_MULTI");
-            return v && (std::string(v) == "1" || std::string(v) == "true");
-        }();
-        if (!instanceLock.IsHeld() && !allowMulti) {
-            std::cerr << "[bp-reader-mcp] another bp-reader-mcp instance is "
-                         "already running for this project (lock: "
-                      << instanceLock.LockPath().string() << ")";
-            if (auto pid = instanceLock.OwnerPid()) {
-                std::cerr << " — owner pid=" << *pid;
-            }
-            std::cerr << ". Refusing to start a second server to avoid "
-                         "two editor daemons competing for the same .uasset "
-                         "files. Set BP_READER_ALLOW_MULTI=1 to override.\n";
-            return 1;
-        }
-        if (!instanceLock.IsHeld() && allowMulti) {
-            std::cerr << "[bp-reader-mcp] BP_READER_ALLOW_MULTI=1: skipping "
-                         "single-instance lock (another instance is running; "
-                         "you're on the hook for avoiding conflicts)\n";
-        }
-    }
+    // Note: single-instance enforcement used to live here, but the
+    // commandlet daemon now owns its own per-project lock at
+    // <Project>/Saved/bp-reader-cmdlet.lock. Multiple MCP clients
+    // (Claude Code + Claude Desktop + Copilot) can now each run their
+    // own bp-reader-mcp.exe against the same project and share a
+    // single daemon over TCP via SocketBlueprintReader — see
+    // feat/multi-session-shared-daemon.
 
     std::cerr << fmt::format(
         "[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} "
