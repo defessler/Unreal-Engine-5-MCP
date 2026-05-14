@@ -5,6 +5,7 @@
 
 #include <doctest/doctest.h>
 
+#include "backends/AutoBlueprintReader.h"
 #include "backends/SocketBlueprintReader.h"
 
 #include <atomic>
@@ -433,4 +434,77 @@ TEST_CASE("LiveBackend: op frame carries the canonical -Op=List shape") {
     REQUIRE(frame["args"].size() == 2);
     CHECK(frame["args"][0] == "-Op=List");
     CHECK(frame["args"][1] == "-Path=/Game/AI");
+}
+
+TEST_CASE("AutoBackend: prefers live when both handshakes are valid") {
+    // Stand up two mock servers (live + cmdlet). The live mock returns
+    // a valid result; the cmdlet mock sends auth_fail. If Auto
+    // incorrectly routes to cmdlet, the test fails fast with an auth
+    // error rather than passing silently — pins the live-first
+    // preference (Task 2.5).
+    //
+    // Two scripts on the live mock: AutoBlueprintReader::Probe runs a
+    // quick TCP-aliveness probe before committing to live (consumes
+    // the first accept and closes), then SocketBlueprintReader makes
+    // the real connection for the op (handled by the second script).
+    std::vector<MockServer::Script> liveScripts;
+    liveScripts.push_back([](SOCKET /*s*/) {
+        // Probe connection — close immediately. The probe only checks
+        // that connect() succeeds, doesn't read/write anything.
+    });
+    liveScripts.push_back([](SOCKET s) {
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        ReadLine(s);  // auth
+        SendLine(s, R"({"type":"auth_ok"})");
+        ReadLine(s);  // op
+        SendLine(s, nlohmann::json{
+            {"type","result"}, {"id",1}, {"code",0},
+            {"json", nlohmann::json::array()}
+        }.dump());
+    });
+    MockServer liveMock(std::move(liveScripts));
+    MockServer cmdletMock([](SOCKET s) {
+        // Cmdlet mock — auto should NOT route to this one when live is
+        // up. Sending auth_fail makes any accidental route surface as
+        // a BlueprintReaderError instead of passing silently.
+        SendLine(s, R"({"type":"hello","version":"1"})");
+        ReadLine(s);
+        SendLine(s, R"({"type":"auth_fail"})");
+    });
+
+    auto tempDir = std::filesystem::temp_directory_path() /
+        ("bp-reader-auto-test-" +
+         std::to_string(reinterpret_cast<std::uintptr_t>(&liveMock)));
+    std::filesystem::create_directories(tempDir / "Saved");
+
+    auto writeHs = [&](const std::string& name, int port,
+                       const std::string& token) {
+        nlohmann::json hs = {
+            {"version", 1},
+            {"host", "127.0.0.1"},
+            {"port", port},
+            {"token", token},
+        };
+        std::ofstream f(tempDir / "Saved" / name);
+        f << hs.dump();
+    };
+    writeHs("bp-reader-live.json",   liveMock.port(),   "live-token");
+    writeHs("bp-reader-cmdlet.json", cmdletMock.port(), "cmdlet-token");
+
+    AutoBlueprintReader::Config cfg;
+    cfg.uproject = tempDir / "Test.uproject";
+    // Force every call to re-probe so the routing decision actually
+    // exercises the new TryBuildCmdlet code path.
+    cfg.probeTtl = std::chrono::milliseconds(0);
+    cfg.probeConnectTimeout = std::chrono::milliseconds(500);
+    // Don't prewarm — we never want the commandlet to spawn in this
+    // test (no engine on disk).
+    cfg.prewarmCommandlet = false;
+    cfg.commandletConfig.uproject  = tempDir / "Test.uproject";
+    cfg.commandletConfig.engineDir = tempDir;
+    cfg.commandletConfig.useDaemon = false;
+    AutoBlueprintReader reader(std::move(cfg));
+
+    CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
+    std::filesystem::remove_all(tempDir);
 }
