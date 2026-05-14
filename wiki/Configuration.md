@@ -24,6 +24,93 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_LIVE_HOST`       | `127.0.0.1`                            | Hostname for the live backend's TCP connection. Loopback only; non-loopback connections are rejected by the editor-side listener. |
 | `BP_READER_LIVE_PORT`       | (unset → live backend disabled)        | TCP port for the live backend. **Set in BOTH** the editor's process env (the listener binds here) AND the MCP server's process env (the client connects here). Pick anything 8400–8500 range that's not in use. |
 | `BP_READER_LIVE_TOKEN`      | (unset → live backend refuses to start) | Shared secret for the live backend's auth handshake. **Set in BOTH** processes; values must match. Pick a random string. Treat like a password — anyone with localhost access who can read your env vars can mutate BPs. |
+| `BP_READER_TOOLS`           | (unset → all 119 tools)                | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, so the full bp-reader surface leaves only ~9 slots and trips `"You may not include more than 128 tools in your request"`. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
+| `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` keeps 82 of 119 tools. |
+
+## Tool filtering
+
+The full bp-reader surface is 119 tools. Some MCP clients cap the total
+number of tools they're willing to advertise — most notably **GitHub
+Copilot caps at 128 tools** across all servers + its built-ins, which
+fails fast with `"You may not include more than 128 tools in your
+request"` when the full surface is exposed. Two env vars let you pare
+the surface down without giving up the workflow you actually need:
+
+- `BP_READER_TOOLS` — allow-list. Comma-separated list of tool names
+  and/or category names. When set, ONLY these are advertised.
+- `BP_READER_TOOLS_EXCLUDE` — deny-list. Subtracted after the allow
+  step (or from the full set when no allow-list is set).
+
+Both vars take **category names** as a shorthand for groups of tools:
+
+| Category         | Tools | What's in it |
+|------------------|-------|--------------|
+| `core`           | ~35   | Minimum viable BP authoring: list/read/get/find, var/function/node CRUD, batches, save_all, discovery |
+| `read`           | ~40   | Every read-only tool (covers BPs, materials, widgets, BTs, data assets, anim, etc.) |
+| `write`          | ~25   | Every BP write tool (vars, functions, nodes, components, batches) |
+| `cpp`            | 7     | Decompile + transpile + parse_cpp_function pipeline |
+| `editor`         | ~15   | Viewport, PIE, console, cvars, log, screenshots, selection |
+| `assets`         | 6     | list_blueprints, move/delete/folder, project metadata, save_all |
+| `materials`      | 7     | Material graph CRUD + compile |
+| `widgets`        | 5     | UMG widget authoring + compile |
+| `behavior-trees` | 5     | BT graph CRUD + compile |
+| `data-tables`    | 4     | DataTable read + row ops |
+| `data-assets`    | 4     | DataAsset read + property ops |
+| `state-trees`    | 5     | StateTree CRUD + compile |
+| `niagara`        | 4     | Niagara system CRUD + parameters |
+| `sequencer`      | 4     | LevelSequence read + track/playback ops |
+| `gameplay-tags`  | 3     | Tag listing + add + ability set read |
+| `anim-bp`        | 4     | Anim BP read + state + compile |
+| `profiling`      | 3     | start/stop_profile + get_stats |
+| `cook`           | 2     | cook_content + package_project |
+| `tests`          | 1     | run_automation_tests |
+| `class-info`     | 3     | find_class + get_class_info + list_functions |
+| `discover`       | 3     | list_node_kinds + list_pin_categories + shutdown_daemon |
+| `all`            | 119   | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
+
+The canonical mapping lives in
+[`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/mcp-server/src/tools/ToolCategories.cpp).
+
+### Recommended presets
+
+**Minimal BP-authoring (~35 tools, well under 128):**
+
+```json
+"env": { "BP_READER_TOOLS": "core" }
+```
+
+**BP-authoring + transpile (~42 tools):**
+
+```json
+"env": { "BP_READER_TOOLS": "core,cpp" }
+```
+
+**Most-of-everything except specialty asset graphs (82 tools):**
+
+```json
+"env": {
+  "BP_READER_TOOLS_EXCLUDE": "materials,widgets,niagara,sequencer,state-trees,anim-bp,gameplay-tags,behavior-trees"
+}
+```
+
+**A mix:** allow categories + add or remove specific tools:
+
+```json
+"env": {
+  "BP_READER_TOOLS":         "core,cpp,read_material",
+  "BP_READER_TOOLS_EXCLUDE": "shutdown_daemon"
+}
+```
+
+The MCP server logs the result on stderr at startup:
+
+```
+[bp-reader-mcp] tool filter: kept 35 of 119 tools (allow=core)
+```
+
+Unknown tokens (typos in tool/category names) silently drop nothing —
+the log line will show fewer tools than expected, which is the signal
+to check spelling.
 
 ## Pre-warm
 
