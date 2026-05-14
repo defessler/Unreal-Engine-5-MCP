@@ -419,6 +419,39 @@ namespace
 
 	// ----- Shared helpers for write ops -------------------------------------
 
+	// Forward decls: BatchDeferFlag() is defined further down in this TU
+	// (after the LoadMutableBlueprint helper that needs it for the
+	// cross-session write-lock check). Hoist the prototype here so the
+	// in-anon-namespace name lookup resolves at LoadMutableBlueprint
+	// parse time.
+	bool& BatchDeferFlag();
+
+	// Cross-session BP write-lock side channel. When LoadMutableBlueprint
+	// detects that another connection has the BP locked for its own
+	// batch, it can't return a useful UBlueprint*. Returning nullptr is
+	// fine — existing call sites all do `if (!BP) return 2;` — but the
+	// agent needs a different error shape than "asset not found". So we
+	// stash the structured error payload + an override exit code in
+	// thread-local slots; the RunOneOp dispatcher checks them after the
+	// handler returns and overrides the response.
+	//
+	// Why thread-local: game thread is the sole dispatcher, but using
+	// thread_local rather than a plain static makes the contract
+	// explicit and crash-safe under any future refactor that moves
+	// dispatch off the game thread (per-connection thread, task graph
+	// pool, etc.). Cost is one TLS slot per worker — negligible.
+	//
+	// Why TLS instead of changing LoadMutableBlueprint's signature:
+	// there are ~50 call sites, all with the same `if (!BP) return 2;`
+	// shape. Threading OutputPath + bPretty + a result code through
+	// every one would be a large mechanical diff for zero behavior win
+	// once the dispatcher overrides the response anyway.
+	namespace LoadFailure
+	{
+		thread_local int32   OverrideCode = 0;     // 0 = no override
+		thread_local FString OverrideJson;          // already-serialized JSON body
+	}
+
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
 		FString Resolved = AssetPath;
@@ -445,6 +478,48 @@ namespace
 			// get the same error trace. Codex review on PR #58 flagged
 			// the read-path gap.
 			FBlueprintIntrospector::DiagnoseFailedBlueprintLoad(Resolved);
+			return nullptr;
+		}
+
+		// Cross-session BP write lock: when this connection is in an
+		// open batch and another connection already holds the lock on
+		// this BP, refuse the mutation. The agent gets a structured
+		// `blueprint_locked_by_other_session` response (set via the TLS
+		// side channel, picked up in the dispatcher); the in-memory BP
+		// is NOT touched so the holding session's pending state stays
+		// clean. Non-batch ops skip the lock — single-op mutations are
+		// committed immediately so there's no interleave window.
+		if (BatchDeferFlag())
+		{
+			const uint64 MyConn = BlueprintReader::GetCurrentConnectionId();
+			uint64 HeldBy = 0;
+			if (BlueprintReader::FBatchRegistry::Get()
+					.AcquireWriteOwnership(MyConn, BP, HeldBy) != 0)
+			{
+				// Build a JSON body the dispatcher can splice into the
+				// response. Keep this stable + searchable: agents will
+				// match on the error string to decide whether to retry.
+				auto Obj = MakeShared<FJsonObject>();
+				Obj->SetBoolField(TEXT("ok"), false);
+				Obj->SetStringField(TEXT("error"),
+					TEXT("blueprint_locked_by_other_session"));
+				Obj->SetStringField(TEXT("asset_path"), AssetPath);
+				Obj->SetNumberField(TEXT("held_by_connection"),
+					static_cast<double>(HeldBy));
+				Obj->SetStringField(TEXT("hint"),
+					TEXT("Another MCP session has this Blueprint in an open "
+					     "batch. Retry after the holding session calls "
+					     "end_batch, or close that session."));
+				LoadFailure::OverrideJson =
+					FBlueprintReaderWireJson::WriteString(Obj, /*bPretty=*/false);
+				LoadFailure::OverrideCode = 6;
+				UE_LOG(LogBlueprintReader, Warning,
+					TEXT("Refusing write to %s: locked by connection %llu (mine=%llu)"),
+					*AssetPath,
+					(unsigned long long)HeldBy,
+					(unsigned long long)MyConn);
+				return nullptr;
+			}
 		}
 		return BP;
 	}
@@ -692,6 +767,13 @@ namespace
 		BatchDeferFlag() = false;
 		TArray<TWeakObjectPtr<UBlueprint>> Pending = MoveTemp(BatchPending());
 		BatchPending().Reset();
+
+		// Release every BP this connection had locked for the batch.
+		// Independent of bSkipCompile below — the ownership is about
+		// preventing OTHER sessions from interleaving writes, and the
+		// batch boundary ends regardless of whether we compile here.
+		BlueprintReader::FBatchRegistry::Get()
+			.ReleaseAllWriteOwnership(BlueprintReader::GetCurrentConnectionId());
 
 		// `-Skip` flag (passed by RunOps when on_failure="skip" + a mid-batch
 		// failure occurred): discard the pending compile + save. The
@@ -5101,6 +5183,21 @@ int32 UBlueprintReaderCommandlet::Main(const FString& Params)
 
 namespace
 {
+// Drains the LoadFailure TLS side channel into the response slot. Called
+// after every handler that might have called LoadMutableBlueprint. If
+// the lock-conflict path tripped, override the handler's return code +
+// emit the structured error JSON instead of whatever the handler wrote.
+int32 ApplyLoadFailureOverride(int32 HandlerCode, const FString& OutputPath)
+{
+	if (LoadFailure::OverrideCode == 0) return HandlerCode;
+	const int32 Code = LoadFailure::OverrideCode;
+	const FString Json = MoveTemp(LoadFailure::OverrideJson);
+	LoadFailure::OverrideCode = 0;
+	LoadFailure::OverrideJson.Empty();
+	EmitJson(Json, OutputPath);
+	return Code;
+}
+
 int32 RunOneOp(const FString& Params)
 {
 	EOp Op;
@@ -5108,6 +5205,12 @@ int32 RunOneOp(const FString& Params)
 
 	const bool bPretty = !FParse::Param(*Params, TEXT("Compact"));
 	const FString OutputPath = ResolveOutputPath(Params);
+
+	// Belt + suspenders: each dispatch starts with a clean TLS slot.
+	// Should already be 0 (cleared after the previous dispatch), but a
+	// stray uncleared value would leak across ops on the same thread.
+	LoadFailure::OverrideCode = 0;
+	LoadFailure::OverrideJson.Empty();
 
 	// Table-driven dispatch for ops whose handler takes the uniform
 	// `(Params, OutputPath, bPretty)` signature. Adding a new op of this
@@ -5221,7 +5324,11 @@ int32 RunOneOp(const FString& Params)
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
-		if (Entry.Op == Op) return Entry.Handler(Params, OutputPath, bPretty);
+		if (Entry.Op == Op)
+		{
+			const int32 HandlerCode = Entry.Handler(Params, OutputPath, bPretty);
+			return ApplyLoadFailureOverride(HandlerCode, OutputPath);
+		}
 	}
 
 	const FString AssetPath = ResolveAssetPath(Params);
