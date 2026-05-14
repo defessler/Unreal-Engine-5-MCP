@@ -38,7 +38,8 @@ namespace BlueprintReader
 // Re-uses the same entry point the live server uses to dispatch into
 // BlueprintReaderCommandlet.cpp's RunOneOp. Both servers feed
 // `-Op=...` flag strings; the only difference is the transport.
-extern int32 RunOneOpFromLiveServer(const FString& Params);
+extern int32 RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params);
+extern void  FlushBatchForConnection(uint64 ConnectionId);
 
 namespace
 {
@@ -51,9 +52,9 @@ class FCmdletConnectionRunnable : public FRunnable
 {
 public:
     FCmdletConnectionRunnable(FSocket* InSocket, FString InExpectedToken,
-                              FCmdletServer* InServer)
+                              FCmdletServer* InServer, uint64 InConnectionId)
         : Socket(InSocket), ExpectedToken(MoveTemp(InExpectedToken)),
-          Server(InServer) {}
+          Server(InServer), ConnectionId(InConnectionId) {}
 
     ~FCmdletConnectionRunnable() override
     {
@@ -76,8 +77,9 @@ public:
         struct FNotifyDisconnect
         {
             FCmdletServer* Srv;
-            ~FNotifyDisconnect() { if (Srv) Srv->OnClientDisconnected(); }
-        } DisconnectGuard{Server};
+            uint64         ConnId;
+            ~FNotifyDisconnect() { if (Srv) Srv->OnClientDisconnected(ConnId); }
+        } DisconnectGuard{Server, ConnectionId};
 
         // 1. Send hello.
         if (!SendFrame(MakeHello())) return 0;
@@ -153,12 +155,16 @@ public:
                 FString::Printf(TEXT("bpr-cmdlet-%s.json"), *FGuid::NewGuid().ToString(EGuidFormats::DigitsLower)));
             Params.Append(FString::Printf(TEXT(" -Out=\"%s\" -Compact"), *OutPath));
 
-            // Dispatch to the game thread and block until done.
+            // Dispatch to the game thread and block until done. Pass
+            // the connection id so per-session batch state lands in the
+            // right registry slot (RunOneOpFromLiveServer installs the
+            // FConnectionScope internally).
             int32 Code = -1;
             FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
-            AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent]()
+            const uint64 ConnId = ConnectionId;
+            AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
             {
-                Code = RunOneOpFromLiveServer(Params);
+                Code = RunOneOpFromLiveServer(ConnId, Params);
                 DoneEvent->Trigger();
             });
             DoneEvent->Wait();
@@ -264,6 +270,7 @@ private:
     FSocket* Socket = nullptr;
     FString ExpectedToken;
     FCmdletServer* Server = nullptr;  // back-pointer for OnClientDisconnected
+    uint64  ConnectionId = 0;         // assigned by AllocateConnectionId
     FString PendingBuffer;
     FThreadSafeBool bStopRequested = false;
 };
@@ -322,8 +329,15 @@ bool FCmdletServer::WantsShutdown() const
     return false;
 }
 
-void FCmdletServer::OnClientDisconnected()
+void FCmdletServer::OnClientDisconnected(uint64 ConnectionId)
 {
+    // Task 4.4: commit-partial on disconnect. Flush any pending batched
+    // edits the connection had open. FlushBatchForConnection schedules a
+    // synchronous game-thread compile/save (or skips per
+    // BP_READER_BATCH_ON_DISCONNECT=discard). No-op when ConnectionId==0
+    // (early-failure path before a real session was established).
+    FlushBatchForConnection(ConnectionId);
+
     // Decrement first, then sample. FThreadSafeCounter::Decrement
     // returns the new value, so when it hits zero we know we're the
     // last connection out and the idle window should start.
@@ -335,6 +349,14 @@ void FCmdletServer::OnClientDisconnected()
         if (Remaining < 0) ActiveConnections.Set(0);
         LastDisconnectAtUnix.Set(FDateTime::UtcNow().ToUnixTimestamp());
     }
+}
+
+uint64 FCmdletServer::AllocateConnectionId()
+{
+    // FThreadSafeCounter64::Increment returns the value AFTER the +1,
+    // so the first call returns 1 — perfect: 0 is reserved for "no
+    // session" (legacy callers).
+    return static_cast<uint64>(NextConnectionId.Increment());
 }
 
 // Helper: try to bind+listen on a given port. On success populates
@@ -834,7 +856,8 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
     // runnable's exit guard.
     ActiveConnections.Increment();
 
-    auto Runnable = MakeUnique<FCmdletConnectionRunnable>(Socket, ExpectedToken, this);
+    const uint64 ConnId = AllocateConnectionId();
+    auto Runnable = MakeUnique<FCmdletConnectionRunnable>(Socket, ExpectedToken, this, ConnId);
     auto* RunnablePtr = Runnable.Get();
     auto Thread = TUniquePtr<FRunnableThread>(FRunnableThread::Create(
         RunnablePtr, TEXT("BlueprintReaderCmdletConnection")));
@@ -843,7 +866,9 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
         UE_LOG(LogBlueprintReaderCmdlet, Error, TEXT("Failed to spawn connection thread"));
         // Thread never started, so the runnable's exit guard won't fire.
         // Roll back the increment manually to keep the counter honest.
-        OnClientDisconnected();
+        // Pass ConnId=0 here — nothing was ever batched against it, so
+        // there's no batch state to flush.
+        OnClientDisconnected(0);
         return false;
     }
     auto Conn = MakeUnique<FCmdletConnection>();
