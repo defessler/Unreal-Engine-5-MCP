@@ -40,7 +40,8 @@ namespace BlueprintReader
 // The right answer: add a public function to BlueprintReaderCommandlet
 // — `int32 RunOneOpFromLiveServer(const FString& Params)`. That just
 // calls into the existing internal RunOneOp. We declare it extern here.
-extern int32 RunOneOpFromLiveServer(const FString& Params);
+extern int32 RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params);
+extern void  FlushBatchForConnection(uint64 ConnectionId);
 
 namespace
 {
@@ -48,12 +49,21 @@ namespace
 // Module-level singleton.
 TUniquePtr<FLiveServer> GLiveServer;
 
+// Monotonic counter handing each accepted socket a unique ConnectionId.
+// Starts at 1 (FThreadSafeCounter64::Increment returns post-increment
+// value) — 0 stays reserved for "no session" (legacy direct callers).
+// Lives at file-scope because FLiveServer is single-instance per editor
+// process and has no need for the counter to be per-server-instance.
+FThreadSafeCounter64 GLiveNextConnectionId;
+
 // Per-connection state — owned by the worker FRunnable for its lifetime.
 class FLiveConnectionRunnable : public FRunnable
 {
 public:
-    FLiveConnectionRunnable(FSocket* InSocket, FString InExpectedToken)
-        : Socket(InSocket), ExpectedToken(MoveTemp(InExpectedToken)) {}
+    FLiveConnectionRunnable(FSocket* InSocket, FString InExpectedToken,
+                            uint64 InConnectionId)
+        : Socket(InSocket), ExpectedToken(MoveTemp(InExpectedToken)),
+          ConnectionId(InConnectionId) {}
 
     ~FLiveConnectionRunnable() override
     {
@@ -69,6 +79,16 @@ public:
 
     uint32 Run() override
     {
+        // RAII: on every exit path (auth failure, EOF, error) flush any
+        // batched edits this connection had pending. Mirrors the cmdlet
+        // server's disconnect plumbing — commit-partial-on-disconnect
+        // (Task 4.4) is the same in either transport.
+        struct FFlushOnExit
+        {
+            uint64 ConnId;
+            ~FFlushOnExit() { FlushBatchForConnection(ConnId); }
+        } FlushGuard{ConnectionId};
+
         // 1. Send hello.
         if (!SendFrame(MakeHello())) return 0;
 
@@ -143,12 +163,16 @@ public:
                 FString::Printf(TEXT("bpr-live-%s.json"), *FGuid::NewGuid().ToString(EGuidFormats::DigitsLower)));
             Params.Append(FString::Printf(TEXT(" -Out=\"%s\" -Compact"), *OutPath));
 
-            // Dispatch to the game thread and block until done.
+            // Dispatch to the game thread and block until done. Pass
+            // the connection id so per-session batch state lands in the
+            // right registry slot (RunOneOpFromLiveServer installs the
+            // FConnectionScope internally).
             int32 Code = -1;
             FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
-            AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent]()
+            const uint64 ConnId = ConnectionId;
+            AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
             {
-                Code = RunOneOpFromLiveServer(Params);
+                Code = RunOneOpFromLiveServer(ConnId, Params);
                 DoneEvent->Trigger();
             });
             DoneEvent->Wait();
@@ -253,6 +277,7 @@ private:
 
     FSocket* Socket = nullptr;
     FString ExpectedToken;
+    uint64  ConnectionId = 0;  // allocated by FLiveServer::OnIncomingConnection
     FString PendingBuffer;
     FThreadSafeBool bStopRequested = false;
 };
@@ -623,7 +648,10 @@ bool FLiveServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& End
     UE_LOG(LogBlueprintReaderLive, Display,
         TEXT("Live client connected from %s"), *Endpoint.ToString());
 
-    auto Runnable = MakeUnique<FLiveConnectionRunnable>(Socket, ExpectedToken);
+    // Allocate a unique ConnectionId for this client's batch state.
+    // Post-increment so the first connection gets 1 (0 = "no session").
+    const uint64 ConnId = static_cast<uint64>(GLiveNextConnectionId.Increment());
+    auto Runnable = MakeUnique<FLiveConnectionRunnable>(Socket, ExpectedToken, ConnId);
     auto* RunnablePtr = Runnable.Get();
     auto Thread = TUniquePtr<FRunnableThread>(FRunnableThread::Create(
         RunnablePtr, TEXT("BlueprintReaderLiveConnection")));
