@@ -20,8 +20,19 @@
 #include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
-    #define WIN32_LEAN_AND_MEAN
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    // winsock2.h must come before windows.h; otherwise it tries to pull
+    // in winsock.h via windows.h and the symbols clash. Daemon-attach
+    // path does an inline TCP probe before constructing the
+    // SocketBlueprintReader.
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
     #include <windows.h>
+    #pragma comment(lib, "Ws2_32.lib")
+#else
+    #include <signal.h>
 #endif
 
 namespace bpr::backends {
@@ -82,7 +93,11 @@ std::wstring QuoteArg(std::wstring_view in) {
 // FParse-style inner quoting (for -Key=Value) and Windows outer
 // quoting (for positional args like the uproject path).
 using bpr::backends::detail::EncodeArg;
-using bpr::backends::detail::EncodeArgForFParse;
+// EncodeArgForFParse used to be consumed by the stdin/stdout daemon
+// path's inline arg join. The daemon now receives args structured (one
+// per JSON-array element) over TCP, so the inner-FParse quoting layer
+// belongs on the daemon side, not the client side. RunOpOneShot still
+// uses EncodeArg via BuildCommandLine.
 
 std::wstring BuildCommandLine(const std::wstring& exe,
                               const std::vector<std::wstring>& args) {
@@ -157,7 +172,9 @@ struct UniqueHandle {
 
 // Generic scope guard: invoke a callable when the scope exits, unless
 // Dismiss() was called. Used to clean up the per-call temp file even if
-// any code between RunOpDaemon's "create file" and "drop file" throws.
+// any code between RunOpOneShot's "create file" and "drop file" throws,
+// plus a couple of inline winsock cleanup paths in
+// TryAttachExistingDaemon.
 template <typename F>
 class ScopeGuard {
 public:
@@ -400,29 +417,77 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
 }
 
 CommandletBlueprintReader::~CommandletBlueprintReader() {
-    // Join the prewarm thread first if it's still running. EnsureDaemon
-    // holds daemonMutex_, so by the time join() returns the daemon is either
-    // ready or its setup failed and the mutex is released. Either way we're
-    // safe to terminate.
+    // Join the prewarm thread first if it's still running.
+    // EnsureDaemonAttached holds daemonMutex_, so by the time join()
+    // returns either the daemon is attached or its setup failed and the
+    // mutex is released. Either way we're safe to terminate.
     if (prewarmThread_.joinable()) {
         prewarmThread_.join();
     }
+    // Drop the socket before tearing the child down — its destructor
+    // closes the connection cleanly. Terminate the spawned child
+    // afterward; if we never spawned (we attached to a daemon owned by
+    // someone else) this is a no-op.
+    socket_.reset();
 #if defined(_WIN32)
     TerminateDaemon();
 #endif
 }
 
+namespace {
+
+// Convert an op-args vector of wstrings (the existing internal format
+// used by every typed method on this class) into UTF-8 strings the
+// socket reader's `RunOpRaw` accepts. The daemon's TCP server runs
+// FParse against the joined arg string, just like the in-process
+// commandlet, so we don't need to strip Windows-style outer quoting
+// here — the args arrive structured (one per element).
+std::vector<std::string> ToUtf8Args(const std::vector<std::wstring>& w) {
+    std::vector<std::string> out;
+    out.reserve(w.size());
+    for (const auto& s : w) out.push_back(Narrow(s));
+    return out;
+}
+
+// Win32 PID-aliveness probe. Used by TryAttachExistingDaemon to drop
+// stale handshake files that survive a daemon crash. Returns false on
+// any failure so a missing/uncertain answer is treated as "dead."
+bool ProcessAlive(int pid) {
+#if defined(_WIN32)
+    if (pid <= 0) return false;
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                           static_cast<DWORD>(pid));
+    if (!h) return false;
+    DWORD code = 0;
+    BOOL ok = GetExitCodeProcess(h, &code);
+    CloseHandle(h);
+    return ok && code == STILL_ACTIVE;
+#else
+    if (pid <= 0) return false;
+    return ::kill(pid, 0) == 0;
+#endif
+}
+
+} // namespace
+
 nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>& opArgs) {
     if (cfg_.useDaemon) {
         try {
-            return RunOpDaemon(opArgs);
+            auto args = ToUtf8Args(opArgs);
+            return EnsureDaemonAttached().RunOpRaw(args);
         } catch (const AssetNotFound&) {
             throw;  // user-level error; propagate as-is
         } catch (const std::exception& e) {
             // Daemon transport failure — log and fall through to one-shot.
+            // Drop the stale socket and any child we spawned; the next
+            // call's EnsureDaemonAttached spins up a fresh one.
             std::fprintf(stderr,
                 "[bp-reader-mcp][commandlet][daemon] transport error, falling back to one-shot: %s\n",
                 e.what());
+            {
+                std::lock_guard<std::mutex> lock(daemonMutex_);
+                socket_.reset();
+            }
 #if defined(_WIN32)
             TerminateDaemon();
 #endif
@@ -506,35 +571,178 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
     return parsed;
 }
 
+std::unique_ptr<SocketBlueprintReader>
+CommandletBlueprintReader::TryAttachExistingDaemon() const {
+    auto hsPath = cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json";
+    std::error_code ec;
+    if (!std::filesystem::exists(hsPath, ec)) return nullptr;
+
+    std::ifstream f(hsPath);
+    if (!f) return nullptr;
+    nlohmann::json j;
+    try { f >> j; }
+    catch (...) { return nullptr; }
+
+    int pid = j.value("pid", 0);
+    // pid is diagnostic-only on the editor side (lifetime lock is the
+    // source of truth) but extremely useful here as a cheap "is the
+    // daemon still alive?" probe before we sink a TCP connect.
+    if (pid > 0 && !ProcessAlive(pid)) return nullptr;
+
+    SocketBlueprintReader::Config sc;
+    sc.host  = j.value("host",  std::string("127.0.0.1"));
+    sc.port  = j.value("port",  0);
+    sc.token = j.value("token", std::string());
+    if (sc.port <= 0 || sc.token.empty()) return nullptr;
+
+    // Wire the handshake-file path through to the socket reader so it
+    // can self-refresh on connect-refused / auth-fail (issue #9 pattern
+    // — daemon restart with a new port or token).
+    sc.handshakeFilePath = hsPath.string();
+    sc.connectTimeout    = std::chrono::seconds(5);
+    sc.opTimeout         = cfg_.timeout;
+
+    // TCP probe with a short timeout. AutoBlueprintReader's TcpProbe is
+    // not visible from here (TU-private), so do a quick non-blocking
+    // connect inline. Skip the probe when we don't have a sensible
+    // address — we'll just rely on EnsureConnected throwing on first op.
+#if defined(_WIN32)
+    {
+        WSADATA wsa;
+        bool wsaInited = (WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+        auto wsaCleanup = MakeScopeGuard([wsaInited]() {
+            if (wsaInited) WSACleanup();
+        });
+        SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (s == INVALID_SOCKET) return nullptr;
+        auto closeSock = MakeScopeGuard([s]() { ::closesocket(s); });
+        u_long nb = 1; ::ioctlsocket(s, FIONBIO, &nb);
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port   = htons(static_cast<uint16_t>(sc.port));
+        ::inet_pton(AF_INET, sc.host.c_str(), &addr.sin_addr);
+
+        int rc = ::connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+        if (rc != 0) {
+            fd_set wfds;
+            FD_ZERO(&wfds);
+            FD_SET(s, &wfds);
+            timeval tv{};
+            tv.tv_sec  = 0;
+            tv.tv_usec = 250 * 1000;
+            rc = ::select(static_cast<int>(s) + 1, nullptr, &wfds, nullptr, &tv);
+            if (rc <= 0) return nullptr;
+            int err = 0;
+            int errLen = sizeof(err);
+            ::getsockopt(s, SOL_SOCKET, SO_ERROR,
+                         reinterpret_cast<char*>(&err), &errLen);
+            if (err != 0) return nullptr;
+        }
+    }
+#endif
+
+    try {
+        return std::make_unique<SocketBlueprintReader>(std::move(sc));
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void CommandletBlueprintReader::PollForHandshake(std::chrono::seconds timeout) {
+    auto hsPath = cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json";
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::error_code ec;
+        if (std::filesystem::exists(hsPath, ec)) {
+            std::ifstream f(hsPath);
+            nlohmann::json j;
+            bool parsed = false;
+            try {
+                f >> j;
+                parsed = true;
+            } catch (...) {
+                parsed = false;
+            }
+            if (parsed && j.value("port", 0) > 0 &&
+                !j.value("token", std::string()).empty()) {
+                return;  // ready
+            }
+        }
+#if defined(_WIN32)
+        // Bail early if the child we spawned died before publishing —
+        // attaching to a dead daemon would just produce a confusing
+        // TCP error on the first op.
+        if (daemonProcess_ != nullptr &&
+            WaitForSingleObject(daemonProcess_, 0) == WAIT_OBJECT_0) {
+            DWORD code = 0;
+            GetExitCodeProcess(daemonProcess_, &code);
+            throw BlueprintReaderError(fmt::format(
+                "daemon child exited before publishing handshake "
+                "(code={}); check {} for engine log tail",
+                code,
+                (std::filesystem::temp_directory_path() /
+                 "bp-reader-mcp-daemon-failure.log").string()));
+        }
+#endif
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    // Caller's TryAttachExistingDaemon will return nullptr and
+    // EnsureDaemonAttached will turn that into a useful error.
+}
+
+SocketBlueprintReader&
+CommandletBlueprintReader::EnsureDaemonAttached() {
+    std::lock_guard<std::mutex> lock(daemonMutex_);
+    if (socket_) return *socket_;
+
+    // First: see if a daemon is already listening (could be one we
+    // spawned earlier this session, or a separately-launched editor
+    // running the daemon). The lifetime lock on the editor side makes
+    // sure we won't see two of them at once.
+    socket_ = TryAttachExistingDaemon();
+    if (socket_) return *socket_;
+
+    // No daemon found — spawn one and wait for its handshake file. The
+    // race-naive Phase 2 path: two MCP servers concurrently spawning
+    // here would both call CreateProcessW; the second daemon process
+    // would lose the editor-side lifetime lock and exit. Phase 4 adds
+    // a spawn-coordination lock on the client side to avoid the
+    // double-launch entirely.
+    SpawnDaemon();
+    PollForHandshake(cfg_.startupTimeout);
+
+    socket_ = TryAttachExistingDaemon();
+    if (!socket_) {
+        // SpawnDaemon launched a child but the handshake never landed.
+        // Tear the child down so the user can retry without an orphaned
+        // editor process hanging around.
+#if defined(_WIN32)
+        TerminateDaemon();
+#endif
+        throw BlueprintReaderError(fmt::format(
+            "commandlet daemon: spawn succeeded but handshake never "
+            "appeared within {}s (bump BP_READER_STARTUP_TIMEOUT_SECONDS "
+            "for slower projects); check {} for engine log tail",
+            cfg_.startupTimeout.count(),
+            (std::filesystem::temp_directory_path() /
+             "bp-reader-mcp-daemon-failure.log").string()));
+    }
+    return *socket_;
+}
+
 #if defined(_WIN32)
 
 void CommandletBlueprintReader::TerminateDaemon() {
-    if (daemonProcess_ != nullptr) {
-        // Best-effort clean shutdown: send QUIT, then close stdin to signal EOF.
-        if (daemonStdin_ != nullptr) {
-            const char* quit = "QUIT\n";
-            DWORD written = 0;
-            WriteFile(daemonStdin_, quit, 5, &written, nullptr);
-            CloseHandle(daemonStdin_);
-            daemonStdin_ = nullptr;
-        }
-        // Wait briefly; if it doesn't exit, terminate.
-        if (WaitForSingleObject(daemonProcess_, 2000) != WAIT_OBJECT_0) {
-            TerminateProcess(daemonProcess_, 0);
-            WaitForSingleObject(daemonProcess_, 1000);
-        }
-        CloseHandle(daemonProcess_);
-        daemonProcess_ = nullptr;
-    }
-    if (daemonStdin_ != nullptr) {
-        CloseHandle(daemonStdin_);
-        daemonStdin_ = nullptr;
-    }
-    if (daemonStdout_ != nullptr) {
-        CloseHandle(daemonStdout_);
-        daemonStdout_ = nullptr;
-    }
-    accumulator_.clear();
+    if (daemonProcess_ == nullptr) return;
+    // Force termination of the child we spawned. The daemon's own
+    // TCP-shutdown path is not wired yet (Phase 4) — TerminateProcess
+    // is a hammer but reliable, and the daemon's lifetime lock cleans
+    // up on process exit.
+    TerminateProcess(daemonProcess_, 0);
+    WaitForSingleObject(daemonProcess_, 1000);
+    CloseHandle(daemonProcess_);
+    daemonProcess_ = nullptr;
 }
 
 void CommandletBlueprintReader::Prewarm() {
@@ -542,14 +750,15 @@ void CommandletBlueprintReader::Prewarm() {
     if (prewarmThread_.joinable()) return;  // already prewarming
     prewarmThread_ = std::thread([this]() {
         try {
-            std::lock_guard<std::mutex> lock(daemonMutex_);
-            // If a real tool call beat us to it, EnsureDaemon is a no-op.
-            EnsureDaemon();
+            // EnsureDaemonAttached holds daemonMutex_; a real call
+            // hitting EnsureDaemonAttached concurrently will block on
+            // the same mutex and find a hot socket once we're done.
+            (void)EnsureDaemonAttached();
             std::fprintf(stderr,
                 "[bp-reader-mcp][commandlet][daemon] prewarm complete\n");
         } catch (const std::exception& e) {
-            // Swallow: the next real tool call will retry under its own lock.
-            // Logging only — never let the prewarm thread crash main.
+            // Swallow: the next real tool call will retry under its own
+            // lock. Logging only — never let the prewarm thread crash main.
             std::fprintf(stderr,
                 "[bp-reader-mcp][commandlet][daemon] prewarm failed: %s "
                 "(tool calls will retry)\n", e.what());
@@ -557,7 +766,7 @@ void CommandletBlueprintReader::Prewarm() {
     });
 }
 
-void CommandletBlueprintReader::EnsureDaemon() {
+void CommandletBlueprintReader::SpawnDaemon() {
     if (daemonProcess_ != nullptr) {
         // Sanity: if the child died unexpectedly, recycle. Use a 0-timeout
         // wait rather than GetExitCodeProcess + STILL_ACTIVE comparison —
@@ -567,29 +776,17 @@ void CommandletBlueprintReader::EnsureDaemon() {
             DWORD code = 0;
             GetExitCodeProcess(daemonProcess_, &code);
             std::fprintf(stderr,
-                "[bp-reader-mcp][commandlet][daemon] child exited with code %lu; respawning\n",
+                "[bp-reader-mcp][commandlet][daemon] previously-spawned "
+                "child exited with code %lu; respawning\n",
                 static_cast<unsigned long>(code));
-            TerminateDaemon();
+            CloseHandle(daemonProcess_);
+            daemonProcess_ = nullptr;
         } else {
+            // Child still alive; assume it's racing toward publishing
+            // its handshake. Let PollForHandshake decide.
             return;
         }
     }
-
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof(sa);
-    sa.bInheritHandle = TRUE;
-
-    HANDLE childInR = nullptr, childInW = nullptr;
-    HANDLE childOutR = nullptr, childOutW = nullptr;
-    if (!CreatePipe(&childInR, &childInW, &sa, 0)) {
-        throw BlueprintReaderError("CreatePipe(stdin) failed");
-    }
-    if (!CreatePipe(&childOutR, &childOutW, &sa, 0)) {
-        CloseHandle(childInR); CloseHandle(childInW);
-        throw BlueprintReaderError("CreatePipe(stdout) failed");
-    }
-    SetHandleInformation(childInW,  HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(childOutR, HANDLE_FLAG_INHERIT, 0);
 
     std::vector<std::wstring> args;
     args.push_back(cfg_.uproject.wstring());
@@ -600,264 +797,50 @@ void CommandletBlueprintReader::EnsureDaemon() {
     args.push_back(L"-unattended");
     args.push_back(L"-nopause");
     args.push_back(L"-stdout");
-    for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) args.push_back(std::move(extra));
+    for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) {
+        args.push_back(std::move(extra));
+    }
     std::wstring cmd = BuildCommandLine(editorCmdExe_.wstring(), args);
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput  = childInR;
-    si.hStdOutput = childOutW;
-    si.hStdError  = childOutW;  // merge stderr into stdout
-
+    // Detached I/O: the daemon owns its own stdout/stderr (engine log
+    // file) and accepts ops over TCP. No pipes — no parent-side reads.
+    // CREATE_NO_WINDOW keeps the editor invisible.
     PROCESS_INFORMATION pi{};
     BOOL ok = CreateProcessW(
         editorCmdExe_.wstring().c_str(),
         cmd.data(),
         nullptr, nullptr,
-        TRUE,
+        /*bInheritHandles=*/FALSE,
         CREATE_NO_WINDOW,
         nullptr, nullptr,
         &si, &pi);
-    CloseHandle(childInR);
-    CloseHandle(childOutW);
     if (!ok) {
         DWORD err = GetLastError();
-        CloseHandle(childInW);
-        CloseHandle(childOutR);
         throw BlueprintReaderError(fmt::format(
             "CreateProcessW(daemon) failed (err={})", err));
     }
     CloseHandle(pi.hThread);
-
     daemonProcess_ = pi.hProcess;
-    daemonStdin_   = childInW;
-    daemonStdout_  = childOutR;
 
-    // Wait for the daemon's READY sentinel before declaring it usable. Big UE
-    // projects (lots of plugins, large content set, cold DDC) take much longer
-    // than per-call ops do, so this gets its own bigger timeout.
-    const auto t0 = std::chrono::steady_clock::now();
-    try {
-        ReadUntilMarker("__BPR_READY__\n", cfg_.startupTimeout);
-    } catch (const std::exception& e) {
-        // Persist the full daemon stderr/stdout to a known file before tearing
-        // down — the inline tail (now 250 lines but still bounded) often
-        // truncates the actual fatal when many other plugins log warnings
-        // first. Users can read this file to see the whole story.
-        std::filesystem::path logPath;
-        try {
-            logPath = std::filesystem::temp_directory_path() / "bp-reader-mcp-daemon-failure.log";
-            std::ofstream logFile(logPath, std::ios::trunc);
-            if (logFile) {
-                logFile << "=== Daemon failed to reach READY ===\n";
-                logFile << "Engine    : " << cfg_.engineDir.string() << "\n";
-                logFile << "Project   : " << cfg_.uproject.string() << "\n";
-                logFile << "ExtraArgs : " << cfg_.editorExtraArgs << "\n";
-                logFile << "Error     : " << e.what() << "\n\n";
-                logFile << "=== Full editor stdout/stderr (newest line last) ===\n";
-                logFile << accumulator_;
-            }
-        } catch (...) {
-            // Don't let logging-the-failure failure shadow the original failure.
-            logPath.clear();
-        }
-        TerminateDaemon();
-
-        const std::string what = e.what();
-        const std::string logHint = logPath.empty()
-            ? std::string{}
-            : fmt::format("\nFull daemon log: {}", logPath.string());
-
-        // The two failure modes have very different fixes — separate them so
-        // the next reader of the message doesn't go chase the wrong one.
-        if (what.find("process exited") != std::string::npos) {
-            throw BlueprintReaderError(fmt::format(
-                "daemon exited before reaching READY: {}{}\n"
-                "Hint: scan the tail above (and the full log) for 'Error:' / "
-                "'Fatal:' lines, OR for absence of any 'BlueprintReader' / "
-                "'BlueprintReaderEditor' / 'Commandlet' messages — if you see "
-                "no BlueprintReader logs, the UE plugin module probably isn't "
-                "built (rebuild the editor target). For plugin/module load "
-                "failures (e.g. 'Plugin X failed to load because module Y...'), "
-                "set BP_READER_EDITOR_ARGS=\"-EnableAllPlugins\".",
-                what, logHint));
-        }
-        throw BlueprintReaderError(fmt::format(
-            "daemon timed out reaching READY (waited {}s; bump "
-            "BP_READER_STARTUP_TIMEOUT_SECONDS for slower projects): {}{}",
-            cfg_.startupTimeout.count(), what, logHint));
-    }
-    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - t0).count();
     std::fprintf(stderr,
-        "[bp-reader-mcp][commandlet][daemon] READY after %lldms\n",
-        static_cast<long long>(dt));
-}
-
-std::string CommandletBlueprintReader::ReadUntilMarker(
-    const std::string& marker, std::chrono::seconds timeout)
-{
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    char buf[4096];
-    for (;;) {
-        auto pos = accumulator_.find(marker);
-        if (pos != std::string::npos) {
-            std::string consumed = accumulator_.substr(0, pos);
-            accumulator_.erase(0, pos + marker.size());
-            return consumed;
-        }
-
-        // Check if child died. Same code-259 caveat — WaitForSingleObject(0)
-        // returns WAIT_OBJECT_0 only if the process is actually signaled
-        // (i.e. exited).
-        if (WaitForSingleObject(daemonProcess_, 0) == WAIT_OBJECT_0) {
-            DWORD code = 0;
-            GetExitCodeProcess(daemonProcess_, &code);
-            throw BlueprintReaderError(fmt::format(
-                "daemon process exited (code={}); tail:\n{}", code, TrimLines(accumulator_, 250)));
-        }
-
-        if (std::chrono::steady_clock::now() >= deadline) {
-            throw BlueprintReaderError(fmt::format(
-                "daemon read timeout after {}s waiting for marker; tail:\n{}",
-                timeout.count(), TrimLines(accumulator_, 250)));
-        }
-
-        DWORD avail = 0;
-        if (!PeekNamedPipe(daemonStdout_, nullptr, 0, nullptr, &avail, nullptr)) {
-            throw BlueprintReaderError("daemon stdout pipe error");
-        }
-        if (avail == 0) {
-            // Yield for a moment to avoid spinning.
-            Sleep(15);
-            continue;
-        }
-        DWORD toRead = avail < sizeof(buf) ? avail : (DWORD)sizeof(buf);
-        DWORD got = 0;
-        if (!ReadFile(daemonStdout_, buf, toRead, &got, nullptr) || got == 0) {
-            throw BlueprintReaderError("daemon stdout closed");
-        }
-        accumulator_.append(buf, got);
-    }
-}
-
-nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>& opArgs) {
-    std::lock_guard<std::mutex> lock(daemonMutex_);
-    EnsureDaemon();
-
-    auto outFile = TempJsonPath();
-
-    // Compose a single commandlet-arg line. Each arg is inner-quoted as
-    // needed for UE's FParse::Value (see EncodeArgForFParse). The daemon
-    // reads this line raw from stdin — no shell or CreateProcessW layer
-    // sits between us, so we don't want Windows-style outer quoting that
-    // would defeat FParse's inner-quote detection (issue #10).
-    std::wstring line;
-    for (const auto& a : opArgs) {
-        if (!line.empty()) line.push_back(L' ');
-        line.append(EncodeArgForFParse(a));
-    }
-    if (!line.empty()) line.push_back(L' ');
-    line.append(EncodeArgForFParse(L"-Out=" + outFile.wstring()));
-    line.append(L" -Compact\n");
-
-    // RAII cleanup of the temp file: runs even if any throw between here
-    // and the dismiss point at the end. Avoids the previous pattern of
-    // manually `cleanup();` before each `throw` and relying on every
-    // future caller to remember.
-    auto outFileGuard = MakeScopeGuard([&]() {
-        std::error_code ec;
-        std::filesystem::remove(outFile, ec);
-    });
-
-    std::string lineUtf8 = Narrow(line);
-
-    const auto t0 = std::chrono::steady_clock::now();
-
-    // Loop on partial writes — anonymous pipes can in principle short-write
-    // a long command line if the kernel pipe buffer is small. Today our
-    // command lines are << pipe buffer size, but loop anyway for safety.
-    {
-        const char* p = lineUtf8.data();
-        std::size_t left = lineUtf8.size();
-        while (left > 0) {
-            DWORD written = 0;
-            if (!WriteFile(daemonStdin_, p,
-                           static_cast<DWORD>(left), &written, nullptr) ||
-                written == 0) {
-                throw BlueprintReaderError("daemon stdin write failed");
-            }
-            p += written;
-            left -= written;
-        }
-    }
-
-    // Wait for the per-call sentinel `__BPR_DONE <code>__\n`. The plugin
-    // emits this after every command. We discard everything else (engine
-    // log lines on the merged stdout/stderr stream).
-    int32_t exitCode = 0;
-    {
-        // Drain everything up to + including the leading marker. Per-call
-        // timeout (cfg_.timeout) — the daemon is already warm at this point.
-        ReadUntilMarker("__BPR_DONE ", cfg_.timeout);
-        // The next bytes are decimal digits, then `__\n`. Read up to + including
-        // the `__\n` terminator; the digits sit in `digits`.
-        std::string digits = ReadUntilMarker("__\n", cfg_.timeout);
-        try {
-            exitCode = std::stoi(digits);
-        } catch (...) {
-            throw BlueprintReaderError(fmt::format(
-                "daemon emitted malformed sentinel: code='{}'", digits));
-        }
-    }
-
-    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - t0).count();
-    std::fprintf(stderr,
-                 "[bp-reader-mcp][commandlet][daemon] op-args=%zu exit=%d duration=%lldms\n",
-                 opArgs.size(), exitCode, static_cast<long long>(dt));
-
-    if (exitCode != 0) {
-        std::string tail = TrimLines(accumulator_, 250);
-        if (exitCode == 4) {
-            throw AssetNotFound(fmt::format(
-                "daemon op exit=4 (missing target); tail:\n{}", tail));
-        }
-        throw BlueprintReaderError(fmt::format(
-            "daemon op exit={}; tail:\n{}", exitCode, tail));
-    }
-
-    if (!std::filesystem::exists(outFile)) {
-        throw BlueprintReaderError(fmt::format(
-            "daemon op exited 0 but produced no output file at {}", outFile.string()));
-    }
-
-    nlohmann::json parsed;
-    try {
-        std::ifstream in(outFile);
-        in >> parsed;
-    } catch (const std::exception& e) {
-        throw BlueprintReaderError(fmt::format(
-            "failed to parse daemon JSON ({}): {}", outFile.string(), e.what()));
-    }
-    // outFileGuard runs here on normal return.
-    return parsed;
+        "[bp-reader-mcp][commandlet][daemon] spawned UnrealEditor-Cmd "
+        "(pid=%lu); waiting for handshake at "
+        "<Project>/Saved/bp-reader-cmdlet.json (timeout=%llds)\n",
+        static_cast<unsigned long>(pi.dwProcessId),
+        static_cast<long long>(cfg_.startupTimeout.count()));
 }
 
 #else // !_WIN32
 
 void CommandletBlueprintReader::TerminateDaemon() {}
-void CommandletBlueprintReader::EnsureDaemon() {
-    throw BlueprintReaderError("daemon mode is Windows-only");
-}
+
 void CommandletBlueprintReader::Prewarm() {
     // No-op on non-Windows; daemon mode is unsupported there.
 }
-std::string CommandletBlueprintReader::ReadUntilMarker(const std::string&, std::chrono::seconds) {
-    throw BlueprintReaderError("daemon mode is Windows-only");
-}
-nlohmann::json CommandletBlueprintReader::RunOpDaemon(const std::vector<std::wstring>&) {
+
+void CommandletBlueprintReader::SpawnDaemon() {
     throw BlueprintReaderError("daemon mode is Windows-only");
 }
 
@@ -2607,21 +2590,28 @@ nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile) {
 }
 
 nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
-    // Hold the daemon mutex so a concurrent tool call can't half-spawn a
-    // new daemon while we're tearing the current one down. After we
-    // release, the next call's EnsureDaemon() spins up a fresh process.
+    // Hold the daemon mutex so a concurrent tool call can't half-spawn
+    // a new daemon while we're tearing the current one down. After we
+    // release, the next call's EnsureDaemonAttached() either attaches
+    // to an externally-launched daemon or spawns a fresh process.
     std::lock_guard<std::mutex> lock(daemonMutex_);
+    bool hadSocket = (socket_ != nullptr);
+    // Drop the socket first so its destructor releases the TCP
+    // connection before we terminate the child. The daemon's side
+    // will notice the disconnect and clean up its per-connection state.
+    socket_.reset();
 #if defined(_WIN32)
-    bool wasRunning = (daemonProcess_ != nullptr);
-    if (wasRunning) {
-        TerminateDaemon();  // sends QUIT, joins, closes pipes
+    bool wasRunning = hadSocket || (daemonProcess_ != nullptr);
+    if (daemonProcess_ != nullptr) {
+        TerminateDaemon();
     }
     return nlohmann::json{
         {"ok", true},
         {"was_running", wasRunning},
-        {"hint", "Next read tool call will auto-respawn the daemon."},
+        {"hint", "Next read tool call will auto-respawn (or re-attach to) the daemon."},
     };
 #else
+    (void)hadSocket;
     return nlohmann::json{
         {"ok", true},
         {"was_running", false},

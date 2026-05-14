@@ -273,6 +273,17 @@ public:
     // {ok:true, was_running:false}.
     nlohmann::json ShutdownDaemon() override;
 
+    // Public entry-point for clients that already have op-frame args
+    // pre-encoded (CommandletBlueprintReader, which now routes its
+    // -Op=... requests through SocketBlueprintReader's TCP transport
+    // instead of stdin/stdout pipes). Wraps the same RunOp logic that
+    // every typed method below uses internally — returns the parsed
+    // `json` field from the result frame, throws BlueprintReaderError
+    // on wire/protocol/handler failure.
+    nlohmann::json RunOpRaw(const std::vector<std::string>& args) {
+        return RunOp(args);
+    }
+
 private:
     // Send op-args, read result, return parsed `json` field. Throws
     // BlueprintReaderError on any wire/protocol/handler failure.
