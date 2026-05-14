@@ -88,7 +88,6 @@ add_library(bp-reader-core STATIC
     src/backends/SocketBlueprintReader.cpp
     src/backends/AutoBlueprintReader.cpp
     src/backends/BackendFactory.cpp
-    src/util/SingleInstanceLock.cpp
 )
 target_include_directories(bp-reader-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
