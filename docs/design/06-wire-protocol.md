@@ -389,10 +389,10 @@ on every `BPNode`, populated only for `find_node`.
 ## Op frame (live + commandlet)
 
 Backends that round-trip through UE — the commandlet daemon and the
-live socket — share a single op-arg format. The MCP server frames each
-call as an array of `-Key=Value` flags. From
-`LiveBlueprintReader::ListBlueprints`
-(`LiveBlueprintReader.cpp:359-364`):
+live editor — share a single op-arg format AND a single transport.
+The MCP server frames each call as an array of `-Key=Value` flags.
+From `SocketBlueprintReader::ListBlueprints`
+(`SocketBlueprintReader.cpp:359-364`):
 
 ```cpp
 std::vector<std::string> args = {"-Op=List"};
@@ -406,25 +406,45 @@ is documented in CLAUDE.md (the
 `-Op=List|Read|Graph|Function|Variables|Components|Find|AddVariable|...`
 enumeration).
 
-In daemon mode the args are passed as a newline-delimited string of
-arg tokens; in live mode they're a JSON array inside an `op` frame
-(`LiveBlueprintReader.cpp:310-315`):
+The daemon used to read newline-delimited arg strings from its own
+stdin and emit `__BPR_READY__` / `__BPR_DONE <code>__` sentinels on
+stdout. That model is gone: the daemon now hosts a localhost TCP
+listener that speaks the **same four wire frames** as the live
+editor (`SocketBlueprintReader.cpp:310-315`):
 
-```cpp
-nlohmann::json frame = {
-    {"type", "op"},
-    {"id", id},
-    {"args", args},
-};
+```jsonc
+server → client  {"type":"hello","version":"1"}
+client → server  {"type":"auth","token":"<from handshake file>"}
+server → client  {"type":"auth_ok"}   // or {"type":"auth_fail"}
+client → server  {"type":"op","id":N,"args":["-Op=Read","-Asset=/Game/AI/BP_Foo"]}
+server → client  {"type":"result","id":N,"code":0,"json":{...}}
+                 // or {"type":"error","id":N,"error":"..."}
 ```
 
-Quoting differs between transports. Commandlet args go through
-`CommandletArgEncoding::EncodeArg` (`backends/CommandletArgEncoding.h:114`)
-to handle FParse's quoted-string parsing — see
-[05 — Backends](05-backends.md#arg-encoding-for-fparse). Live args ride
-over JSON so no quoting is needed; the editor's TCP server just hands
-the array elements straight into the same `ParseOp` the commandlet
-uses.
+One protocol, two server lifecycles. The MCP-side
+`SocketBlueprintReader` (formerly `LiveBlueprintReader`) is the only
+client class either backend uses.
+
+### Live vs cmdlet handshake
+
+The two handshake files have identical schemas (see
+[05 — Backends](05-backends.md#handshake-files-in-projectsaved) for
+the field list). They differ only in who publishes them and what
+that process's lifecycle looks like:
+
+| Handshake | Published by | Lifecycle |
+|---|---|---|
+| `<Project>/Saved/bp-reader-live.json` | The full editor's `BlueprintReaderEditor` module | Created on `StartupModule`; deleted on `ShutdownModule`. Lives as long as the editor process. |
+| `<Project>/Saved/bp-reader-cmdlet.json` | The `UnrealEditor-Cmd -Daemon` process | Created when the daemon binds its TCP listener; deleted on graceful exit. Lives as long as the shared daemon — idles out after `BP_READER_DAEMON_IDLE_SECONDS` when no clients are attached. |
+
+Args ride over JSON in both transports — no shell-quoting layer
+between the MCP server and the editor's dispatcher. The
+`CommandletArgEncoding::EncodeArg`
+(`backends/CommandletArgEncoding.h:114`) path is only invoked when
+the MCP server falls back to one-shot `UnrealEditor-Cmd.exe` spawns
+(daemon disabled or transport failure), where args go through
+`CommandLineToArgvW` + FParse and need defensive quoting — see
+[05 — Backends](05-backends.md#arg-encoding-for-fparse).
 
 
 ## Empty value of optional fields
