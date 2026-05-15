@@ -391,11 +391,15 @@ Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Binaries/
 Build.bat UE5_MCPEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
-The three targets compile independently — building the editor no
-longer rebuilds the MCP server as a side effect (the prior PreBuildStep
-that ran CMake is gone). Build all three at once via
-`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` or three separate
-`Build.bat` invocations.
+The editor target declares `BlueprintReaderMcp` as a `PreBuildTarget`,
+so `Build.bat UE5_MCPEditor ...` pulls the server along automatically
+(you'll see UBT interleave `** For UE5_MCPEditor-... **` and `** For
+BlueprintReaderMcp-... **` lines). The test exe and standalone server
+builds remain explicit — use
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` to build both
+Program targets at once, or invoke `Build.bat` per target. Pass
+`-SkipPreBuildTargets` to the editor build if you want the editor
+module rebuilt without touching the server.
 
 ## Engine setup (only needed for the `commandlet` backend)
 
