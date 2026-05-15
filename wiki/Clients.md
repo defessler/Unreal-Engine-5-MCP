@@ -1,6 +1,6 @@
 # Clients & launching
 
-How to start `bp-reader-mcp.exe` and how to wire it into Claude, GitHub
+How to start `BlueprintReaderMcp.exe` and how to wire it into Claude, GitHub
 Copilot, and ChatGPT. The server is a Windows-only stdio JSON-RPC
 process — every MCP client below understands stdio except ChatGPT,
 which needs a bridge (covered last).
@@ -42,20 +42,22 @@ Override per-call (works with either):
 -Prewarm 0                 skip editor pre-warm (fast startup)
 -EngineDir "D:\Other"      different engine
 -UProject  "D:\Foo.uproject"
--Exe       "...\Debug\bp-reader-mcp.exe"
+-Exe       "...\Debug\BlueprintReaderMcp.exe"
 ```
 
-For building the MCP server outside UBT (e.g. a plain `cmake --build`
-test), there's a parallel pair:
+For building the MCP server (it's a UBT `Program` target — no separate
+CMake step), there's a wrapper pair:
 
 ```
 Build-MCPServer.ps1   ← PowerShell
 Build-MCPServer.bat   ← cmd wrapper
 ```
 
-These run the same logic UBT invokes as a `PreBuildStep` — smart skip
-when the exe is fresher than every `mcp-server\src\` file, otherwise
-configure (first time) + build.
+Both invoke `Build.bat BlueprintReaderMcp Win64 Development` against
+your engine + `.uproject`, producing
+`<Project>\Binaries\Win64\BlueprintReaderMcp.exe`. Pair it with
+`Verify-Build.ps1` to confirm both halves of the plugin (server exe +
+editor DLL) are present.
 
 Server runs in the foreground; stderr goes to the console; stdin reads
 JSON-RPC frames. Ctrl-C or close stdin to stop.
@@ -68,12 +70,11 @@ $body = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersio
     pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
 ```
 
-For a full handshake + 2 tool calls, the bundled smoke harness:
+For a full handshake + tool-call smoke, the doctest binary covers it
+end-to-end:
 
 ```powershell
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
-    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
-    -Asset /Game/AI/BP_TestEnemy
+.\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
 ## Claude Code (recommended)
@@ -85,7 +86,7 @@ Claude Code from the project dir wires bp-reader automatically:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -108,7 +109,7 @@ claude mcp add bp-reader --scope user `
     --env "BP_READER_ENGINE_DIR=D:\Projects\Unreal Engine 5" `
     --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\UE5_MCP.uproject" `
     --env BP_READER_PREWARM=1 `
-    -- "D:\Projects\UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe"
+    -- "D:\Projects\UE5_MCP\Binaries\Win64\BlueprintReaderMcp.exe"
 ```
 
 Writes to `~/.claude.json`. Bp-reader will spawn in *every* Claude Code
@@ -123,7 +124,7 @@ Same JSON shape as Claude Code, in
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -151,7 +152,7 @@ Workspace scope (recommended, travels with the repo): create
   "servers": {
     "bp-reader": {
       "type": "stdio",
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -209,7 +210,7 @@ first 4) in `<projectRoot>/.mcp.json`:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "...bp-reader-mcp.exe",
+      "command": "...BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\YourGame",
@@ -229,7 +230,7 @@ verify what got injected. Restart the IDE after switching the
 ## ChatGPT (requires a bridge)
 
 > ⚠ **ChatGPT does not support local stdio MCP servers.** It only
-> connects to remote MCP servers over HTTPS. Adding `bp-reader-mcp.exe`
+> connects to remote MCP servers over HTTPS. Adding `BlueprintReaderMcp.exe`
 > directly is not possible — you must wrap it with a bridge that
 > exposes the stdio process as an HTTPS endpoint, then register the
 > public URL via ChatGPT's Connectors UI.
@@ -251,9 +252,9 @@ Rough recipe:
 # 1. Install mcp-remote (one-time)
 npm i -g mcp-remote
 
-# 2. Wrap bp-reader-mcp as an HTTP MCP server on localhost:8080
+# 2. Wrap BlueprintReaderMcp as an HTTP MCP server on localhost:8080
 mcp-remote `
-    --command "D:\Projects\UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe" `
+    --command "D:\Projects\UE5_MCP\Binaries\Win64\BlueprintReaderMcp.exe" `
     --port 8080
 
 # 3. Tunnel it out (separate shell). Free ngrok works for dev:

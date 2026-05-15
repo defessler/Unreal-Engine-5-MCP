@@ -62,7 +62,7 @@ registry) and exposes the same TCP protocol as the editor live server.
 Off by default; opt-in via the `bp.reader.listen` CVar. See
 `Source/BlueprintReaderRuntime/BlueprintReaderRuntime.Build.cs`.
 
-### Standalone MCP server — the MCP server's source tree (`Plugins/BlueprintReader/Tests/`)
+### Standalone MCP server (`Plugins/BlueprintReader/Tests/`)
 
 A C++20 stdio MCP server. JSON-RPC 2.0 frames in (newline-delimited or
 LSP-style `Content-Length`), tool result envelopes out. No UE
@@ -95,24 +95,24 @@ the chosen reader with a TTL-keyed cache
 (`CachingBlueprintReader`) and an optional read-only guard
 (`ReadOnlyBlueprintReader`).
 
-## 119 tools across 21 categories
+## 126 tools across 22 categories
 
-The MCP server registers 119 tools at startup. The tests pin the
+The MCP server registers 126 tools at startup. The tests pin the
 expected count
 (`tests/test_tools.cpp:35`, `tests/test_mcp.cpp:90`). The categories,
 from the test breakdown:
 
-> 12 read + 22 write + 3 meta + 3 batch + 3 transpile + 9 project/asset
-> + 12 live editor + 1 automation + 7 material + 5 widget + 5 BT
+> 12 read + 22 write + 3 meta + 3 batch + 3 transpile + 13 project/asset
+> + 15 live editor + 1 automation + 7 material + 5 widget + 5 BT
 > + 4 DataAsset + 5 StateTree + 4 profile + 2 cook + 3 class info
 > + 4 viewport + 4 Niagara + 4 Sequencer + 3 GAS + 4 AnimGraph
 
 Tool names map 1:1 to `EOp` enum entries in
 `BlueprintReaderCommandlet.cpp` lines 115-244. The MCP server's tool
-descriptors live in `src/tools/BlueprintTools.cpp` (one
-`ToolDescriptor` block per tool, 116 of them) with three more added in
-`src/tools/ApplyOps.cpp` (`apply_ops`, `preview_ops`) and
-`src/tools/CompileFunction.cpp` (`compile_function`).
+descriptors live in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/BlueprintTools.cpp`
+(one `ToolDescriptor` block per tool, ~123 of them) with the rest in
+`ApplyOps.cpp` (`apply_ops`, `preview_ops`) and
+`CompileFunction.cpp` (`compile_function`).
 
 Don't enumerate them here — call `tools/list` against the running
 server, or read `wiki/Tool-Reference.md`. Adding a new tool means
@@ -124,18 +124,18 @@ plumbing through both halves; the checklist is in
 JSON keys are snake_case throughout. `BPNode.meta` is a real nested
 object (not a string-of-JSON). Empty optional strings serialize as
 JSON `null`, not `""`. The canonical types live in
-`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h` — same
-header is reused on the UE side via `#define WITH_UE` to surface
-USTRUCT mirrors for `FJsonObjectConverter`. See
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h` — previously the same header had a `#ifdef WITH_UE` block with
+USTRUCT mirrors for UE-side JSON conversion; that path was removed
+in the PR #75 UBT migration (UHT rejected USTRUCT inside conditional
+blocks and the WITH_UE branch was never actually consumed). See
 [02-architecture.md → "Key invariants"](02-architecture.md#key-invariants)
 for why this matters and where each invariant is enforced.
 
 Asset paths on the wire are always **package paths**
 (`/Game/AI/BP_Enemy`), never UE's internal object paths
 (`/Game/AI/BP_Enemy.BP_Enemy`). The plugin's
-`FBlueprintReaderWireJson::ToPackagePath` strips the trailing object
-suffix consistently
-(`Source/BlueprintReaderEditor/Private/BlueprintReaderWireJson.cpp:14-24`).
+`FBlueprintReaderWireJson::ToPackagePath` strips the trailing object suffix consistently
+(see `BlueprintReaderWireJson.cpp`).
 
 ## Where the docs live
 

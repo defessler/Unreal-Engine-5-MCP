@@ -9,7 +9,7 @@ communicate is in [02-architecture.md](02-architecture.md).
 
 ```
 Plugins/BlueprintReader/
-├── BlueprintReader.uplugin                  PreBuildSteps trigger Build-MCPServer.ps1
+├── BlueprintReader.uplugin                  plugin manifest (no PreBuildStep; MCP server is its own UBT Program target)
 └── Source/
     ├── BlueprintReaderEditor/               UnrealEd module — does all the work
     │   ├── Public/
