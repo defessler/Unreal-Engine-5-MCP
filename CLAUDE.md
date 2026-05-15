@@ -126,13 +126,15 @@ UE setup — useful for iterating on the MCP server itself.
 ## Build
 
 The MCP server is now a UE Program target — it builds via UBT
-alongside the rest of the plugin. The editor target declares
-`BlueprintReaderMcp` as a `PreBuildTarget`, so the first command below
-builds both the editor module *and* the server in one invocation. The
-doctest binary remains explicit (heavier, less often needed):
+alongside the rest of the plugin. The plugin's `.uplugin` carries a
+`PreBuildSteps` hook (see `Plugins/BlueprintReader/Scripts/PreBuildHook.ps1`)
+that invokes UBT for `BlueprintReaderMcp` before any consuming target's
+own build runs, so the first command below builds both the editor
+module *and* the server in one invocation. The doctest binary remains
+explicit (heavier, less often needed):
 
 ```bat
-:: Editor (plugin DLLs) + MCP server exe (via PreBuildTarget):
+:: Editor (plugin DLLs) + MCP server exe (via plugin PreBuildStep):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   UE5_MCPEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
@@ -151,8 +153,8 @@ doctest binary remains explicit (heavier, less often needed):
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-Add `-SkipPreBuildTargets` to the editor build to skip the MCP server
-side and rebuild just the editor module.
+Set `BP_READER_SKIP_PREBUILD=1` in the build environment to skip the
+MCP server side and rebuild just the editor module.
 
 Or both Program targets at once via the wrapper script:
 
@@ -177,10 +179,11 @@ incremental rebuild).
   DefaultBuildSettings = BuildSettingsVersion.V6;
   BuildEnvironment = TargetBuildEnvironment.Shared;
   ```
-  …and the `PreBuildTargets.Add(...)` block that pulls in
-  `BlueprintReaderMcp`. Without that line the editor build still works
-  but the MCP server exe goes stale, which is silent because the
-  daemon side keeps running an old binary.
+  The MCP server auto-build is handled inside the plugin via
+  `BlueprintReader.uplugin`'s `PreBuildSteps` block (which invokes
+  `Plugins/BlueprintReader/Scripts/PreBuildHook.ps1`). No project-side
+  wiring needed — drop the plugin into another `.uproject` and the
+  editor build pulls the server along.
 - Three engine `.Build.cs` patches (see README.md) for project-target
   builds to resolve `PrivateIncludePaths` correctly. These live in the
   sibling engine checkout, are not tracked here, and must be re-applied

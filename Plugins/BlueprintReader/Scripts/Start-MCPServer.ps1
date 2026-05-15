@@ -78,7 +78,7 @@ $tag BlueprintReaderMcp.exe not found.
 }
 
 # Auto-load env from .mcp.json if the params weren't passed. Also forwards
-# any *other* BP_READER_* vars that live in the JSON's env block — this is
+# any *other* BP_READER_* vars that live in the JSON's env block -- this is
 # the escape hatch for IDEs that drop env entries past some count when
 # launching MCP servers (observed with JetBrains Copilot in Rider/IDEA).
 $mcpJson = Join-Path $ProjectDir '.mcp.json'
