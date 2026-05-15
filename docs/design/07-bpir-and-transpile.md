@@ -28,9 +28,9 @@ for the on-wire shape of those graphs.
 
 ## The schema
 
-Source: `Plugins/BlueprintReader/mcp-server/src/tools/Bpir.h` (the
+Source: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/Bpir.h` (the
 schema docs and validator API),
-`Plugins/BlueprintReader/mcp-server/src/tools/Bpir.cpp` (the
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/Bpir.cpp` (the
 implementation).
 
 Top-level shape (`Bpir.h:14`):
@@ -231,7 +231,7 @@ list, package as a `{kind: "class", ...}` doc.
 ## Codegen direction (BPIR → C++)
 
 Source:
-`Plugins/BlueprintReader/mcp-server/src/tools/codegen/CppEmit.h`,
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/codegen/CppEmit.h`,
 `CppEmit.cpp`, `CppClassEmit.h`, `CppClassEmit.cpp`.
 
 ### CppEmit — function bodies

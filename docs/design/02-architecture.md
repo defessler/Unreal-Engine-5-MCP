@@ -15,7 +15,7 @@ deep-dives are in [03-plugin-internals.md](03-plugin-internals.md)
 +--------------------+                                 |
                                                        v
                                           +-------------------------+
-                                          |  bp-reader-mcp.exe      |
+                                          |  BlueprintReaderMcp.exe      |
                                           |  ----------------------- |
                                           |  jsonrpc::Server         |
                                           |     ReadFrame / WriteFrame
@@ -47,19 +47,19 @@ deep-dives are in [03-plugin-internals.md](03-plugin-internals.md)
 
 `AutoBlueprintReader` probes both per call (live first, commandlet
 fallback) — see backend dispatch in [03-plugin-internals.md] and the
-factory wiring in `mcp-server/src/backends/BackendFactory.cpp:196-266`.
+factory wiring in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/BackendFactory.cpp:196-266`.
 ```
 
 ## Process model
 
 In production there are typically two processes:
 
-1. **`bp-reader-mcp.exe`** — the MCP server. One per project. Started
+1. **`BlueprintReaderMcp.exe`** — the MCP server. One per project. Started
    by the MCP client. Lives for the client's session. Enforces a
    project-keyed single-instance lock so two clients (e.g. Claude Code
    + Copilot) don't both spawn competing editor daemons against the
    same `.uproject`. Lock-file naming + the FNV-1a project key:
-   `mcp-server/src/util/SingleInstanceLock.cpp:25-60`. Override with
+   `(deleted in PR #68's multi-session work — file removed; behavior superseded by daemon-side lifetime lock at Source/BlueprintReaderEditor/Private/BlueprintReaderCmdletServer.cpp:25-60`. Override with
    `BP_READER_ALLOW_MULTI=1`.
 
 2. **Backend process** depends on the backend:
@@ -76,7 +76,7 @@ In production there are typically two processes:
      the editor isn't reachable. The commandlet daemon is started
      lazily on first commandlet-routed call.
 
-`bp-reader-mcp.exe` does not host a UI, does not have a Unreal engine
+`BlueprintReaderMcp.exe` does not host a UI, does not have a Unreal engine
 instance in-process, and never loads `.uasset` files itself. All
 asset work happens in the editor / commandlet process.
 
@@ -85,7 +85,7 @@ asset work happens in the editor / commandlet process.
 Tracing one `tools/call read_blueprint /Game/AI/BP_Enemy`:
 
 ```
-1. Client writes JSON-RPC frame on stdin of bp-reader-mcp.exe.
+1. Client writes JSON-RPC frame on stdin of BlueprintReaderMcp.exe.
    jsonrpc::ReadFrame auto-detects framing on the first request
    (`Server.cpp:117-159`); subsequent frames use the same format.
 
@@ -129,7 +129,7 @@ keyed by a fresh `FGuid` per call —
 
 ## Threading model
 
-### MCP server side (`bp-reader-mcp.exe`)
+### MCP server side (`BlueprintReaderMcp.exe`)
 
 - Single thread for the whole JSON-RPC loop. `jsonrpc::Server::Run`
   is a blocking read-dispatch-write loop on `std::cin` / `std::cout`
@@ -214,7 +214,7 @@ stores it as a serialized FString because `FJsonObjectConverter`
 doesn't preserve arbitrary JSON values through a UPROPERTY, and the
 emit path unwraps it back to a nested object before sending. See
 the header comment in
-[`BlueprintReaderTypes.h:12-16`](../../Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h).
+[`BlueprintReaderTypes.h:12-16`](../../Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h).
 
 ### Error envelope with `_meta`
 
@@ -247,7 +247,7 @@ of the session (`Server.cpp:117-159`, `Server.cpp:285-292`).
 
 ### Single-instance lock per project
 
-Two `bp-reader-mcp.exe` processes for the same `.uproject` would
+Two `BlueprintReaderMcp.exe` processes for the same `.uproject` would
 spawn two commandlet daemons fighting for the same `.uasset` files
 and the same DDC. The single-instance lock uses an exclusive
 `CreateFileW` open on a file in `%TEMP%` named

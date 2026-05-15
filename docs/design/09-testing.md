@@ -11,7 +11,7 @@ locally; CI handles the rest.
 | Live in-process (TCP)   | minutes  | yes (editor open) | the live backend against a real editor |
 
 All three are doctest cases in a single executable at
-`Plugins/BlueprintReader/mcp-server/build/tests/Release/bp-reader-tests.exe`.
+`Binaries/Win64/BlueprintReaderMcpTests.exe`.
 Live cases auto-skip when their env vars aren't set, so a fresh-clone
 run drops straight through to mock-only coverage in seconds.
 
@@ -22,7 +22,7 @@ For backend-specific failure modes the tests exercise, see
 ## doctest framework
 
 The suite uses doctest because it's header-only (vendored under
-`mcp-server/third_party/`), supports test suites and runtime skip
+`Plugins/BlueprintReader/Tests/ThirdParty/`), supports test suites and runtime skip
 predicates, and produces stable per-case output that's easy to grep.
 
 The entire test main is in `tests/test_main.cpp`:
@@ -44,8 +44,10 @@ active.
 
 Each `test_<topic>.cpp` is self-contained — no shared `test_main`,
 no header sharing beyond `test_helpers.h` for fixture-loading
-helpers. A new test topic gets a new file; CMake's `file(GLOB ...)`
-pattern in `tests/CMakeLists.txt` picks it up automatically.
+helpers. A new test topic gets a new file; UBT's per-module file
+discovery in `BlueprintReaderMcpTests.Build.cs` picks it up
+automatically (under the UBT build) — there's no per-file list to
+maintain.
 
 The full list of test files (`tests/test_*.cpp`):
 
@@ -77,15 +79,16 @@ inline backends::MockBlueprintReader MakeMockReader() {
 }
 ```
 
-The fixtures directory is staged next to the test exe at build time
-(CMake copies `mcp-server/fixtures/*.json` to
-`build/tests/Release/fixtures/`). Tests don't need to know absolute
-paths or env vars; `MakeMockReader()` returns a ready-to-use reader.
+The fixtures directory is staged next to the test exe. Under the
+UBT build, the fixtures live at `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`
+and the Build-MCPServer.ps1 wrapper copies them next to the built
+exe. Tests don't need to know absolute paths or env vars;
+`MakeMockReader()` returns a ready-to-use reader.
 
 
 ## Layer 1: mock fixtures
 
-Source: `mcp-server/tests/test_mock_backend.cpp`,
+Source: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mock_backend.cpp`,
 `test_bpir.cpp`, `test_cpp_codegen.cpp`, `test_decompile.cpp`,
 `test_transpile_roundtrip.cpp`, `test_jsonrpc.cpp`, `test_mcp.cpp`,
 `test_tools.cpp`, and most of the rest.
@@ -99,7 +102,7 @@ JSON-RPC framing, tool registration, and the MCP envelope.
 
 Each `fixtures/BP_*.json` is one BP described in the same wire
 shape the production backends return. A real opener
-(`mcp-server/fixtures/BP_Enemy.json:1-15`):
+(`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_Enemy.json:1-15`):
 
 ```json
 {
@@ -119,7 +122,7 @@ shape the production backends return. A real opener
 ```
 
 `MockBlueprintReader::LoadDir`
-(`mcp-server/src/backends/MockBlueprintReader.cpp:59-65`) reads every
+(`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/MockBlueprintReader.cpp:59-65`) reads every
 `.json` file in the directory, parses each into a `FixtureEntry`
 through the nlohmann adapters in `BlueprintReaderTypes.h`, and keys
 the result by `summary.asset_path`. Three fixtures ship with the repo:
@@ -157,7 +160,7 @@ in CLAUDE.md.
 
 ## Layer 2: live commandlet
 
-Source: `mcp-server/tests/test_commandlet_backend.cpp`.
+Source: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_commandlet_backend.cpp`.
 
 These tests construct a real `CommandletBlueprintReader` pointed at
 the source-built editor and exercise it against fixture BPs the seed
@@ -227,7 +230,7 @@ you commit the regenerated `.uasset`s.
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
-.\Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
+.\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
 The mock cases still run first; the live cases get unskipped when
@@ -286,56 +289,47 @@ the probe correctly routes to live.
 
 ## Continuous integration
 
-Source: `.github/workflows/mcp-server.yml`.
+CI is currently **not configured.** The prior
+`.github/workflows/mcp-server.yml` (mock-only on `windows-2022`,
+CMake-based) was removed when the MCP server moved to a UE Program
+target. UBT-based CI requires a runner with the source-built engine
+available — a heavier infra step than the prior mock-only workflow
+needed.
 
-CI is mock-only by design. The workflow is short
-(`.github/workflows/mcp-server.yml:1-33`):
+Local pre-push verification runs the same test exe CI would have:
 
-```yaml
-name: mcp-server
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'Plugins/BlueprintReader/mcp-server/**'
-      - '.github/workflows/mcp-server.yml'
-  pull_request:
-    paths:
-      - 'Plugins/BlueprintReader/mcp-server/**'
-      - '.github/workflows/mcp-server.yml'
-  workflow_dispatch:
-
-jobs:
-  build-and-test:
-    runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -S Plugins/BlueprintReader/mcp-server -B Plugins/BlueprintReader/mcp-server/build -G "Visual Studio 17 2022" -A x64
-      - name: Build
-        run: cmake --build Plugins/BlueprintReader/mcp-server/build --config Release --parallel
-      - name: Run tests (mock-only — live commandlet tests skip without env)
-        run: ./Plugins/BlueprintReader/mcp-server/build/tests/Release/bp-reader-tests.exe --reporters=console
+```pwsh
+"<Engine>\Engine\Build\BatchFiles\Build.bat" `
+  BlueprintReaderMcpTests Win64 Development `
+  -project="<Project>\<Game>.uproject"
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-Why mock-only:
+461 cases / 29K+ assertions; 12 live-only cases auto-skip when the
+UE editor env vars aren't set.
 
-- GitHub-hosted Windows runners don't have UE installed and can't
-  realistically pull down a ~70GB source-built engine.
+If you set up UBT-on-CI later, two reasonable paths:
+
+- **Self-hosted runner with the engine pre-installed.** Cheapest
+  ongoing cost; one-time setup.
+- **GitHub-hosted runner pulling the engine each job.** Slow (the
+  source engine is ~70 GB) but no infrastructure to maintain. Use
+  caching to amortize.
+
+Why CI matters less than for many projects:
+
 - Mock coverage is already substantial — the entire server logic,
   every wire shape, every BPIR validator path, every codegen test.
   The live commandlet tests are a thin layer over what mocks already
   verify.
 
 `paths:` constrains the workflow to fire only when something under
-`mcp-server/` or the workflow file itself changes. PR diffs that
+the MCP server's source tree (`Plugins/BlueprintReader/Tests/`) or the workflow file itself changes. PR diffs that
 only touch the plugin C++ don't trigger the build (the plugin can
 only be tested against UE locally).
 
 No vcpkg / FetchContent caching needed: deps are vendored under
-`mcp-server/third_party/`, so the build is deterministic and
+`Plugins/BlueprintReader/Tests/ThirdParty/`, so the build is deterministic and
 network-free.
 
 
