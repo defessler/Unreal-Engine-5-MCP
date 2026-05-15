@@ -2,21 +2,21 @@
 # Diagnostic: confirm both halves of the BlueprintReader plugin are present
 # and ready to use:
 #
-#   1. BlueprintReaderMcp.exe                  (built by UBT — `Build.bat
+#   1. BlueprintReaderMcp.exe                  (built by UBT -- `Build.bat
 #                                               BlueprintReaderMcp ...`,
 #                                               post-PR-#75)
 #   2. UnrealEditor-BlueprintReaderEditor.dll  (built by UBT during an
 #                                               editor-target build)
 #
 # When the daemon "exits before reaching READY" with no obvious Error: line
-# in the tail, a missing plugin DLL is the usual cause — UE finishes plugin
+# in the tail, a missing plugin DLL is the usual cause -- UE finishes plugin
 # discovery, doesn't find the BlueprintReader commandlet class, and exits.
 #
 # Usage:
 #   pwsh -File <thisScript>                    # auto-discover Project/Plugin from script location
 #   pwsh -File <thisScript> -ProjectDir D:\YourGame\MyProject
 #
-# Exits 0 if both outputs exist, 1 otherwise — usable in CI.
+# Exits 0 if both outputs exist, 1 otherwise -- usable in CI.
 
 param(
     [string]$ProjectDir,
@@ -75,7 +75,7 @@ $mcpOk  = Check 'BlueprintReaderMcp.exe (MCP server)' $mcpExe
 
 # UE's binary naming: Development is suffix-less, every other config gets
 # "-Win64-<Config>" appended. Find ALL variants so we can tell the user
-# which configs they've built (and warn if Development is missing — that's
+# which configs they've built (and warn if Development is missing -- that's
 # the one the daemon defaults to launching).
 $binDir = Join-Path $PluginDir 'Binaries\Win64'
 $dllVariants = Get-ChildItem -LiteralPath $binDir `
@@ -100,7 +100,7 @@ foreach ($v in $dllVariants) {
     }
 }
 if (-not $dllOk) {
-    Write-Host '[MISS] UnrealEditor-BlueprintReaderEditor*.dll (UE plugin module — any config)' -ForegroundColor Red
+    Write-Host '[MISS] UnrealEditor-BlueprintReaderEditor*.dll (UE plugin module -- any config)' -ForegroundColor Red
     Write-Host ('       searched: ' + (Join-Path $binDir 'UnrealEditor-BlueprintReaderEditor*.dll')) -ForegroundColor DarkGray
 }
 Write-Host ''
@@ -188,9 +188,9 @@ if (-not $dllOk) {
 # Summary
 # ---------------------------------------------------------------------------
 if ($problems.Count -eq 0) {
-    Write-Host "$tag All checks passed — plugin is ready to use." -ForegroundColor Green
+    Write-Host "$tag All checks passed -- plugin is ready to use." -ForegroundColor Green
     exit 0
 }
 
-Write-Host ("$tag FAIL — " + ($problems -join '; ')) -ForegroundColor Red
+Write-Host ("$tag FAIL -- " + ($problems -join '; ')) -ForegroundColor Red
 exit 1

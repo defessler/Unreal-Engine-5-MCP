@@ -2,7 +2,7 @@
 #
 # Convenience wrapper around `Build.bat BlueprintReaderMcp` and
 # `BlueprintReaderMcpTests`. Replaces the prior CMake-based script that
-# ran as a PreBuildStep — the MCP server is now a UE Program target
+# ran as a PreBuildStep -- the MCP server is now a UE Program target
 # (Plugins/BlueprintReader/Tests/BlueprintReaderMcp/) so it builds with
 # the rest of the unreal pipeline (UBA, ninja, etc.) instead of running
 # its own toolchain. PreBuildStep is gone; this script is opt-in.
@@ -19,7 +19,7 @@
 # Legacy-call no-op path: if invoked with the old -ProjectDir / -PluginDir
 # parameters (the pre-UBT PreBuildStep contract), the script logs a
 # deprecation notice and exits 0. UBT caches PreBuild invocations in
-# Intermediate/Build/<TargetCfg>/PreBuild-N.bat — when a user updates
+# Intermediate/Build/<TargetCfg>/PreBuild-N.bat -- when a user updates
 # the plugin without regenerating project files, those cached scripts
 # still call this with old args. Failing there with "unknown parameter"
 # blocks the editor build for no good reason; accepting + no-op'ing
@@ -56,7 +56,7 @@ $tag = "[BlueprintReader/MCP]"
 if ($ProjectDir -or $PluginDir -or -not $EngineDir -or -not $ProjectFile) {
     if ($ProjectDir -or $PluginDir) {
         Write-Host "$tag Legacy PreBuildStep invocation detected (-ProjectDir / -PluginDir)."
-        Write-Host "$tag The MCP server is now its own UBT Program target — no longer built"
+        Write-Host "$tag The MCP server is now its own UBT Program target -- no longer built"
         Write-Host "$tag as part of the editor build. Build it explicitly with:"
         Write-Host "$tag   Build.bat BlueprintReaderMcp Win64 Development -project=<.uproject>"
         Write-Host "$tag (or via this script with -EngineDir / -ProjectFile)."

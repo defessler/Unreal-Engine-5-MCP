@@ -31,13 +31,14 @@ Plugins/BlueprintReader/
 Both halves ship together as one UE plugin. The MCP server lives
 under `Tests/` (only path UBT auto-scans for plugin Program
 `Target.cs` files) and builds with the rest of the plugin via the
-same UBT pipeline — no separate CMake step. The editor target
-declares `BlueprintReaderMcp` as a `PreBuildTarget`, so `Build.bat
-UE5_MCPEditor …` builds the editor module *and* the MCP server exe in
-one invocation. `Build.bat BlueprintReaderMcp …` builds the server in
-isolation when iterating on server-only changes; the convenience
-wrapper `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` covers
-both Program targets (server + doctest exe) in one shot.
+same UBT pipeline — no separate CMake step. The plugin's `.uplugin`
+declares a `PreBuildSteps` hook that invokes UBT for
+`BlueprintReaderMcp` before any consuming target's own build runs, so
+`Build.bat UE5_MCPEditor …` builds the editor module *and* the MCP
+server exe in one invocation. `Build.bat BlueprintReaderMcp …` builds
+the server in isolation when iterating on server-only changes; the
+convenience wrapper `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`
+covers both Program targets (server + doctest exe) in one shot.
 
 ### Editor plugin — `BlueprintReaderEditor`
 
