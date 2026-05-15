@@ -1112,6 +1112,62 @@ public:
         (void)code;
         throw BlueprintReaderError("RunPythonScript not supported by this backend");
     }
+
+    // Asset dependency queries — what references this asset, or what
+    // does it reference. Sourced from the AssetRegistry's dependency
+    // graph; runs in O(1) per query against the in-memory index.
+    struct AssetGraphResult {
+        std::vector<std::string> packagePaths;
+    };
+    virtual AssetGraphResult GetReferencers(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("GetReferencers not supported by this backend");
+    }
+    virtual AssetGraphResult GetDependencies(std::string_view assetPath) {
+        (void)assetPath;
+        throw BlueprintReaderError("GetDependencies not supported by this backend");
+    }
+
+    // Read / write a UE config (.ini) value. `file` is one of
+    // "Engine" (default), "Game", "Input", "Editor",
+    // "EditorPerProjectIni", or a full path. Reads return {exists,
+    // value}; writes flush the ini to disk + return the previous
+    // value (or null) for verification.
+    struct ConfigReadResult {
+        bool        exists = false;
+        std::string value;
+    };
+    struct ConfigWriteResult {
+        bool        previousExisted = false;
+        std::string previousValue;
+    };
+    virtual ConfigReadResult ReadConfigValue(std::string_view section,
+                                             std::string_view key,
+                                             std::string_view file) {
+        (void)section; (void)key; (void)file;
+        throw BlueprintReaderError("ReadConfigValue not supported by this backend");
+    }
+    virtual ConfigWriteResult SetConfigValue(std::string_view section,
+                                             std::string_view key,
+                                             std::string_view value,
+                                             std::string_view file) {
+        (void)section; (void)key; (void)value; (void)file;
+        throw BlueprintReaderError("SetConfigValue not supported by this backend");
+    }
+
+    // Trigger a lighting build on the currently-loaded level. Async —
+    // returns once the build is QUEUED, not once it finishes. `quality`
+    // is "Preview" / "Medium" / "High" / "Production" (default
+    // "Production"). Poll read_output_log for completion ("Lighting
+    // build complete" or "Lighting build failed" emitted by Lightmass).
+    struct BuildLightingResult {
+        bool        queued = false;
+        std::string quality;
+    };
+    virtual BuildLightingResult BuildLighting(std::string_view quality = "Production") {
+        (void)quality;
+        throw BlueprintReaderError("BuildLighting not supported by this backend");
+    }
     // `replace=true` clears existing selection first; `false` adds to it.
     virtual SelectionResult SetSelection(
         const std::vector<std::string>& actorNames, bool replace = true) {

@@ -2634,6 +2634,100 @@ CommandletBlueprintReader::RunPythonScript(std::string_view code) {
     return out;
 }
 
+// Helper: pull a flat array of strings from a JSON field into a
+// std::vector. Used by the asset-graph queries below.
+static std::vector<std::string> ExtractStringArray(
+    const nlohmann::json& j, const char* field) {
+    std::vector<std::string> out;
+    if (!j.is_object()) return out;
+    auto it = j.find(field);
+    if (it == j.end() || !it->is_array()) return out;
+    out.reserve(it->size());
+    for (const auto& v : *it) {
+        if (v.is_string()) out.push_back(v.get<std::string>());
+    }
+    return out;
+}
+
+IBlueprintReader::AssetGraphResult
+CommandletBlueprintReader::GetReferencers(std::string_view assetPath) {
+    std::wstring p(assetPath.begin(), assetPath.end());
+    auto j = RunOp({L"-Op=GetReferencers", L"-Asset=" + p});
+    AssetGraphResult out;
+    out.packagePaths = ExtractStringArray(j, "referencers");
+    return out;
+}
+
+IBlueprintReader::AssetGraphResult
+CommandletBlueprintReader::GetDependencies(std::string_view assetPath) {
+    std::wstring p(assetPath.begin(), assetPath.end());
+    auto j = RunOp({L"-Op=GetDependencies", L"-Asset=" + p});
+    AssetGraphResult out;
+    out.packagePaths = ExtractStringArray(j, "dependencies");
+    return out;
+}
+
+IBlueprintReader::ConfigReadResult
+CommandletBlueprintReader::ReadConfigValue(std::string_view section,
+                                           std::string_view key,
+                                           std::string_view file) {
+    std::wstring s(section.begin(), section.end());
+    std::wstring k(key.begin(), key.end());
+    std::wstring f(file.begin(), file.end());
+    auto j = RunOp({L"-Op=ReadConfigValue",
+                    L"-Section=" + s,
+                    L"-Key=" + k,
+                    L"-File=" + f});
+    ConfigReadResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("exists"); it != j.end() && it->is_boolean())
+            out.exists = it->get<bool>();
+        if (auto it = j.find("value"); it != j.end() && it->is_string())
+            out.value = it->get<std::string>();
+    }
+    return out;
+}
+
+IBlueprintReader::ConfigWriteResult
+CommandletBlueprintReader::SetConfigValue(std::string_view section,
+                                          std::string_view key,
+                                          std::string_view value,
+                                          std::string_view file) {
+    std::wstring s(section.begin(), section.end());
+    std::wstring k(key.begin(), key.end());
+    std::wstring v(value.begin(), value.end());
+    std::wstring f(file.begin(), file.end());
+    auto j = RunOp({L"-Op=SetConfigValue",
+                    L"-Section=" + s,
+                    L"-Key=" + k,
+                    L"-Value=" + v,
+                    L"-File=" + f});
+    ConfigWriteResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("previous_value"); it != j.end()) {
+            if (it->is_string()) {
+                out.previousExisted = true;
+                out.previousValue = it->get<std::string>();
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::BuildLightingResult
+CommandletBlueprintReader::BuildLighting(std::string_view quality) {
+    std::wstring q(quality.begin(), quality.end());
+    auto j = RunOp({L"-Op=BuildLighting", L"-Quality=" + q});
+    BuildLightingResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("queued"); it != j.end() && it->is_boolean())
+            out.queued = it->get<bool>();
+        if (auto it = j.find("quality"); it != j.end() && it->is_string())
+            out.quality = it->get<std::string>();
+    }
+    return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
                                         bool replace) {

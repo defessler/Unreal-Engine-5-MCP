@@ -26,6 +26,8 @@
 #include "IAssetTools.h"
 #include "JsonObjectConverter.h"
 #include "IPythonScriptPlugin.h"
+#include "LightingBuildOptions.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
 #include "PythonScriptTypes.h"
@@ -181,6 +183,14 @@ namespace
 		ReadOutputLog,
 		GetEditorState,
 		RunPythonScript,
+		// Asset queries.
+		GetReferencers,
+		GetDependencies,
+		// Project settings.
+		ReadConfigValue,
+		SetConfigValue,
+		// Lighting.
+		BuildLighting,
 		// Automation tests.
 		RunAutomationTests,
 		// DataTable row mutation.
@@ -309,6 +319,11 @@ namespace
 		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
 		if (OpStr.Equals(TEXT("GetEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetEditorState; return true; }
 		if (OpStr.Equals(TEXT("RunPythonScript"), ESearchCase::IgnoreCase))     { OutOp = EOp::RunPythonScript; return true; }
+		if (OpStr.Equals(TEXT("GetReferencers"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetReferencers; return true; }
+		if (OpStr.Equals(TEXT("GetDependencies"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetDependencies; return true; }
+		if (OpStr.Equals(TEXT("ReadConfigValue"), ESearchCase::IgnoreCase))     { OutOp = EOp::ReadConfigValue; return true; }
+		if (OpStr.Equals(TEXT("SetConfigValue"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetConfigValue; return true; }
+		if (OpStr.Equals(TEXT("BuildLighting"), ESearchCase::IgnoreCase))       { OutOp = EOp::BuildLighting; return true; }
 		if (OpStr.Equals(TEXT("RunAutomationTests"), ESearchCase::IgnoreCase))  { OutOp = EOp::RunAutomationTests; return true; }
 		if (OpStr.Equals(TEXT("AddDataRow"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddDataRow; return true; }
 		if (OpStr.Equals(TEXT("SetDataRowValue"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetDataRowValue; return true; }
@@ -1906,6 +1921,205 @@ namespace
 		Out->SetBoolField(TEXT("ok"), bOk);
 		Out->SetStringField(TEXT("command_result"), PyCmd.CommandResult);
 		Out->SetArrayField(TEXT("log"), LogEntriesJson);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// --------------------------------------------------------------------
+	// #83 quick-win ops: asset queries + project settings + lighting build.
+	// All five live below — they share enough boilerplate that grouping is
+	// cheaper to read than splitting.
+
+	// Shared: query the asset registry for referencers or dependencies.
+	// Direction selects which API to call; both return a flat array of
+	// package paths.
+	int32 RunAssetGraphQueryOp(const FString& Params, const FString& OutputPath,
+	                           bool bPretty, bool bWantReferencers)
+	{
+		FString AssetPath;
+		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), false);
+			Obj->SetStringField(TEXT("error"),
+				bWantReferencers
+					? TEXT("get_referencers requires -Asset=<package_path>")
+					: TEXT("get_dependencies requires -Asset=<package_path>"));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+		const FName PackageName(*AssetPath);
+
+		TArray<FName> Results;
+		if (bWantReferencers)
+		{
+			AR.GetReferencers(PackageName, Results);
+		}
+		else
+		{
+			AR.GetDependencies(PackageName, Results);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Json;
+		Json.Reserve(Results.Num());
+		for (const FName& N : Results)
+		{
+			Json.Add(MakeShared<FJsonValueString>(N.ToString()));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetArrayField(bWantReferencers ? TEXT("referencers") : TEXT("dependencies"), Json);
+		Out->SetNumberField(TEXT("count"), Results.Num());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetReferencersOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		return RunAssetGraphQueryOp(Params, OutputPath, bPretty, /*bWantReferencers=*/true);
+	}
+
+	int32 RunGetDependenciesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		return RunAssetGraphQueryOp(Params, OutputPath, bPretty, /*bWantReferencers=*/false);
+	}
+
+	// Helper: map an ini-file token (e.g. "Engine", "Game") to the actual
+	// GConfig branch path. Mirrors how UE's own commandlets accept the
+	// short name plus the full path.
+	FString ResolveIniBranchName(const FString& Token)
+	{
+		if (Token.IsEmpty() || Token.Equals(TEXT("Engine"), ESearchCase::IgnoreCase))
+		{
+			return GEngineIni;
+		}
+		if (Token.Equals(TEXT("Game"), ESearchCase::IgnoreCase))     return GGameIni;
+		if (Token.Equals(TEXT("Input"), ESearchCase::IgnoreCase))    return GInputIni;
+		if (Token.Equals(TEXT("Editor"), ESearchCase::IgnoreCase))   return GEditorIni;
+		if (Token.Equals(TEXT("EditorPerProjectIni"), ESearchCase::IgnoreCase))
+			return GEditorPerProjectIni;
+		// Caller passed a full path; let GConfig sort it out.
+		return Token;
+	}
+
+	int32 RunReadConfigValueOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString IniFile;
+		FString Section;
+		FString Key;
+		FParse::Value(*Params, TEXT("File="), IniFile);
+		FParse::Value(*Params, TEXT("Section="), Section);
+		FParse::Value(*Params, TEXT("Key="), Key);
+
+		auto Out = MakeShared<FJsonObject>();
+		if (Section.IsEmpty() || Key.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("read_config_value requires -Section= and -Key= "
+				     "(optional -File=<Engine|Game|Input|Editor|EditorPerProjectIni> "
+				     "or full path; defaults to Engine)"));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		const FString Branch = ResolveIniBranchName(IniFile);
+		FString Value;
+		const bool bFound = GConfig->GetString(*Section, *Key, Value, Branch);
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("exists"), bFound);
+		Out->SetStringField(TEXT("section"), Section);
+		Out->SetStringField(TEXT("key"), Key);
+		Out->SetStringField(TEXT("file"), Branch);
+		if (bFound) Out->SetStringField(TEXT("value"), Value);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetConfigValueOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString IniFile;
+		FString Section;
+		FString Key;
+		FString Value;
+		FParse::Value(*Params, TEXT("File="), IniFile);
+		FParse::Value(*Params, TEXT("Section="), Section);
+		FParse::Value(*Params, TEXT("Key="), Key);
+		FParse::Value(*Params, TEXT("Value="), Value);
+
+		auto Out = MakeShared<FJsonObject>();
+		if (Section.IsEmpty() || Key.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("set_config_value requires -Section=, -Key=, and -Value="));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		const FString Branch = ResolveIniBranchName(IniFile);
+		// Capture old value for the response (so the agent can see what
+		// changed). GetString returns false on missing — we surface that
+		// as `previous_value: null`.
+		FString OldValue;
+		const bool bExisted = GConfig->GetString(*Section, *Key, OldValue, Branch);
+
+		GConfig->SetString(*Section, *Key, *Value, Branch);
+		GConfig->Flush(/*Read=*/false, Branch);
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("section"), Section);
+		Out->SetStringField(TEXT("key"), Key);
+		Out->SetStringField(TEXT("file"), Branch);
+		Out->SetStringField(TEXT("value"), Value);
+		if (bExisted) Out->SetStringField(TEXT("previous_value"), OldValue);
+		else          Out->SetField(TEXT("previous_value"), MakeShared<FJsonValueNull>());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunBuildLightingOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Quality;
+		FParse::Value(*Params, TEXT("Quality="), Quality);
+		// Resolve quality token → ELightingBuildQuality enum. Defaults to
+		// Production (the most common "build it for shipping" choice).
+		// Console-command form `BuildLighting <quality>` works too but
+		// only when the editor is interactive; this path uses the UEd
+		// API directly so it works from commandlet + automation contexts.
+		ELightingBuildQuality Q = ELightingBuildQuality::Quality_Production;
+		if      (Quality.Equals(TEXT("Preview"), ESearchCase::IgnoreCase))    Q = ELightingBuildQuality::Quality_Preview;
+		else if (Quality.Equals(TEXT("Medium"), ESearchCase::IgnoreCase))     Q = ELightingBuildQuality::Quality_Medium;
+		else if (Quality.Equals(TEXT("High"), ESearchCase::IgnoreCase))       Q = ELightingBuildQuality::Quality_High;
+		else if (Quality.Equals(TEXT("Production"), ESearchCase::IgnoreCase)) Q = ELightingBuildQuality::Quality_Production;
+
+		auto Out = MakeShared<FJsonObject>();
+		if (!GEditor || !GEditor->GetEditorWorldContext().World())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("build_lighting requires a running editor with a level loaded"));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		FLightingBuildOptions Options;
+		Options.QualityLevel = Q;
+		// Async by design — UEd returns once the build is QUEUED, not
+		// once it finishes. The agent should poll read_output_log or
+		// check for the completion log line.
+		GEditor->BuildLighting(Options);
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("queued"), true);
+		Out->SetStringField(TEXT("quality"),
+			Q == ELightingBuildQuality::Quality_Preview ? TEXT("Preview")
+			: Q == ELightingBuildQuality::Quality_Medium ? TEXT("Medium")
+			: Q == ELightingBuildQuality::Quality_High ? TEXT("High")
+			: TEXT("Production"));
+		Out->SetStringField(TEXT("note"),
+			TEXT("Lighting build is async. Poll read_output_log for "
+			     "completion (Lightmass emits 'Lighting build complete' "
+			     "or 'Lighting build failed')."));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
@@ -5535,6 +5749,11 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetSelectedActors,          &RunGetSelectedActorsOp },
 		{ EOp::GetEditorState,             &RunGetEditorStateOp },
 		{ EOp::RunPythonScript,            &RunRunPythonScriptOp },
+		{ EOp::GetReferencers,             &RunGetReferencersOp },
+		{ EOp::GetDependencies,            &RunGetDependenciesOp },
+		{ EOp::ReadConfigValue,            &RunReadConfigValueOp },
+		{ EOp::SetConfigValue,             &RunSetConfigValueOp },
+		{ EOp::BuildLighting,              &RunBuildLightingOp },
 		{ EOp::SetSelection,               &RunSetSelectionOp },
 		{ EOp::SpawnActor,                 &RunSpawnActorOp },
 		{ EOp::SetActorTransform,          &RunSetActorTransformOp },
