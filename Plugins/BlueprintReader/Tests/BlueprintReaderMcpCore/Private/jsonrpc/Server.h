@@ -19,6 +19,7 @@
 #include <functional>
 #include <iosfwd>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -112,6 +113,12 @@ public:
     // `notifications/tools/list_changed` when a tools/call mutated the
     // advertised tool set (progressive disclosure path). The queue
     // is FIFO and best-effort — no per-recipient targeting, no retry.
+    //
+    // **Thread-safe** via `notifMu_`. Today's only caller is the
+    // tools/call handler that runs on the dispatch thread, but any
+    // future async path (a tool that spawns a background thread, the
+    // HTTP/SSE transport tracked in issue #81) can call from any
+    // thread without coordination.
     void QueueNotification(std::string method, nlohmann::json params);
 
     // Drain + return the queue. Run() calls this after writing each
@@ -120,6 +127,7 @@ public:
 
 private:
     std::map<std::string, Handler> handlers_;
+    mutable std::mutex notifMu_;
     std::vector<nlohmann::json> pendingNotifications_;
 };
 
