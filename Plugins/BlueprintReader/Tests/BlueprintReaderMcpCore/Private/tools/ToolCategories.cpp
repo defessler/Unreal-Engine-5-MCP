@@ -128,6 +128,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
             "console_command", "get_cvar", "set_cvar",
             "read_output_log",
             "run_python_script",
+            "build_lighting",
             "live_coding_compile",
         }},
 
@@ -138,6 +139,8 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
             "create_folder",
             "get_project_metadata",
             "save_all",
+            "get_referencers", "get_dependencies",
+            "read_config_value", "set_config_value",
         }},
 
         // --- per-asset-type slices (~4–7 tools each) ---------------------
