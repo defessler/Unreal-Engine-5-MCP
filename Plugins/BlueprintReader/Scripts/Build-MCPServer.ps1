@@ -1,123 +1,55 @@
-# Build the bp-reader-mcp standalone MCP server as a pre-build step of the
-# BlueprintReader plugin's editor module.
+# Build the bp-reader MCP server + tests via UBT.
 #
-# Wired up in BlueprintReader.uplugin's `PreBuildSteps.Win64`. UnrealBuildTool
-# substitutes $(ProjectDir) etc. before invoking us. We do the cmake configure
-# (only on first build, when build/ doesn't exist) and the cmake --build, and
-# we skip both when the produced .exe is newer than every source under src/
-# plus CMakeLists.txt — so incremental UE builds don't pay for a no-op MCP
-# rebuild.
+# Convenience wrapper around `Build.bat BlueprintReaderMcp` and
+# `BlueprintReaderMcpTests`. Replaces the prior CMake-based script that
+# ran as a PreBuildStep — the MCP server is now a UE Program target
+# (Plugins/BlueprintReader/Tests/BlueprintReaderMcp/) so it builds with
+# the rest of the unreal pipeline (UBA, ninja, etc.) instead of running
+# its own toolchain. PreBuildStep is gone; this script is opt-in.
 #
-# Looks for mcp-server/ in two places, in this order:
-#   1. $(ProjectDir)/mcp-server    — current layout (server is a sibling of Plugins/)
-#   2. $(PluginDir)/mcp-server     — alternate layout if the server ever moves
-#                                    inside the plugin
-# If neither exists, we log and exit 0 so the plugin can still be dropped into
-# a project that doesn't ship the MCP server source.
+# Usage:
+#   .\Build-MCPServer.ps1 -EngineDir "D:\Path\To\UnrealEngine"
+#                         -ProjectFile "D:\Path\To\MyGame.uproject"
+#                         [-Config Development]   # Debug | DebugGame | Development | Test | Shipping
+#                         [-Targets All]          # All | Mcp | Tests
+#                         [-ExtraArgs "-NoUba -MaxParallelActions=4"]
 #
-# Usage (as invoked by UE):
-#   powershell.exe -ExecutionPolicy Bypass -File <ThisScript>
-#       -ProjectDir "$(ProjectDir)" -PluginDir "$(PluginDir)"
+# Exits non-zero on any UBT failure.
 
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)] [string]$ProjectDir,
-    [Parameter(Mandatory=$true)] [string]$PluginDir,
-    [string]$Generator = "Visual Studio 17 2022",
-    [string]$Config    = "Release"
+    [Parameter(Mandatory=$true)] [string]$EngineDir,
+    [Parameter(Mandatory=$true)] [string]$ProjectFile,
+    [ValidateSet("Debug","DebugGame","Development","Test","Shipping")]
+    [string]$Config = "Development",
+    [ValidateSet("All","Mcp","Tests")]
+    [string]$Targets = "All",
+    [string]$ExtraArgs = ""
 )
 
 $ErrorActionPreference = "Stop"
 $tag = "[BlueprintReader/MCP]"
 
-function Resolve-McpDir {
-    foreach ($candidate in @(
-        (Join-Path $ProjectDir "mcp-server"),
-        (Join-Path $PluginDir  "mcp-server")
-    )) {
-        if (Test-Path (Join-Path $candidate "CMakeLists.txt")) {
-            return (Resolve-Path $candidate).Path
-        }
-    }
-    return $null
+$BuildBat = Join-Path $EngineDir "Engine\Build\BatchFiles\Build.bat"
+if (-not (Test-Path $BuildBat)) {
+    throw "$tag Build.bat not found at $BuildBat (check -EngineDir)"
+}
+if (-not (Test-Path $ProjectFile)) {
+    throw "$tag .uproject not found at $ProjectFile (check -ProjectFile)"
 }
 
-$mcpDir = Resolve-McpDir
-if ($null -eq $mcpDir) {
-    Write-Host "$tag mcp-server/ not found under ProjectDir or PluginDir; skipping (plugin is being used standalone)."
-    exit 0
-}
+$wanted = @()
+if ($Targets -in @("All","Mcp"))   { $wanted += "BlueprintReaderMcp" }
+if ($Targets -in @("All","Tests")) { $wanted += "BlueprintReaderMcpTests" }
 
-$buildDir = Join-Path $mcpDir "build"
-$exePath  = Join-Path $buildDir "$Config\bp-reader-mcp.exe"
-
-# Skip path: exe exists and is newer than every src/ file + CMakeLists.txt.
-if (Test-Path $exePath) {
-    $exeTime = (Get-Item $exePath).LastWriteTimeUtc
-    $sources = @()
-    $sources += Get-Item -Path (Join-Path $mcpDir "CMakeLists.txt") -ErrorAction SilentlyContinue
-    $sources += Get-ChildItem -Recurse -File -Path (Join-Path $mcpDir "src") `
-                                            -Include *.cpp, *.h, *.hpp `
-                                            -ErrorAction SilentlyContinue
-    $newest = $sources | Where-Object { $_ -ne $null } |
-              Sort-Object LastWriteTimeUtc -Descending |
-              Select-Object -First 1
-    if ($newest -and $newest.LastWriteTimeUtc -le $exeTime) {
-        Write-Host "$tag bp-reader-mcp.exe up to date (newest src: $($newest.Name) @ $($newest.LastWriteTimeUtc))."
-        exit 0
-    }
-}
-
-# Verify cmake is on PATH. We don't try to vswhere our way to a bundled copy —
-# if the developer has VS but not cmake, the friendlier action is to error
-# loudly so they `winget install Kitware.CMake` once.
-$cmake = Get-Command cmake -ErrorAction SilentlyContinue
-if ($null -eq $cmake) {
-    Write-Error "$tag cmake.exe not found on PATH. Install CMake (winget install Kitware.CMake) and retry."
-    exit 1
-}
-
-# Note: third-party deps (nlohmann_json, fmt, doctest) are vendored under
-# mcp-server/third_party/, so the configure step needs no git, no network,
-# and no vcpkg. CMake itself is the only external tool required.
-
-Write-Host "$tag Building MCP server at $mcpDir ..."
-
-# Walk up from $PSScriptRoot looking for a sibling .uproject so the
-# build artifact can be named bp-reader-mcp-<ProjectName>.exe instead
-# of the generic bp-reader-mcp.exe — gives users with multiple UE
-# projects open at once a glance-identifiable process in Task Manager.
-$pluginRoot = Split-Path -Parent $PSScriptRoot
-$candidate = $pluginRoot
-$projectName = ""
-for ($i = 0; $i -lt 5; $i++) {
-    $candidate = Split-Path -Parent $candidate
-    if (-not $candidate) { break }
-    $up = Get-ChildItem -Path $candidate -Filter '*.uproject' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($up) {
-        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($up.Name)
-        Write-Host "$tag detected project name '$projectName' from $($up.FullName)"
-        break
-    }
-}
-
-if (-not (Test-Path $buildDir)) {
-    Write-Host "$tag Configuring CMake (first build)..."
-    $configureArgs = @('-S', $mcpDir, '-B', $buildDir, '-G', $Generator, '-A', 'x64')
-    if ($projectName) {
-        $configureArgs += "-DBP_READER_PROJECT_NAME=$projectName"
-    }
-    & cmake @configureArgs
+foreach ($target in $wanted) {
+    Write-Host "$tag Building $target ($Config) via UBT..."
+    $argv = @($target, "Win64", $Config, "-project=$ProjectFile", "-waitmutex")
+    if ($ExtraArgs) { $argv += $ExtraArgs.Split(" ") }
+    & $BuildBat @argv
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "$tag cmake configure failed (exit $LASTEXITCODE)."
-        exit $LASTEXITCODE
+        throw "$tag $target build failed (exit $LASTEXITCODE)"
     }
 }
 
-& cmake --build $buildDir --config $Config
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "$tag cmake --build failed (exit $LASTEXITCODE)."
-    exit $LASTEXITCODE
-}
-
-Write-Host "$tag Built $exePath."
-exit 0
+Write-Host "$tag Done."
