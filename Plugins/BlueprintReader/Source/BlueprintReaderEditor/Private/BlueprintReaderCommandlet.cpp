@@ -761,6 +761,12 @@ namespace
 		// (tests + crash recovery may do this); just clear any stale state.
 		BatchDeferFlag() = true;
 		BatchPending().Reset();
+		// Release any BP write ownership the previous (unclosed) batch
+		// held. Without this, re-entering BeginBatch leaks locks that
+		// stay parked until disconnect — blocking other sessions on
+		// BPs whose pending edits we just discarded. Surfaced by audit.
+		BlueprintReader::FBatchRegistry::Get()
+			.ReleaseAllWriteOwnership(BlueprintReader::GetCurrentConnectionId());
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("batch_open"), true);
@@ -1661,8 +1667,15 @@ namespace
 
 		// ----- open assets + active asset --------------------------------
 		// UAssetEditorSubsystem tracks every asset whose editor tab is
-		// currently open. The "active" one is the most-recently-focused
-		// editor — semantically what AIAssistant would highlight.
+		// currently open. "Active" = the editor with the latest
+		// FindEditorForAsset->GetLastActivationTime — the actual API for
+		// "which window did the user touch most recently."
+		//
+		// Earlier revisions of this op cheated by flagging
+		// `OpenAssets.Num()-1` as active. That was a bug:
+		// GetAllEditedAssets() iterates a TMultiMap and returns hash-
+		// bucket order, NOT insertion / activation order. Surfaced by
+		// audit pass; fixed here.
 		TArray<TSharedPtr<FJsonValue>> OpenAssetsJson;
 		TSharedPtr<FJsonValue> ActiveAssetJson;
 		if (GEditor)
@@ -1670,21 +1683,35 @@ namespace
 			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
 			{
 				TArray<UObject*> OpenAssets = AES->GetAllEditedAssets();
-				// AssetEditorSubsystem doesn't expose a direct "which is
-				// active" query in 5.7. Approximation: the LAST opened
-				// asset (or the one whose editor was most recently raised)
-				// is at the end of the array on UE 5.7. Documented as
-				// best-effort.
-				for (int32 i = 0; i < OpenAssets.Num(); ++i)
+
+				// First pass: find the most-recently-activated editor by
+				// querying each open asset's editor instance. Editor
+				// activation time is the authoritative signal.
+				UObject* ActiveAsset = nullptr;
+				double BestActivation = -1.0;
+				for (UObject* Obj : OpenAssets)
 				{
-					UObject* Obj = OpenAssets[i];
+					if (!Obj) continue;
+					IAssetEditorInstance* Inst = AES->FindEditorForAsset(Obj, /*bFocusIfOpen=*/false);
+					if (!Inst) continue;
+					const double T = Inst->GetLastActivationTime();
+					if (T > BestActivation)
+					{
+						BestActivation = T;
+						ActiveAsset = Obj;
+					}
+				}
+
+				// Second pass: emit the array, flagging which one matched.
+				for (UObject* Obj : OpenAssets)
+				{
 					if (!Obj) continue;
 					auto Entry = MakeShared<FJsonObject>();
 					Entry->SetStringField(TEXT("package_path"),
 						EditorStateToPackagePath(Obj->GetPathName()));
 					Entry->SetStringField(TEXT("class"),
 						Obj->GetClass() ? Obj->GetClass()->GetName() : TEXT(""));
-					const bool bIsActive = (i == OpenAssets.Num() - 1);
+					const bool bIsActive = (Obj == ActiveAsset);
 					Entry->SetBoolField(TEXT("is_active"), bIsActive);
 					if (bIsActive)
 					{
@@ -1818,11 +1845,42 @@ namespace
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 		}
 
+		// Refuse cleanly if the Python plugin isn't loaded — separate error
+		// path so the agent can distinguish "disabled by env" from "engine
+		// build doesn't include Python."
+		IPythonScriptPlugin* Py = IPythonScriptPlugin::Get();
+		if (!Py)
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), false);
+			Obj->SetStringField(TEXT("error"), TEXT("python_plugin_unavailable"));
+			Obj->SetStringField(TEXT("hint"),
+				TEXT("IPythonScriptPlugin is null — the engine build doesn't "
+				     "include PythonScriptPlugin, or it's disabled in this "
+				     "project's .uproject. bp-reader.uplugin requests it, "
+				     "but a packaged commandlet build may strip it."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
 		// Mirror Epic AIAssistant's pattern: wrap in a transaction so
 		// the Python-driven editor mutations land as one undo-able unit.
+		// RAII-scope the Begin/End pair so even if ExecPythonCommandEx
+		// throws (or anything between throws), the transaction always
+		// gets ended — UE's transaction stack leaks otherwise.
 		const FText TransactionTitle = FText::FromString(
 			TEXT("bp-reader: run_python_script"));
-		if (GEditor) GEditor->BeginTransaction(TransactionTitle);
+		struct FPyTransactionScope
+		{
+			bool bActive = false;
+			explicit FPyTransactionScope(const FText& Title)
+			{
+				if (GEditor) { GEditor->BeginTransaction(Title); bActive = true; }
+			}
+			~FPyTransactionScope()
+			{
+				if (bActive && GEditor) GEditor->EndTransaction();
+			}
+		} TxScope(TransactionTitle);
 
 		FPythonCommandEx PyCmd;
 		PyCmd.Command = Code;
@@ -1830,12 +1888,7 @@ namespace
 		// CaptureOutput so we get stdout/stderr in PyCmd.LogOutput.
 		PyCmd.Flags |= EPythonCommandFlags::Unattended;
 
-		bool bOk = false;
-		if (IPythonScriptPlugin* Py = IPythonScriptPlugin::Get())
-		{
-			bOk = Py->ExecPythonCommandEx(PyCmd);
-		}
-		if (GEditor) GEditor->EndTransaction();
+		const bool bOk = Py->ExecPythonCommandEx(PyCmd);
 
 		TArray<TSharedPtr<FJsonValue>> LogEntriesJson;
 		for (const FPythonLogOutputEntry& Entry : PyCmd.LogOutput)

@@ -228,14 +228,25 @@ TEST_CASE("ActivateToken: typo'd token is a silent no-op (flag stays clear)") {
     CHECK(r.Find("add_node") == nullptr);  // still gated
 }
 
-TEST_CASE("TakeListChangedFlag: returns true at most once per state change") {
+TEST_CASE("TakeListChangedFlag: ApplyFilter does NOT set the flag (startup-only path)") {
+    // ApplyFilter is called once at startup before any MCP client has
+    // connected. Setting listChanged_ then would queue a spurious
+    // notifications/tools/list_changed for the very first tools/call.
+    // ActivateToken (the runtime widening path) is the one that sets
+    // it.
     auto r = MakeWith({"read_blueprint", "add_node", "list_materials",
                        "compile_material"});
-    r.ApplyFilter({"core"}, {});                  // sets the flag
-    CHECK(r.TakeListChangedFlag());
-    CHECK(!r.TakeListChangedFlag());              // cleared
+    r.ApplyFilter({"core"}, {});
+    CHECK(!r.TakeListChangedFlag());               // startup => no flag
+}
 
-    r.ActivateToken("materials");                  // sets it again
+TEST_CASE("TakeListChangedFlag: ActivateToken sets the flag, take clears it") {
+    auto r = MakeWith({"read_blueprint", "add_node", "list_materials",
+                       "compile_material"});
+    r.ApplyFilter({"core"}, {});
+    (void)r.TakeListChangedFlag();                 // belt + suspenders
+
+    r.ActivateToken("materials");
     CHECK(r.TakeListChangedFlag());
-    CHECK(!r.TakeListChangedFlag());
+    CHECK(!r.TakeListChangedFlag());               // taking clears it
 }

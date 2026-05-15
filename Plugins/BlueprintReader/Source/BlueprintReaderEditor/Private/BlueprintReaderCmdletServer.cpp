@@ -159,6 +159,13 @@ public:
             // the connection id so per-session batch state lands in the
             // right registry slot (RunOneOpFromLiveServer installs the
             // FConnectionScope internally).
+            //
+            // Lifetime contract for the &Code capture: this lambda
+            // accesses `Code` by reference, which is only safe because
+            // `DoneEvent->Wait()` below blocks the runnable thread
+            // until the lambda has completed. A future refactor that
+            // lets this return before the task fires would be a bug —
+            // the lambda would write to a stack frame that's gone.
             int32 Code = -1;
             FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
             const uint64 ConnId = ConnectionId;
