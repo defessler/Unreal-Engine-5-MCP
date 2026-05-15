@@ -71,12 +71,35 @@ Both vars take **category names** as a shorthand for groups of tools:
 The canonical mapping lives in
 [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/mcp-server/src/tools/ToolCategories.cpp).
 
+### Workflow presets
+
+Curated cross-category sets tuned for a kind of session. Same token
+namespace as the per-domain categories — just use the workflow name
+directly as the `BP_READER_TOOLS` value.
+
+| Preset            | Tools | Shape of session |
+|-------------------|-------|------------------|
+| `bp-authoring`    | 35    | BP CRUD: variable/function/node/component, batches. Same as `core`. |
+| `material-tuning` | 11    | Find a BP's mesh, read the material on it, tweak parameters, recompile. |
+| `cpp-roundtrip`   | 13    | BP ↔ source: decompile, transpile, parse C++ back, compile to BP. |
+| `editor-control`  | 19    | Viewport + PIE + console + log. Drive the editor like a remote control. No BP authoring. |
+| `widget-design`   | 8     | UMG: read a widget BP, add nodes, set properties, wire events, compile. |
+| `gameplay-tuning` | 16    | Read BPs, tweak variable defaults + component props, batch-apply, PIE-test. The "tweak and try" loop. |
+
+The mapping lives in [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/mcp-server/src/tools/ToolCategories.cpp).
+
 ### Recommended presets
 
-**Minimal BP-authoring (~35 tools, well under 128):**
+**Minimal BP-authoring (35 tools):**
 
 ```json
-"env": { "BP_READER_TOOLS": "core" }
+"env": { "BP_READER_TOOLS": "bp-authoring" }
+```
+
+**Pure material tuning session (11 tools):**
+
+```json
+"env": { "BP_READER_TOOLS": "material-tuning" }
 ```
 
 **BP-authoring + transpile (~42 tools):**
