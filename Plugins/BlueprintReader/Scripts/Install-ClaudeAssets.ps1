@@ -2,7 +2,7 @@
 #
 # Copies the bp-reader plugin's Claude skills + agents into the parent
 # project's `.claude/` directory so Claude Code (and compatible
-# clients) discover them. Idempotent — running it again overwrites the
+# clients) discover them. Idempotent -- running it again overwrites the
 # target with the current plugin contents.
 #
 # Source of truth: Plugins/BlueprintReader/Claude/
@@ -31,7 +31,7 @@ param(
 
     # Force overwrite even if .claude/ contains files the script
     # wouldn't normally touch. (We only manage bp-* skills + the
-    # bp-audit agent — anything else in .claude/ is preserved by
+    # bp-audit agent -- anything else in .claude/ is preserved by
     # default.)
     [switch]$Force
 )
@@ -79,7 +79,7 @@ if ($DryRun) { Write-Host '  DryRun:  yes (no files will change)' -ForegroundCol
 # ---- Plan the copy --------------------------------------------------
 
 # Each entry: { source, target, kind }. We only manage skills/bp-* and
-# agents/bp-* — leaving any other content under .claude/ alone.
+# agents/bp-* -- leaving any other content under .claude/ alone.
 $plan = New-Object System.Collections.Generic.List[object]
 
 $skillSrc = Join-Path $claudeSrc 'skills'
@@ -105,7 +105,7 @@ if (Test-Path $agentSrc) {
 }
 
 if ($plan.Count -eq 0) {
-    Write-Warning 'Nothing to install — Claude/ folder is empty.'
+    Write-Warning 'Nothing to install -- Claude/ folder is empty.'
     return
 }
 
@@ -124,7 +124,7 @@ foreach ($item in $plan) {
     }
 
     if ($item.Kind -eq 'skill') {
-        # Directory copy — wipe target dir first so removed source
+        # Directory copy -- wipe target dir first so removed source
         # files don't linger.
         if (Test-Path $item.Target) {
             Remove-Item $item.Target -Recurse -Force

@@ -391,15 +391,15 @@ Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Binaries/
 Build.bat UE5_MCPEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
-The editor target declares `BlueprintReaderMcp` as a `PreBuildTarget`,
+The plugin's `BlueprintReader.uplugin` declares a `PreBuildSteps` hook
+that invokes UBT for `BlueprintReaderMcp` before every editor build,
 so `Build.bat UE5_MCPEditor ...` pulls the server along automatically
-(you'll see UBT interleave `** For UE5_MCPEditor-... **` and `** For
-BlueprintReaderMcp-... **` lines). The test exe and standalone server
-builds remain explicit — use
-`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` to build both
-Program targets at once, or invoke `Build.bat` per target. Pass
-`-SkipPreBuildTargets` to the editor build if you want the editor
-module rebuilt without touching the server.
+— drop the plugin into any project and the convenience just works
+without touching the project's `Target.cs`. The test exe is *not*
+pulled in (heavier, less often needed); use
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1 -Targets Tests`
+to build it. Set `BP_READER_SKIP_PREBUILD=1` in the build environment
+to disable the auto-build entirely.
 
 ## Engine setup (only needed for the `commandlet` backend)
 
