@@ -1,7 +1,8 @@
 # Claude project guidance — UE5_MCP
 
-UE 5.7.4 project plus a standalone MCP server that exposes 39
-Blueprint-introspection / mutation / BP↔C++ transpile tools to MCP
+UE 5.7.4 project plus a standalone MCP server that exposes 126
+Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
+tools to MCP
 clients (Claude Code, Claude Desktop, Copilot, ChatGPT bridge). Two
 halves:
 
@@ -288,7 +289,7 @@ output changed.
 
 ## Adding a new tool
 
-The pattern is consistent across all 119 tools:
+The pattern is consistent across all 126 tools:
 
 1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
    a `ParseOp` entry, a dispatch line in `RunOneOp`, and a

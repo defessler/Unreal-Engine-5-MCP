@@ -45,7 +45,7 @@ Plugins/BlueprintReader/Tests/
 │       ├── tools/
 │       │   ├── ToolRegistry.{h,cpp}              descriptor + dispatch table + active subset
 │       │   ├── ToolCategories.{h,cpp}            category → tool-list map (filter UX)
-│       │   ├── BlueprintTools.{h,cpp}            ~118 tool registrations + enable_tool_category
+│       │   ├── BlueprintTools.{h,cpp}            ~123 tool registrations + enable_tool_category
 │       │   ├── ApplyOps.{h,cpp}                  apply_ops + preview_ops
 │       │   ├── CompileFunction.{h,cpp}           compile_function
 │       │   ├── JsonProjection.{h,cpp}            `fields` projection + `limit`/`offset`
@@ -527,16 +527,17 @@ default works without env vars.
 ## Testing
 
 `tests/test_tools.cpp:32-35` and `tests/test_mcp.cpp:90` both pin
-`spec.size() == 119`. Bumping the tool count requires updating
-both. The descriptive comment on `test_tools.cpp:32` also names the
-21 categories — keep it in sync with new registrations:
+`spec.size() == 126`. Bumping the tool count requires updating
+both. The descriptive comment on `test_tools.cpp:32` notes the
+shipping increments from each PR (this is more useful than a
+per-category breakdown that drifts the moment a new tool joins
+one of the categories):
 
 ```cpp
-TEST_CASE("ToolRegistry exposes 119 tools (12 read + 22 write + 3 meta + 3 batch
-    + 3 transpile + 9 project/asset + 12 live editor + 1 automation + 7 material
-    + 5 widget + 5 BT + 4 DataAsset + 5 StateTree + 4 profile + 2 cook
-    + 3 class info + 4 viewport + 4 Niagara + 4 Sequencer + 3 GAS + 4 AnimGraph)
-    with input schemas")
+TEST_CASE("ToolRegistry exposes 126 tools (121 prior + 5 quick-win
+    additions from issue #83: get_referencers, get_dependencies,
+    read_config_value, set_config_value, build_lighting) with input
+    schemas")
 ```
 
 Test layout: doctest cases live in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/`. Mock-only
