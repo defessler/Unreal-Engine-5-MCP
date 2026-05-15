@@ -104,7 +104,12 @@ void ToolRegistry::ApplyFilter(const std::vector<std::string>& allowSpec,
     }
     active_ = std::move(keep);
     filterApplied_ = true;
-    listChanged_ = true;
+    // Deliberately do NOT set listChanged_ here. ApplyFilter runs at
+    // startup (main.cpp) before any MCP client is connected. Setting
+    // the flag would queue a spurious notifications/tools/list_changed
+    // for the first tools/call. ActivateToken (the runtime widening
+    // path) IS the one that sets the flag — that call only happens via
+    // the meta-tool from a connected client.
 }
 
 std::vector<std::string> ToolRegistry::ActivateToken(const std::string& token) {

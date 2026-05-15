@@ -13,7 +13,6 @@
 #include "EdGraph/EdGraphSchema.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Class.h"
-#include "UObject/ObjectMacros.h"
 #include "UObject/SoftObjectPath.h"
 
 #include "K2Node_CallFunction.h"
