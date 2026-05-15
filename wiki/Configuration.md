@@ -135,6 +135,88 @@ Unknown tokens (typos in tool/category names) silently drop nothing —
 the log line will show fewer tools than expected, which is the signal
 to check spelling.
 
+### Progressive disclosure (BP_READER_PROGRESSIVE=1)
+
+The static filter above is fixed for the whole session — you pick a
+preset, you live with it. **Progressive disclosure** is the dynamic
+variant: start with a narrow initial set, and let the agent widen the
+surface mid-session by calling a meta-tool. Useful when you don't
+know up front which tools you'll need, or want to keep the visible
+surface small for selection-accuracy reasons (smaller list ≈ fewer
+wrong-tool calls).
+
+| Env var | Default | Effect |
+|---|---|---|
+| `BP_READER_PROGRESSIVE` | `0` (off) | `1` to enable progressive mode. Adds the `enable_tool_category` meta-tool to the active set; client sees `capabilities.tools.listChanged: true` and the server emits `notifications/tools/list_changed` when the active set grows. |
+| `BP_READER_TOOLS_INITIAL` | `core` | Initial active subset when progressive mode is on. Same token vocabulary as `BP_READER_TOOLS` — tool names, category names, workflow presets, or `all`. |
+
+### How the agent uses it
+
+After `initialize`, the client sees `capabilities.tools.listChanged:
+true` and the initial `tools/list` includes `enable_tool_category`.
+The agent calls it when it needs more:
+
+```json
+{
+  "jsonrpc": "2.0", "id": 42,
+  "method": "tools/call",
+  "params": {
+    "name": "enable_tool_category",
+    "arguments": { "category": "materials" }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "token": "materials",
+  "added": ["list_materials", "read_material", "add_material_expression", ...],
+  "newly_activated_count": 7,
+  "total_active": 43,
+  "total_registered": 119
+}
+```
+
+The server immediately follows the response with:
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }
+```
+
+The client re-fetches `tools/list` and now sees the wider surface.
+Subsequent `enable_tool_category` calls can keep widening — the
+active set only grows, never shrinks.
+
+### When to choose progressive vs. static
+
+| Use static filter | Use progressive disclosure |
+|---|---|
+| You know what surface you need up front. | The agent's session might pivot — material work then UMG work, etc. |
+| Smaller is better (every byte of schema costs context). | Keep the initial schema tiny but let the agent earn more tools as the session evolves. |
+| Your client doesn't support `notifications/tools/list_changed`. | Your client does (Claude Code, recent Copilot). |
+| You want full reproducibility — same env = same tool surface across calls. | You're willing to let the agent dynamically reshape its toolbox per task. |
+
+### Sample config
+
+```json
+"env": {
+  "BP_READER_PROGRESSIVE":    "1",
+  "BP_READER_TOOLS_INITIAL":  "core"
+}
+```
+
+The server logs both decisions on stderr at startup:
+
+```
+[bp-reader-mcp] tool filter: kept 35 of 119 tools (allow=core)
+[bp-reader-mcp] progressive disclosure: enabled. Initial active set is 36 tools (of 119 registered). Agent can widen via `enable_tool_category(<name>)`.
+```
+
+(36 = the 35 core tools + the `enable_tool_category` meta-tool.)
+
 ## Pre-warm
 
 With `BP_READER_PREWARM=1`, the MCP server spawns the editor daemon on a

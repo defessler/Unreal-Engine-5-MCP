@@ -28,6 +28,31 @@ If a request needs an `add_node` kind not in `list_node_kinds`, that
 kind has to be added to the plugin's `RunAddNodeOp` first. Say so
 directly rather than guessing.
 
+### Progressive disclosure: surface may grow mid-session
+
+If your `tools/list` includes `enable_tool_category`, the server is
+running in **progressive disclosure mode** — the initial surface is
+intentionally narrow (default `core`, ~35 tools) and you widen it as
+needed:
+
+```json
+{ "name": "enable_tool_category", "arguments": { "category": "materials" } }
+```
+
+Returns `{added: [...], newly_activated_count: N, total_active: M}`
+and the server sends `notifications/tools/list_changed`. **Refetch
+`tools/list` after calling** — the response only names what was
+added, not the full new surface.
+
+Common categories: `materials`, `widgets`, `cpp`, `editor`,
+`behavior-trees`, `niagara`, `state-trees`, `anim-bp`. Workflow
+presets: `material-tuning`, `editor-control`, `gameplay-tuning`,
+`cpp-roundtrip`, `widget-design`. Or `all` to drop the gating
+entirely.
+
+If a tool you need isn't in `tools/list` and `enable_tool_category`
+IS — that's the signal to widen, not to give up.
+
 ## Wire format basics
 
 **Paths**: always package paths (`/Game/AI/BP_Foo`), never object
