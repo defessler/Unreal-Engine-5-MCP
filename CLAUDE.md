@@ -126,29 +126,35 @@ UE setup — useful for iterating on the MCP server itself.
 ## Build
 
 The MCP server is now a UE Program target — it builds via UBT
-alongside the rest of the plugin. Three independent targets:
+alongside the rest of the plugin. The editor target declares
+`BlueprintReaderMcp` as a `PreBuildTarget`, so the first command below
+builds both the editor module *and* the server in one invocation. The
+doctest binary remains explicit (heavier, less often needed):
 
 ```bat
-:: Editor (plugin DLLs):
+:: Editor (plugin DLLs) + MCP server exe (via PreBuildTarget):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   UE5_MCPEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
-:: MCP server exe:
+:: MCP server exe in isolation (e.g. when iterating on server-only changes):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcp Win64 Development ^
   -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
-:: doctest suite (~441 cases):
+:: doctest suite (~441 cases) — not pulled in automatically:
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcpTests Win64 Development ^
   -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-Or all three via the wrapper script:
+Add `-SkipPreBuildTargets` to the editor build to skip the MCP server
+side and rebuild just the editor module.
+
+Or both Program targets at once via the wrapper script:
 
 ```pwsh
 Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
@@ -171,6 +177,10 @@ incremental rebuild).
   DefaultBuildSettings = BuildSettingsVersion.V6;
   BuildEnvironment = TargetBuildEnvironment.Shared;
   ```
+  …and the `PreBuildTargets.Add(...)` block that pulls in
+  `BlueprintReaderMcp`. Without that line the editor build still works
+  but the MCP server exe goes stale, which is silent because the
+  daemon side keeps running an old binary.
 - Three engine `.Build.cs` patches (see README.md) for project-target
   builds to resolve `PrivateIncludePaths` correctly. These live in the
   sibling engine checkout, are not tracked here, and must be re-applied

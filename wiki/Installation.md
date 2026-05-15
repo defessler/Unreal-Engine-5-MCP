@@ -141,15 +141,20 @@ for plugin-only changes.
 
 ### MCP server is its own UBT target
 
-Building the editor target no longer rebuilds the MCP server as a side
-effect — the prior CMake-based `PreBuildStep` is gone. The MCP server
-lives as two independent UE Program targets:
+The MCP server lives as two independent UE Program targets:
 
 - `BlueprintReaderMcp` → `Binaries\Win64\BlueprintReaderMcp.exe`
 - `BlueprintReaderMcpTests` → `Binaries\Win64\BlueprintReaderMcpTests.exe`
 
-Either invoke `Build.bat` directly per target, or use the convenience
-wrapper:
+The editor target (`UE5_MCPEditor`) declares `BlueprintReaderMcp` as a
+`PreBuildTarget`, so the command above builds both halves in one
+invocation — you should see UBT interleave `** For UE5_MCPEditor-...
+**` and `** For BlueprintReaderMcp-... **` lines as it builds.
+
+To opt out and rebuild just the editor module, append
+`-SkipPreBuildTargets` to the Build.bat command. To build the server
+in isolation (or to also build the test exe, which is not pulled in
+automatically), invoke UBT directly per target or use the wrapper:
 
 ```powershell
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
