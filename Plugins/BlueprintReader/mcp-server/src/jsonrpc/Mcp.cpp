@@ -35,7 +35,7 @@ nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
 } // namespace
 
 void RegisterHandlers(jr::Server& server,
-                      const tools::ToolRegistry& registry,
+                      tools::ToolRegistry& registry,
                       const ServerInfo& info) {
     // -------- initialize ---------------------------------------------------
     server.Register("initialize", [info](const nlohmann::json& params) -> jr::Response {
@@ -61,10 +61,16 @@ void RegisterHandlers(jr::Server& server,
             }
         }
 
+        // We advertise the `listChanged` capability so progressive-
+        // disclosure clients know to re-fetch tools/list when they
+        // see `notifications/tools/list_changed`. Doing this
+        // unconditionally is fine: in non-progressive sessions the
+        // notification simply never fires, so well-behaved clients
+        // don't pay any cost.
         nlohmann::json result = {
             {"protocolVersion", negotiated},
             {"capabilities", {
-                {"tools", nlohmann::json::object()}, // we serve tools, no list-changed notifs
+                {"tools", {{"listChanged", true}}},
             }},
             {"serverInfo", {
                 {"name", info.name},
@@ -92,7 +98,7 @@ void RegisterHandlers(jr::Server& server,
     });
 
     // -------- tools/call ---------------------------------------------------
-    server.Register("tools/call", [&registry](const nlohmann::json& params) -> jr::Response {
+    server.Register("tools/call", [&registry, &server](const nlohmann::json& params) -> jr::Response {
         if (!params.is_object()) {
             return jr::Response::Fail(jr::ErrorCode::InvalidParams,
                 "tools/call params must be an object");
@@ -137,6 +143,14 @@ void RegisterHandlers(jr::Server& server,
                 {"elapsed_ms", elapsedMs()},
                 {"tool", name},
             };
+            // Progressive disclosure: if the tool mutated the active
+            // surface (e.g. `enable_tool_category`), queue a
+            // tools/list_changed notification for the server's flush.
+            // Run() picks it up after this response is written.
+            if (registry.TakeListChangedFlag()) {
+                server.QueueNotification("notifications/tools/list_changed",
+                                         nlohmann::json::object());
+            }
             return jr::Response::Ok(MakeToolTextContent(toolResult.dump(2),
                 /*isError=*/false, std::move(meta)));
         } catch (const std::exception& e) {

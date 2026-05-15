@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include <fmt/core.h>
 
@@ -174,6 +175,22 @@ void Server::Register(std::string method, Handler handler) {
     handlers_[std::move(method)] = std::move(handler);
 }
 
+void Server::QueueNotification(std::string method, nlohmann::json params) {
+    // JSON-RPC 2.0 notification envelope: no `id` field. Run() pulls
+    // these off the queue after each WriteFrame to interleave them
+    // cleanly between client-driven request/response pairs.
+    nlohmann::json env = {
+        {"jsonrpc", "2.0"},
+        {"method", std::move(method)},
+    };
+    if (!params.empty()) env["params"] = std::move(params);
+    pendingNotifications_.push_back(std::move(env));
+}
+
+std::vector<nlohmann::json> Server::TakePendingNotifications() {
+    return std::exchange(pendingNotifications_, {});
+}
+
 nlohmann::json MakeResultEnvelope(const nlohmann::json& id, nlohmann::json result) {
     nlohmann::json env = {
         {"jsonrpc", "2.0"},
@@ -323,11 +340,27 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
             if (!batchOut.empty()) {
                 WriteFrame(out, batchOut, clientFormat);
             }
+            // Same notification-flush as the single-request path. In
+            // practice MCP clients don't batch, but progressive
+            // disclosure shouldn't silently drop notifications if they
+            // somehow do.
+            for (const auto& notif : TakePendingNotifications()) {
+                WriteFrame(out, notif, clientFormat);
+            }
             continue;
         }
 
         if (auto r = Dispatch(body)) {
             WriteFrame(out, *r, clientFormat);
+        }
+
+        // Flush any notifications queued by the dispatched handler.
+        // Today that's `notifications/tools/list_changed` after a
+        // tools/call that mutated the active tool surface (progressive
+        // disclosure). The notifications are server-initiated, so the
+        // client doesn't pair them with a request id.
+        for (const auto& notif : TakePendingNotifications()) {
+            WriteFrame(out, notif, clientFormat);
         }
     }
 }

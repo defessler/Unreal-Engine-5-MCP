@@ -179,3 +179,41 @@ TEST_CASE("Dispatch rejects missing jsonrpc version") {
     REQUIRE(resp.has_value());
     CHECK((*resp)["error"]["code"] == static_cast<int>(ErrorCode::InvalidRequest));
 }
+
+// ===== Server-initiated notifications (progressive disclosure path) =====
+
+TEST_CASE("QueueNotification + TakePendingNotifications round-trip") {
+    Server s;
+    CHECK(s.TakePendingNotifications().empty());
+    s.QueueNotification("notifications/tools/list_changed",
+                        json::object());
+    auto pending = s.TakePendingNotifications();
+    REQUIRE(pending.size() == 1);
+    CHECK(pending[0]["jsonrpc"] == "2.0");
+    CHECK(pending[0]["method"] == "notifications/tools/list_changed");
+    CHECK(!pending[0].contains("id"));  // notification ≠ response
+    // Drain is destructive.
+    CHECK(s.TakePendingNotifications().empty());
+}
+
+TEST_CASE("QueueNotification preserves params when non-empty") {
+    Server s;
+    s.QueueNotification("custom/method", json{{"foo", 42}, {"bar", "baz"}});
+    auto pending = s.TakePendingNotifications();
+    REQUIRE(pending.size() == 1);
+    REQUIRE(pending[0].contains("params"));
+    CHECK(pending[0]["params"]["foo"] == 42);
+    CHECK(pending[0]["params"]["bar"] == "baz");
+}
+
+TEST_CASE("QueueNotification preserves FIFO order across multiple queues") {
+    Server s;
+    s.QueueNotification("a", json::object());
+    s.QueueNotification("b", json::object());
+    s.QueueNotification("c", json::object());
+    auto pending = s.TakePendingNotifications();
+    REQUIRE(pending.size() == 3);
+    CHECK(pending[0]["method"] == "a");
+    CHECK(pending[1]["method"] == "b");
+    CHECK(pending[2]["method"] == "c");
+}
