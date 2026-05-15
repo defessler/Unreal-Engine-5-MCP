@@ -861,7 +861,7 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
     ToolDescriptor d;
     d.name = "apply_ops";
     d.description =
-        "Execute a batch of write operations sequentially in a single tool "
+        "[blueprint] Execute a batch of write operations sequentially in a single tool "
         "call. Each op is `{op:\"add_variable\"|...|\"wire_pins\", ...args}`. "
         "Reduces N round-trips and N agent reasoning steps to one.\n\n"
         "Named slots: an `add_node` op may carry `id: \"<name>\"`. Subsequent "
