@@ -4,6 +4,23 @@ public class BlueprintReaderEditor : ModuleRules
 {
 	public BlueprintReaderEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
+		// Required Target.cs settings for the consuming project. Without
+		// these, you get cryptic linker errors (missing UnrealEd internals,
+		// PrivateIncludePath resolution failures from the engine patches we
+		// rely on). Fail fast here with an actionable message instead.
+		if (Target.Type != TargetType.Program &&
+		    Target.BuildEnvironment != TargetBuildEnvironment.Shared)
+		{
+			throw new BuildException(
+				"BlueprintReaderEditor requires `BuildEnvironment = " +
+				"TargetBuildEnvironment.Shared;` in the consuming project's " +
+				"<Project>Editor.Target.cs. Current value: " +
+				Target.BuildEnvironment + ". " +
+				"Also ensure `DefaultBuildSettings = BuildSettingsVersion.V6;` " +
+				"is set. See the project's README under 'Build invariants' " +
+				"for details.");
+		}
+
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(new string[]
