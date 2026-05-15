@@ -343,7 +343,22 @@ void FCmdletServer::OnClientDisconnected(uint64 ConnectionId)
     // synchronous game-thread compile/save (or skips per
     // BP_READER_BATCH_ON_DISCONNECT=discard). No-op when ConnectionId==0
     // (early-failure path before a real session was established).
-    FlushBatchForConnection(ConnectionId);
+    //
+    // Skip the flush if we're shutting down. FlushBatchForConnection
+    // dispatches via AsyncTask(ENamedThreads::GameThread, ...) and waits
+    // on FEvent::Wait(). During shutdown the game thread (= the daemon's
+    // main loop) is parked in Stop()'s thread-join waiting for THIS
+    // runnable to exit. That's a classic deadlock: game thread waits for
+    // runnable, runnable waits for AsyncTask, AsyncTask needs game
+    // thread to pump. Skipping the flush sacrifices in-flight pending
+    // edits — acceptable: the daemon is exiting and the BP state lives
+    // only in memory anyway. The behavior matches
+    // BP_READER_BATCH_ON_DISCONNECT=discard semantics for the shutdown
+    // edge case. Issue #86.
+    if (!bShuttingDown)
+    {
+        FlushBatchForConnection(ConnectionId);
+    }
 
     // Decrement first, then sample. FThreadSafeCounter::Decrement
     // returns the new value, so when it hits zero we know we're the
@@ -856,6 +871,19 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
     UE_LOG(LogBlueprintReaderCmdlet, Display,
         TEXT("Cmdlet client connected from %s"), *Endpoint.ToString());
 
+    // Early-out if the daemon is tearing down: don't spawn a worker we
+    // can't track. Without this check, a thread could start with the
+    // socket and runnable, then on `Conn` getting dropped (because
+    // GCmdletState went invalid by the Connections.Add point below),
+    // the runnable + socket get destructed under the thread while it's
+    // actively using them. Use-after-free. Issue #86.
+    if (bShuttingDown || !GCmdletState.IsValid())
+    {
+        ISocketSubsystem* Sub = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+        if (Sub) Sub->DestroySocket(Socket);
+        return false;
+    }
+
     // Increment the active-connection counter BEFORE spawning the
     // worker thread so a fast-disconnect race (Run starts + exits
     // before we record the connect) can't underflow the counter.
@@ -881,9 +909,25 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
     auto Conn = MakeUnique<FCmdletConnection>();
     Conn->Runnable = MoveTemp(Runnable);
     Conn->Thread = MoveTemp(Thread);
-    if (GCmdletState.IsValid())
+    // Re-check state under the lock. The shutdown path checks
+    // bShuttingDown under the same lock before calling Stop(), so if we
+    // win the race here our connection is tracked properly; if we lose
+    // we need to clean up rather than leak. The signal-the-runnable-to-
+    // stop path is the safe shutdown — the worker's Run() will see
+    // bStopRequested and exit, then the thread joins normally.
     {
         FScopeLock Lock(&GCmdletState->Mu);
+        if (bShuttingDown)
+        {
+            // State now invalid; signal the runnable to stop. Its dtor
+            // (when Conn unwinds at end of this function) will destroy
+            // the socket; the thread will exit naturally.
+            Conn->Runnable->Stop();
+            // Don't add to Connections — Stop() will reap from the
+            // listener's accept side too.
+            OnClientDisconnected(ConnId);
+            return false;
+        }
         GCmdletState->Connections.Add(MoveTemp(Conn));
     }
     return true;
