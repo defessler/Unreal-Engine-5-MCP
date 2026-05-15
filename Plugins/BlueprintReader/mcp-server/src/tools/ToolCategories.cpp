@@ -200,6 +200,99 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
             "list_node_kinds", "list_pin_categories",
             "shutdown_daemon",
         }},
+
+        // --- workflow presets: cross-category sets tuned for a task --------
+        //
+        // Distinct from the per-domain categories above: each workflow is a
+        // curated set of tools that REALISTICALLY ship together for a
+        // specific kind of session. Picked to keep tool counts well under
+        // any common client cap (Copilot's 128 leaves ~9 slots after our
+        // surface; even the biggest workflow here is ~25 tools).
+        //
+        // Naming: hyphenated, task-shaped. Easy to distinguish from the
+        // single-word per-domain categories.
+
+        // `bp-authoring`: equivalent to `core`. Listed separately so users
+        // can write the more task-shaped name in their env config.
+        {"bp-authoring", {
+            "list_blueprints", "read_blueprint", "summarize_blueprint",
+            "get_graph", "get_function", "get_node", "get_components",
+            "find_node", "find_overriders", "list_variables",
+            "list_functions", "get_project_metadata",
+            "add_variable", "delete_variable", "rename_variable",
+            "retype_variable", "set_variable_default", "set_variable_category",
+            "add_function", "add_function_input", "add_function_output",
+            "delete_function",
+            "add_node", "delete_node", "set_node_position", "wire_pins",
+            "auto_layout_graph",
+            "create_blueprint", "duplicate_blueprint", "save_all",
+            "apply_ops", "compile_function",
+            "list_node_kinds", "list_pin_categories", "shutdown_daemon",
+        }},
+
+        // `material-tuning`: read a BP to find its mesh, look at the
+        // material on that component, tweak parameters, compile to apply.
+        {"material-tuning", {
+            // Find what's using the material
+            "list_blueprints", "read_blueprint", "get_components",
+            // Material editing
+            "list_materials", "read_material",
+            "set_material_parameter",
+            "set_material_instance_parameter",
+            "compile_material",
+            // Verify
+            "save_all", "read_output_log", "shutdown_daemon",
+        }},
+
+        // `cpp-roundtrip`: BP <-> source. Decompile a BP to BPIR, render
+        // C++, parse C++ back, compile back to BP. Includes basic BP read
+        // tools so the agent can locate the function it's working on.
+        {"cpp-roundtrip", {
+            "list_blueprints", "read_blueprint", "get_function",
+            "decompile_function", "decompile_blueprint",
+            "transpile_function", "transpile_blueprint",
+            "parse_cpp_function", "write_generated_source",
+            "compile_function", "apply_ops",
+            "save_all", "shutdown_daemon",
+        }},
+
+        // `editor-control`: viewport + PIE + console + log. Pure runtime-
+        // editor surface, no BP authoring. For workflows where the agent
+        // is driving the editor like a remote control.
+        {"editor-control", {
+            "pie_start", "pie_stop",
+            "get_selected_actors", "set_selection",
+            "spawn_actor", "set_actor_transform", "delete_actor",
+            "focus_actor", "set_camera_transform",
+            "take_screenshot", "take_viewport_screenshot",
+            "set_show_flag",
+            "console_command", "get_cvar", "set_cvar",
+            "read_output_log",
+            "live_coding_compile",
+            "get_project_metadata", "shutdown_daemon",
+        }},
+
+        // `widget-design`: UMG widget authoring focused. Find widget BPs,
+        // read their tree, add nodes, set props, wire events, compile.
+        {"widget-design", {
+            "list_blueprints", "read_widget_blueprint",
+            "add_widget", "set_widget_property", "bind_widget_event",
+            "compile_widget_blueprint", "save_all", "shutdown_daemon",
+        }},
+
+        // `gameplay-tuning`: read BPs to find designer-exposed knobs,
+        // tweak variable defaults, batch-apply, run PIE to verify.
+        // Doesn't include node-level CRUD — this is the variable-and-PIE
+        // loop, not graph editing.
+        {"gameplay-tuning", {
+            "list_blueprints", "read_blueprint", "summarize_blueprint",
+            "list_variables", "get_components",
+            "set_variable_default", "set_component_property",
+            "apply_ops", "save_all",
+            "pie_start", "pie_stop",
+            "console_command", "get_cvar", "set_cvar",
+            "read_output_log", "shutdown_daemon",
+        }},
     };
     return kTable;
 }
