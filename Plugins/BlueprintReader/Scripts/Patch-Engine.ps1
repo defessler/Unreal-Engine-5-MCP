@@ -22,15 +22,15 @@
 #   # Apply the patches:
 #   .\Patch-Engine.ps1 -EngineDir "D:\Projects\Unreal Engine 5" -Apply
 #
-# Idempotent — re-running on already-patched files is a no-op. Each patch
+# Idempotent -- re-running on already-patched files is a no-op. Each patch
 # is detected by presence of the relative-string form; if `Path.Combine`
 # is already there, the file is left alone.
 #
 # Exit codes:
-#   0 — no patches needed OR all patches applied successfully
-#   1 — engine dir invalid / files missing
-#   2 — patches needed but -Apply was not passed (dry-run with pending work)
-#   3 — patch application failed (file write error, unexpected file shape)
+#   0 -- no patches needed OR all patches applied successfully
+#   1 -- engine dir invalid / files missing
+#   2 -- patches needed but -Apply was not passed (dry-run with pending work)
+#   3 -- patch application failed (file write error, unexpected file shape)
 
 [CmdletBinding()]
 param(
