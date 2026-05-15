@@ -108,6 +108,43 @@ TEST_CASE("ApplyFilter: same category name as a tool name treats it as a categor
     CHECK(CountSpec(r) == 3);
 }
 
+TEST_CASE("Workflow presets: each is a known category with a non-empty tool list") {
+    // Pins the workflow-shaped categories so a rename or removal of one
+    // is caught by the test suite, not by a downstream config breaking.
+    for (const char* name : {
+            "bp-authoring",
+            "material-tuning",
+            "cpp-roundtrip",
+            "editor-control",
+            "widget-design",
+            "gameplay-tuning",
+        }) {
+        CAPTURE(name);
+        REQUIRE(IsKnownCategory(name));
+        auto tools = ExpandCategory(name);
+        CHECK(tools.size() >= 6);  // each workflow has at least a handful
+        CHECK(tools.size() <= 40); // and none is so big it defeats the point
+    }
+}
+
+TEST_CASE("Workflow preset shapes contain the expected anchor tools") {
+    // Spot-check that the canonical tool for each workflow is in its set.
+    // Catches typos in ToolCategories.cpp's lists.
+    auto contains = [](const std::vector<std::string>& v, const char* needle) {
+        return std::find(v.begin(), v.end(), std::string(needle)) != v.end();
+    };
+    CHECK(contains(ExpandCategory("material-tuning"), "set_material_parameter"));
+    CHECK(contains(ExpandCategory("material-tuning"), "compile_material"));
+    CHECK(contains(ExpandCategory("cpp-roundtrip"), "transpile_function"));
+    CHECK(contains(ExpandCategory("cpp-roundtrip"), "parse_cpp_function"));
+    CHECK(contains(ExpandCategory("editor-control"), "pie_start"));
+    CHECK(contains(ExpandCategory("editor-control"), "console_command"));
+    CHECK(contains(ExpandCategory("widget-design"), "add_widget"));
+    CHECK(contains(ExpandCategory("widget-design"), "compile_widget_blueprint"));
+    CHECK(contains(ExpandCategory("gameplay-tuning"), "set_variable_default"));
+    CHECK(contains(ExpandCategory("gameplay-tuning"), "pie_start"));
+}
+
 TEST_CASE("ToolCategories: known + unknown lookups") {
     CHECK(IsKnownCategory("core"));
     CHECK(IsKnownCategory("cpp"));
