@@ -13,7 +13,7 @@ By the end you'll be able to run, with the editor closed:
 $env:BP_READER_BACKEND  = "commandlet"
 $env:BP_READER_PROJECT  = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
-bp-reader-mcp.exe   # JSON-RPC over stdio
+BlueprintReaderMcp.exe   # JSON-RPC over stdio
 ```
 
 ...and have `list_blueprints` return your actual `/Game/AI` assets.
@@ -38,7 +38,7 @@ and the live backend (Chapter 10).
 
 ## Skeleton
 
-Add a new translation unit under `mcp-server/src/backends/`. The
+Add a new translation unit under `Plugins/BlueprintReader/Tests/src/backends/`. The
 header declares a `CommandletBlueprintReader` subclass of
 `IBlueprintReader` plus a `Config` struct holding the engine dir,
 the uproject path, a timeout, and an `editorConfig` string. One
@@ -466,7 +466,7 @@ $env:BP_READER_BACKEND   = "commandlet"
 $env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
 
-Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+<removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `
     -Tool list_blueprints -Args '{"path":"/Game/AI"}'
 ```
 

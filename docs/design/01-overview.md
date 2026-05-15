@@ -17,22 +17,25 @@ design docs zoom in:
 
 ```
 Plugins/BlueprintReader/
-├── BlueprintReader.uplugin              PreBuildSteps run Build-MCPServer.ps1
+├── BlueprintReader.uplugin
 ├── Source/
 │   ├── BlueprintReaderEditor/           UE 5.7 editor plugin (UnrealEd)
 │   └── BlueprintReaderRuntime/          opt-in cooked-runtime introspection
-└── mcp-server/                          standalone C++20 MCP server
-    ├── src/
-    ├── third_party/                     vendored: nlohmann_json, fmt, doctest
-    ├── CMakeLists.txt
-    └── vcpkg.json                       declared but not consumed by default
+└── Tests/                               UE Program targets (UBT-built)
+    ├── BlueprintReaderMcp/              main exe → BlueprintReaderMcp.exe
+    ├── BlueprintReaderMcpCore/          shared static-lib module (impl)
+    ├── BlueprintReaderMcpTests/         doctest suite → BlueprintReaderMcpTests.exe
+    └── ThirdParty/                      vendored: nlohmann_json, fmt, doctest
 ```
 
-Both halves ship together as one UE plugin. The plugin's
-`PreBuildSteps` (`BlueprintReader.uplugin:30`) runs the CMake build of
-the MCP server during the editor build, so a single `Build.bat`
-invocation produces both the editor module and the `bp-reader-mcp.exe`
-binary.
+Both halves ship together as one UE plugin. The MCP server lives
+under `Tests/` (only path UBT auto-scans for plugin Program
+`Target.cs` files) and builds with the rest of the plugin via the
+same UBT pipeline — no separate CMake step. `Build.bat
+UE5_MCPEditor …` builds the editor module; `Build.bat
+BlueprintReaderMcp …` builds the MCP exe; the convenience wrapper
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` does both
+program targets in one shot.
 
 ### Editor plugin — `BlueprintReaderEditor`
 
@@ -59,15 +62,16 @@ registry) and exposes the same TCP protocol as the editor live server.
 Off by default; opt-in via the `bp.reader.listen` CVar. See
 `Source/BlueprintReaderRuntime/BlueprintReaderRuntime.Build.cs`.
 
-### Standalone MCP server — `mcp-server/`
+### Standalone MCP server — the MCP server's source tree (`Plugins/BlueprintReader/Tests/`)
 
 A C++20 stdio MCP server. JSON-RPC 2.0 frames in (newline-delimited or
 LSP-style `Content-Length`), tool result envelopes out. No UE
 dependency in this tree — it links against vendored
-`third_party/nlohmann_json`, `third_party/fmt`, and `third_party/doctest`
-(see [CMakeLists.txt:36-61](../../Plugins/BlueprintReader/mcp-server/CMakeLists.txt)).
-The tool handlers call into a `IBlueprintReader` interface; the
-concrete reader is chosen at startup based on environment.
+`Tests/ThirdParty/nlohmann_json`, `Tests/ThirdParty/fmt`, and
+`Tests/ThirdParty/doctest` (referenced via `PrivateIncludePaths` in
+`BlueprintReaderMcpCore.Build.cs`). The tool handlers call into a
+`IBlueprintReader` interface; the concrete reader is chosen at
+startup based on environment.
 
 ## The four backends
 
@@ -77,7 +81,7 @@ blueprint?" behind an `IBlueprintReader` interface
 
 | Backend | When | How |
 |---------|------|-----|
-| `mock` | no UE setup needed (CI, server development) | reads canned JSON from `mcp-server/fixtures/` |
+| `mock` | no UE setup needed (CI, server development) | reads canned JSON from `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/` |
 | `commandlet` | editor closed | spawns `UnrealEditor-Cmd.exe -run=BlueprintReader -Daemon`, talks to it over stdin/stdout |
 | `live` | editor open | connects to the editor's TCP listener (port + token from handshake file) |
 | `auto` | default when a `.uproject` is auto-discovered | probes per call: live if the editor's listener accepts, commandlet otherwise |
@@ -120,7 +124,7 @@ plumbing through both halves; the checklist is in
 JSON keys are snake_case throughout. `BPNode.meta` is a real nested
 object (not a string-of-JSON). Empty optional strings serialize as
 JSON `null`, not `""`. The canonical types live in
-`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h` — same
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h` — same
 header is reused on the UE side via `#define WITH_UE` to surface
 USTRUCT mirrors for `FJsonObjectConverter`. See
 [02-architecture.md → "Key invariants"](02-architecture.md#key-invariants)

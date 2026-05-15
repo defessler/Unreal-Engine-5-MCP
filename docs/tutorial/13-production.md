@@ -28,7 +28,7 @@ TEST_CASE("list_blueprints returns fixture summaries") {
 }
 ```
 
-The test binary is `bp-reader-tests.exe`. Roughly 440 cases. They
+The test binary is `BlueprintReaderMcpTests.exe`. Roughly 440 cases. They
 all pass on a clean checkout with no environment setup; the live
 tests detect missing env vars and skip cleanly:
 
@@ -47,7 +47,7 @@ on missing env vars.
 
 ### Test layout
 
-The tests live in `mcp-server/tests/` next to the server source:
+The tests live in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/` next to the server source:
 
 ```
 tests/
@@ -182,7 +182,7 @@ in every write op that does more than one mutation.
 
 Two MCP-server instances against the same project means two daemons
 fighting over the same `.uasset` files. `SingleInstanceLock` enforces
-"one bp-reader-mcp.exe per .uproject":
+"one BlueprintReaderMcp.exe per .uproject":
 
 ```cpp
 // SingleInstanceLock.h
@@ -335,8 +335,8 @@ includes the MCP server sources, and the plugin's
 
 `Build-MCPServer.ps1`:
 
-- Looks for `mcp-server/` next to the plugin or under the project.
-- Skips the build if `bp-reader-mcp.exe` is newer than every source
+- Looks for the MCP server's source tree (`Plugins/BlueprintReader/Tests/`) next to the plugin or under the project.
+- Skips the build if `BlueprintReaderMcp.exe` is newer than every source
   file under `src/` plus `CMakeLists.txt` — so incremental UE
   builds don't pay for a no-op MCP rebuild.
 - Configures + builds with CMake. Plain CMake — no vcpkg, no git,
@@ -359,10 +359,11 @@ target-link lines (`nlohmann_json::nlohmann_json`, `fmt::fmt`,
 configure time. Switching back to FetchContent is a one-line
 CMakeLists change if you ever need it.
 
-A fresh clone of the repo on Windows 2022 with `Visual Studio 17`
-and `cmake.exe` on PATH builds and tests in under five minutes,
-zero environment setup. CI runs that exact sequence on every push
-that touches `mcp-server/**`.
+A fresh clone of the repo on Windows with `Visual Studio 17` and a
+source-built UE 5.7+ builds and tests in under five minutes once
+the engine is already compiled. CI was previously mock-only on
+`windows-2022`; after the UBT migration, it's been removed pending
+a runner with the source-built engine available.
 
 ## Skill manifests
 
@@ -423,10 +424,9 @@ without any env setup:
 
 ```pwsh
 git clone <repo>
-cd <repo>/Plugins/BlueprintReader/mcp-server
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release --parallel
-.\build\tests\Release\bp-reader-tests.exe --reporters=console
+cd <repo>
+"<Engine>\Engine\Build\BatchFiles\Build.bat" BlueprintReaderMcpTests Win64 Development -project="<Project>.uproject"
+.\Binaries\Win64\BlueprintReaderMcpTests.exe --reporters=console
 ```
 
 The output should end with something like:
@@ -447,12 +447,11 @@ The previously-skipped live cases now execute, and the total count
 goes up. Same binary, same source, no rebuild — the only change
 is the environment.
 
-CI on every push covers the mock path. The live path is verified
-by hand (or by developer pre-merge runs) before a PR goes in.
-`.github/workflows/mcp-server.yml` is intentionally minimal —
-checkout, cmake configure, cmake build, run the test exe — no
-matrix, no parallel jobs, no dep-cache state (because there is
-none). Runs in under 10 minutes from green check-in to green pass.
+CI is currently disabled (see [09-testing.md](../design/09-testing.md)
+for the rationale). Pre-merge verification is local: build the
+two Program targets and run the test exe. When CI gets set up on a
+runner with the source-built engine available, that same `Build.bat
+BlueprintReaderMcpTests …` invocation is the canonical entry point.
 
 You now have the production package: a tested, packaged, distributed
 MCP server that's safe to hand to a teammate. The README points

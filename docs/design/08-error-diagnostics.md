@@ -100,7 +100,7 @@ agents actually use to react, and the numeric distinction adds little.
 
 ## MCP error envelope
 
-Source: `Plugins/BlueprintReader/mcp-server/src/jsonrpc/Mcp.cpp`.
+Source: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/jsonrpc/Mcp.cpp`.
 
 Every `tools/call` response — success or failure — carries an MCP
 content envelope. On failure, an extra `_meta` block adds telemetry +
@@ -292,7 +292,7 @@ to the write path; Codex review on PR #58 caught the miss, since
 
 ## `apply_ops` cascade attribution
 
-Source: `mcp-server/src/tools/ApplyOps.cpp`.
+Source: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ApplyOps.cpp`.
 
 `apply_ops` runs a sequence of write ops in one batch. The trouble:
 ops can depend on each other through `$slot` references — `wire_pins`
