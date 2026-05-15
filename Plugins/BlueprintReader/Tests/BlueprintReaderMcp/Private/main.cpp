@@ -96,6 +96,9 @@ Usage:
   bp-reader-mcp config --client=claude-code     Same, formatted for Claude Code (.mcp.json).
   bp-reader-mcp config --client=claude-desktop  Same, for Claude Desktop config.
   bp-reader-mcp config --client=copilot         Same, for VS Code Copilot (.vscode/mcp.json).
+  bp-reader-mcp config --mock                   Emit a mock-backend-only snippet — no UE project
+                                                or engine required. For fixture-backed testing
+                                                of MCP client integrations.
   bp-reader-mcp --help         This help.
 
 Configuration is via environment variables — see README's "Configuration" section.
@@ -157,9 +160,17 @@ std::string EscapeJsonPath(const std::filesystem::path& p) {
 
 int RunConfig(const std::vector<std::string>& args) {
     std::string client = "claude-code";  // default
+    bool mockMode = false;  // --mock: emit a snippet for the mock backend,
+                            // skipping the UE-project / engine discovery
+                            // requirement entirely. For users who just want
+                            // to wire bp-reader-mcp.exe into Claude Code /
+                            // Copilot for fixture-backed testing without a
+                            // running editor.
     for (const auto& a : args) {
         if (a.rfind("--client=", 0) == 0) {
             client = a.substr(9);
+        } else if (a == "--mock") {
+            mockMode = true;
         } else if (a == "--help" || a == "-h") {
             PrintUsage(std::cout);
             return 0;
@@ -170,18 +181,24 @@ int RunConfig(const std::vector<std::string>& args) {
     std::ostringstream notes;
     auto cfg = bpr::backends::ConfigFromEnv(exeDir, notes);
 
-    if (cfg.backend != "commandlet") {
-        std::cerr << "config: backend is '" << cfg.backend
-                  << "' (no UE project discovered). Move the exe under "
-                     "<project>/Plugins/BlueprintReader/mcp-server/build/Release/, "
-                     "or set BP_READER_PROJECT, then re-run.\n";
-        return 1;
-    }
-    if (cfg.uproject.empty() || cfg.engineDir.empty()) {
-        std::cerr << "config: auto-discovery couldn't find both a .uproject and "
-                     "an engine path. Set BP_READER_PROJECT / BP_READER_ENGINE_DIR "
-                     "and re-run, or run `bp-reader-mcp doctor` for details.\n";
-        return 1;
+    if (!mockMode) {
+        if (cfg.backend != "commandlet") {
+            std::cerr << "config: backend is '" << cfg.backend
+                      << "' (no UE project discovered). Either drop the plugin "
+                         "into <project>/Plugins/BlueprintReader/ + build the "
+                         "Mcp target so the exe lands at <project>/Binaries/"
+                         "Win64/BlueprintReaderMcp.exe, set BP_READER_PROJECT, "
+                         "or pass --mock for a mock-backend-only snippet.\n";
+            return 1;
+        }
+        if (cfg.uproject.empty() || cfg.engineDir.empty()) {
+            std::cerr << "config: auto-discovery couldn't find both a .uproject "
+                         "and an engine path. Set BP_READER_PROJECT / "
+                         "BP_READER_ENGINE_DIR and re-run, or pass --mock for a "
+                         "mock-backend-only snippet, or run `bp-reader-mcp "
+                         "doctor` for details.\n";
+            return 1;
+        }
     }
 
     auto exePath = EscapeJsonPath(ExecutablePath());
@@ -189,14 +206,23 @@ int RunConfig(const std::vector<std::string>& args) {
     auto projPath = EscapeJsonPath(cfg.uproject);
     std::string cfgName = cfg.editorConfig.empty() ? "" : cfg.editorConfig;
 
-    std::string envBlock = fmt::format(
+    // Mock-mode emits a minimal env block: just the backend selector. The
+    // mock backend's fixtures dir auto-resolves to `<exe>/fixtures` so no
+    // path config is needed. Everything else in the live-backend block
+    // (prewarm, editor args, editor config) is irrelevant to mock.
+    std::string envBlock = mockMode
+        ? std::string(
+R"(      "env": {
+        "BP_READER_BACKEND": "mock"
+      })")
+        : fmt::format(
 R"(      "env": {{
         "BP_READER_PREWARM":       "1",
         "BP_READER_EDITOR_ARGS":   "-EnableAllPlugins"{cfgLine}
       }})",
-        fmt::arg("cfgLine", (cfgName.empty() || cfgName == "Development")
-                                ? ""
-                                : fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));
+            fmt::arg("cfgLine", (cfgName.empty() || cfgName == "Development")
+                                    ? ""
+                                    : fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));
 
     if (client == "claude-code" || client == "claude-desktop") {
         std::cout << fmt::format(
@@ -227,16 +253,26 @@ R"({{
         return 1;
     }
 
-    std::cerr << "\n# Auto-discovery notes:\n";
-    std::cerr << notes.str();
-    std::cerr << "\n# Engine: " << cfg.engineDir.string()
-              << "\n# Project: " << cfg.uproject.string()
-              << "\n# EditorConfig: "
-              << (cfgName.empty() ? "Development (default)" : cfgName)
-              << "\n# Auto-discovered values are NOT echoed in the env block "
-                 "above —\n# the server picks them up from the exe location at "
-                 "runtime.\n# Override with explicit BP_READER_* vars if you "
-                 "need to.\n";
+    if (mockMode) {
+        std::cerr << "\n# Mock-backend mode: no UE project or engine required.\n"
+                     "# Fixtures resolve to <exe>/fixtures (staged automatically\n"
+                     "# at build time). Use this snippet to wire your MCP client\n"
+                     "# for fixture-backed testing — production / live BP work\n"
+                     "# needs the plugin built into a real UE project (drop the\n"
+                     "# `\"BP_READER_BACKEND\": \"mock\"` line and re-run `config`\n"
+                     "# from there for the production snippet).\n";
+    } else {
+        std::cerr << "\n# Auto-discovery notes:\n";
+        std::cerr << notes.str();
+        std::cerr << "\n# Engine: " << cfg.engineDir.string()
+                  << "\n# Project: " << cfg.uproject.string()
+                  << "\n# EditorConfig: "
+                  << (cfgName.empty() ? "Development (default)" : cfgName)
+                  << "\n# Auto-discovered values are NOT echoed in the env block "
+                     "above —\n# the server picks them up from the exe location at "
+                     "runtime.\n# Override with explicit BP_READER_* vars if you "
+                     "need to.\n";
+    }
     return 0;
 }
 
