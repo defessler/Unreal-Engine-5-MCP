@@ -39,7 +39,12 @@ public class BlueprintReaderEditor : ModuleRules
 			// UBTNode classes. We don't link BehaviorTreeEditor; full
 			// authoring still needs that, but the runtime asset can be
 			// inspected + scaffolded from here.
-			"AIModule"
+			"AIModule",
+			// Python executor used by run_python_script (BP_READER_ALLOW_PYTHON
+			// gated). Mirrors Epic AIAssistant's
+			// Engine/Plugins/Experimental/AIAssistant which depends on the
+			// same plugin for its ExecPythonCommandEx path.
+			"PythonScriptPlugin"
 		});
 	}
 }

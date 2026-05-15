@@ -2600,6 +2600,42 @@ CommandletBlueprintReader::GetSelectedActors() {
     return out;
 }
 
+BPRJson CommandletBlueprintReader::GetEditorState() {
+    // The plugin op returns the full shape already; pass through verbatim
+    // so the tools/call layer just forwards it. Strip the leading `ok`
+    // bool — the MCP envelope handles error semantics separately.
+    auto j = RunOp({L"-Op=GetEditorState"});
+    if (j.is_object()) {
+        j.erase("ok");
+    }
+    return j;
+}
+
+IBlueprintReader::PythonResult
+CommandletBlueprintReader::RunPythonScript(std::string_view code) {
+    // Code goes over the wire as a -Code= arg. The arg encoder inner-
+    // quotes whitespace values so multi-line scripts survive intact.
+    std::wstring codeW(code.begin(), code.end());
+    auto j = RunOp({L"-Op=RunPythonScript",
+                    L"-Code=" + codeW});
+    PythonResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("ok"); it != j.end() && it->is_boolean()) {
+            out.ok = it->get<bool>();
+        }
+        if (auto it = j.find("error"); it != j.end() && it->is_string()) {
+            out.error = it->get<std::string>();
+        }
+        if (auto it = j.find("command_result"); it != j.end() && it->is_string()) {
+            out.commandResult = it->get<std::string>();
+        }
+        if (auto it = j.find("log"); it != j.end()) {
+            out.log = *it;
+        }
+    }
+    return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
                                         bool replace) {
