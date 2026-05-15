@@ -72,14 +72,28 @@ in *Development Editor / Win64*. Coffee + lunch — first build is 1–3 hours.
 UE 5.7's GitHub source has three modules whose `Build.cs` declares
 `PrivateIncludePaths` relative to `Engine/Source/` instead of the module
 directory. That breaks project-target builds with `fatal error C1083`.
-Patch each file:
 
-- `Engine/Source/Developer/Windows/LiveCoding/LiveCoding.Build.cs`
-- `Engine/Source/Developer/IOS/TVOSTargetPlatformSettings/TVOSTargetPlatformSettings.Build.cs`
-- `Engine/Platforms/VisionOS/Source/Developer/VisionOSTargetPlatformSettings/VisionOSTargetPlatformSettings.Build.cs`
+**Easy path:** the plugin ships a script that applies the patches
+idempotently.
 
-Add `using System.IO;` at the top, then replace the relative
-`PrivateIncludePaths` entry with `Path.Combine(ModuleDirectory, ...)`.
+```powershell
+# Dry-run (report what would change):
+.\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
+    -EngineDir "D:\Projects\Unreal Engine 5"
+
+# Apply:
+.\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
+    -EngineDir "D:\Projects\Unreal Engine 5" `
+    -Apply
+```
+
+The script:
+- Patches three files: `LiveCoding.Build.cs`, `TVOSTargetPlatformSettings.Build.cs`, `VisionOSTargetPlatformSettings.Build.cs`.
+- Adds `using System.IO;` near the top.
+- Replaces the relative `PrivateIncludePaths` entry with
+  `Path.Combine(ModuleDirectory, ...)`.
+- Idempotent — re-running on already-patched files is a no-op.
+
 After patching, rebuild the affected modules — you don't need a full
 engine rebuild.
 
