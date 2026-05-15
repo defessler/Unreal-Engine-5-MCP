@@ -2,7 +2,9 @@
 # Diagnostic: confirm both halves of the BlueprintReader plugin are present
 # and ready to use:
 #
-#   1. bp-reader-mcp.exe       (built by cmake / the PreBuildStep)
+#   1. BlueprintReaderMcp.exe                  (built by UBT — `Build.bat
+#                                               BlueprintReaderMcp ...`,
+#                                               post-PR-#75)
 #   2. UnrealEditor-BlueprintReaderEditor.dll  (built by UBT during an
 #                                               editor-target build)
 #
@@ -55,18 +57,21 @@ Write-Host ''
 # ---------------------------------------------------------------------------
 Write-Host 'Source files:' -ForegroundColor White
 $srcOk  = $true
-$srcOk  = (Check 'BlueprintReader.uplugin manifest'             (Join-Path $PluginDir 'BlueprintReader.uplugin')) -and $srcOk
-$srcOk  = (Check 'BlueprintReaderEditor module Build.cs'         (Join-Path $PluginDir 'Source\BlueprintReaderEditor\BlueprintReaderEditor.Build.cs')) -and $srcOk
-$srcOk  = (Check 'MCP server CMakeLists.txt'                     (Join-Path $PluginDir 'mcp-server\CMakeLists.txt')) -and $srcOk
-$srcOk  = (Check 'PreBuildStep script (Build-MCPServer.ps1)'     (Join-Path $PluginDir 'Scripts\Build-MCPServer.ps1')) -and $srcOk
+$srcOk  = (Check 'BlueprintReader.uplugin manifest'              (Join-Path $PluginDir 'BlueprintReader.uplugin')) -and $srcOk
+$srcOk  = (Check 'BlueprintReaderEditor module Build.cs'          (Join-Path $PluginDir 'Source\BlueprintReaderEditor\BlueprintReaderEditor.Build.cs')) -and $srcOk
+$srcOk  = (Check 'MCP server Target.cs (BlueprintReaderMcp)'      (Join-Path $PluginDir 'Tests\BlueprintReaderMcp\BlueprintReaderMcp.Target.cs')) -and $srcOk
+$srcOk  = (Check 'MCP core Build.cs (BlueprintReaderMcpCore)'     (Join-Path $PluginDir 'Tests\BlueprintReaderMcpCore\BlueprintReaderMcpCore.Build.cs')) -and $srcOk
+$srcOk  = (Check 'Build wrapper script (Build-MCPServer.ps1)'     (Join-Path $PluginDir 'Scripts\Build-MCPServer.ps1')) -and $srcOk
 Write-Host ''
 
 # ---------------------------------------------------------------------------
 # Build-output checks (these are what users actually need)
 # ---------------------------------------------------------------------------
 Write-Host 'Build outputs:' -ForegroundColor White
-$mcpExe = Join-Path $PluginDir 'mcp-server\build\Release\bp-reader-mcp.exe'
-$mcpOk  = Check 'bp-reader-mcp.exe (MCP server)' $mcpExe
+# Post-PR-#75: UBT builds BlueprintReaderMcp as a Program target with
+# default output at <ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe.
+$mcpExe = Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe'
+$mcpOk  = Check 'BlueprintReaderMcp.exe (MCP server)' $mcpExe
 
 # UE's binary naming: Development is suffix-less, every other config gets
 # "-Win64-<Config>" appended. Find ALL variants so we can tell the user
@@ -140,10 +145,20 @@ if (-not $srcOk) {
 }
 
 if (-not $mcpOk) {
-    Write-Host 'Fix for missing bp-reader-mcp.exe:' -ForegroundColor Yellow
-    Write-Host '  Run the standalone build:'
-    Write-Host ('    {0}\Scripts\Build-MCPServer.bat' -f $PluginDir)
-    Write-Host '  (Or build the editor target — it runs the same script as a PreBuildStep.)'
+    Write-Host 'Fix for missing BlueprintReaderMcp.exe:' -ForegroundColor Yellow
+    Write-Host '  The MCP server is its own UBT Program target (no longer a'
+    Write-Host '  PreBuildStep of the editor build). Build it explicitly:'
+    Write-Host ''
+    Write-Host '    & "<EngineDir>\Engine\Build\BatchFiles\Build.bat" `'
+    Write-Host '        BlueprintReaderMcp Win64 Development `'
+    if ($uproject) {
+        Write-Host ('        -project="{0}"' -f $uproject)
+    } else {
+        Write-Host '        -project="<path to your .uproject>"'
+    }
+    Write-Host ''
+    Write-Host '  Or use the wrapper script (builds Mcp + Tests):'
+    Write-Host ('    & "{0}\Scripts\Build-MCPServer.ps1" -EngineDir "<engine>" -ProjectFile "<your.uproject>"' -f $PluginDir)
     Write-Host ''
     $problems += 'MCP server not built'
 }

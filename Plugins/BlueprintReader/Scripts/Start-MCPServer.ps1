@@ -46,26 +46,34 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PluginDir)  { $PluginDir  = (Resolve-Path (Join-Path $scriptDir '..')).Path }
 if (-not $ProjectDir) { $ProjectDir = (Resolve-Path (Join-Path $PluginDir '..\..')).Path }
 
-# Find the MCP server dir. New layout has it inside the plugin; older
-# checkouts had it at the project root.
-$mcpDir = $null
-foreach ($candidate in @(
-    (Join-Path $PluginDir  'mcp-server'),
-    (Join-Path $ProjectDir 'mcp-server')
-)) {
-    if (Test-Path (Join-Path $candidate 'CMakeLists.txt')) { $mcpDir = $candidate; break }
-}
-if (-not $mcpDir) {
-    Write-Error "$tag couldn't locate mcp-server/ under $PluginDir or $ProjectDir."
-    exit 1
-}
-
-# Resolve the exe.
+# Resolve the exe. The post-UBT-migration layout puts the binary at
+# <Project>/Binaries/Win64/BlueprintReaderMcp.exe (UBT's default output
+# path for Program targets in a project context). Fall back to the
+# pre-UBT CMake path for users on older plugin pulls.
 if (-not $Exe) {
-    $Exe = Join-Path $mcpDir 'build\Release\bp-reader-mcp.exe'
+    $candidates = @(
+        (Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe'),
+        # Legacy CMake build artifact path. Kept so users mid-upgrade don't
+        # get a hard error before they've rebuilt; remove once everyone's
+        # past the UBT migration.
+        (Join-Path $PluginDir  'mcp-server\build\Release\bp-reader-mcp.exe')
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c) { $Exe = $c; break }
+    }
 }
-if (-not (Test-Path $Exe)) {
-    Write-Error "$tag bp-reader-mcp.exe not found at $Exe. Build the plugin first (or run Build-MCPServer.ps1)."
+if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) {
+    Write-Error @"
+$tag BlueprintReaderMcp.exe not found.
+  Tried:
+    $($ProjectDir)\Binaries\Win64\BlueprintReaderMcp.exe (UBT build, post-PR #75)
+    $($PluginDir)\mcp-server\build\Release\bp-reader-mcp.exe (legacy CMake build)
+
+  Build with:
+    Build.bat BlueprintReaderMcp Win64 Development -project="$($uproject -or '<your.uproject>')"
+  Or use the wrapper:
+    .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 -EngineDir "<engine>" -ProjectFile "<your.uproject>"
+"@
     exit 1
 }
 
