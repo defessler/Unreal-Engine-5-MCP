@@ -152,7 +152,7 @@ TEST_CASE("MockBlueprintReader loads all 3 fixtures") {
 }
 ```
 
-The pin-count assertion at `test_tools.cpp:35` (`CHECK(spec.size() == 119);`)
+The pin-count assertion at `test_tools.cpp:35` (`CHECK(spec.size() == 126);`)
 is a tool-count check — keep this aligned with `BlueprintTools.cpp`
 registrations. Bumping it is part of the "Adding a new tool" checklist
 in CLAUDE.md.
