@@ -16,6 +16,9 @@ public class BlueprintReaderMcpTestsTarget : TargetRules
         LinkType = TargetLinkType.Monolithic;
         LaunchModuleName = "BlueprintReaderMcpTests";
 
+        // V6 defaults -- same rationale as BlueprintReaderMcp.Target.cs.
+        DefaultBuildSettings = BuildSettingsVersion.V6;
+
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
         CppStandard = CppStandardVersion.Cpp20;
 
