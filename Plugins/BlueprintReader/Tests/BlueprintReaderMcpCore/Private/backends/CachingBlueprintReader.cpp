@@ -1,7 +1,5 @@
 #include "backends/CachingBlueprintReader.h"
 
-#include <fmt/core.h>
-
 #include <optional>
 #include <system_error>
 

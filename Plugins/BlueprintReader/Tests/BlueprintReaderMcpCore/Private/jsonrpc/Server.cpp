@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -184,10 +183,12 @@ void Server::QueueNotification(std::string method, nlohmann::json params) {
         {"method", std::move(method)},
     };
     if (!params.empty()) env["params"] = std::move(params);
+    std::lock_guard<std::mutex> lock(notifMu_);
     pendingNotifications_.push_back(std::move(env));
 }
 
 std::vector<nlohmann::json> Server::TakePendingNotifications() {
+    std::lock_guard<std::mutex> lock(notifMu_);
     return std::exchange(pendingNotifications_, {});
 }
 

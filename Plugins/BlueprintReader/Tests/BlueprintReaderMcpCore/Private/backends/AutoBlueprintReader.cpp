@@ -1,6 +1,5 @@
 #include "backends/AutoBlueprintReader.h"
 
-#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
 #include <chrono>
