@@ -2,7 +2,7 @@
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
-graphs, nodes, connections, K2 metadata — through 119 tools.
+graphs, nodes, connections, K2 metadata — through 126 tools.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -32,8 +32,9 @@ If you just want Claude to read your Blueprints:
 
 1. [Set up + build the engine](Installation#2-build-the-engine) — 1–3 hours
    first time (UE source build).
-2. [Build the editor target](Installation#3-build-the-ue-plugin) — the
-   plugin's `PreBuildStep` builds the MCP server too, no separate cmake.
+2. [Build the editor target + MCP server](Installation#3-build-the-ue-plugin)
+   — both halves are UBT targets in the same plugin; the
+   `Build-MCPServer.ps1` wrapper builds them in one shot.
 3. Launch your client from the project directory — the shipped
    [`.mcp.json`](Clients#claude-code-recommended) wires Claude Code
    automatically. For Copilot, drop a `.vscode/mcp.json`. For ChatGPT,
