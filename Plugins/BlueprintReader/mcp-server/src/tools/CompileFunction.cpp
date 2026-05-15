@@ -368,7 +368,7 @@ void RegisterCompileFunction(ToolRegistry& registry,
     ToolDescriptor d;
     d.name = "compile_function";
     d.description =
-        "Compile a tiny pseudocode DSL into a fully-wired BP function. "
+        "[cpp] Compile a tiny pseudocode DSL into a fully-wired Blueprint function. "
         "Accepts the function signature plus a `body` of statements; "
         "translates to add_node + wire_pins + set_pin_default ops and "
         "runs them as one batch (single recompile per affected BP).\n\n"

@@ -137,7 +137,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_blueprints";
         d.description =
-            "List blueprint assets under a content path. Defaults to /Game. "
+            "[blueprint] List Blueprint assets under a content path. Defaults to /Game. "
             "On big projects this can return thousands of entries — use "
             "`limit`/`offset` to page, and `fields` (e.g. [\"asset_path\"]) "
             "to drop columns you don't need.";
@@ -168,7 +168,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "read_blueprint";
         d.description =
-            "Read top-level metadata for a blueprint: parent class, interfaces, "
+            "[blueprint] Read top-level metadata for a Blueprint: parent class, interfaces, "
             "variables, function/graph summaries, macros. "
             "Pass `fields` (e.g. [\"parent_class\", \"variables[].name\"]) to "
             "project just what you need — full payloads can be many KB on busy BPs.";
@@ -197,7 +197,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "decompile_function";
         d.description =
-            "Convert a BP function to BPIR (Blueprint Intermediate "
+            "[cpp] Convert a BP function to BPIR (Blueprint Intermediate "
             "Representation) — a versioned JSON AST that's the pivot for "
             "BP ↔ source-language conversions. Pattern-matches K2 nodes "
             "(Branch / Cast / Sequence / VariableSet / CallFunction / "
@@ -233,7 +233,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "decompile_blueprint";
         d.description =
-            "Whole-class BPIR extraction: variables + interfaces + every "
+            "[cpp] Whole-class BPIR extraction: variables + interfaces + every "
             "function's BPIR. Returns `{kind: \"class\", ...}` doc — the "
             "input shape `transpile_blueprint` expects for full UCLASS "
             "C++ generation. Per-function decompile failures don't tank "
@@ -261,7 +261,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "transpile_function";
         d.description =
-            "Convert a BP function to C++ source. Composes "
+            "[cpp] Convert a Blueprint function to C++ source. Composes "
             "decompile_function (BP → BPIR) + C++ codegen (BPIR → "
             "source). Default `mode=readable` emits annotated C++ "
             "(type names + valid blocks, UCLASS/UFUNCTION shown as "
@@ -321,7 +321,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "transpile_blueprint";
         d.description =
-            "Convert a whole BP class to a compilable UE C++ .h/.cpp pair. "
+            "[cpp] Convert a whole Blueprint class to a compilable UE C++ .h/.cpp pair. "
             "Composes decompile_blueprint + CppClassEmit: emits a UCLASS "
             "declaration with UPROPERTY decls (Replicated / EditAnywhere "
             "/ Category specifiers inferred from BP variable metadata), "
@@ -411,7 +411,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "write_generated_source";
         d.description =
-            "Write a transpiled .h/.cpp file into the project's Source/ "
+            "[cpp] Write a transpiled .h/.cpp file into the project's Source/ "
             "tree. Confined by the plugin to paths under "
             "<ProjectDir>/Source/ — anything else is rejected. Pair with "
             "`transpile_blueprint`: pass the `header_source` / "
@@ -465,7 +465,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "parse_cpp_function";
         d.description =
-            "Parse a C++ function (or bare body) into a BPIR document — "
+            "[cpp] Parse a C++ function (or bare body) into a BPIR document — "
             "the inverse of `transpile_function`. The returned BPIR can "
             "be fed straight to `compile_function` to materialize a BP "
             "graph from the source.\n\n"
@@ -518,7 +518,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "summarize_blueprint";
         d.description =
-            "Tiny orientation response for a blueprint: parent class plus "
+            "[blueprint] Tiny orientation response for a Blueprint: parent class plus "
             "counts of variables, functions, graphs, macros, and interfaces. "
             "Use this BEFORE `read_blueprint` when you don't yet know how big "
             "the BP is — saves loading the full payload to find out it has "
@@ -552,7 +552,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_graph";
         d.description =
-            "Fetch a graph (nodes + connections) by name. Defaults to EventGraph. "
+            "[blueprint] Fetch a Blueprint graph (nodes + connections) by name. Defaults to EventGraph. "
             "Big graphs are big — pass `fields` (e.g. [\"nodes[].title\", \"nodes[].kind\"]) "
             "to drop fields you don't need.";
         d.input_schema = {
@@ -581,7 +581,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_function";
         d.description =
-            "Fetch a blueprint function: signature (inputs/outputs), locals, "
+            "[blueprint] Fetch a Blueprint function: signature (inputs/outputs), locals, "
             "and body graph. Use `fields` to project (e.g. "
             "[\"inputs[].name\", \"outputs[].name\"] for just the signature).";
         d.input_schema = {
@@ -610,7 +610,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_components";
         d.description =
-            "List the SCS components (StaticMeshComponent, LightComponent, "
+            "[blueprint] List the SCS components (StaticMeshComponent, LightComponent, "
             "child actors, etc.) attached to a blueprint, with parent/child "
             "hierarchy. Each entry: {name, class, parent, is_root}. Supports "
             "`fields`/`limit`/`offset`.";
@@ -639,7 +639,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_variables";
         d.description =
-            "List all member variables on a blueprint, with type, default, "
+            "[blueprint] List all member variables on a Blueprint, with type, default, "
             "category, and replication state. Big BPs can have 100+ variables "
             "— use `fields` (e.g. [\"name\", \"type.category\"]) and "
             "`limit`/`offset` to keep responses small.";
@@ -668,7 +668,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "find_node";
         d.description =
-            "Search nodes within a blueprint by class or title (case-insensitive substring). "
+            "[blueprint] Search nodes within a Blueprint by class or title (case-insensitive substring). "
             "Optional `kind` further filters by the K2 extras kind, e.g. CallFunction, "
             "VariableGet, Event, CustomEvent, DynamicCast, MacroInstance, "
             "FunctionEntry, FunctionResult. Supports `fields`/`limit`/`offset` — typical "
@@ -707,7 +707,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "create_blueprint";
         d.description =
-            "Create a new BP asset under `/Game/...` extending `parent_class`. "
+            "[blueprint] Create a new Blueprint asset under `/Game/...` extending `parent_class`. "
             "`parent_class` accepts short names (\"Actor\", \"ACharacter\") "
             "and full UClass paths (\"/Script/Engine.Actor\"). Idempotent: "
             "calling with an existing asset returns "
@@ -741,7 +741,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_variable";
         d.description =
-            "Add a member variable to a blueprint. `type` accepts either a "
+            "[blueprint] Add a member variable to a Blueprint class. For graph nodes use `add_node`; for function parameters use `add_function_input`/`add_function_output`. `type` accepts either a "
             "shorthand string (\"float\", \"int\", \"bool\", \"string\", "
             "\"object:Actor\", \"struct:FVector\", \"[]float\", "
             "\"{string:int}\") or the canonical BPPinType object "
@@ -798,7 +798,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_node_position";
-        d.description = "Move a node (by GUID) to (x, y) inside a graph. Recompiles + saves the BP.";
+        d.description = "[blueprint] Move a K2 node (by GUID) to (x, y) inside a Blueprint graph. Recompiles + saves the BP.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
@@ -825,7 +825,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "delete_node";
-        d.description = "Delete a node by GUID. Breaks any links into/out of it. Recompiles + saves.";
+        d.description = "[blueprint] Delete a K2 node by GUID. Breaks any links into/out of it. Recompiles + saves.";
         d.input_schema = {
             {"type", "object"},
             {"properties", {
@@ -849,7 +849,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_node";
         d.description =
-            "Spawn a new K2 node in a graph. `kind` is one of: "
+            "[blueprint] Spawn a new K2 (Blueprint) node in a Blueprint graph. NOT for UMG widgets (`add_widget`), Behavior Tree (`add_bt_node`), AnimBP state (`add_anim_state`), StateTree (`add_state_tree_state`), Material expressions (`add_material_expression`), or Level Sequence tracks (`add_sequence_track`). `kind` is one of: "
             "Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent. "
             "Kind-specific args: VariableGet/VariableSet -> `variable`; "
             "CallFunction -> `function` + `function_owner` (UClass path or short name); "
@@ -941,7 +941,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_node";
         d.description =
-            "Fetch a single node by GUID inside a graph. Returns the node's "
+            "[blueprint] Fetch a single K2 node by GUID inside a graph. Returns the node's "
             "class, title, position, pins, and links — same shape as one "
             "entry from `get_graph`'s nodes array, minus the round-trip cost "
             "of fetching every node. Pairs with `find_node` (which gives you "
@@ -979,7 +979,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "find_overriders";
         d.description =
-            "Find blueprints under `path` that match a structural query: "
+            "[blueprint] Find Blueprints under `path` that match a structural query: "
             "extend `parent_class`, override `function_name`, and/or implement "
             "`interface`. All filters are optional but at least one must be "
             "set. Returns a list of `{asset_path, parent_class, matched: [...]}` "
@@ -1072,7 +1072,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "wire_pins";
         d.description =
-            "Connect two pins. `from_pin` and `to_pin` accept either a pin GUID "
+            "[blueprint] Connect two K2 pins. `from_pin` and `to_pin` accept either a pin GUID "
             "(preferred — see get_graph) or a pin name. The schema's pin "
             "compatibility rules are enforced; on failure, the error message "
             "includes the actual pin types so the caller can self-correct.";
@@ -1146,7 +1146,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "retype_variable";
         d.description =
-            "Change a member variable's type without delete + re-add. UE "
+            "[blueprint] Change a Blueprint member variable's type without delete + re-add. UE "
             "rewires every VariableGet / VariableSet node that references "
             "the variable in place — existing graphs survive. For a "
             "brand-new variable, use add_variable instead. `type` accepts "
@@ -1178,8 +1178,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_variable_category";
         d.description =
-            "Change the My-Blueprint-panel category label on a member "
-            "variable (the \"Stats\" / \"Combat\" group header in the "
+            "[blueprint] Change the My-Blueprint-panel category label on a "
+            "Blueprint member variable (the \"Stats\" / \"Combat\" group header in the "
             "BP editor). Empty `category` clears the label back to "
             "default. For a brand-new variable, pass `category` to "
             "add_variable instead — this tool is for retroactive edits.";
@@ -1207,7 +1207,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "duplicate_blueprint";
         d.description =
-            "File-level duplicate: source BP at `asset_path` → new BP at "
+            "[asset] File-level duplicate: source BP at `asset_path` → new BP at "
             "`dest_asset_path`. Both must be under /Game/. Idempotent: if "
             "the destination already exists, returns "
             "{ok:true, already_existed:true} without overwriting. The new "
@@ -1241,7 +1241,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "delete_variable";
-        d.description = "Remove a member variable by name. Recompiles + saves.";
+        d.description = "[blueprint] Remove a Blueprint member variable by name. Recompiles + saves.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -1263,7 +1263,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "rename_variable";
         d.description =
-            "Rename a member variable. Updates references in graphs. "
+            "[blueprint] Rename a Blueprint member variable. Updates references in graphs. "
             "Recompiles + saves.";
         d.input_schema = {
             {"type","object"},
@@ -1288,7 +1288,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_function";
         d.description =
-            "Create a new BP function graph with the given name. Returns "
+            "[blueprint] Create a new BP function graph with the given name. Returns "
             "{ok, function_name, already_existed}. Use add_function_input / "
             "add_function_output to declare its signature. Idempotent — "
             "calling with an existing name returns already_existed:true.";
@@ -1333,7 +1333,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_function_input";
         d.description =
-            "Add an input parameter to an existing function. `type` accepts "
+            "[blueprint] Add an input parameter to an existing function. `type` accepts "
             "either a shorthand string (e.g. \"float\", \"object:Actor\") or "
             "a BPPinType object.";
         d.input_schema = {
@@ -1364,7 +1364,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_function_output";
         d.description =
-            "Add an output parameter to an existing function. Spawns a "
+            "[blueprint] Add an output parameter to an existing function. Spawns a "
             "FunctionResult node if there isn't one yet. `type` accepts "
             "either a shorthand string (e.g. \"float\", \"object:Actor\") or "
             "a BPPinType object.";
@@ -1395,7 +1395,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "delete_function";
-        d.description = "Delete a function graph by name.";
+        d.description = "[blueprint] Delete a Blueprint function graph by name.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -1417,7 +1417,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_variable_default";
         d.description =
-            "Change a member variable's default value (string form, as displayed "
+            "[blueprint] Change a Blueprint member variable's default value (string form, as displayed "
             "in the Details panel — e.g. \"100.0\" for a float, \"true\"/\"false\" "
             "for a bool). Pass empty string to clear.";
         d.input_schema = {
@@ -1451,7 +1451,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_node_kinds";
         d.description =
-            "List the `kind` values that `add_node` accepts, with required "
+            "[discover] List the `kind` values that `add_node` accepts, with required "
             "extras for each. Pure metadata — no backend call.";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
         registry.Add(std::move(d), [](const nlohmann::json&) {
@@ -1557,7 +1557,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_pin_categories";
         d.description =
-            "List the canonical BPPinType.category values + container modifiers. "
+            "[discover] List the canonical BPPinType.category values + container modifiers. "
             "Useful when constructing the `type` argument for add_variable. "
             "Pure metadata — no backend call.";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
@@ -1622,7 +1622,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "shutdown_daemon";
         d.description =
-            "Force-terminate the backing editor daemon process. In shared-daemon "
+            "[discover] Force-terminate the backing editor daemon process. In shared-daemon "
             "mode (the default), one daemon serves every MCP session against a "
             "given project — so this affects EVERY session, not just yours. "
             "Other sessions' next call simply spawns a fresh daemon (cold-start "
@@ -1655,7 +1655,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "auto_layout_graph";
         d.description =
-            "Auto-position the nodes in a graph so they don't overlap. "
+            "[blueprint] Auto-position the nodes in a Blueprint graph so they don't overlap. "
             "v1 is a column-grid layout computed from exec connectivity — "
             "readable but not as tidy as UE's built-in graph-tidy. Plugin-"
             "side integration with KismetGraphSchema's actual tidy pass is "
@@ -1779,7 +1779,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_project_metadata";
         d.description =
-            "Read the project's `.uproject` file and return parsed metadata "
+            "[asset] Read the project's `.uproject` file and return parsed metadata "
             "(project name, EngineAssociation, category, description, plus "
             "the raw JSON for anything else). Useful for orienting an agent "
             "to which project + engine version it's working against.";
@@ -1803,7 +1803,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "save_all";
         d.description =
-            "Save every dirty package the editor has loaded. With "
+            "[asset] Save every dirty package the editor has loaded. With "
             "`dirty_only=true` (default), clean packages are skipped — fast "
             "no-op when nothing's changed. Returns count saved + any failed "
             "asset paths.";
@@ -1830,7 +1830,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "move_asset";
         d.description =
-            "Move or rename an asset. `dest_asset_path` is the full destination "
+            "[asset] Move or rename an asset. `dest_asset_path` is the full destination "
             "package path — pass the same folder with a different leaf for a "
             "rename, or a different folder to move. Both must be under "
             "`/Game/`. Updates the asset registry and fixes references in "
@@ -1861,7 +1861,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "delete_asset";
         d.description =
-            "Delete an asset. Refuses by default if other assets reference "
+            "[asset] Delete an asset. Refuses by default if other assets reference "
             "it; set `force=true` to delete anyway (leaves dangling references "
             "as null objects). Returns the list of referencing assets when "
             "the refusal fires so the caller can act on them.";
@@ -1892,7 +1892,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "create_folder";
         d.description =
-            "Create a folder under `/Game/`. Idempotent — returns "
+            "[asset] Create a content-browser folder under `/Game/`. Idempotent — returns "
             "`{already_existed:true}` when the folder is already present.";
         d.input_schema = {
             {"type","object"},
@@ -1918,7 +1918,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_data_tables";
         d.description =
-            "List all UDataTable assets under a content path. Mirrors "
+            "[data table] List all UDataTable assets under a content path. Mirrors "
             "`list_blueprints` but filters for UDataTable. Defaults to "
             "`/Game`.";
         d.input_schema = {
@@ -1941,7 +1941,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "read_data_table";
         d.description =
-            "Load a DataTable and return its row-struct type, column names, "
+            "[data table] Load a DataTable and return its row-struct type, column names, "
             "and every row's field values. Useful for orienting an agent to "
             "an existing data table before mutating it.";
         d.input_schema = {
@@ -1974,7 +1974,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "console_command";
         d.description =
-            "Execute a UE console command (e.g. `stat unit`, `showflag.bones 1`, "
+            "[editor] Execute a UE console command (e.g. `stat unit`, `showflag.bones 1`, "
             "`r.ScreenPercentage 75`). Returns whatever the command echoed to "
             "the log.";
         d.input_schema = {
@@ -1994,7 +1994,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_cvar";
         d.description =
-            "Read a console variable's current value. Returns "
+            "[editor] Read a console variable's current value. Returns "
             "`{exists, value, help}` — `exists:false` if the CVar isn't "
             "registered.";
         d.input_schema = {
@@ -2018,7 +2018,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_cvar";
         d.description =
-            "Set a console variable. Forces `ECVF_SetByCode` priority — "
+            "[editor] Set a UE console variable (e.g. `r.ScreenPercentage`). Runtime-style; for Blueprint variable defaults use `set_variable_default`. Forces `ECVF_SetByCode` priority — "
             "overrides values set from ini files / scalability settings.";
         d.input_schema = {
             {"type","object"},
@@ -2044,7 +2044,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "pie_start";
         d.description =
-            "Start a Play-In-Editor session. `mode` is one of "
+            "[editor] Start a Play-In-Editor session. `mode` is one of "
             "`selected_viewport` (default), `new_editor_window`, "
             "`standalone`, `vr_preview`. Most useful with the live backend.";
         d.input_schema = {
@@ -2063,7 +2063,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "pie_stop";
         d.description =
-            "End the active PIE session. No-op when PIE isn't running.";
+            "[editor] End the active PIE session. No-op when PIE isn't running.";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
         registry.Add(std::move(d), [&reader](const nlohmann::json&) {
             auto r = reader.PieStop();
@@ -2076,7 +2076,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "live_coding_compile";
         d.description =
-            "Trigger UE's Live Coding compile + patch. The compile runs "
+            "[editor] Trigger UE's Live Coding compile + patch. The compile runs "
             "asynchronously; Live Coding emits its own progress + result "
             "to the editor log (use `read_output_log` to follow).";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
@@ -2092,7 +2092,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "get_selected_actors";
         d.description =
-            "List the names of currently-selected actors in the level editor. "
+            "[editor] List the names of currently-selected actors in the level editor. "
             "Names are the stable in-package names (not display labels). "
             "Empty array when nothing is selected.";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
@@ -2107,7 +2107,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_selection";
         d.description =
-            "Replace (or extend) the editor's selection. `replace:true` "
+            "[editor] Replace (or extend) the editor viewport's actor selection. `replace:true` "
             "(default) clears existing selection first; `false` adds to it. "
             "Returns the post-call selected names so the caller can verify.";
         d.input_schema = {
@@ -2136,7 +2136,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "spawn_actor";
         d.description =
-            "Spawn an actor of the given UClass in the current level. "
+            "[editor] Spawn an actor of the given UClass in the current level. "
             "`class_path` is the full path (e.g. `/Script/Engine.StaticMeshActor` "
             "or a BP class like `/Game/AI/BP_Enemy.BP_Enemy_C`). All transform "
             "fields are optional and default to identity.";
@@ -2173,7 +2173,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_actor_transform";
         d.description =
-            "Update an actor's world transform. `actor_name` is from "
+            "[editor] Update a placed actor's world transform in the current level. `actor_name` is from "
             "`get_selected_actors` or `spawn_actor`'s response. All transform "
             "fields are absolute (not delta).";
         d.input_schema = {
@@ -2204,7 +2204,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "delete_actor";
         d.description =
-            "Destroy an actor by name. Returns `{deleted: false}` if the "
+            "[editor] Destroy an actor by name. Returns `{deleted: false}` if the "
             "actor wasn't found.";
         d.input_schema = {
             {"type","object"},
@@ -2224,7 +2224,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "read_output_log";
         d.description =
-            "Read recent entries from the editor's output log. The plugin "
+            "[editor] Read recent entries from the editor's output log. The plugin "
             "module installs a ring-buffer log sink at startup; this returns "
             "up to `limit` of the most recent entries (default 200), "
             "optionally filtered by `min_severity` (Display / Log / Warning "
@@ -2259,7 +2259,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_data_row";
         d.description =
-            "Add a row to an existing DataTable. The row name must be "
+            "[data table] Add a row to an existing DataTable. The row name must be "
             "unique within the table; existing names return "
             "`{already_existed:true}` unless `overwrite:true` is passed. "
             "`values` is an object whose keys map to the row struct's "
@@ -2300,7 +2300,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_data_row_value";
         d.description =
-            "Update a single field on an existing DataTable row. "
+            "[data table] Update a single field on an existing DataTable row. "
             "`field_name` must match a property on the row struct; "
             "`value` is its string form (ImportText input). Returns the "
             "pre-set and post-set ExportText'd values so the caller can "
@@ -2341,7 +2341,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_component";
         d.description =
-            "Add a component to a Blueprint's SimpleConstructionScript tree. "
+            "[blueprint] Add a component (StaticMeshComponent, AudioComponent, etc.) to a Blueprint's SimpleConstructionScript tree — author-time component setup, not runtime spawning. For runtime actor spawning use `spawn_actor`. "
             "`component_class` is the full UClass path (e.g. "
             "`/Script/Engine.StaticMeshComponent`). Pass `parent` to attach "
             "as a child of an existing node; omit for root attachment. "
@@ -2379,7 +2379,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "remove_component";
         d.description =
-            "Remove a component from a Blueprint's SCS tree by name. "
+            "[blueprint] Remove a component from a Blueprint's SCS tree by name. "
             "Returns `{removed:false}` when the component isn't found.";
         d.input_schema = {
             {"type","object"},
@@ -2405,7 +2405,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "attach_component";
         d.description =
-            "Re-parent an SCS component. Pass `new_parent` to attach the "
+            "[blueprint] Re-parent an SCS component on a Blueprint. Pass `new_parent` to attach the "
             "component as a child of that node; pass empty to attach at "
             "the SCS root. `socket` applies to SceneComponent children "
             "only.";
@@ -2439,9 +2439,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_component_property";
         d.description =
-            "Set a property on a Blueprint component's template (the "
-            "author-time default values, what the BP Details panel shows "
-            "for that component). Same string→type coercion as "
+            "[blueprint] Set a UPROPERTY on a Blueprint component's template "
+            "(the author-time default values, what the BP Details panel shows "
+            "for that component). For widget UPROPERTYs use "
+            "`set_widget_property`; for behavior tree nodes use "
+            "`set_bt_node_property`. Same string→type coercion as "
             "`set_data_row_value` (FProperty::ImportText). Returns "
             "pre-set and post-set ExportText'd values for verification.";
         d.input_schema = {
@@ -2476,7 +2478,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "run_automation_tests";
         d.description =
-            "Trigger UE's automation test framework. `pattern` is the "
+            "[tests] Trigger UE's automation test framework. `pattern` is the "
             "test-name wildcard (e.g. `BlueprintReader.*`, `*Smoke*`); empty "
             "means every registered test. The run is async — this tool "
             "kicks it off and returns. Use `read_output_log` to follow "
@@ -2512,7 +2514,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "list_materials";
         d.description =
-            "List all UMaterial / UMaterialInstance assets under a content "
+            "[material] List all UMaterial / UMaterialInstance assets under a content "
             "path. Mirrors `list_blueprints` but filters by class. Defaults "
             "to `/Game`.";
         d.input_schema = {
@@ -2533,7 +2535,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "read_material";
         d.description =
-            "Read a material's expression graph: every UMaterialExpression "
+            "[material] Read a material's expression graph: every UMaterialExpression "
             "node (id, class, parameter name, x/y), every connection (from "
             "expression output → expression input or master-material slot "
             "like BaseColor / Roughness), and the names of all exposed "
@@ -2576,7 +2578,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_material_expression";
         d.description =
-            "Add a UMaterialExpression node to a material. `expression_class` "
+            "[material] Add a UMaterialExpression node to a Material graph. For Blueprint graph nodes use `add_node`. `expression_class` "
             "is the short class name like `MaterialExpressionConstant3Vector`, "
             "`MaterialExpressionScalarParameter`, "
             "`MaterialExpressionTextureSampleParameter2D`. x/y are graph "
@@ -2613,7 +2615,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "connect_material_expressions";
         d.description =
-            "Wire one expression's output pin to another expression's input "
+            "[material] Wire one expression's output pin to another expression's input "
             "pin, or to a master-material slot. Pass empty `to_node` to wire "
             "to a master slot (`to_pin` then names the slot, e.g. "
             "`BaseColor`, `Metallic`, `Roughness`, `EmissiveColor`, `Normal`).";
@@ -2649,10 +2651,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_material_parameter";
         d.description =
-            "Set the default value of a named scalar / vector parameter on a "
-            "UMaterial. `value` is the parameter's text representation "
-            "(scalar: `0.5`; vector: `(R=1,G=0,B=0,A=1)`). For overriding on "
-            "an instance, use `set_material_instance_parameter`.";
+            "[material] Set the default value of a named scalar/vector "
+            "parameter on a UMaterial (the base material). `value` is the "
+            "parameter's text representation (scalar: `0.5`; vector: "
+            "`(R=1,G=0,B=0,A=1)`). For per-instance overrides use "
+            "`set_material_instance_parameter`.";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -2683,7 +2686,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_material_instance_parameter";
         d.description =
-            "Override a parameter on a UMaterialInstanceConstant. `type` is "
+            "[material] Override a parameter on a UMaterialInstanceConstant. For base-material defaults use `set_material_parameter`. `type` is "
             "`scalar`, `vector`, or `texture`; `value` is its text form "
             "(scalar `0.5`, vector `(R=...,G=...,B=...,A=...)`, texture "
             "`/Game/Textures/T_Foo.T_Foo`).";
@@ -2719,7 +2722,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "compile_material";
         d.description =
-            "Recompile a material's shader code. UE normally compiles "
+            "[material] Recompile a material's shader code. UE normally compiles "
             "incrementally on edit; call this explicitly to flush pending "
             "recompiles or recover from a stuck shader compile state.";
         d.input_schema = {
@@ -2748,7 +2751,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "read_widget_blueprint";
         d.description =
-            "Read a UWidgetBlueprint's widget tree: every UWidget node "
+            "[widget] Read a UWidgetBlueprint's widget tree: every UWidget node "
             "(name, class, parent name) and the root widget's name. "
             "Mirrors `get_components` but for UMG.";
         d.input_schema = {
@@ -2781,7 +2784,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "add_widget";
         d.description =
-            "Add a UWidget node to a UWidgetBlueprint. `widget_class` is the "
+            "[widget] Add a UWidget node (Button, TextBlock, etc.) to a UWidgetBlueprint's UMG tree. For Blueprint graph nodes use `add_node`. `widget_class` is the "
             "short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, "
             "etc.). `parent_name` empty = becomes the new root (replaces "
             "the existing root only if the tree was empty). Otherwise "
@@ -2819,7 +2822,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "set_widget_property";
         d.description =
-            "Set a UPROPERTY on a widget in a UWidgetBlueprint. `property_name` "
+            "[widget] Set a UPROPERTY on a UWidget in a UWidgetBlueprint. For Blueprint component UPROPERTYs use `set_component_property`. `property_name` "
             "is the property's name as authored in C++ (`Text`, "
             "`ColorAndOpacity`, `Visibility`). `value` is the property's text "
             "form (text: a string; FLinearColor: `(R=1,G=0,B=0,A=1)`).";
@@ -2856,7 +2859,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "bind_widget_event";
         d.description =
-            "Bind a widget's event (e.g. `OnClicked` on a Button) to a "
+            "[widget] Bind a widget's event (e.g. `OnClicked` on a Button) to a "
             "named handler function in the widget blueprint's graph. If the "
             "handler function doesn't exist, it's created with the event's "
             "signature. Pairs with `add_function` if you want to author the "
@@ -2894,7 +2897,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         ToolDescriptor d;
         d.name = "compile_widget_blueprint";
         d.description =
-            "Compile a UWidgetBlueprint. Equivalent to clicking Compile in "
+            "[widget] Compile a UWidgetBlueprint. Equivalent to clicking Compile in "
             "the UMG designer. Returns `{compiled: true|false}` — false "
             "means compile failed; check `read_output_log` for errors.";
         d.input_schema = {
@@ -2921,7 +2924,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_behavior_trees";
-        d.description = "List UBehaviorTree assets under a content path "
+        d.description = "[behavior tree] List UBehaviorTree assets under a content path "
                         "(default `/Game`).";
         d.input_schema = {
             {"type","object"},
@@ -2939,7 +2942,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_behavior_tree";
-        d.description = "Walk a UBehaviorTree's node graph. Returns every "
+        d.description = "[behavior tree] Walk a UBehaviorTree's node graph. Returns every "
                         "node (id, class, kind, parent) and the root node id.";
         d.input_schema = {
             {"type","object"},
@@ -2970,7 +2973,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "add_bt_node";
-        d.description = "Add a node to a UBehaviorTree. `node_kind` is "
+        d.description = "[behavior tree] Add a node (composite/decorator/service/task) to a UBehaviorTree. NOT for Blueprint graph nodes (`add_node`). `node_kind` is "
                         "`composite` / `decorator` / `service` / `task`; "
                         "`node_class` is the short class name (e.g. "
                         "`BTComposite_Selector`, `BTTask_MoveTo`, "
@@ -3007,7 +3010,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_bt_node_property";
-        d.description = "Set a UPROPERTY on a behavior tree node (e.g. "
+        d.description = "[behavior tree] Set a UPROPERTY on a UBehaviorTree node (e.g. "
                         "MoveTo's `AcceptableRadius`, Blackboard decorator's "
                         "`KeyName`). `value` is the property's text form.";
         d.input_schema = {
@@ -3041,7 +3044,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "compile_behavior_tree";
-        d.description = "Compile a behavior tree (recompiles + marks the "
+        d.description = "[behavior tree] Compile a behavior tree (recompiles + marks the "
                         "asset dirty). Returns `{compiled: true|false}`.";
         d.input_schema = {
             {"type","object"},
@@ -3068,7 +3071,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_data_assets";
-        d.description = "List all UDataAsset subclass instances under a "
+        d.description = "[data asset] List all UDataAsset subclass instances under a "
                         "content path. Mirrors `list_blueprints` but "
                         "filters by base class.";
         d.input_schema = {
@@ -3087,7 +3090,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_data_asset";
-        d.description = "Read every UPROPERTY on a UDataAsset. Returns the "
+        d.description = "[data asset] Read every UPROPERTY on a UDataAsset. Returns the "
                         "asset's class + a `{property: stringified_value}` "
                         "map.";
         d.input_schema = {
@@ -3110,7 +3113,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "create_data_asset";
-        d.description = "Create a new UDataAsset instance. `class_name` is "
+        d.description = "[data asset] Create a new UDataAsset instance. `class_name` is "
                         "the short C++ class name (or BP path) of a "
                         "UDataAsset subclass.";
         d.input_schema = {
@@ -3138,7 +3141,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_data_asset_property";
-        d.description = "Set a UPROPERTY on a UDataAsset. `value` is the "
+        d.description = "[data asset] Set a UPROPERTY on a UDataAsset instance. `value` is the "
                         "text form UE's property system uses.";
         d.input_schema = {
             {"type","object"},
@@ -3172,7 +3175,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_state_trees";
-        d.description = "List UStateTree assets under a content path "
+        d.description = "[state tree] List UStateTree assets under a content path "
                         "(default `/Game`).";
         d.input_schema = {
             {"type","object"},
@@ -3190,7 +3193,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_state_tree";
-        d.description = "Read a UStateTree's hierarchy + transitions: "
+        d.description = "[state tree] Read a UStateTree's hierarchy + transitions: "
                         "every state (id, name, parent) and every "
                         "transition (from, to, trigger).";
         d.input_schema = {
@@ -3229,7 +3232,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "add_state_tree_state";
-        d.description = "Add a state to a UStateTree. Empty "
+        d.description = "[state tree] Add a state to a UStateTree. NOT to be confused with `add_anim_state` (AnimBP state machine). Empty "
                         "`parent_state_id` makes it a top-level state. "
                         "Returns the new state id.";
         d.input_schema = {
@@ -3258,7 +3261,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_state_tree_transition";
-        d.description = "Define a transition between two states. `trigger` "
+        d.description = "[state tree] Define a transition between two UStateTree states. `trigger` "
                         "names the event class or tick condition "
                         "(e.g. `OnTick`, `OnEvent.Damage`).";
         d.input_schema = {
@@ -3292,7 +3295,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "compile_state_tree";
-        d.description = "Compile a UStateTree. Returns `{compiled: "
+        d.description = "[state tree] Compile a UStateTree. Returns `{compiled: "
                         "true|false}` — false means compile failed; check "
                         "`read_output_log` for errors.";
         d.input_schema = {
@@ -3316,7 +3319,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "start_profile";
-        d.description = "Start a profiling capture. `mode` selects the "
+        d.description = "[profiling] Start a profiling capture. `mode` selects the "
                         "backend: `stats` (UE's built-in stat group "
                         "file, default), `insights` (UnrealInsights "
                         "trace), or `csv` (CSVProfiler). Returns "
@@ -3340,7 +3343,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "stop_profile";
-        d.description = "Stop the active profile capture and return its "
+        d.description = "[profiling] Stop the active profile capture and return its "
                         "output file path. No-op if nothing is in progress.";
         d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
         registry.Add(std::move(d), [&reader](const nlohmann::json&) {
@@ -3356,7 +3359,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "get_stats";
-        d.description = "Snapshot a stat group's current values. `group` "
+        d.description = "[profiling] Snapshot a stat group's current values. `group` "
                         "is the name passed to UE's `stat` command "
                         "(`Unit`, `Game`, `GPU`, `Memory`). Returns the "
                         "text snapshot the stat system produces.";
@@ -3379,7 +3382,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "take_screenshot";
-        d.description = "Capture a high-res screenshot to disk. `dest_path` "
+        d.description = "[editor] Capture a high-res screenshot to disk. `dest_path` "
                         "is the output file; `width`/`height` default to the "
                         "current viewport size if omitted. Routed via UE's "
                         "`HighResShot` exec command.";
@@ -3410,7 +3413,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "cook_content";
-        d.description = "Run UE's content cook for a target platform "
+        d.description = "[cook] Run UE's content cook for a target platform "
                         "(`Windows`, `Linux`, etc.). Asynchronous; the "
                         "tool returns once the cook is dispatched. Follow "
                         "progress via `read_output_log` or the editor's "
@@ -3435,7 +3438,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "package_project";
-        d.description = "Package the project for a target platform via "
+        d.description = "[cook] Package the project for a target platform via "
                         "UAT. `output_dir` is where the packaged build "
                         "lands. Async — tool returns once UAT is "
                         "dispatched.";
@@ -3465,7 +3468,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "get_class_info";
-        d.description = "Inspect a UClass: parent + ancestor chain + every "
+        d.description = "[class info] Inspect a UClass: parent + ancestor chain + every "
                         "UPROPERTY + UFUNCTION. `class_name` is the short "
                         "class name (e.g. `Actor`, `PlayerController`) or a "
                         "full class path.";
@@ -3503,7 +3506,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "find_class";
-        d.description = "Search the UClass registry by substring. Returns "
+        d.description = "[class info] Search the UClass registry by substring. Returns "
                         "an array of class names matching `query` "
                         "(case-insensitive).";
         d.input_schema = {
@@ -3521,7 +3524,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_functions";
-        d.description = "List every UFUNCTION on a class with its flags "
+        d.description = "[class info] List every UFUNCTION on a class with its flags "
                         "(BlueprintCallable, BlueprintPure, etc.). Cheaper "
                         "projection than `get_class_info` when you only "
                         "need the call surface.";
@@ -3546,7 +3549,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "focus_actor";
-        d.description = "Frame an actor in the editor viewport — equivalent "
+        d.description = "[editor] Frame an actor in the editor viewport — equivalent "
                         "to clicking the actor and pressing F. `actor_name` "
                         "is the actor's level label.";
         d.input_schema = {
@@ -3568,9 +3571,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_camera_transform";
-        d.description = "Move the editor viewport camera to a specific "
-                        "location + rotation. Rotation is in degrees "
-                        "(pitch / yaw / roll).";
+        d.description = "[editor] Move the editor viewport camera to a "
+                        "specific location + rotation. Rotation is in "
+                        "degrees (pitch / yaw / roll).";
         d.input_schema = {
             {"type","object"},
             {"properties", {
@@ -3593,7 +3596,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "take_viewport_screenshot";
-        d.description = "Quick capture of the active editor viewport to "
+        d.description = "[editor] Quick capture of the active editor viewport to "
                         "disk (vs `take_screenshot` which uses HighResShot "
                         "for offline-quality output).";
         d.input_schema = {
@@ -3615,7 +3618,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_show_flag";
-        d.description = "Toggle a viewport show flag (`Bones`, `Bounds`, "
+        d.description = "[editor] Toggle a viewport show flag (`Bones`, `Bounds`, "
                         "`Collision`, `Wireframe`, `Lighting`). Equivalent "
                         "to the `showflag.<name> <0|1>` console command.";
         d.input_schema = {
@@ -3643,7 +3646,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_niagara_systems";
-        d.description = "List UNiagaraSystem assets under a content path "
+        d.description = "[niagara] List UNiagaraSystem assets under a content path "
                         "(default `/Game`).";
         d.input_schema = {{"type","object"},
             {"properties", {{"path", {{"type","string"}}}}}};
@@ -3659,7 +3662,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_niagara_system";
-        d.description = "Read a UNiagaraSystem's emitter handles (each "
+        d.description = "[niagara] Read a UNiagaraSystem's emitter handles (each "
                         "names an underlying UNiagaraEmitter) and its "
                         "exposed user parameter names.";
         d.input_schema = {{"type","object"},
@@ -3688,7 +3691,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "create_niagara_system";
-        d.description = "Create a new (empty) UNiagaraSystem asset at "
+        d.description = "[niagara] Create a new (empty) UNiagaraSystem asset at "
                         "the given path. Idempotent.";
         d.input_schema = {{"type","object"},
             {"properties", {{"asset_path", {{"type","string"}}}}},
@@ -3708,8 +3711,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_niagara_parameter";
-        d.description = "Override a user-exposed parameter on a Niagara "
-                        "system. `value` is the parameter's text form.";
+        d.description = "[niagara] Override a user-exposed parameter on a "
+                        "UNiagaraSystem. `value` is the parameter's text form.";
         d.input_schema = {{"type","object"},
             {"properties", {
                 {"asset_path",     {{"type","string"}}},
@@ -3738,7 +3741,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_level_sequences";
-        d.description = "List ULevelSequence assets under a content path.";
+        d.description = "[level sequence] List ULevelSequence assets under a content path.";
         d.input_schema = {{"type","object"},
             {"properties", {{"path", {{"type","string"}}}}}};
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
@@ -3753,7 +3756,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_level_sequence";
-        d.description = "Read a sequence's playback range (start/end "
+        d.description = "[level sequence] Read a sequence's playback range (start/end "
                         "seconds) and its top-level tracks.";
         d.input_schema = {{"type","object"},
             {"properties", {{"asset_path", {{"type","string"}}}}},
@@ -3782,7 +3785,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "add_sequence_track";
-        d.description = "Add a master track to a level sequence. "
+        d.description = "[level sequence] Add a master track to a ULevelSequence (Sequencer). "
                         "`track_class` is the short class name "
                         "(`MovieSceneAudioTrack`, `MovieScene3DTransformTrack`).";
         d.input_schema = {{"type","object"},
@@ -3811,8 +3814,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "set_sequence_playback_range";
-        d.description = "Set the playback range of a level sequence in "
-                        "seconds (start <= end).";
+        d.description = "[level sequence] Set the playback range of a "
+                        "ULevelSequence in seconds (start <= end).";
         d.input_schema = {{"type","object"},
             {"properties", {
                 {"asset_path",    {{"type","string"}}},
@@ -3841,7 +3844,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_gameplay_tags";
-        d.description = "Query the project's GameplayTagsManager. `filter` "
+        d.description = "[gameplay tag] Query the project's GameplayTagsManager. `filter` "
                         "is an optional substring; empty returns every "
                         "registered tag.";
         d.input_schema = {{"type","object"},
@@ -3856,7 +3859,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "add_gameplay_tag";
-        d.description = "Add a tag to the project's tag dictionary. `name` "
+        d.description = "[gameplay tag] Add a tag to the project's gameplay tag dictionary. `name` "
                         "uses dot-separated form (e.g. `Status.Damage.Fire`). "
                         "`comment` is optional.";
         d.input_schema = {{"type","object"},
@@ -3881,7 +3884,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_ability_set";
-        d.description = "Read a GAS ability-set DataAsset: every granted "
+        d.description = "[gameplay tag] Read a GAS ability-set DataAsset: every granted "
                         "ability class + its level.";
         d.input_schema = {{"type","object"},
             {"properties", {{"asset_path", {{"type","string"}}}}},
@@ -3906,7 +3909,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "list_anim_blueprints";
-        d.description = "List UAnimBlueprint assets under a content path.";
+        d.description = "[anim] List UAnimBlueprint assets under a content path.";
         d.input_schema = {{"type","object"},
             {"properties", {{"path", {{"type","string"}}}}}};
         registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
@@ -3921,7 +3924,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "read_anim_blueprint";
-        d.description = "Walk a UAnimBlueprint: parent class + each "
+        d.description = "[anim] Walk a UAnimBlueprint: parent class + each "
                         "state machine's states (state / conduit / "
                         "transition / entry).";
         d.input_schema = {{"type","object"},
@@ -3950,9 +3953,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "add_anim_state";
-        d.description = "Add a state to a named state machine inside a "
-                        "UAnimBlueprint. Scaffold only — final state "
-                        "authoring still uses the AnimGraph editor.";
+        d.description = "[anim] Add a state to a named state machine inside a "
+                        "UAnimBlueprint. NOT to be confused with "
+                        "`add_state_tree_state` (StateTree). Scaffold only — "
+                        "final state authoring still uses the AnimGraph editor.";
         d.input_schema = {{"type","object"},
             {"properties", {
                 {"asset_path",    {{"type","string"}}},
@@ -3979,7 +3983,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     {
         ToolDescriptor d;
         d.name = "compile_anim_blueprint";
-        d.description = "Compile a UAnimBlueprint.";
+        d.description = "[anim] Compile a UAnimBlueprint.";
         d.input_schema = {{"type","object"},
             {"properties", {{"asset_path", {{"type","string"}}}}},
             {"required", nlohmann::json::array({"asset_path"})}};
