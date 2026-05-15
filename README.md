@@ -314,12 +314,12 @@ UE5_MCP\
 ## Subcommands
 
 ```pwsh
-bp-reader-mcp.exe doctor                    # check setup, exit non-zero if broken
-bp-reader-mcp.exe config                    # print .mcp.json snippet (Claude Code)
-bp-reader-mcp.exe config --client=copilot   # same, for VS Code Copilot
-bp-reader-mcp.exe config --client=claude-desktop
-bp-reader-mcp.exe config --mock             # mock-only snippet (no UE required)
-bp-reader-mcp.exe --help
+BlueprintReaderMcp.exe doctor                    # check setup, exit non-zero if broken
+BlueprintReaderMcp.exe config                    # print .mcp.json snippet (Claude Code)
+BlueprintReaderMcp.exe config --client=copilot   # same, for VS Code Copilot
+BlueprintReaderMcp.exe config --client=claude-desktop
+BlueprintReaderMcp.exe config --mock             # mock-only snippet (no UE required)
+BlueprintReaderMcp.exe --help
 ```
 
 `doctor` walks the install — engine path, .uproject location + plugin

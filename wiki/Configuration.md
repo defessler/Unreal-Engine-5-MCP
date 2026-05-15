@@ -67,7 +67,7 @@ Both vars take **category names** as a shorthand for groups of tools:
 | `tests`          | 1     | run_automation_tests |
 | `class-info`     | 3     | find_class + get_class_info + list_functions |
 | `discover`       | 3     | list_node_kinds + list_pin_categories + shutdown_daemon |
-| `all`            | 119   | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
+| `all`            | 126   | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
 
 The canonical mapping lives in
 [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp).
@@ -129,7 +129,7 @@ The mapping lives in [`tools/ToolCategories.cpp`](https://github.com/defessler/U
 The MCP server logs the result on stderr at startup:
 
 ```
-[bp-reader-mcp] tool filter: kept 35 of 119 tools (allow=core)
+[bp-reader-mcp] tool filter: kept 35 of 126 tools (allow=core)
 ```
 
 Unknown tokens (typos in tool/category names) silently drop nothing —
@@ -177,7 +177,7 @@ Response:
   "added": ["list_materials", "read_material", "add_material_expression", ...],
   "newly_activated_count": 7,
   "total_active": 43,
-  "total_registered": 119
+  "total_registered": 126
 }
 ```
 
@@ -212,8 +212,8 @@ active set only grows, never shrinks.
 The server logs both decisions on stderr at startup:
 
 ```
-[bp-reader-mcp] tool filter: kept 35 of 119 tools (allow=core)
-[bp-reader-mcp] progressive disclosure: enabled. Initial active set is 36 tools (of 119 registered). Agent can widen via `enable_tool_category(<name>)`.
+[bp-reader-mcp] tool filter: kept 35 of 126 tools (allow=core)
+[bp-reader-mcp] progressive disclosure: enabled. Initial active set is 36 tools (of 126 registered). Agent can widen via `enable_tool_category(<name>)`.
 ```
 
 (36 = the 35 core tools + the `enable_tool_category` meta-tool.)
@@ -295,14 +295,14 @@ don't race to spawn duplicate daemons. The spawn-lock winner calls
 ## Multi-session
 
 The MCP server is **no longer single-instance**. Two Claude Code or
-Copilot CLI sessions can both run `bp-reader-mcp.exe` against the
+Copilot CLI sessions can both run `BlueprintReaderMcp.exe` against the
 same UE project at the same time — they each get their own MCP
 server process and share the one commandlet daemon for that project.
 
 Implications:
 - No need to close one Claude session before opening another against
   the same project.
-- `Get-Process bp-reader-mcp*` shows one process per active session.
+- `Get-Process BlueprintReaderMcp*` shows one process per active session.
   Only one `UnrealEditor-Cmd.exe` (the shared daemon).
 - Live mode is also multi-client — both sessions can connect to the
   same open editor.
@@ -318,22 +318,19 @@ Implications:
   `BP_READER_BATCH_ON_DISCONNECT=discard` to drop pending edits
   when a session drops mid-batch instead of flushing them.
 
-### Exe rename
+### Exe location
 
-A project named `UE5_MCP` builds **two** binaries under
-`Binaries/Win64/`:
+UBT builds the MCP server as a Program target. The binaries land at:
 
-- `bp-reader-mcp-UE5_MCP.exe` — the real binary, with the project
-  name in its filename so `tasklist /V` / `Get-Process` shows which
-  project the running MCP server belongs to.
-- `bp-reader-mcp.exe` — a hard link to the same file, for backward
-  compatibility.
+```
+<ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe
+<ProjectDir>/Binaries/Win64/BlueprintReaderMcpTests.exe
+```
 
-Existing `.mcp.json` configs that reference `bp-reader-mcp.exe` by
-full path keep working unchanged — the hard link resolves to the
-same on-disk bytes. New configs can opt into the project-suffixed
-name for clearer process attribution; both names launch the same
-program.
+Point your `.mcp.json` `command` field at the full path of
+`BlueprintReaderMcp.exe`. The exe writes a `[bp-reader-mcp]` log
+prefix to stderr (historical name; unchanged across the UBT
+migration) — that's the tag to grep for in editor / daemon logs.
 
 `shutdown_daemon`, when invoked, terminates the daemon **for every
 session** against this project. The original use case (free file
