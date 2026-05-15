@@ -2067,6 +2067,172 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- get_referencers / get_dependencies (asset-graph queries) ------
+    // "What uses this asset?" / "What does this asset use?". Sourced from
+    // the asset registry's in-memory dependency graph — O(1) per query.
+    {
+        ToolDescriptor d;
+        d.name = "get_referencers";
+        d.description =
+            "[asset] Return every asset (package path) that REFERENCES "
+            "this asset. Useful for impact analysis before renaming, "
+            "deleting, or refactoring. Sourced from the asset registry's "
+            "dependency graph (in-memory; fast). Inverse of "
+            "`get_dependencies`.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {{"asset_path", {{"type", "string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string ap = RequireString(args, "asset_path");
+            auto r = reader.GetReferencers(ap);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", ap},
+                {"referencers", r.packagePaths},
+                {"count", r.packagePaths.size()},
+            };
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "get_dependencies";
+        d.description =
+            "[asset] Return every asset (package path) that this asset "
+            "DEPENDS on. Inverse of `get_referencers`. Useful for "
+            "understanding what loads when this asset loads.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {{"asset_path", {{"type", "string"}}}}},
+            {"required", nlohmann::json::array({"asset_path"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string ap = RequireString(args, "asset_path");
+            auto r = reader.GetDependencies(ap);
+            return nlohmann::json{
+                {"ok", true},
+                {"asset_path", ap},
+                {"dependencies", r.packagePaths},
+                {"count", r.packagePaths.size()},
+            };
+        });
+    }
+
+    // ----- read_config_value / set_config_value (.ini editing) -----------
+    // Project settings via GConfig — DefaultEngine.ini, DefaultGame.ini,
+    // etc. Writes flush to disk on success.
+    {
+        ToolDescriptor d;
+        d.name = "read_config_value";
+        d.description =
+            "[asset] Read a UE config (.ini) value. `file` is one of "
+            "\"Engine\" (default), \"Game\", \"Input\", \"Editor\", "
+            "\"EditorPerProjectIni\", or a full path. Returns "
+            "`{exists, value}` — `exists:false` if the key isn't set "
+            "in any branch of the resolved file.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"section", {{"type", "string"},
+                             {"description", "Ini section, e.g. \"/Script/Engine.RendererSettings\""}}},
+                {"key",     {{"type", "string"}}},
+                {"file",    {{"type", "string"},
+                             {"description", "Engine|Game|Input|Editor|EditorPerProjectIni, or full path. Defaults to Engine."}}},
+            }},
+            {"required", nlohmann::json::array({"section", "key"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string section = RequireString(args, "section");
+            std::string key     = RequireString(args, "key");
+            std::string file    = args.contains("file") && args["file"].is_string()
+                                      ? args["file"].get<std::string>() : "";
+            auto r = reader.ReadConfigValue(section, key, file);
+            nlohmann::json out = {
+                {"ok", true},
+                {"section", section},
+                {"key", key},
+                {"file", file.empty() ? std::string("Engine") : file},
+                {"exists", r.exists},
+            };
+            if (r.exists) out["value"] = r.value;
+            return out;
+        });
+    }
+    {
+        ToolDescriptor d;
+        d.name = "set_config_value";
+        d.description =
+            "[asset] Write a UE config (.ini) value + flush to disk. "
+            "`file` defaults to Engine (DefaultEngine.ini). Returns "
+            "`{previous_value, value}` so the caller can verify the "
+            "change. **Destructive** — writes the project's ini file "
+            "on disk. Use only when the agent has explicit intent to "
+            "modify project settings.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"section", {{"type", "string"}}},
+                {"key",     {{"type", "string"}}},
+                {"value",   {{"type", "string"}}},
+                {"file",    {{"type", "string"}}},
+            }},
+            {"required", nlohmann::json::array({"section", "key", "value"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string section = RequireString(args, "section");
+            std::string key     = RequireString(args, "key");
+            std::string value   = RequireString(args, "value");
+            std::string file    = args.contains("file") && args["file"].is_string()
+                                      ? args["file"].get<std::string>() : "";
+            auto r = reader.SetConfigValue(section, key, value, file);
+            nlohmann::json out = {
+                {"ok", true},
+                {"section", section},
+                {"key", key},
+                {"file", file.empty() ? std::string("Engine") : file},
+                {"value", value},
+            };
+            if (r.previousExisted) out["previous_value"] = r.previousValue;
+            else                   out["previous_value"] = nullptr;
+            return out;
+        });
+    }
+
+    // ----- build_lighting ------------------------------------------------
+    {
+        ToolDescriptor d;
+        d.name = "build_lighting";
+        d.description =
+            "[editor] Trigger a lighting build (Lightmass) on the "
+            "currently-loaded level. Async — returns once the build is "
+            "QUEUED, not once it finishes. `quality` is one of "
+            "\"Preview\", \"Medium\", \"High\", \"Production\" (default "
+            "Production). Poll `read_output_log` for completion: "
+            "Lightmass emits \"Lighting build complete\" or "
+            "\"Lighting build failed\" when it finishes. Live-editor only.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"quality", {{"type", "string"},
+                             {"enum", nlohmann::json::array({
+                                 "Preview", "Medium", "High", "Production"})}}},
+            }},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string quality = args.contains("quality") && args["quality"].is_string()
+                                      ? args["quality"].get<std::string>()
+                                      : std::string("Production");
+            auto r = reader.BuildLighting(quality);
+            return nlohmann::json{
+                {"ok", true},
+                {"queued", r.queued},
+                {"quality", r.quality},
+                {"note", "Async — poll read_output_log for completion."},
+            };
+        });
+    }
+
     // ----- get_cvar -------------------------------------------------------
     {
         ToolDescriptor d;

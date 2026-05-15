@@ -29,10 +29,10 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("ToolRegistry exposes 121 tools (119 base + get_editor_state + run_python_script, both inspired by Epic AIAssistant's Slate querier + Python executor surfaces) with input schemas") {
+TEST_CASE("ToolRegistry exposes 126 tools (121 prior + 5 quick-win additions from issue #83: get_referencers, get_dependencies, read_config_value, set_config_value, build_lighting) with input schemas") {
     Fixture f;
     auto spec = f.registry.ListSpec();
-    CHECK(spec.size() == 121);
+    CHECK(spec.size() == 126);
     for (const auto& t : spec) {
         CHECK(t["inputSchema"]["type"] == "object");
     }

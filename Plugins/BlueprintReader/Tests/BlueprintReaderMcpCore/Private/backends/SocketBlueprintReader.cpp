@@ -1053,6 +1053,89 @@ SocketBlueprintReader::RunPythonScript(std::string_view code) {
     return out;
 }
 
+// Helper for asset-graph + similar list-shaped responses.
+static std::vector<std::string> SocketExtractStringArray(
+    const nlohmann::json& j, const char* field) {
+    std::vector<std::string> out;
+    if (!j.is_object()) return out;
+    auto it = j.find(field);
+    if (it == j.end() || !it->is_array()) return out;
+    out.reserve(it->size());
+    for (const auto& v : *it) {
+        if (v.is_string()) out.push_back(v.get<std::string>());
+    }
+    return out;
+}
+
+IBlueprintReader::AssetGraphResult
+SocketBlueprintReader::GetReferencers(std::string_view assetPath) {
+    auto j = RunOp({"-Op=GetReferencers", "-Asset=" + std::string(assetPath)});
+    AssetGraphResult out;
+    out.packagePaths = SocketExtractStringArray(j, "referencers");
+    return out;
+}
+
+IBlueprintReader::AssetGraphResult
+SocketBlueprintReader::GetDependencies(std::string_view assetPath) {
+    auto j = RunOp({"-Op=GetDependencies", "-Asset=" + std::string(assetPath)});
+    AssetGraphResult out;
+    out.packagePaths = SocketExtractStringArray(j, "dependencies");
+    return out;
+}
+
+IBlueprintReader::ConfigReadResult
+SocketBlueprintReader::ReadConfigValue(std::string_view section,
+                                       std::string_view key,
+                                       std::string_view file) {
+    auto j = RunOp({"-Op=ReadConfigValue",
+                    "-Section=" + std::string(section),
+                    "-Key=" + std::string(key),
+                    "-File=" + std::string(file)});
+    ConfigReadResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("exists"); it != j.end() && it->is_boolean())
+            out.exists = it->get<bool>();
+        if (auto it = j.find("value"); it != j.end() && it->is_string())
+            out.value = it->get<std::string>();
+    }
+    return out;
+}
+
+IBlueprintReader::ConfigWriteResult
+SocketBlueprintReader::SetConfigValue(std::string_view section,
+                                      std::string_view key,
+                                      std::string_view value,
+                                      std::string_view file) {
+    auto j = RunOp({"-Op=SetConfigValue",
+                    "-Section=" + std::string(section),
+                    "-Key=" + std::string(key),
+                    "-Value=" + std::string(value),
+                    "-File=" + std::string(file)});
+    ConfigWriteResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("previous_value"); it != j.end()) {
+            if (it->is_string()) {
+                out.previousExisted = true;
+                out.previousValue = it->get<std::string>();
+            }
+        }
+    }
+    return out;
+}
+
+IBlueprintReader::BuildLightingResult
+SocketBlueprintReader::BuildLighting(std::string_view quality) {
+    auto j = RunOp({"-Op=BuildLighting", "-Quality=" + std::string(quality)});
+    BuildLightingResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("queued"); it != j.end() && it->is_boolean())
+            out.queued = it->get<bool>();
+        if (auto it = j.find("quality"); it != j.end() && it->is_string())
+            out.quality = it->get<std::string>();
+    }
+    return out;
+}
+
 IBlueprintReader::SelectionResult
 SocketBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
                                   bool replace) {
