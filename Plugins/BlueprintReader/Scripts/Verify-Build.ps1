@@ -62,6 +62,41 @@ $srcOk  = (Check 'BlueprintReaderEditor module Build.cs'          (Join-Path $Pl
 $srcOk  = (Check 'MCP server Target.cs (BlueprintReaderMcp)'      (Join-Path $PluginDir 'Tests\BlueprintReaderMcp\BlueprintReaderMcp.Target.cs')) -and $srcOk
 $srcOk  = (Check 'MCP core Build.cs (BlueprintReaderMcpCore)'     (Join-Path $PluginDir 'Tests\BlueprintReaderMcpCore\BlueprintReaderMcpCore.Build.cs')) -and $srcOk
 $srcOk  = (Check 'Build wrapper script (Build-MCPServer.ps1)'     (Join-Path $PluginDir 'Scripts\Build-MCPServer.ps1')) -and $srcOk
+$srcOk  = (Check 'PreBuildSteps hook script (PreBuildHook.ps1)'   (Join-Path $PluginDir 'Scripts\PreBuildHook.ps1')) -and $srcOk
+Write-Host ''
+
+# ---------------------------------------------------------------------------
+# Freshness checks for in-place plugin copies. Editor-target builds trigger
+# the MCP-server build through three pieces that arrived in PR #97 + #98;
+# if a user copied the plugin folder from an older version, the editor
+# would compile fine but the MCP server would never get built. Flag that
+# specifically so the diagnostic is "your plugin copy is stale" not
+# "<undifferentiated> failure".
+# ---------------------------------------------------------------------------
+Write-Host 'Plugin freshness (matters when copying the plugin folder into another project):' -ForegroundColor White
+$freshOk = $true
+
+$uplugin = Join-Path $PluginDir 'BlueprintReader.uplugin'
+$upluginText = if (Test-Path -LiteralPath $uplugin) { Get-Content -Raw -LiteralPath $uplugin } else { '' }
+if ($upluginText -match '"PreBuildSteps"') {
+    Write-Host '[ OK ] BlueprintReader.uplugin contains PreBuildSteps block (PR #97)' -ForegroundColor Green
+} else {
+    Write-Host '[MISS] BlueprintReader.uplugin is missing the PreBuildSteps block (PR #97)' -ForegroundColor Red
+    Write-Host '       This is the only mechanism that builds BlueprintReaderMcp.exe as part of' -ForegroundColor DarkGray
+    Write-Host '       the editor build. Without it, the editor compiles but the MCP server is never built.' -ForegroundColor DarkGray
+    $freshOk = $false
+}
+
+$targetCs = Join-Path $PluginDir 'Tests\BlueprintReaderMcp\BlueprintReaderMcp.Target.cs'
+$targetCsText = if (Test-Path -LiteralPath $targetCs) { Get-Content -Raw -LiteralPath $targetCs } else { '' }
+if ($targetCsText -match 'DefaultBuildSettings\s*=\s*BuildSettingsVersion\.V6') {
+    Write-Host '[ OK ] BlueprintReaderMcp.Target.cs sets DefaultBuildSettings = V6 (commit 8e37b72)' -ForegroundColor Green
+} else {
+    Write-Host '[MISS] BlueprintReaderMcp.Target.cs does not set DefaultBuildSettings = V6' -ForegroundColor Red
+    Write-Host '       (commit 8e37b72). Build will print a noisy [Upgrade] block — usually a sign that' -ForegroundColor DarkGray
+    Write-Host '       the plugin copy is older than PR #98.' -ForegroundColor DarkGray
+    $freshOk = $false
+}
 Write-Host ''
 
 # ---------------------------------------------------------------------------
@@ -142,6 +177,20 @@ if (-not $srcOk) {
     Write-Host '  the entire Plugins\BlueprintReader\ tree from the upstream repo.'
     Write-Host ''
     $problems += 'source incomplete'
+}
+
+if (-not $freshOk) {
+    Write-Host 'Fix for stale plugin copy:' -ForegroundColor Yellow
+    Write-Host '  The .uplugin and/or Target.cs is older than the current upstream.'
+    Write-Host '  Building the editor will succeed, but BlueprintReaderMcp.exe will'
+    Write-Host '  not be produced as a side effect (the auto-build hook is missing).'
+    Write-Host ''
+    Write-Host '  Re-copy the entire Plugins\BlueprintReader\ folder from the upstream'
+    Write-Host '  repo, then regenerate project files (right-click the .uproject ->'
+    Write-Host '  ''Generate Visual Studio project files'') so UBT picks up the new'
+    Write-Host '  PreBuildSteps and re-emits its cached PreBuild-N.bat files.'
+    Write-Host ''
+    $problems += 'plugin copy stale'
 }
 
 if (-not $mcpOk) {
