@@ -19,11 +19,11 @@ Pull these signals from the failure before guessing:
 3. **`_meta.elapsed_ms`** in the MCP envelope — per-call timing.
 4. **Backend in use** — `tools/list` + server stderr; or set
    `BP_READER_BACKEND` explicitly while debugging.
-5. **Which MCP server / project** — the exe is now
-   `bp-reader-mcp-<ProjectName>.exe` (e.g. `bp-reader-mcp-UE5_MCP.exe`)
-   alongside the canonical `bp-reader-mcp.exe` hard link. Check
-   `tasklist /V` or `Get-Process` to confirm which project the
-   server you're talking to belongs to.
+5. **Which MCP server / project** — the exe is
+   `<ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe`, built per
+   project by UBT. Check `tasklist /V` or `Get-Process
+   BlueprintReaderMcp` and inspect the parent path to confirm which
+   project the server you're talking to belongs to.
 
 ## Multi-session triage
 
@@ -42,11 +42,11 @@ few things to know when debugging in that world:
   caller's. Other sessions whose next call needs commandlet mode
   will transparently spawn a fresh daemon. Mention this if a user
   asks "why did my other Claude window suddenly slow down?"
-- **Identifying your MCP server.** The exe is renamed at build time:
-  a project named `UE5_MCP` builds `bp-reader-mcp-UE5_MCP.exe`
-  alongside the canonical `bp-reader-mcp.exe` hard link. Existing
-  `.mcp.json` configs that reference the canonical name keep working.
-  `Get-Process bp-reader-mcp*` shows one per active session.
+- **Identifying your MCP server.** UBT builds one
+  `BlueprintReaderMcp.exe` per project at
+  `<Project>/Binaries/Win64/BlueprintReaderMcp.exe`. `Get-Process
+  BlueprintReaderMcp` shows one entry per active session; inspect the
+  process's parent path to attribute it to a project.
 - **Cross-session batch isolation is full.** Per-connection state
   (defer flag, pending-compile set) is isolated. Cross-session BP
   write lock is enforced — if you `begin_batch` and another session

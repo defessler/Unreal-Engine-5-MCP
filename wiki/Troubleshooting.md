@@ -203,7 +203,9 @@ Plugins\BlueprintReader\Scripts\Verify-Build.bat
 
 It checks both halves of the plugin:
 
-- `bp-reader-mcp.exe` — built by cmake / the PreBuildStep
+- `BlueprintReaderMcp.exe` — built by UBT as a Program target
+  (`Build.bat BlueprintReaderMcp ...`); output at
+  `<Project>/Binaries/Win64/BlueprintReaderMcp.exe`.
 - `UnrealEditor-BlueprintReaderEditor.dll` — built by UBT during an
   editor-target build
 
@@ -393,14 +395,17 @@ the commandlet by hand from a Bash shell.
 
 ## "ImportError: Could not load module" when launching Claude with the server
 
-You're pointing at a `Debug` build of `bp-reader-mcp.exe` from a
-machine without the Visual C++ debug runtime. Build `Release`:
+You're pointing at a `Debug` build of `BlueprintReaderMcp.exe` from a
+machine without the Visual C++ debug runtime. Build `Development`
+(UBT's release-equivalent):
 
 ```powershell
-cmake --build Plugins\BlueprintReader\mcp-server\build --config Release
+& "<EngineDir>\Engine\Build\BatchFiles\Build.bat" `
+    BlueprintReaderMcp Win64 Development `
+    -project="<your.uproject>"
 ```
 
-Then point Claude at `Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe`.
+Then point Claude at `<Project>\Binaries\Win64\BlueprintReaderMcp.exe`.
 
 ## Other issues
 

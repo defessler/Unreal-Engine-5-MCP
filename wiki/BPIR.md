@@ -317,8 +317,8 @@ inaugural schema; v2+ is future work.
 
 ## Reference
 
-- Schema validator: `Plugins/BlueprintReader/mcp-server/src/tools/Bpir.{h,cpp}`
-- Tests: `Plugins/BlueprintReader/mcp-server/tests/test_bpir.cpp`
+- Schema validator: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/Bpir.{h,cpp}`
+- Tests: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpir.cpp`
 - The compile_function tool consumes BPIR `body[]` arrays:
   `tools/CompileFunction.cpp`
 - Type shorthand grammar: `tools/TypeShorthand.cpp`

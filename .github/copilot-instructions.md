@@ -1,23 +1,26 @@
 # Copilot instructions — UE5_MCP
 
 This repo is a UE 5.7.4 project plus a standalone MCP server that
-exposes 39 Blueprint tools to AI assistants. If you're a Copilot-class
+exposes 126 Blueprint tools to AI assistants. If you're a Copilot-class
 agent (GitHub Copilot, Cursor, JetBrains AI Assistant, etc.) working
 in this codebase, here's what you need to know.
 
 ## Two halves
 
-- **`Plugins/BlueprintReader/`** — Editor-only UE plugin (commandlet
-  + TCP live server) that talks to `.uasset` Blueprint files.
-- **`Plugins/BlueprintReader/mcp-server/`** — Standalone C++20 MCP
-  server (JSON-RPC over stdio) that drives the plugin.
+- **`Plugins/BlueprintReader/Source/BlueprintReaderEditor/`** — Editor-only
+  UE plugin (commandlet + TCP live server) that talks to `.uasset`
+  Blueprint files.
+- **`Plugins/BlueprintReader/Tests/BlueprintReaderMcp/`** — Standalone
+  C++20 MCP server (JSON-RPC over stdio) that drives the plugin. Built
+  by UBT as a Program target; output is `<Project>/Binaries/Win64/
+  BlueprintReaderMcp.exe`.
 
 The MCP server is the cross-platform interface — every assistant uses
 the same tool surface regardless of client.
 
 ## The tool surface
 
-119 tools across 21 categories. Don't memorize the list — call
+126 tools across 22 categories. Don't memorize the list — call
 `tools/list` first to see the current schemas. Categories:
 
 - **Read** (10): `list_blueprints`, `summarize_blueprint`,
@@ -180,9 +183,9 @@ routes to live (~5–30 ms) or commandlet daemon (~5 s cold start, then
   - **Configuration** — env vars, daemon mode, live backend setup.
   - **Usage** — conversational examples.
   - **Troubleshooting** — common failure modes + fixes.
-- **`Plugins/BlueprintReader/mcp-server/scripts/`** — smoke harnesses
-  that drive the MCP server end-to-end. Read these to see real
-  request/response patterns.
+- **`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/`** — doctest
+  binary that drives the MCP server end-to-end. Read the test cases to
+  see real request/response patterns.
 
 ## Adding tools (if you're modifying the MCP server itself)
 
