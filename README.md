@@ -2,7 +2,7 @@
 
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 119 tools backed by the
+metadata — and **round-trip BPs to/from C++** via 126 tools backed by the
 bundled `BlueprintReader` UE plugin.
 
 ```
@@ -37,7 +37,7 @@ The plugin ships as two modules with proper isolation:
 
 ## Tools
 
-119 tools across 21 categories — see the
+126 tools across 22 categories — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples.
 
@@ -47,8 +47,8 @@ for every input/output shape with examples.
 | **Write** (22) | `add_variable` / `retype_variable` / `rename_variable` / etc.; `add_function` / `add_function_input/output`; `add_node` / `wire_pins` / `set_pin_default` / `auto_layout_graph`; `create_blueprint` / `duplicate_blueprint`; `add_component` / `remove_component` / `attach_component` / `set_component_property` | Single-step mutations. All idempotent where idempotency makes sense; `wire_pins` errors include both pin types so the agent can self-correct. |
 | **Batch / generation** (3) | `apply_ops`, `preview_ops`, `compile_function` | Multi-step writes: named-slot GUID resolution, dry-run, pseudocode → BP graph. Collapse N×compile to 1. |
 | **Transpile (BP↔C++)** (6) | `decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function` | Round-trip BPs to and from C++ via the BPIR JSON AST. See [BP↔C++ round-trip](#bp--c-round-trip) below. |
-| **Project + Content Browser** (9) | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table`, `add_data_row`, `set_data_row_value` | Project-level introspection + asset-browser ops complementing the per-Blueprint surface. |
-| **Live editor** (12) | `console_command`, `get_cvar`, `set_cvar`, `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`, `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`, `read_output_log` | Operate on the running editor's in-memory state. Work best with the `live` backend (open editor); commandlet daemon routes them too. |
+| **Project + Content Browser** (13) | `get_project_metadata`, `save_all`, `move_asset`, `delete_asset`, `create_folder`, `list_data_tables`, `read_data_table`, `add_data_row`, `set_data_row_value`, `get_referencers`, `get_dependencies`, `read_config_value`, `set_config_value` | Project-level introspection + asset-browser ops complementing the per-Blueprint surface. Asset-graph queries (`get_referencers` / `get_dependencies`) source from the in-memory Asset Registry. Config tools edit `Default*.ini` files via GConfig. |
+| **Live editor** (15) | `console_command`, `get_cvar`, `set_cvar`, `pie_start`, `pie_stop`, `live_coding_compile`, `get_selected_actors`, `set_selection`, `spawn_actor`, `set_actor_transform`, `delete_actor`, `read_output_log`, `get_editor_state`, `run_python_script`, `build_lighting` | Operate on the running editor's in-memory state. `get_editor_state` is a one-call situational-awareness bundle (open assets, active asset, current level, viewport camera, selection, PIE state) inspired by Epic AIAssistant's Slate querier. `run_python_script` is gated by `BP_READER_ALLOW_PYTHON=1` — full `unreal.*` Python API access wrapped in a transaction. Work best with the `live` backend (open editor); commandlet daemon routes them too. |
 | **Automation** (1) | `run_automation_tests` | Kick off UE's automation test framework with a wildcard pattern; results land in the output log + `Saved/Automation/`. |
 | **Material authoring** (7) | `list_materials`, `read_material`, `add_material_expression`, `connect_material_expressions`, `set_material_parameter`, `set_material_instance_parameter`, `compile_material` | Walk the UMaterial expression graph; add nodes; wire them to other expressions or to the master-material slots (BaseColor / Roughness / Normal / …); override scalar/vector/texture parameters on a UMaterialInstanceConstant; trigger shader recompiles. |
 | **UMG widgets** (5) | `read_widget_blueprint`, `add_widget`, `set_widget_property`, `bind_widget_event`, `compile_widget_blueprint` | Inspect UWidgetBlueprint's UWidgetTree; add widgets under a PanelWidget parent; set widget properties; scaffold event handlers; compile. |
@@ -318,6 +318,7 @@ bp-reader-mcp.exe doctor                    # check setup, exit non-zero if brok
 bp-reader-mcp.exe config                    # print .mcp.json snippet (Claude Code)
 bp-reader-mcp.exe config --client=copilot   # same, for VS Code Copilot
 bp-reader-mcp.exe config --client=claude-desktop
+bp-reader-mcp.exe config --mock             # mock-only snippet (no UE required)
 bp-reader-mcp.exe --help
 ```
 
@@ -326,7 +327,9 @@ entry, editor exe, plugin DLL config-suffix match — and prints actionable
 fix hints with build commands. Replaces the `Verify-Build.bat` flow.
 
 `config` auto-discovers the engine + project paths and outputs a
-ready-to-paste config block for the chosen client.
+ready-to-paste config block for the chosen client. `--mock` skips
+discovery and emits a fixture-backed snippet (useful for testing
+your MCP client wiring without a UE project).
 
 ## Manual launch
 
@@ -452,16 +455,32 @@ Build the editor target:
 
 The 5.7.4 GitHub source has three modules whose `Build.cs` declares
 `PrivateIncludePaths` relative to `Engine/Source/` instead of the module dir.
-That breaks project-target builds with `fatal error C1083`. Patch each:
+That breaks project-target builds with `fatal error C1083`.
+
+**Easy path:** the plugin ships an idempotent script that applies all
+three patches:
+
+```pwsh
+# Dry-run first to see what would change:
+.\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
+    -EngineDir "D:\Projects\Unreal Engine 5"
+
+# Apply:
+.\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
+    -EngineDir "D:\Projects\Unreal Engine 5" -Apply
+```
+
+The script adds `using System.IO;` (if missing) and rewrites each
+relative `PrivateIncludePaths` entry to `Path.Combine(ModuleDirectory,
+...)` form. Patches affect:
 
 - `Engine/Source/Developer/Windows/LiveCoding/LiveCoding.Build.cs`
 - `Engine/Source/Developer/IOS/TVOSTargetPlatformSettings/TVOSTargetPlatformSettings.Build.cs`
 - `Engine/Platforms/VisionOS/Source/Developer/VisionOSTargetPlatformSettings/VisionOSTargetPlatformSettings.Build.cs`
 
-Add `using System.IO;` and replace the relative `PrivateIncludePaths` entry
-with `Path.Combine(ModuleDirectory, ...)`. The patches live inside the
-sibling engine checkout at `D:\Projects\Unreal Engine 5\`, which isn't
-tracked by this repo — re-apply them after a fresh engine clone.
+These patches live inside the sibling engine checkout (e.g.
+`D:\Projects\Unreal Engine 5\`), which isn't tracked by this repo — re-run
+the script after a fresh engine clone.
 
 ### Required project target settings
 
