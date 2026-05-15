@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -103,8 +104,23 @@ public:
     // notification (no `id`) or a malformed request that we choose to drop.
     std::optional<nlohmann::json> Dispatch(const nlohmann::json& body);
 
+    // Queue a server-initiated notification (no `id`). Run() flushes
+    // the queue after each WriteFrame, so notifications interleave
+    // cleanly between client request/response pairs.
+    //
+    // Used today by the MCP layer to send
+    // `notifications/tools/list_changed` when a tools/call mutated the
+    // advertised tool set (progressive disclosure path). The queue
+    // is FIFO and best-effort — no per-recipient targeting, no retry.
+    void QueueNotification(std::string method, nlohmann::json params);
+
+    // Drain + return the queue. Run() calls this after writing each
+    // response; tests can call it directly to assert queued notifs.
+    std::vector<nlohmann::json> TakePendingNotifications();
+
 private:
     std::map<std::string, Handler> handlers_;
+    std::vector<nlohmann::json> pendingNotifications_;
 };
 
 // Helpers for building JSON-RPC envelopes (used by Dispatch and tests).

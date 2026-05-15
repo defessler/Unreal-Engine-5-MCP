@@ -315,10 +315,28 @@ int RunServerLoop() {
         if (!cur.empty()) out.push_back(cur);
         return out;
     };
-    const std::vector<std::string> allowSpec =
+
+    // Progressive disclosure (BP_READER_PROGRESSIVE=1). Start with an
+    // initial narrow set (BP_READER_TOOLS_INITIAL, default `core`) and
+    // expose a meta-tool the agent calls to widen the surface mid-
+    // session. The meta-tool's handler activates more categories and
+    // sets a flag the MCP dispatcher reads to emit
+    // `notifications/tools/list_changed`. Each call narrows the
+    // surface gap; the agent never sees the full 119-tool list up
+    // front. Compatible with BP_READER_TOOLS — if both are set, the
+    // static filter wins (progressive mode then operates against the
+    // statically-filtered superset).
+    const bool progressiveMode =
+        env::BoolOrDefault("BP_READER_PROGRESSIVE", false, std::cerr);
+    std::vector<std::string> allowSpec =
         splitCSV(env::GetOrDefault("BP_READER_TOOLS"));
     const std::vector<std::string> denySpec =
         splitCSV(env::GetOrDefault("BP_READER_TOOLS_EXCLUDE"));
+    if (progressiveMode && allowSpec.empty()) {
+        // No explicit BP_READER_TOOLS — use the progressive initial set.
+        allowSpec = splitCSV(
+            env::GetOrDefault("BP_READER_TOOLS_INITIAL", "core"));
+    }
     const size_t before = registry.Size();
     registry.ApplyFilter(allowSpec, denySpec);
     if (!allowSpec.empty() || !denySpec.empty()) {
@@ -328,6 +346,22 @@ int RunServerLoop() {
         if (!allowSpec.empty()) std::cerr << " (allow=" << env::GetOrDefault("BP_READER_TOOLS") << ")";
         if (!denySpec.empty())  std::cerr << " (deny="  << env::GetOrDefault("BP_READER_TOOLS_EXCLUDE") << ")";
         std::cerr << "\n";
+    }
+    if (progressiveMode) {
+        tools::RegisterProgressiveDisclosureMetaTool(registry);
+        // Filter has already been applied — Add() leaves the new tool
+        // INACTIVE so callers don't see surprise surface widening.
+        // Explicitly activate the meta-tool so the agent can use it to
+        // widen the surface themselves.
+        registry.ActivateToken("enable_tool_category");
+        // Clear the list-changed flag set by ActivateToken — there's no
+        // client connected yet to receive a notification.
+        registry.TakeListChangedFlag();
+        std::cerr << "[bp-reader-mcp] progressive disclosure: enabled. "
+                  << "Initial active set is " << registry.Size()
+                  << " tools (of " << registry.TotalRegistered()
+                  << " registered). Agent can widen via "
+                     "`enable_tool_category(<name>)`.\n";
     }
 
     jsonrpc::Server server;
