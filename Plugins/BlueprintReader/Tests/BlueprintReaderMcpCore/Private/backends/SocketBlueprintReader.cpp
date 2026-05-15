@@ -1029,6 +1029,30 @@ SocketBlueprintReader::GetSelectedActors() {
     return out;
 }
 
+nlohmann::json SocketBlueprintReader::GetEditorState() {
+    auto j = RunOp({"-Op=GetEditorState"});
+    if (j.is_object()) j.erase("ok");
+    return j;
+}
+
+IBlueprintReader::PythonResult
+SocketBlueprintReader::RunPythonScript(std::string_view code) {
+    auto j = RunOp({"-Op=RunPythonScript",
+                    "-Code=" + std::string(code)});
+    PythonResult out;
+    if (j.is_object()) {
+        if (auto it = j.find("ok"); it != j.end() && it->is_boolean())
+            out.ok = it->get<bool>();
+        if (auto it = j.find("error"); it != j.end() && it->is_string())
+            out.error = it->get<std::string>();
+        if (auto it = j.find("command_result"); it != j.end() && it->is_string())
+            out.commandResult = it->get<std::string>();
+        if (auto it = j.find("log"); it != j.end())
+            out.log = *it;
+    }
+    return out;
+}
+
 IBlueprintReader::SelectionResult
 SocketBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
                                   bool replace) {

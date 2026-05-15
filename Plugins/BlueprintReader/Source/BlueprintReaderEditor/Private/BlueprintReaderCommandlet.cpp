@@ -25,8 +25,11 @@
 #include "HAL/IConsoleManager.h"
 #include "IAssetTools.h"
 #include "JsonObjectConverter.h"
+#include "IPythonScriptPlugin.h"
 #include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
+#include "PythonScriptTypes.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectIterator.h"
 #include "Dom/JsonObject.h"
@@ -176,6 +179,8 @@ namespace
 		SetActorTransform,
 		DeleteActor,
 		ReadOutputLog,
+		GetEditorState,
+		RunPythonScript,
 		// Automation tests.
 		RunAutomationTests,
 		// DataTable row mutation.
@@ -302,6 +307,8 @@ namespace
 		if (OpStr.Equals(TEXT("SetActorTransform"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetActorTransform; return true; }
 		if (OpStr.Equals(TEXT("DeleteActor"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteActor; return true; }
 		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
+		if (OpStr.Equals(TEXT("GetEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetEditorState; return true; }
+		if (OpStr.Equals(TEXT("RunPythonScript"), ESearchCase::IgnoreCase))     { OutOp = EOp::RunPythonScript; return true; }
 		if (OpStr.Equals(TEXT("RunAutomationTests"), ESearchCase::IgnoreCase))  { OutOp = EOp::RunAutomationTests; return true; }
 		if (OpStr.Equals(TEXT("AddDataRow"), ESearchCase::IgnoreCase))          { OutOp = EOp::AddDataRow; return true; }
 		if (OpStr.Equals(TEXT("SetDataRowValue"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetDataRowValue; return true; }
@@ -1629,6 +1636,224 @@ namespace
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetArrayField(TEXT("actor_names"), Names);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// One-call situational-awareness bundle. Mirrors Epic AIAssistant's
+	// Slate-querier intent: "what is the user looking at right now?"
+	// Returns active asset + open assets + current level + viewport camera
+	// + actor selection + PIE state in a single response so the agent
+	// doesn't have to coordinate 6 separate calls before its first edit.
+	// Local helper: convert /Game/AI/BP_Foo.BP_Foo → /Game/AI/BP_Foo.
+	// Wire format always uses package paths. Mirrors the same-named
+	// helper anon-ns'd inside BlueprintReaderWireJson.cpp — kept inline
+	// here to avoid widening that header just for this op.
+	FString EditorStateToPackagePath(const FString& In)
+	{
+		int32 DotIdx = INDEX_NONE;
+		if (In.FindChar(TEXT('.'), DotIdx)) return In.Left(DotIdx);
+		return In;
+	}
+
+	int32 RunGetEditorStateOp(const FString&, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+
+		// ----- open assets + active asset --------------------------------
+		// UAssetEditorSubsystem tracks every asset whose editor tab is
+		// currently open. The "active" one is the most-recently-focused
+		// editor — semantically what AIAssistant would highlight.
+		TArray<TSharedPtr<FJsonValue>> OpenAssetsJson;
+		TSharedPtr<FJsonValue> ActiveAssetJson;
+		if (GEditor)
+		{
+			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				TArray<UObject*> OpenAssets = AES->GetAllEditedAssets();
+				// AssetEditorSubsystem doesn't expose a direct "which is
+				// active" query in 5.7. Approximation: the LAST opened
+				// asset (or the one whose editor was most recently raised)
+				// is at the end of the array on UE 5.7. Documented as
+				// best-effort.
+				for (int32 i = 0; i < OpenAssets.Num(); ++i)
+				{
+					UObject* Obj = OpenAssets[i];
+					if (!Obj) continue;
+					auto Entry = MakeShared<FJsonObject>();
+					Entry->SetStringField(TEXT("package_path"),
+						EditorStateToPackagePath(Obj->GetPathName()));
+					Entry->SetStringField(TEXT("class"),
+						Obj->GetClass() ? Obj->GetClass()->GetName() : TEXT(""));
+					const bool bIsActive = (i == OpenAssets.Num() - 1);
+					Entry->SetBoolField(TEXT("is_active"), bIsActive);
+					if (bIsActive)
+					{
+						ActiveAssetJson = MakeShared<FJsonValueObject>(Entry);
+					}
+					OpenAssetsJson.Add(MakeShared<FJsonValueObject>(Entry));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("open_assets"), OpenAssetsJson);
+		if (ActiveAssetJson.IsValid()) Out->SetField(TEXT("active_asset"), ActiveAssetJson);
+		else                            Out->SetField(TEXT("active_asset"), MakeShared<FJsonValueNull>());
+
+		// ----- current level --------------------------------------------
+		TSharedPtr<FJsonObject> LevelJson;
+		if (GEditor)
+		{
+			UWorld* World = GEditor->GetEditorWorldContext().World();
+			if (World)
+			{
+				LevelJson = MakeShared<FJsonObject>();
+				LevelJson->SetStringField(TEXT("package_path"),
+					EditorStateToPackagePath(World->GetPathName()));
+				LevelJson->SetStringField(TEXT("name"), World->GetMapName());
+				const bool bDirty = World->GetOutermost() && World->GetOutermost()->IsDirty();
+				LevelJson->SetBoolField(TEXT("is_dirty"), bDirty);
+			}
+		}
+		if (LevelJson.IsValid()) Out->SetObjectField(TEXT("current_level"), LevelJson);
+		else                      Out->SetField(TEXT("current_level"), MakeShared<FJsonValueNull>());
+
+		// ----- viewport camera (read; we already have set_camera_transform) -
+		TSharedPtr<FJsonObject> CameraJson;
+		if (GEditor)
+		{
+			// Iterate the level viewport clients; pick the active one (or
+			// the first perspective viewport if none active). Mirrors how
+			// set_camera_transform identifies its target.
+			FEditorViewportClient* Best = nullptr;
+			for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
+			{
+				if (!VC) continue;
+				if (VC->IsLevelEditorClient())
+				{
+					if (VC->Viewport && VC->Viewport->HasFocus())
+					{
+						Best = VC;
+						break;
+					}
+					if (!Best && VC->IsPerspective()) Best = VC;
+				}
+			}
+			if (Best)
+			{
+				const FVector L = Best->GetViewLocation();
+				const FRotator R = Best->GetViewRotation();
+				CameraJson = MakeShared<FJsonObject>();
+				auto Loc = MakeShared<FJsonObject>();
+				Loc->SetNumberField(TEXT("x"), L.X);
+				Loc->SetNumberField(TEXT("y"), L.Y);
+				Loc->SetNumberField(TEXT("z"), L.Z);
+				CameraJson->SetObjectField(TEXT("location"), Loc);
+				auto Rot = MakeShared<FJsonObject>();
+				Rot->SetNumberField(TEXT("pitch"), R.Pitch);
+				Rot->SetNumberField(TEXT("yaw"),   R.Yaw);
+				Rot->SetNumberField(TEXT("roll"),  R.Roll);
+				CameraJson->SetObjectField(TEXT("rotation"), Rot);
+			}
+		}
+		if (CameraJson.IsValid()) Out->SetObjectField(TEXT("camera"), CameraJson);
+		else                       Out->SetField(TEXT("camera"), MakeShared<FJsonValueNull>());
+
+		// ----- selected actors (duplicated for one-call convenience) ----
+		TArray<TSharedPtr<FJsonValue>> SelectedJson;
+		if (GEditor)
+		{
+			if (USelection* Selection = GEditor->GetSelectedActors())
+			{
+				for (FSelectionIterator It(*Selection); It; ++It)
+				{
+					if (AActor* Actor = Cast<AActor>(*It))
+					{
+						SelectedJson.Add(MakeShared<FJsonValueString>(Actor->GetName()));
+					}
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("selected_actors"), SelectedJson);
+
+		// ----- PIE state -----------------------------------------------
+		const bool bPieRunning = (GEditor && GEditor->PlayWorld != nullptr);
+		Out->SetBoolField(TEXT("pie_running"), bPieRunning);
+
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// Epic AIAssistant's code-as-universal-tool capability. Wraps
+	// PythonScriptPlugin's ExecPythonCommandEx with the same
+	// transaction-boundary pattern AIAssistant uses. Gated by env var
+	// (BP_READER_ALLOW_PYTHON=1) because arbitrary Python = arbitrary
+	// editor mutation; opt-in only.
+	int32 RunRunPythonScriptOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		// Gate: require BP_READER_ALLOW_PYTHON=1. Default-off because
+		// arbitrary Python execution bypasses every safety convention
+		// the curated 119-tool surface establishes.
+		const FString AllowRaw = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_ALLOW_PYTHON"));
+		const bool bAllowed =
+			AllowRaw.Equals(TEXT("1")) || AllowRaw.Equals(TEXT("true"), ESearchCase::IgnoreCase) ||
+			AllowRaw.Equals(TEXT("yes"), ESearchCase::IgnoreCase) || AllowRaw.Equals(TEXT("on"), ESearchCase::IgnoreCase);
+		if (!bAllowed)
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), false);
+			Obj->SetStringField(TEXT("error"), TEXT("python_disabled"));
+			Obj->SetStringField(TEXT("hint"),
+				TEXT("Set BP_READER_ALLOW_PYTHON=1 in the MCP server's env "
+				     "to enable run_python_script. Off by default — arbitrary "
+				     "Python in the editor is a footgun."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		FString Code;
+		FParse::Value(*Params, TEXT("Code="), Code);
+		if (Code.IsEmpty())
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), false);
+			Obj->SetStringField(TEXT("error"),
+				TEXT("run_python_script requires a non-empty -Code= argument"));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		// Mirror Epic AIAssistant's pattern: wrap in a transaction so
+		// the Python-driven editor mutations land as one undo-able unit.
+		const FText TransactionTitle = FText::FromString(
+			TEXT("bp-reader: run_python_script"));
+		if (GEditor) GEditor->BeginTransaction(TransactionTitle);
+
+		FPythonCommandEx PyCmd;
+		PyCmd.Command = Code;
+		PyCmd.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
+		// CaptureOutput so we get stdout/stderr in PyCmd.LogOutput.
+		PyCmd.Flags |= EPythonCommandFlags::Unattended;
+
+		bool bOk = false;
+		if (IPythonScriptPlugin* Py = IPythonScriptPlugin::Get())
+		{
+			bOk = Py->ExecPythonCommandEx(PyCmd);
+		}
+		if (GEditor) GEditor->EndTransaction();
+
+		TArray<TSharedPtr<FJsonValue>> LogEntriesJson;
+		for (const FPythonLogOutputEntry& Entry : PyCmd.LogOutput)
+		{
+			auto E = MakeShared<FJsonObject>();
+			E->SetStringField(TEXT("type"),
+				Entry.Type == EPythonLogOutputType::Info ? TEXT("info")
+				: Entry.Type == EPythonLogOutputType::Warning ? TEXT("warning")
+				: TEXT("error"));
+			E->SetStringField(TEXT("output"), Entry.Output);
+			LogEntriesJson.Add(MakeShared<FJsonValueObject>(E));
+		}
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), bOk);
+		Out->SetStringField(TEXT("command_result"), PyCmd.CommandResult);
+		Out->SetArrayField(TEXT("log"), LogEntriesJson);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
 	int32 RunSetSelectionOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -5255,6 +5480,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::PieStop,                    &RunPieStopOp },
 		{ EOp::LiveCodingCompile,          &RunLiveCodingCompileOp },
 		{ EOp::GetSelectedActors,          &RunGetSelectedActorsOp },
+		{ EOp::GetEditorState,             &RunGetEditorStateOp },
+		{ EOp::RunPythonScript,            &RunRunPythonScriptOp },
 		{ EOp::SetSelection,               &RunSetSelectionOp },
 		{ EOp::SpawnActor,                 &RunSpawnActorOp },
 		{ EOp::SetActorTransform,          &RunSetActorTransformOp },

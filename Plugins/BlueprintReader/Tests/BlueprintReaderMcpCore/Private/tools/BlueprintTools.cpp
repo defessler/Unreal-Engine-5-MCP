@@ -1989,6 +1989,84 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
         });
     }
 
+    // ----- get_editor_state -----------------------------------------------
+    // Situational-awareness one-shot. Mirrors Epic AIAssistant's Slate
+    // querier surface in a single MCP call: open assets + active asset +
+    // current level + viewport camera + actor selection + PIE state.
+    {
+        ToolDescriptor d;
+        d.name = "get_editor_state";
+        d.description =
+            "[editor] One-call situational awareness: what assets are open in "
+            "the editor (which is active), the currently-loaded level and "
+            "its dirty state, the viewport camera transform, currently-"
+            "selected actors, and whether PIE is running. Use this BEFORE "
+            "starting a multi-step edit to ground the agent on what the "
+            "human is looking at right now. Live-editor only — returns "
+            "empty/null fields in commandlet mode (no editor UI). The "
+            "selected_actors field duplicates `get_selected_actors` for "
+            "convenience; prefer this tool for first-call orientation.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", nlohmann::json::object()},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+            return reader.GetEditorState();
+        });
+    }
+
+    // ----- run_python_script ----------------------------------------------
+    // Code-as-universal-tool capability (inspired by Epic AIAssistant's
+    // ExecPythonCommandEx surface). Gated server-side by
+    // BP_READER_ALLOW_PYTHON=1 — off by default because arbitrary Python
+    // in the editor bypasses every safety convention the curated tool
+    // surface establishes.
+    {
+        ToolDescriptor d;
+        d.name = "run_python_script";
+        d.description =
+            "[editor] Execute an Unreal Python script in the live editor. "
+            "Wrapped in a single undo transaction so mutations are "
+            "reversible. **Gated:** the MCP server's process env must "
+            "include `BP_READER_ALLOW_PYTHON=1`. Off by default — "
+            "arbitrary Python has full access to the `unreal.*` API and "
+            "bypasses the curated tool surface. When disabled, returns "
+            "`{ok: false, error: 'python_disabled', hint: ...}`. Returns "
+            "the captured stdout/stderr in `log[]` plus the script's "
+            "command result. For curated authoring, prefer the named BP/"
+            "asset/material/widget tools.";
+        d.input_schema = {
+            {"type", "object"},
+            {"properties", {
+                {"code", {
+                    {"type", "string"},
+                    {"description",
+                     "Unreal Python source. Can be multi-line. Has access "
+                     "to the full `unreal.*` API."},
+                }},
+            }},
+            {"required", nlohmann::json::array({"code"})},
+        };
+        registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+            std::string code = RequireString(args, "code");
+            auto r = reader.RunPythonScript(code);
+            nlohmann::json out = {
+                {"ok", r.ok},
+                {"command_result", r.commandResult},
+                {"log", r.log.is_null() ? nlohmann::json::array() : r.log},
+            };
+            if (!r.error.empty()) {
+                out["error"] = r.error;
+                if (r.error == "python_disabled") {
+                    out["hint"] =
+                        "Set BP_READER_ALLOW_PYTHON=1 in the MCP server's env "
+                        "to enable. Off by default for safety.";
+                }
+            }
+            return out;
+        });
+    }
+
     // ----- get_cvar -------------------------------------------------------
     {
         ToolDescriptor d;

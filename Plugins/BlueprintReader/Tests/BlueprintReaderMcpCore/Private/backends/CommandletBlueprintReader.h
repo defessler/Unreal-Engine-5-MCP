@@ -252,6 +252,8 @@ public:
     PieResult PieStop() override;
     LiveCodingResult LiveCodingCompile() override;
     SelectionResult GetSelectedActors() override;
+    BPRJson GetEditorState() override;
+    PythonResult RunPythonScript(std::string_view code) override;
     SelectionResult SetSelection(const std::vector<std::string>& actorNames,
                                  bool replace) override;
     SpawnActorResult SpawnActor(std::string_view classPath,
