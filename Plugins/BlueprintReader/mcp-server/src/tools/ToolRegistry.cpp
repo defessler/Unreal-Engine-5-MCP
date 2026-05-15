@@ -3,7 +3,6 @@
 #include "tools/ToolCategories.h"
 
 #include <algorithm>
-#include <set>
 
 namespace bpr::tools {
 
@@ -20,11 +19,18 @@ void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
     } else {
         descriptors_.push_back(std::move(desc));
     }
+    // If we're already in filtered mode, leave new tools INACTIVE so
+    // callers that activated a specific subset don't suddenly see new
+    // surface added later. ApplyFilter / ActivateToken are the only ways
+    // to bring tools into the active set after filter is applied.
+    // (In the default unfiltered case, ListSpec walks descriptors_
+    // directly — no need to maintain active_ then.)
 }
 
 nlohmann::json ToolRegistry::ListSpec() const {
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& d : descriptors_) {
+        if (filterApplied_ && active_.count(d.name) == 0) continue;
         arr.push_back({
             {"name", d.name},
             {"description", d.description},
@@ -35,8 +41,14 @@ nlohmann::json ToolRegistry::ListSpec() const {
 }
 
 const ToolFn* ToolRegistry::Find(const std::string& name) const {
+    if (filterApplied_ && active_.count(name) == 0) return nullptr;
     auto it = fns_.find(name);
     return (it == fns_.end()) ? nullptr : &it->second;
+}
+
+size_t ToolRegistry::Size() const {
+    if (!filterApplied_) return descriptors_.size();
+    return active_.size();
 }
 
 namespace {
@@ -60,10 +72,6 @@ void ExpandTokens(const std::vector<std::string>& tokens,
             }
             continue;
         }
-        // Literal tool name. Insert even if it doesn't currently match a
-        // registered tool — ApplyFilter is a set operation, not a
-        // validation. A typo just doesn't keep anything, which is the
-        // safe failure mode.
         out.insert(tok);
     }
 }
@@ -80,27 +88,52 @@ void ToolRegistry::ApplyFilter(const std::vector<std::string>& allowSpec,
     } else {
         ExpandTokens(allowSpec, descriptors_, keep);
     }
-
     if (!denySpec.empty()) {
         std::set<std::string> deny;
         ExpandTokens(denySpec, descriptors_, deny);
         for (const auto& d : deny) keep.erase(d);
     }
-
-    // Remove from descriptor vector + dispatch map in one pass. Erase
-    // dispatch entries first while we still have the descriptor list to
-    // iterate; descriptor erase is the second step.
-    for (auto it = fns_.begin(); it != fns_.end();) {
-        if (keep.count(it->first) == 0) {
-            it = fns_.erase(it);
+    // Drop names that don't correspond to any registered tool — keeps
+    // the active set's invariant: every entry maps to a real dispatch fn.
+    for (auto it = keep.begin(); it != keep.end();) {
+        if (fns_.find(*it) == fns_.end()) {
+            it = keep.erase(it);
         } else {
             ++it;
         }
     }
-    descriptors_.erase(
-        std::remove_if(descriptors_.begin(), descriptors_.end(),
-            [&](const ToolDescriptor& d) { return keep.count(d.name) == 0; }),
-        descriptors_.end());
+    active_ = std::move(keep);
+    filterApplied_ = true;
+    listChanged_ = true;
+}
+
+std::vector<std::string> ToolRegistry::ActivateToken(const std::string& token) {
+    if (token.empty()) return {};
+
+    // If no filter has been applied yet, ALL tools are already active —
+    // activating more is a no-op. Caller probably didn't mean to use
+    // progressive disclosure in this case, but the API is permissive.
+    if (!filterApplied_) return {};
+
+    std::set<std::string> requested;
+    ExpandTokens({token}, descriptors_, requested);
+
+    std::vector<std::string> newlyActive;
+    for (const auto& name : requested) {
+        // Skip unknown names (silently — same as ApplyFilter).
+        if (fns_.find(name) == fns_.end()) continue;
+        if (active_.insert(name).second) {
+            newlyActive.push_back(name);
+        }
+    }
+    if (!newlyActive.empty()) listChanged_ = true;
+    return newlyActive;
+}
+
+bool ToolRegistry::TakeListChangedFlag() {
+    if (!listChanged_) return false;
+    listChanged_ = false;
+    return true;
 }
 
 } // namespace bpr::tools

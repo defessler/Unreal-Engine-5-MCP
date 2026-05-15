@@ -4005,4 +4005,54 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
     RegisterCompileFunction(registry, reader);
 }
 
+void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry) {
+    ToolDescriptor d;
+    d.name = "enable_tool_category";
+    d.description =
+        "[discover] Widen the active tool surface mid-session. Pass a "
+        "category name (e.g. `materials`, `cpp`, `editor`) or a workflow "
+        "preset (e.g. `material-tuning`); the matching tools are added "
+        "to the advertised tools/list and become callable. The server "
+        "emits `notifications/tools/list_changed` after this call so "
+        "clients refetch tools/list to see the new surface. Useful when "
+        "the server started under BP_READER_PROGRESSIVE=1 with a narrow "
+        "initial set (default: `core`) and the agent's task needs more. "
+        "Calling with `\"all\"` activates every registered tool. "
+        "Categories already covered by the active set are a no-op. "
+        "See the wiki's Tool filtering section for the full category "
+        "list.";
+    d.input_schema = {
+        {"type", "object"},
+        {"properties", {
+            {"category", {
+                {"type", "string"},
+                {"description",
+                 "Category name (e.g. `materials`, `cpp`, `editor`), "
+                 "workflow preset (e.g. `material-tuning`), individual "
+                 "tool name, or `all`."},
+            }},
+        }},
+        {"required", nlohmann::json::array({"category"})},
+    };
+
+    auto handler = [&registry](const nlohmann::json& args) -> nlohmann::json {
+        if (!args.contains("category") || !args["category"].is_string()) {
+            throw std::runtime_error(
+                "enable_tool_category requires a string `category` argument");
+        }
+        const std::string token = args["category"].get<std::string>();
+        auto added = registry.ActivateToken(token);
+        nlohmann::json result = {
+            {"ok", true},
+            {"token", token},
+            {"added", added},
+            {"newly_activated_count", added.size()},
+            {"total_active", registry.Size()},
+            {"total_registered", registry.TotalRegistered()},
+        };
+        return result;
+    };
+    registry.Add(std::move(d), std::move(handler));
+}
+
 } // namespace bpr::tools

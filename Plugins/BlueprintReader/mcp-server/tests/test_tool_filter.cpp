@@ -158,3 +158,84 @@ TEST_CASE("ToolCategories: known + unknown lookups") {
                                std::string("read_blueprint")) != core.end();
     CHECK(hasReadBp);
 }
+
+// ===== Progressive disclosure ============================================
+// Pins the runtime widening flow exposed via enable_tool_category +
+// the listChanged notification, used when BP_READER_PROGRESSIVE=1.
+
+TEST_CASE("ActivateToken: no-op when no filter has been applied") {
+    auto r = MakeWith({"read_blueprint", "add_node", "save_all"});
+    // Registry is in default "show all" mode. Activating more is
+    // meaningless — there's nothing inactive to activate.
+    auto added = r.ActivateToken("read");
+    CHECK(added.empty());
+    CHECK(CountSpec(r) == 3);
+    CHECK(!r.TakeListChangedFlag());
+}
+
+TEST_CASE("ActivateToken: after filter, activates the named category") {
+    auto r = MakeWith({"read_blueprint", "add_node", "save_all",
+                       "list_blueprints", "get_components"});
+    r.ApplyFilter({"core"}, {});                // most still active per `core`
+    // Clear the listChanged flag set by ApplyFilter — for this test we
+    // care only about ActivateToken's behavior.
+    (void)r.TakeListChangedFlag();
+    const size_t before = r.Size();
+
+    auto added = r.ActivateToken("read_blueprint");  // already active in core
+    CHECK(added.empty());                            // no change
+    CHECK(r.Size() == before);
+    CHECK(!r.TakeListChangedFlag());                 // no flag flip
+}
+
+TEST_CASE("ActivateToken: adds tools that the initial filter excluded") {
+    auto r = MakeWith({"read_blueprint", "add_node",
+                       "list_materials", "set_material_parameter",
+                       "compile_material"});
+    // Initial filter: just core. list_materials et al. are inactive.
+    r.ApplyFilter({"core"}, {});
+    (void)r.TakeListChangedFlag();
+    const size_t before = r.Size();
+    REQUIRE(r.Find("set_material_parameter") == nullptr);  // confirm gated
+
+    auto added = r.ActivateToken("materials");
+    CHECK(!added.empty());                           // we added some
+    CHECK(r.Size() > before);                        // active set grew
+    CHECK(r.Find("set_material_parameter") != nullptr);  // now callable
+    CHECK(r.TakeListChangedFlag());                  // flag was set
+    CHECK(!r.TakeListChangedFlag());                 // and cleared on take
+}
+
+TEST_CASE("ActivateToken: 'all' widens to every registered tool") {
+    auto r = MakeWith({"read_blueprint", "add_node", "list_materials",
+                       "compile_material", "shutdown_daemon"});
+    r.ApplyFilter({"core"}, {});
+    (void)r.TakeListChangedFlag();
+
+    auto added = r.ActivateToken("all");
+    CHECK(r.Size() == r.TotalRegistered());
+    CHECK(!added.empty());
+}
+
+TEST_CASE("ActivateToken: typo'd token is a silent no-op (flag stays clear)") {
+    auto r = MakeWith({"read_blueprint", "add_node"});
+    r.ApplyFilter({"read_blueprint"}, {});  // active = {read_blueprint}
+    (void)r.TakeListChangedFlag();
+
+    auto added = r.ActivateToken("matrials");  // typo
+    CHECK(added.empty());
+    CHECK(!r.TakeListChangedFlag());  // no flag flip on no-op
+    CHECK(r.Find("add_node") == nullptr);  // still gated
+}
+
+TEST_CASE("TakeListChangedFlag: returns true at most once per state change") {
+    auto r = MakeWith({"read_blueprint", "add_node", "list_materials",
+                       "compile_material"});
+    r.ApplyFilter({"core"}, {});                  // sets the flag
+    CHECK(r.TakeListChangedFlag());
+    CHECK(!r.TakeListChangedFlag());              // cleared
+
+    r.ActivateToken("materials");                  // sets it again
+    CHECK(r.TakeListChangedFlag());
+    CHECK(!r.TakeListChangedFlag());
+}

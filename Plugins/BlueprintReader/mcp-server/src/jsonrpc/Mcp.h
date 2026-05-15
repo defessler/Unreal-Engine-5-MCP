@@ -27,8 +27,14 @@ struct ServerInfo {
     std::string protocolVersion = "2024-11-05"; // MCP spec we target
 };
 
+// Registers the MCP method handlers against `server`, wiring them to
+// `registry`. `registry` is non-const because progressive-disclosure
+// tools (e.g. `enable_tool_category`) mutate the active subset at
+// runtime. The `tools/call` handler also drains the registry's
+// list-changed flag and queues a `notifications/tools/list_changed`
+// notification on the server when set.
 void RegisterHandlers(jsonrpc::Server& server,
-                      const tools::ToolRegistry& registry,
+                      tools::ToolRegistry& registry,
                       const ServerInfo& info);
 
 } // namespace bpr::mcp
