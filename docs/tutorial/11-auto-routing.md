@@ -48,7 +48,7 @@ to a dead live editor for the full TTL.
 
 ## `AutoBlueprintReader`
 
-The class lives in `mcp-server/src/backends/AutoBlueprintReader.{h,cpp}`.
+The class lives in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/AutoBlueprintReader.{h,cpp}`.
 It implements `IBlueprintReader` by holding optional pointers to
 both sub-backends and a probe-state struct, then forwarding every
 method to whichever one `Pick()` returns.

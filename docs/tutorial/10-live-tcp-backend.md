@@ -269,7 +269,7 @@ already serialized. The MCP-server side will parse exactly once.
 
 ## MCP server side: `LiveBlueprintReader`
 
-`LiveBlueprintReader` (in `mcp-server/src/backends/`) implements
+`LiveBlueprintReader` (in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/`) implements
 `IBlueprintReader` over the TCP wire format. It owns one socket and
 keeps it open across calls.
 

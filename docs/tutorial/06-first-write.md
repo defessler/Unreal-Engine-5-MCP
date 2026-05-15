@@ -440,7 +440,7 @@ $env:BP_READER_BACKEND   = "commandlet"
 $env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
 
-Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+<removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `
     -Tool add_variable `
     -Args '{"asset_path":"/Game/AI/BP_TestEnemy","name":"Health","type":"float"}'
 ```
@@ -450,7 +450,7 @@ by, on a re-run, `{"ok":true,"already_existed":true}`. Confirm the
 variable is real by reading it back:
 
 ```pwsh
-Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+<removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `
     -Tool list_variables `
     -Args '{"asset_path":"/Game/AI/BP_TestEnemy"}'
 ```

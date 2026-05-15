@@ -7,6 +7,15 @@ of MCP's required methods: `initialize` and `tools/list`. You won't talk
 to Unreal yet — that arrives in chapter 3. For now the goal is a clean
 JSON-RPC loop you can drive from a shell.
 
+> **Build system:** this chapter uses CMake to keep the early steps
+> small and incremental. The shipping project later switched to a UE
+> Program target (UBT) so the MCP server builds in the same pipeline as
+> the rest of the plugin — see the [tutorial README](README.md) for
+> context and [design/04-mcp-server.md](../design/04-mcp-server.md) for
+> the current production layout. The source code stays C++20 stdlib + a
+> handful of header-only deps in both setups; only the build commands
+> differ.
+
 ## What MCP actually is
 
 MCP is a thin wrapper around JSON-RPC 2.0. A client (Claude Desktop,
@@ -86,7 +95,7 @@ bp-reader/
 
 Vendoring is deliberate. The real BlueprintReader server vendors every
 dep so a fresh clone builds without `vcpkg`, `FetchContent`, or any
-network access (see `Plugins/BlueprintReader/mcp-server/third_party/`
+network access (see `Plugins/BlueprintReader/Tests/ThirdParty/`
 for the production layout). Download these headers once and commit
 them to your tree:
 
@@ -145,7 +154,7 @@ add_subdirectory(tests)
 ```
 
 This is the same skeleton the production server uses (compare to
-`Plugins/BlueprintReader/mcp-server/CMakeLists.txt`), minus the
+`(deleted: replaced by Plugins/BlueprintReader/Tests/BlueprintReader*/*.Build.cs)`), minus the
 warning-as-error knobs and the many source files that grow in later
 chapters.
 
@@ -226,7 +235,7 @@ private:
 ```
 
 `src/jsonrpc/Server.cpp` — keep it short for now. The production version
-in `Plugins/BlueprintReader/mcp-server/src/jsonrpc/Server.cpp` adds BOM
+in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/jsonrpc/Server.cpp` adds BOM
 skipping, batch support, and LSP framing; you can graduate to those
 later.
 
@@ -360,7 +369,7 @@ response that lets a client connect without errors. Chapter 2 fills it
 with real tools.
 
 For comparison, the production `RegisterHandlers` lives in
-`Plugins/BlueprintReader/mcp-server/src/jsonrpc/Mcp.cpp` and is barely
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/jsonrpc/Mcp.cpp` and is barely
 longer than the snippet above. Most of the extra lines there negotiate
 protocol versions across the three MCP spec revisions; you can ignore
 that until you're shipping.
@@ -368,8 +377,8 @@ that until you're shipping.
 ## Build
 
 ```pwsh
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
+"<Engine>\Engine\Build\BatchFiles\Build.bat" BlueprintReaderMcp Win64 Development -project="<Project>.uproject"
+# (same UBT command rebuilds incrementally)
 ```
 
 On Linux or macOS, drop the generator flag — Ninja or Unix Makefiles
@@ -381,7 +390,7 @@ Run the executable and feed it a JSON-RPC initialize request:
 
 ```pwsh
 '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' |
-    .\build\Release\bp-reader-mcp.exe
+    .\build\Release\BlueprintReaderMcp.exe
 ```
 
 Expect to see, on stdout:
@@ -400,14 +409,14 @@ Then try a sequence to confirm the loop survives multiple messages:
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
-'@ | .\build\Release\bp-reader-mcp.exe
+'@ | .\build\Release\BlueprintReaderMcp.exe
 ```
 
 Expect two responses (one for `id:1`, one for `id:2`) and silence for
 the notification. If you see:
 
 - **Nothing on stdout** — your handler probably crashed before reaching
-  `Run`. Verify the binary built and runs (`bp-reader-mcp.exe --help`
+  `Run`. Verify the binary built and runs (`BlueprintReaderMcp.exe --help`
   is a no-op but should exit cleanly).
 - **A `method not found` error for `notifications/initialized`** —
   you forgot to register it, or you put an `id` on the notification in
