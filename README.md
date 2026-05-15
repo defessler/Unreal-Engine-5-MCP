@@ -14,7 +14,7 @@ bundled `BlueprintReader` UE plugin.
 
 Two backends:
 - **`mock`** — fixture-backed; no UE required. Used for unit tests and
-  bring-up. Three handcrafted JSON fixtures under `Plugins/BlueprintReader/mcp-server/fixtures/`.
+  bring-up. Three handcrafted JSON fixtures under `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`.
 - **`commandlet`** — drives a real `UnrealEditor-Cmd.exe -run=BlueprintReader`
   to read live `.uasset` files from a UE project. Defaults to **daemon mode**
   (one editor process reused across calls) so per-call cost is ~30 ms after
@@ -65,7 +65,7 @@ for every input/output shape with examples.
 | **AnimGraph** (4) | `list_anim_blueprints`, `read_anim_blueprint`, `add_anim_state`, `compile_anim_blueprint` | Discover UAnimBlueprint + read parent class + compile via FKismetEditorUtilities. State-machine authoring scaffolded; full graph needs AnimGraph module. |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
-Wire shapes are pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`. Snake_case
+Wire shapes are pinned in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
 
 Every read tool also accepts `fields` (response projection — drop keys you
@@ -137,24 +137,39 @@ and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
 
 ## Quick start: hooking it up to Claude
 
-### 1. Build the MCP server (no UE required for the mock backend)
+### 1. Build the MCP server
+
+The MCP server is now a UE Program target built via UBT (same pipeline
+as the rest of the plugin — UBA-friendly, no separate CMake toolchain).
+You need an Unreal Engine source build to compile it.
 
 ```pwsh
-cd Plugins\BlueprintReader\mcp-server
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe   # 344 cases (live skip without UE)
+# From a project that has BlueprintReader in its Plugins/:
+"<Engine>\Engine\Build\BatchFiles\Build.bat" `
+  BlueprintReaderMcp Win64 Development `
+  -project="<Absolute>\MyGame.uproject"
 ```
 
-The exe is at `Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe`.
+The exe lands at `<ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe`.
+
+Both binaries (`BlueprintReaderMcp` + `BlueprintReaderMcpTests`) can be
+built in one shot via `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`:
+
+```pwsh
+.\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
+  -EngineDir "D:\Path\To\UnrealEngine" `
+  -ProjectFile "$PWD\MyGame.uproject"
+```
 
 Third-party deps (nlohmann_json, fmt, doctest) are vendored under
-`Plugins/BlueprintReader/mcp-server/third_party/`, so this works **with no network access and no
-git** — CMake itself is the only external tool required.
+`Plugins/BlueprintReader/Tests/ThirdParty/`, so this works with no
+network access and no extra package manager — UBT is the only build
+tool required.
 
-> **If you'll use the `commandlet` backend, you can skip this step** —
-> building the editor target also builds the MCP server via the plugin's
-> `PreBuildSteps`. See [Plugin-driven build](#plugin-driven-build) below.
+> **Tests:** `Build.bat BlueprintReaderMcpTests Win64 Development -project=...`
+> produces `<ProjectDir>/Binaries/Win64/BlueprintReaderMcpTests.exe` —
+> 441 doctest cases, ~5 s to run; the 12 live-only cases auto-skip when
+> the UE editor env vars aren't set.
 
 ### 2. Install the Claude skills (optional but recommended)
 
@@ -185,7 +200,7 @@ automatically. The contents:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":  "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -264,33 +279,32 @@ UE5_MCP\
 ├── UE5_MCP.uproject
 ├── Source\                                project runtime module
 ├── Plugins\BlueprintReader\               plugin (everything ships together)
-│   ├── BlueprintReader.uplugin            PreBuildSteps run Build-MCPServer.ps1
-│   ├── Scripts\Build-MCPServer.ps1        plugin-driven cmake build
+│   ├── BlueprintReader.uplugin
+│   ├── Scripts\Build-MCPServer.ps1        UBT-wrapper convenience script
 │   ├── Source\BlueprintReaderEditor\
 │   │   ├── BlueprintIntrospector         FBlueprintInfo from FBlueprintGeneratedClass
 │   │   ├── BlueprintReaderJson           legacy/rich plugin shape (camelCase, K2 extras)
 │   │   ├── BlueprintReaderWireJson       canonical MCP wire shape (snake_case)
 │   │   ├── BlueprintReaderCommandlet     -run=BlueprintReader; -Op + -Daemon dispatch
 │   │   └── BlueprintReaderSeedCmdlet     -run=BlueprintReaderSeed; synthesize test BPs
-│   └── mcp-server\                        standalone C++20 MCP server
-│       ├── src\
-│       │   ├── BlueprintReaderTypes.h    POD/USTRUCT dual-mode wire types
-│       │   ├── jsonrpc\                  Server, Mcp (initialize/tools/call/...)
-│       │   ├── tools\                     ToolRegistry, BlueprintTools, Bpir, Decompile
-│       │   │   ├── codegen\               CppEmit, CppClassEmit, UnsupportedTreatment
-│       │   │   └── parse\                 CppLex, CppParse (C++ → BPIR)
-│       │   └── backends\                  IBlueprintReader, MockReader, CommandletReader
-│       ├── tests\                         doctest cases (mock + live commandlet, 344 total)
-│       ├── scripts\
-│       │   ├── roundtrip.ps1              JSON-RPC handshake + read smoke
-│       │   ├── smoke-batch-ops.ps1        apply_ops / preview_ops smoke
-│       │   ├── smoke-decompile.ps1        BP → BPIR → readable C++ smoke
-│       │   ├── smoke-transpile-cpp.ps1    BP → compilable .h/.cpp (-RunUbt)
-│       │   └── smoke-cpp-roundtrip.ps1    C++ → BPIR → compile_function → BP
-│       ├── fixtures\                      BP_Enemy / BP_Pickup / BP_PlayerController
-│       ├── third_party\                   vendored deps: nlohmann_json, fmt, doctest
-│       ├── CMakeLists.txt
-│       └── vcpkg.json                     (declared but not consumed by default)
+│   ├── Source\BlueprintReaderRuntime\    runtime-safe BP introspection
+│   └── Tests\                             UE Program targets (UBT-built)
+│       ├── BlueprintReaderMcp\           main exe → BlueprintReaderMcp.exe
+│       │   ├── BlueprintReaderMcp.Target.cs
+│       │   ├── BlueprintReaderMcp.Build.cs
+│       │   └── Private\main.cpp
+│       ├── BlueprintReaderMcpCore\       shared static-lib module (impl)
+│       │   ├── BlueprintReaderMcpCore.Build.cs
+│       │   └── Private\
+│       │       ├── BlueprintReaderTypes.h   POD wire types
+│       │       ├── jsonrpc\                 Server, Mcp (initialize/tools/call/…)
+│       │       ├── tools\                   ToolRegistry, BlueprintTools, Bpir, Decompile
+│       │       │   ├── codegen\             CppEmit, CppClassEmit, UnsupportedTreatment
+│       │       │   └── parse\               CppLex, CppParse (C++ → BPIR)
+│       │       └── backends\                IBlueprintReader, MockReader, CommandletReader
+│       ├── BlueprintReaderMcpTests\      doctest suite → BlueprintReaderMcpTests.exe
+│       │   └── Private\                   441 cases (mock + live commandlet)
+│       └── ThirdParty\                    vendored: nlohmann_json, fmt, doctest
 ├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset
                                            (engine source lives outside this repo
                                             at D:\Projects\Unreal Engine 5\)
@@ -333,8 +347,9 @@ Both pass through `-Backend`, `-Prewarm`, `-EngineDir`, `-UProject`.
 Server runs in foreground, stderr to console, stdin reads JSON-RPC
 frames.
 
-A parallel pair (`Build-MCPServer.{ps1,bat}`) runs the same logic UBT
-uses as a PreBuildStep — useful for building the server standalone.
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` is a thin UBT
+wrapper that builds both Program targets in one shot — useful for
+building the server standalone when you just want fresh binaries.
 
 ## Live verification
 
@@ -345,23 +360,13 @@ $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 
-Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe   # all 344 cases
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
-    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
-    -Asset /Game/AI/BP_TestEnemy
+Binaries\Win64\BlueprintReaderMcpTests.exe   # all 441 cases (12 live-only auto-skip)
 ```
 
-End-to-end smoke for the BP↔C++ pipeline (Phases 1–3):
-
-```pwsh
-$exe = "Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe"
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-decompile.ps1     -Exe $exe
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-transpile-cpp.ps1 -Exe $exe
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\smoke-cpp-roundtrip.ps1 -Exe $exe
-```
-
-Add `-RunUbt` to `smoke-transpile-cpp.ps1` to rebuild the editor target
-with the freshly-generated `.h`/`.cpp` and confirm it links.
+The legacy smoke scripts that lived under `mcp-server/scripts/` were
+removed alongside the CMake build. The doctest suite covers the same
+ground (and more); for an interactive smoke run, build with
+`-Config Development` and stream stdin/stdout against the exe directly.
 
 (Re)seed the test BPs:
 
@@ -371,20 +376,23 @@ with the freshly-generated `.h`/`.cpp` and confirm it links.
     -nullrhi -nosplash -unattended -nopause
 ```
 
-## Plugin-driven build
+## Build pipeline
 
-Building the editor target rebuilds the MCP server automatically — the
-plugin's `PreBuildStep` runs `Scripts/Build-MCPServer.ps1`, which
-no-ops if the exe is already fresher than every `src/` file:
+The MCP server is a pair of UE Program targets that live under
+`Plugins/BlueprintReader/Tests/`. UBT builds them with the same
+pipeline (UBA, ninja, shared compile cache) as the editor target:
 
 ```
-UBT
- ├── (PreBuildStep) Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1
- │     ├── skip if bp-reader-mcp.exe is fresher than every src/ file
- │     ├── cmake -S <plugin>/mcp-server -B <plugin>/mcp-server/build -G "VS 17 2022" -A x64
- │     └── cmake --build <plugin>/mcp-server/build --config Release
- └── BlueprintReader.uplugin → BlueprintReaderEditor.dll
+Build.bat BlueprintReaderMcp     Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcp.exe
+Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcpTests.exe
+Build.bat UE5_MCPEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
+
+The three targets compile independently — building the editor no
+longer rebuilds the MCP server as a side effect (the prior PreBuildStep
+that ran CMake is gone). Build all three at once via
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` or three separate
+`Build.bat` invocations.
 
 ## Engine setup (only needed for the `commandlet` backend)
 
@@ -486,10 +494,20 @@ plus `index.html`.
 
 ## CI
 
-GitHub Actions workflow at `.github/workflows/mcp-server.yml` builds + runs
-the mock-backend tests on every push that touches
-`Plugins/BlueprintReader/mcp-server/` or the workflow itself. The live
-commandlet tests skip automatically when `BP_READER_ENGINE_DIR` /
-`BP_READER_PROJECT` aren't set, so CI runs in under a minute against the
-vendored deps.
+The prior `.github/workflows/mcp-server.yml` (CMake-on-Windows-2022) was
+removed when the MCP server moved into the UE build pipeline. UBT-based
+CI needs a runner with the source-built engine available, which is
+heavier than the prior mock-only CI was — not yet set up.
+
+For local pre-push verification, run the test target:
+
+```pwsh
+"<Engine>\Engine\Build\BatchFiles\Build.bat" `
+  BlueprintReaderMcpTests Win64 Development `
+  -project="$PWD\UE5_MCP.uproject"
+Binaries\Win64\BlueprintReaderMcpTests.exe
+```
+
+441 cases including the mock-backend coverage; the 12 live-only cases
+auto-skip when the UE editor env vars aren't set.
 

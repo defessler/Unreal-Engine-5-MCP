@@ -69,7 +69,7 @@ Both vars take **category names** as a shorthand for groups of tools:
 | `all`            | 119   | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
 
 The canonical mapping lives in
-[`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/mcp-server/src/tools/ToolCategories.cpp).
+[`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp).
 
 ### Workflow presets
 
@@ -86,7 +86,7 @@ directly as the `BP_READER_TOOLS` value.
 | `widget-design`   | 8     | UMG: read a widget BP, add nodes, set properties, wire events, compile. |
 | `gameplay-tuning` | 16    | Read BPs, tweak variable defaults + component props, batch-apply, PIE-test. The "tweak and try" loop. |
 
-The mapping lives in [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/mcp-server/src/tools/ToolCategories.cpp).
+The mapping lives in [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp).
 
 ### Recommended presets
 
@@ -320,7 +320,7 @@ Implications:
 ### Exe rename
 
 A project named `UE5_MCP` builds **two** binaries under
-`Plugins/BlueprintReader/mcp-server/build/Release/`:
+`Binaries/Win64/`:
 
 - `bp-reader-mcp-UE5_MCP.exe` — the real binary, with the project
   name in its filename so `tasklist /V` / `Get-Process` shows which
@@ -367,7 +367,7 @@ each as its own MCP server (user scope):
 {
   "mcpServers": {
     "bp-game1": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -376,7 +376,7 @@ each as its own MCP server (user scope):
       }
     },
     "bp-game2": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
@@ -565,7 +565,7 @@ or will be):
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe"
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe"
     }
   }
 }
@@ -577,7 +577,7 @@ Manual override (fixed port):
 {
   "mcpServers": {
     "bp-reader-live": {
-      "command": "D:\\Projects\\UE5_MCP\\Plugins\\BlueprintReader\\mcp-server\\build\\Release\\bp-reader-mcp.exe",
+      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "live",
         "BP_READER_LIVE_PORT":  "8421",
@@ -673,7 +673,7 @@ To switch to read-write mode: close the editor, unset
 ## Mock backend fixtures
 
 The mock backend reads three handcrafted JSON files from
-`Plugins/BlueprintReader/mcp-server/fixtures/`:
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`:
 
 - `BP_Enemy.json` — Actor parent, 4 vars, EventGraph + Damage function.
 - `BP_Pickup.json` — Actor parent, 2 vars, EventGraph only.
@@ -685,15 +685,16 @@ Edit them to test edge cases. Override the dir with
 
 ## CI
 
-GitHub Actions workflow at `.github/workflows/mcp-server.yml` builds and
-runs the mock-backend tests on every push that touches
-`Plugins/BlueprintReader/mcp-server/` or the workflow itself. The 12
-commandlet-backed tests skip automatically when `BP_READER_ENGINE_DIR` /
-`BP_READER_PROJECT` aren't set, so CI runs in under a minute against the
-vendored deps.
+The prior `.github/workflows/mcp-server.yml` (CMake-on-Windows-2022,
+mock-backend tests only) was removed during the migration of the MCP
+server to a UE Program target. UBT-based CI needs a runner with the
+source-built engine available, which is heavier than the prior
+mock-only CI was — not yet set up. For local pre-push verification,
+build the tests target via UBT (see the [Installation](Installation)
+page) and run `Binaries\Win64\BlueprintReaderMcpTests.exe`.
 
-The workflow runs on `windows-2022`. Linux/macOS are not currently
-supported because the subprocess management is `CreateProcessW`-based.
+Linux/macOS are not currently supported because the subprocess
+management is `CreateProcessW`-based.
 
 ## Manual launch
 
@@ -710,12 +711,15 @@ The MCP server writes nothing to stdout by design — stdout is the
 JSON-RPC channel. Anything diagnostic goes to stderr, which Claude
 captures and surfaces in its tool-call debug panel.
 
-For raw debugging, drive the server directly with the bundled smoke test:
+For raw debugging, run the doctest suite — it exercises both the wire
+shapes and the backends with rich failure diagnostics:
 
 ```powershell
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
-    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
-    -Asset /Game/AI/BP_TestEnemy
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
+
+Or drive `BlueprintReaderMcp.exe` directly by piping JSON-RPC frames
+to its stdin (the `roundtrip.ps1` smoke harness that previously
+filled this slot was removed alongside the CMake build).
 
 The script writes the request/response pairs to the console.

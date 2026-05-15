@@ -30,16 +30,18 @@ halves:
     K2 graphs (stripped during cook) — `graphs[]` returns empty.
     Wired through two console commands for in-game triage:
     `bp_reader.list <Path>` and `bp_reader.read <AssetPath>`.
-- **`Plugins/BlueprintReader/mcp-server/`** — Standalone C++20 MCP
-  server, vendored inside the plugin so the whole thing ships as one
-  unit. JSON-RPC 2.0 over stdio. Backends: `mock` (fixtures only, no
-  UE), `commandlet` (drives the plugin via `UnrealEditor-Cmd.exe`),
-  `live` (talks to a running editor via TCP), and `auto` (probes per
-  call, picks live or commandlet). **Auto is the default** when a
-  `.uproject` is auto-discovered. Built automatically as a
-  `PreBuildStep` of `BlueprintReader.uplugin` — third-party deps
-  (nlohmann_json, fmt, doctest) are vendored under
-  `mcp-server/third_party/`, no git/network/vcpkg required.
+- **`Plugins/BlueprintReader/Tests/BlueprintReaderMcp*/`** — C++20
+  MCP server as a pair of UE Program targets (BlueprintReaderMcp,
+  BlueprintReaderMcpCore, BlueprintReaderMcpTests). JSON-RPC 2.0 over
+  stdio. Backends: `mock` (fixtures only, no UE), `commandlet` (drives
+  the plugin via `UnrealEditor-Cmd.exe`), `live` (talks to a running
+  editor via TCP), and `auto` (probes per call, picks live or
+  commandlet). **Auto is the default** when a `.uproject` is
+  auto-discovered. Built via UBT (same pipeline + UBA cache as the
+  editor target); third-party deps (nlohmann_json, fmt, doctest) are
+  vendored under `Tests/ThirdParty/`. The "Tests/" dir name is a UBT
+  artifact — only path UBT scans for plugin-hosted Program Target.cs
+  files; BlueprintReaderMcp itself is a production exe.
 
 When you need to **use** the MCP tools to read or modify a blueprint,
 the `bp-reader` skill in `.claude/skills/bp-reader/` covers patterns,
@@ -61,8 +63,8 @@ UE5_MCP/                                      ← project root
 ├── UE5_MCP.uproject
 ├── Source/                                     project runtime module
 ├── Plugins/BlueprintReader/                    plugin ships as one unit
-│   ├── BlueprintReader.uplugin                 PreBuildSteps run Build-MCPServer.ps1
-│   ├── Scripts/Build-MCPServer.ps1             plugin-driven cmake build
+│   ├── BlueprintReader.uplugin
+│   ├── Scripts/Build-MCPServer.ps1             UBT-wrapper convenience script
 │   ├── Source/BlueprintReaderRuntime/          runtime BP introspection (loads in cooked builds)
 │   │   ├── Public/                             BlueprintRuntimeIntrospector, JSON output
 │   │   └── Private/                            impls + bp_reader.{list,read} console cmds
@@ -70,26 +72,29 @@ UE5_MCP/                                      ← project root
 │   │   ├── Public/                             BlueprintReaderTypes, Introspector,
 │   │   │                                       WireJson, LiveServer, *Commandlet.h
 │   │   └── Private/                            impls
-│   └── mcp-server/                             standalone C++20 MCP server
-│       ├── src/
-│       │   ├── BlueprintReaderTypes.h          wire types (snake_case JSON)
-│       │   ├── jsonrpc/                        Server, Mcp (handshake + dispatch)
-│       │   ├── tools/                          ToolRegistry, BlueprintTools, Bpir, Decompile
-│       │   │   ├── codegen/                    CppEmit, CppClassEmit, UnsupportedTreatment
-│       │   │   └── parse/                      CppLex, CppParse (C++ → BPIR)
-│       │   └── backends/                       Mock, Commandlet, Live, Auto, Caching, ReadOnly
-│       ├── tests/                              doctest cases (mock + live)
-│       ├── scripts/                            JSON-RPC + smoke harnesses
-│       ├── fixtures/                           BP_*.json mock-backend data
-│       ├── third_party/                        vendored deps
-│       ├── CMakeLists.txt
-│       └── vcpkg.json                          declared but not consumed by default
+│   └── Tests/                                  UE Program targets (UBT-built)
+│       ├── BlueprintReaderMcp/                 main exe → BlueprintReaderMcp.exe
+│       │   ├── BlueprintReaderMcp.{Target,Build}.cs
+│       │   └── Private/main.cpp
+│       ├── BlueprintReaderMcpCore/             shared static-lib module (impl)
+│       │   ├── BlueprintReaderMcpCore.Build.cs
+│       │   └── Private/
+│       │       ├── BlueprintReaderTypes.h      wire types (snake_case JSON)
+│       │       ├── jsonrpc/                    Server, Mcp (handshake + dispatch)
+│       │       ├── tools/                      ToolRegistry, BlueprintTools, Bpir, Decompile
+│       │       │   ├── codegen/                CppEmit, CppClassEmit, UnsupportedTreatment
+│       │       │   └── parse/                  CppLex, CppParse (C++ → BPIR)
+│       │       └── backends/                   Mock, Commandlet, Live, Auto, Caching, ReadOnly
+│       ├── BlueprintReaderMcpTests/            doctest suite → BlueprintReaderMcpTests.exe
+│       │   ├── BlueprintReaderMcpTests.{Target,Build}.cs
+│       │   ├── Private/                        441 cases (mock + live)
+│       │   └── fixtures/                       BP_*.json mock-backend data
+│       └── ThirdParty/                         vendored: nlohmann_json, fmt, doctest
 ├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset
 │                                               (regenerable; see "Reseed test BPs" below)
 ├── README.md                                   user-facing setup + tool table
-├── wiki/                                        source of truth for the GitHub Wiki
-│                                               (manually pushed to <repo>.wiki.git)
-└── .github/workflows/mcp-server.yml            CI (mock-only on windows-2022)
+└── wiki/                                       source of truth for the GitHub Wiki
+                                                (manually pushed to <repo>.wiki.git)
 ```
 
 The source-built engine is a sibling of this project at
@@ -119,30 +124,44 @@ UE setup — useful for iterating on the MCP server itself.
 
 ## Build
 
-### MCP server (mock backend, no UE needed)
-
-```pwsh
-cd Plugins/BlueprintReader/mcp-server
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe   # ~350 cases, <5 s
-```
-
-### UE plugin (needed for the commandlet / live backends)
-
-The engine must already be built. **Build flags this machine needs:**
+The MCP server is now a UE Program target — it builds via UBT
+alongside the rest of the plugin. Three independent targets:
 
 ```bat
+:: Editor (plugin DLLs):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   UE5_MCPEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
+
+:: MCP server exe:
+"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+  BlueprintReaderMcp Win64 Development ^
+  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  -NoUba -MaxParallelActions=4 -waitmutex
+
+:: doctest suite (~441 cases):
+"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+  BlueprintReaderMcpTests Win64 Development ^
+  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-`-NoUba -MaxParallelActions=4` is required to fit the build inside a
-small page file (UBA allocates large VAS chunks per worker). After the
-first full build, incremental rebuilds are fast (5–10 s for plugin-only
-changes).
+Or all three via the wrapper script:
+
+```pwsh
+Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
+  -EngineDir "D:\Projects\Unreal Engine 5" `
+  -ProjectFile "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+  -ExtraArgs "-NoUba -MaxParallelActions=4"
+```
+
+`-NoUba -MaxParallelActions=4` is required on this machine to fit the
+build inside a small page file (UBA allocates large VAS chunks per
+worker). Drop those flags on machines with normal page files to get
+UBA acceleration. After the first full build, incremental rebuilds are
+fast (5–10 s for plugin-only changes; ~10 s for an MCP-server-only
+incremental rebuild).
 
 ### Build invariants
 
@@ -164,15 +183,17 @@ changes).
 
 ## Test
 
-### Mock-only (CI-equivalent, fast)
+### Mock-only (fast)
 
 ```pwsh
-Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-~413 cases / 29000 assertions pass in <5 s; live cases auto-skip when
-env vars aren't set. CI runs this on every push that touches the
-mcp-server tree.
+441 cases / 29000+ assertions pass in <5 s; the 12 live-only cases
+auto-skip when env vars aren't set.
+
+CI workflow was removed during the CMake → UBT migration — UBT-based CI
+requires a runner with the engine source available, not yet set up.
 
 ### Live (drives real `UnrealEditor-Cmd.exe`)
 
@@ -180,12 +201,13 @@ mcp-server tree.
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
-Plugins\BlueprintReader\mcp-server\build\tests\Release\bp-reader-tests.exe
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-JSON-RPC + smoke harnesses live under `mcp-server/scripts/`:
-`roundtrip.ps1`, `smoke-batch-ops.ps1`, `smoke-decompile.ps1`,
-`smoke-transpile-cpp.ps1`, `smoke-cpp-roundtrip.ps1`.
+The legacy smoke scripts (`roundtrip.ps1`, `smoke-batch-ops.ps1`, etc.)
+were removed alongside the CMake build — the doctest suite covers their
+ground. For an interactive smoke, stream JSON-RPC frames against
+`BlueprintReaderMcp.exe`'s stdin/stdout directly.
 
 ### Reseed test BPs
 
@@ -298,7 +320,7 @@ the discoverability list in lockstep.
 
 - **Wire format:** snake_case JSON keys, `BPNode.meta` is a real nested
   object (not a string-of-JSON), `null` for empty optional strings.
-  Pinned in `Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`.
+  Pinned in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`.
 - **BPIR is the BP↔source pivot.** A versioned JSON AST (`tools/Bpir.h`)
   is what `decompile_function`, `transpile_function`, and
   `parse_cpp_function` operate on. Adding Lua / Python / JS later is

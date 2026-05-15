@@ -17,15 +17,6 @@
 
 #pragma once
 
-#ifdef WITH_UE
-    #include "CoreMinimal.h"
-    #include "BlueprintReaderTypes.generated.h"
-
-    using BPRString = FString;
-    template <class T> using BPRArray = TArray<T>;
-    using BPROptionalString = FString; // empty FString == null
-    using BPRJson = FString;            // serialized JSON object; see header notes
-#else
     #include <cstdint>
     #include <optional>
     #include <string>
@@ -36,23 +27,9 @@
     template <class T> using BPRArray = std::vector<T>;
     using BPROptionalString = std::optional<std::string>;
     using BPRJson = nlohmann::json;
-#endif
 
 // ----- BPPinType ------------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPPinType
-{
-    GENERATED_BODY()
-    UPROPERTY() FString Category;
-    UPROPERTY() FString SubCategory;
-    UPROPERTY() FString SubCategoryObject;
-    UPROPERTY() bool    bIsArray = false;
-    UPROPERTY() bool    bIsSet   = false;
-    UPROPERTY() bool    bIsMap   = false;
-};
-#else
 struct BPPinType
 {
     BPRString Category;
@@ -62,22 +39,9 @@ struct BPPinType
     bool IsSet   = false;
     bool IsMap   = false;
 };
-#endif
 
 // ----- BPPin ----------------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPPin
-{
-    GENERATED_BODY()
-    UPROPERTY() FString    Id;
-    UPROPERTY() FString    Name;
-    UPROPERTY() FString    Direction;
-    UPROPERTY() FBPPinType Type;
-    UPROPERTY() FString    DefaultValue;
-};
-#else
 struct BPPinLink
 {
     BPRString NodeId;
@@ -96,42 +60,17 @@ struct BPPin
     // call rather than requiring a separate get_graph (issue #5).
     BPRArray<BPPinLink> LinkedTo;
 };
-#endif
 
 // ----- BPPosition (inline {x,y} in wire format) -----------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPPosition
-{
-    GENERATED_BODY()
-    UPROPERTY() int32 X = 0;
-    UPROPERTY() int32 Y = 0;
-};
-#else
 struct BPPosition
 {
     int32_t X = 0;
     int32_t Y = 0;
 };
-#endif
 
 // ----- BPNode ---------------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPNode
-{
-    GENERATED_BODY()
-    UPROPERTY() FString         Id;
-    UPROPERTY() FString         Class;
-    UPROPERTY() FString         Title;
-    UPROPERTY() FBPPosition     Position;
-    UPROPERTY() FString         Comment;
-    UPROPERTY() TArray<FBPPin>  Pins;
-    UPROPERTY() FString         Meta; // serialized JSON object
-};
-#else
 struct BPNode
 {
     BPRString Id;
@@ -149,21 +88,9 @@ struct BPNode
     BPROptionalString GraphName;
     BPROptionalString GraphType;
 };
-#endif
 
 // ----- BPConnection ---------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPConnection
-{
-    GENERATED_BODY()
-    UPROPERTY() FString FromNode;
-    UPROPERTY() FString FromPin;
-    UPROPERTY() FString ToNode;
-    UPROPERTY() FString ToPin;
-};
-#else
 struct BPConnection
 {
     BPRString FromNode;
@@ -171,39 +98,17 @@ struct BPConnection
     BPRString ToNode;
     BPRString ToPin;
 };
-#endif
 
 // ----- BPGraphSummary -------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPGraphSummary
-{
-    GENERATED_BODY()
-    UPROPERTY() FString Name;
-    UPROPERTY() FString Type; // "EventGraph" | "Function" | "Macro" | "Construction"
-};
-#else
 struct BPGraphSummary
 {
     BPRString Name;
     BPRString Type;
 };
-#endif
 
 // ----- BPGraph --------------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPGraph
-{
-    GENERATED_BODY()
-    UPROPERTY() FString               Name;
-    UPROPERTY() FString               Type;
-    UPROPERTY() TArray<FBPNode>       Nodes;
-    UPROPERTY() TArray<FBPConnection> Connections;
-};
-#else
 struct BPGraph
 {
     BPRString Name;
@@ -211,33 +116,9 @@ struct BPGraph
     BPRArray<BPNode> Nodes;
     BPRArray<BPConnection> Connections;
 };
-#endif
 
 // ----- BPVariable -----------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPVariable
-{
-    GENERATED_BODY()
-    UPROPERTY() FString    Name;
-    UPROPERTY() FBPPinType Type;
-    UPROPERTY() FString    DefaultValue;
-    UPROPERTY() FString    Category;
-    UPROPERTY() bool       bIsReplicated = false;
-    UPROPERTY() bool       bIsEditable   = false;
-    // Extended metadata (Loop batch 2 — optional fields for richer
-    // codegen). RepCondition is BP's "Replication Condition" dropdown
-    // (None / InitialOnly / OwnerOnly / SkipOwner / SimulatedOnly /
-    // AutonomousOnly / SimulatedOrPhysics / InitialOrOwner / Custom);
-    // ExposeOnSpawn is the "Expose On Spawn" checkbox in BP variable
-    // details; RepNotifyFunc is the name of the OnRep_X callback when
-    // the variable has ReplicatedUsing/RepNotify enabled.
-    UPROPERTY() FString    RepCondition;
-    UPROPERTY() bool       bExposeOnSpawn = false;
-    UPROPERTY() FString    RepNotifyFunc;
-};
-#else
 struct BPVariable
 {
     BPRString Name;
@@ -250,38 +131,16 @@ struct BPVariable
     bool ExposeOnSpawn = false;
     BPROptionalString RepNotifyFunc;
 };
-#endif
 
 // ----- BPFunctionSummary ----------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPFunctionSummary
-{
-    GENERATED_BODY()
-    UPROPERTY() FString Name;
-};
-#else
 struct BPFunctionSummary
 {
     BPRString Name;
 };
-#endif
 
 // ----- BPFunction -----------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPFunction
-{
-    GENERATED_BODY()
-    UPROPERTY() FString             Name;
-    UPROPERTY() TArray<FBPVariable> Inputs;
-    UPROPERTY() TArray<FBPVariable> Outputs;
-    UPROPERTY() TArray<FBPVariable> Locals;
-    UPROPERTY() FBPGraph            Graph;
-};
-#else
 struct BPFunction
 {
     BPRString Name;
@@ -290,21 +149,9 @@ struct BPFunction
     BPRArray<BPVariable> Locals;
     BPGraph Graph;
 };
-#endif
 
 // ----- BPAssetSummary -------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPAssetSummary
-{
-    GENERATED_BODY()
-    UPROPERTY() FString AssetPath;
-    UPROPERTY() FString Name;
-    UPROPERTY() FString ParentClass;
-    UPROPERTY() FString ModifiedIso;
-};
-#else
 struct BPAssetSummary
 {
     BPRString AssetPath;
@@ -312,22 +159,10 @@ struct BPAssetSummary
     BPRString ParentClass;
     BPRString ModifiedIso;
 };
-#endif
 
 // ----- BPComponent ----------------------------------------------------------
 // Returned by `get_components`. Mirrors the SCS hierarchy.
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPComponentWire
-{
-    GENERATED_BODY()
-    UPROPERTY() FString Name;
-    UPROPERTY() FString Class;
-    UPROPERTY() FString Parent;
-    UPROPERTY() bool    bIsRoot = false;
-};
-#else
 struct BPComponent
 {
     BPRString Name;
@@ -335,25 +170,9 @@ struct BPComponent
     BPROptionalString Parent;
     bool IsRoot = false;
 };
-#endif
 
 // ----- BPMetadata -----------------------------------------------------------
 
-#ifdef WITH_UE
-USTRUCT()
-struct FBPMetadata
-{
-    GENERATED_BODY()
-    UPROPERTY() FString                    AssetPath;
-    UPROPERTY() FString                    Name;
-    UPROPERTY() FString                    ParentClass;
-    UPROPERTY() TArray<FString>            Interfaces;
-    UPROPERTY() TArray<FBPVariable>        Variables;
-    UPROPERTY() TArray<FBPFunctionSummary> Functions;
-    UPROPERTY() TArray<FString>            Macros;
-    UPROPERTY() TArray<FBPGraphSummary>    Graphs;
-};
-#else
 struct BPMetadata
 {
     BPRString AssetPath;
@@ -365,7 +184,6 @@ struct BPMetadata
     BPRArray<BPRString> Macros;
     BPRArray<BPGraphSummary> Graphs;
 };
-#endif
 
 // ============================================================================
 // Standalone-only nlohmann/json adapters.

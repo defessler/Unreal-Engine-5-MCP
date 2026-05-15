@@ -11,37 +11,37 @@ skip the plugin entirely — useful for smoke-testing the server.
 |------------------------|--------------|---------------------------------------------------------|
 | Windows 10/11, x64     | All          | The codebase is Windows-only today (`CreateProcessW`).  |
 | Visual Studio 2022     | All          | "Game development with C++" workload + Win10/11 SDK.    |
-| CMake 3.20+            | MCP server   | Bundled with VS or `winget install Kitware.CMake`.      |
-| UE 5.7 source build    | Plugin       | Source build, not the launcher binary build.            |
-| ~120 GB disk           | Plugin       | UE source ~70 GB pulled by `Setup.bat`.                 |
+| UE 5.7 source build    | All          | Source build, not the launcher binary build. Required to build the MCP server now that it's a UE Program target. |
+| ~120 GB disk           | All          | UE source ~70 GB pulled by `Setup.bat`.                 |
 
 **No network, no git, no vcpkg required for the MCP server.** Third-party
 deps (nlohmann_json, fmt, doctest) are vendored under
-`Plugins/BlueprintReader/mcp-server/third_party/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/Plugins/BlueprintReader/mcp-server/third_party).
+`Plugins/BlueprintReader/Tests/ThirdParty/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/Plugins/BlueprintReader/Tests/ThirdParty).
 
 ## 1. Build the MCP server
 
-> Step 3 (build the editor target) also builds the MCP server via the
-> plugin's `PreBuildStep`. You can skip step 1 if you're going to do
-> step 3 anyway — the standalone path here is for **mock-only** runs
-> or validating the server before bringing UE into the loop.
+The MCP server is now a UE Program target — UBT builds it alongside
+the rest of the plugin (with UBA cache, ninja, etc.) instead of running
+a separate CMake toolchain.
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
-cd UE5_MCP\Plugins\BlueprintReader\mcp-server
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-build\tests\Release\bp-reader-tests.exe
+cd UE5_MCP
+# Build the MCP server + the doctest suite via UBT:
+.\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
+  -EngineDir "<Path>\UnrealEngine" `
+  -ProjectFile "$PWD\UE5_MCP.uproject"
+# Run the suite:
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-The `bp-reader-tests.exe` run takes ~5 s. 332 mock-backend cases pass; the
-12 commandlet-backed cases skip without engine env vars set — that's
-expected.
+The test exe run takes ~5 s. 441 cases pass; the 12 commandlet-backed
+cases skip without engine env vars set — that's expected.
 
 The exe you'll point Claude at lives at:
 
 ```
-UE5_MCP\Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe
+UE5_MCP\Binaries\Win64\BlueprintReaderMcp.exe
 ```
 
 If you only want the mock backend (you don't have a UE project to point at,
@@ -125,24 +125,27 @@ and can saturate small page files even on 64 GB RAM machines.
 After the first full build (10–30 min), incremental rebuilds are 5–10 s
 for plugin-only changes.
 
-### Plugin-driven MCP server build
+### MCP server is its own UBT target
 
-`BlueprintReader.uplugin` declares a `PreBuildStep` that invokes
-`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` before the editor
-module compiles. The script:
+Building the editor target no longer rebuilds the MCP server as a side
+effect — the prior CMake-based `PreBuildStep` is gone. The MCP server
+lives as two independent UE Program targets:
 
-- **Skips** when `bp-reader-mcp.exe` is newer than every `Plugins/BlueprintReader/mcp-server/src/`
-  file + `CMakeLists.txt` (~milliseconds, no rebuild).
-- **Configures** CMake on the first build (or after `Plugins/BlueprintReader/mcp-server/build/`
-  is wiped). Passes `-DGIT_EXECUTABLE=<resolved>` so FetchContent's git
-  clone step works regardless of shell PATH state.
-- **Builds** Release config when sources changed.
-- **No-ops cleanly** when used standalone — the plugin can be dropped
-  into any UE project that doesn't include `mcp-server/`.
+- `BlueprintReaderMcp` → `Binaries\Win64\BlueprintReaderMcp.exe`
+- `BlueprintReaderMcpTests` → `Binaries\Win64\BlueprintReaderMcpTests.exe`
 
-So once setup is done, `Build.bat UE5_MCPEditor ...` keeps the MCP exe
-fresh whenever C++ sources change, and incremental builds add only a
-few seconds (~5–15 s) when the MCP server changed.
+Either invoke `Build.bat` directly per target, or use the convenience
+wrapper:
+
+```powershell
+.\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
+  -EngineDir "D:\Path\To\UnrealEngine" `
+  -ProjectFile "$PWD\UE5_MCP.uproject" `
+  [-Targets All|Mcp|Tests] [-Config Development] [-ExtraArgs "-NoUba -MaxParallelActions=4"]
+```
+
+Incremental rebuilds: changing one `.cpp` under `Plugins/BlueprintReader/Tests/`
+rebuilds in ~10 s.
 
 ### Drop the plugin into your own project
 
@@ -158,7 +161,7 @@ The fastest path is to ask the server for a ready-to-paste config snippet:
 
 ```powershell
 # Auto-discovers your engine + project from the exe location
-Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe config --client=claude-code
+Binaries\Win64\BlueprintReaderMcp.exe config --client=claude-code
 ```
 
 That prints a complete `.mcp.json` block with absolute paths filled in.
@@ -173,7 +176,7 @@ manual path + per-client conventions are documented below.
 ### Sanity-check the install before wiring
 
 ```powershell
-Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe doctor
+Binaries\Win64\BlueprintReaderMcp.exe doctor
 ```
 
 Walks the same checks the server runs at startup and prints what's
@@ -207,16 +210,14 @@ In your client, ask:
 
 The AI should call `read_blueprint`, get back JSON, and summarize.
 
-You can also drive the server directly with the bundled smoke test
-(no client needed):
+You can also drive the doctest suite directly (no client needed) to
+sanity-check the whole stack:
 
 ```powershell
-pwsh -File Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
-    -Exe Plugins\BlueprintReader\mcp-server\build\Release\bp-reader-mcp.exe `
-    -Asset /Game/AI/BP_TestEnemy
+Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-Or interactively:
+Or run the server interactively against an MCP client:
 
 ```powershell
 pwsh -File Plugins\BlueprintReader\Scripts\Start-MCPServer.ps1
