@@ -4,6 +4,17 @@ A 13-chapter tutorial for a mid-level engineer to construct bp-reader
 end-to-end. Each chapter is a milestone: at the end, you have
 something demonstrably working before moving on.
 
+> **Note on build system:** this tutorial walks through building the MCP
+> server as a **standalone CMake project** for pedagogical reasons — it's
+> easier to follow when each chapter adds one new piece on top of a
+> minimal CMake skeleton. The actual shipping project moved to a UE
+> Program target (UBT) so the MCP server builds with the rest of the UE
+> plugin. The architectural concepts (JSON-RPC framing, tool registry,
+> backends, BPIR pivot) are identical between the two builds — only the
+> build commands and the source-file locations differ. See
+> [04-mcp-server.md](../design/04-mcp-server.md) for the current
+> production layout.
+
 ## Audience + assumptions
 
 You should be comfortable with:
@@ -42,7 +53,7 @@ Chapter 13 you'll have:
 | [02](02-mock-backend.md) | Mock backend + first read tool | `list_blueprints` returns fixture data |
 | [03](03-ue-plugin.md) | UE plugin scaffolding | Editor plugin loads in UE; commandlet dispatches |
 | [04](04-introspector.md) | Reading a UBlueprint | `read_blueprint` returns real wire JSON |
-| [05](05-commandlet-bridge.md) | MCP → child UE process | mcp-server spawns commandlet, reads response |
+| [05](05-commandlet-bridge.md) | MCP → child UE process | MCP server spawns commandlet, reads response |
 | [06](06-first-write.md) | First write op | `add_variable` round-trips |
 | [07](07-graph-writes.md) | Graph mutations | `add_node` + `wire_pins` with K2 schema |
 | [08](08-batching.md) | apply_ops + named slots | Multi-op batch with slot resolution |

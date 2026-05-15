@@ -23,7 +23,7 @@ By the end of this chapter, `tools/list` reports two tools and
 Before you can define an interface, you need the types it returns. Keep
 these in a single header — every backend, every tool handler, and every
 test will include it. The production version is
-`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`; here's
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`; here's
 the minimum slice for chapter 2.
 
 `src/BlueprintReaderTypes.h`:
@@ -161,7 +161,7 @@ Two style notes worth internalizing now:
   different from "absent". Rationale in `../design/06-wire-protocol.md`.
 - **`BPPinType` is a nested object**, not a stringly-typed shorthand.
   Shorthand layer arrives later — see
-  `Plugins/BlueprintReader/mcp-server/src/tools/TypeShorthand.cpp`.
+  `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/TypeShorthand.cpp`.
 
 ## The backend interface
 
@@ -202,7 +202,7 @@ public:
 ```
 
 Two methods is enough for the chapter. The real interface (in
-`Plugins/BlueprintReader/mcp-server/src/backends/IBlueprintReader.h`) has
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/IBlueprintReader.h`) has
 ~80 read and write methods by the time it covers blueprints + data
 tables + materials + automation — but they're all the same pattern.
 Add one when you need it.
@@ -311,7 +311,7 @@ BPMetadata MockBlueprintReader::ReadBlueprint(std::string_view assetPath) {
 Drop these in `fixtures/`. The format mirrors the wire shape — each
 fixture is one file per BP, top-level keys for the slices each tool
 returns. The full version in
-`Plugins/BlueprintReader/mcp-server/fixtures/BP_Enemy.json` adds graphs
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_Enemy.json` adds graphs
 and functions; chapter 2 only needs summary + metadata.
 
 `fixtures/BP_Enemy.json`:
@@ -483,7 +483,7 @@ void RegisterBlueprintTools(ToolRegistry& reg,
 
 For the full, production version with `fields`/`limit`/`offset` response
 controls, see
-`Plugins/BlueprintReader/mcp-server/src/tools/BlueprintTools.cpp`. Those
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/BlueprintTools.cpp`. Those
 are quality-of-life additions you can layer on later.
 
 ## Wiring tools/list and tools/call into main.cpp
@@ -571,7 +571,7 @@ Note the `tools/call` response shape: MCP wraps every tool result in a
 *inner* text is the canonical JSON your tool actually returns; the
 outer envelope is fixed by spec. Production code adds `_meta` with
 timing and arg context — see
-`Plugins/BlueprintReader/mcp-server/src/jsonrpc/Mcp.cpp`.
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/jsonrpc/Mcp.cpp`.
 
 Also notice: tool errors come back as `isError: true` results, not as
 JSON-RPC `error` envelopes. That's deliberate — a missing tool isn't a
@@ -629,8 +629,8 @@ add_test(NAME bp-reader-tests COMMAND bp-reader-tests)
 Build and run:
 
 ```pwsh
-cmake --build build --config Release
-.\build\tests\Release\bp-reader-tests.exe
+# (same UBT command rebuilds incrementally)
+.\build\tests\Release\BlueprintReaderMcpTests.exe
 ```
 
 You should see a single test passing.
@@ -646,7 +646,7 @@ Drive the server end-to-end:
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_blueprints","arguments":{"path":"/Game"}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_blueprint","arguments":{"asset_path":"/Game/AI/BP_Enemy"}}}
-'@ | .\build\Release\bp-reader-mcp.exe
+'@ | .\build\Release\BlueprintReaderMcp.exe
 ```
 
 Expect:

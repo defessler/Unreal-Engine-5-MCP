@@ -3,7 +3,7 @@
 The MCP tool layer, all four backends, and the editor plugin agree on
 one set of JSON shapes. This document defines them. The canonical
 declaration lives in
-`Plugins/BlueprintReader/mcp-server/src/BlueprintReaderTypes.h`; the
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`; the
 plugin's UE-side mirror is at
 `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Public/BlueprintReaderTypes.h`.
 The two compile from the same header — `#define WITH_UE` swaps in
@@ -333,7 +333,7 @@ The introspector populates a handful of well-known keys:
 | `eventName`        | Event / CustomEvent               | `"ReceiveBeginPlay"` |
 | `castBroken`       | DynamicCast where the link is dead| `true` |
 
-The mock fixture in `mcp-server/fixtures/BP_Enemy.json:97-99` is a real
+The mock fixture in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_Enemy.json:97-99` is a real
 example: an Event node with `{ "event_name": "ReceiveBeginPlay" }`. Note
 the snake_case variant — the mock fixtures predate the camelCase
 convention. `MockBlueprintReader::FindNode`

@@ -65,7 +65,7 @@ Statements are the K2 node families distilled down — `if/set/call/
 return/cast/switch/for_each/while/sequence/break/continue/comment/
 unsupported`. Expressions cover the value-producing nodes — `var/
 lit/call/cast/member/index/self/new_array/new_struct`. The full
-grammar is in [`tools/Bpir.h`](../../Plugins/BlueprintReader/mcp-server/src/tools/Bpir.h).
+grammar is in [`tools/Bpir.h`](../../Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/Bpir.h).
 Two examples:
 
 ```

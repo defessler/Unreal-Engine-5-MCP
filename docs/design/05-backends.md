@@ -7,7 +7,7 @@ decides whether the call ends up in a fixture file, a child
 editor.
 
 Four implementations live under
-`Plugins/BlueprintReader/mcp-server/src/backends/`:
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/`:
 
 | Backend     | What it talks to                | When to use                               |
 |-------------|---------------------------------|-------------------------------------------|
@@ -97,7 +97,7 @@ Source: `MockBlueprintReader.h`, `MockBlueprintReader.cpp`.
 
 The mock backend reads every `*.json` file in a fixtures directory at
 construction time and serves the parsed metadata back. It has no
-runtime dependency on UE — it's what lets `bp-reader-tests.exe` exercise
+runtime dependency on UE — it's what lets `BlueprintReaderMcpTests.exe` exercise
 the server end-to-end in CI without an engine checkout.
 
 ### Fixture loading
@@ -122,7 +122,7 @@ fixtures directory is meant to define a flat set of canonical BPs.
 
 Each fixture is a single JSON object with four required keys and one
 optional. Real example —
-`mcp-server/fixtures/BP_Enemy.json:1-69`:
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_Enemy.json:1-69`:
 
 ```json
 {

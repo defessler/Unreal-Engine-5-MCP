@@ -83,7 +83,7 @@ server's `apply_ops` driver, not of the plugin.
 
 ## MCP-side: the apply_ops driver
 
-The driver in `mcp-server/src/tools/ApplyOps.cpp` owns:
+The driver in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ApplyOps.cpp` owns:
 
 - A RAII guard that calls `BeginBatch` on entry and `EndBatch` on
   scope exit.
@@ -428,7 +428,7 @@ entry for `preview_ops` dispatches to `ValidateOps` the same way.
 Build, then drive `apply_ops` end to end:
 
 ```pwsh
-Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 -Tool apply_ops -Args @'
+<removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> -Tool apply_ops -Args @'
 {
   "ops": [
     {"op": "create_blueprint",
@@ -476,7 +476,7 @@ Expect a response like:
 Now confirm it landed:
 
 ```pwsh
-Plugins\BlueprintReader\mcp-server\scripts\roundtrip.ps1 `
+<removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `
     -Tool read_blueprint -Args '{"asset_path":"/Game/AI/BP_BatchDemo"}'
 ```
 

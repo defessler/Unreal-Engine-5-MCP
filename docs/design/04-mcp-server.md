@@ -2,7 +2,7 @@
 
 The other doc, [03-plugin-internals.md](03-plugin-internals.md),
 covers what runs inside the UE editor. This one covers what runs
-outside it — the `bp-reader-mcp.exe` process that MCP clients
+outside it — the `BlueprintReaderMcp.exe` process that MCP clients
 actually launch. Component relationships are in
 [02-architecture.md](02-architecture.md).
 
@@ -21,48 +21,61 @@ whole `IBlueprintReader` story.
 
 ## Source layout
 
+The MCP server is a pair of UE Program targets under
+`Plugins/BlueprintReader/Tests/`. The "Tests" dir name is a UBT
+constraint (the only directory under a plugin that UBT auto-scans
+for Program `Target.cs` files) — `BlueprintReaderMcp` is the
+production exe, `BlueprintReaderMcpTests` is the doctest suite.
+
 ```
-mcp-server/
-├── src/
-│   ├── main.cpp                     entry point + doctor/config subcommands
-│   ├── Env.{h,cpp}                  env-var helpers
-│   ├── Diagnostics.{h,cpp}          setup checks (doctor + startup)
-│   ├── BlueprintReaderTypes.h       wire shapes (shared with the plugin)
-│   ├── jsonrpc/
-│   │   ├── Server.{h,cpp}           JSON-RPC 2.0 transport
-│   │   └── Mcp.{h,cpp}              MCP handshake + tools/call wrapper
-│   ├── tools/
-│   │   ├── ToolRegistry.{h,cpp}     descriptor + dispatch table
-│   │   ├── BlueprintTools.{h,cpp}   116 tool registrations
-│   │   ├── ApplyOps.{h,cpp}         apply_ops + preview_ops
-│   │   ├── CompileFunction.{h,cpp}  compile_function
-│   │   ├── JsonProjection.{h,cpp}   `fields` projection + `limit`/`offset`
-│   │   ├── TypeShorthand.{h,cpp}    "Vector" → BPPinType expansion
-│   │   ├── Bpir.{h,cpp}             BPIR AST (BP↔C++ pivot)
-│   │   ├── Decompile.{h,cpp}        BP graph → BPIR
-│   │   ├── codegen/                  BPIR → C++ emission
-│   │   └── parse/                    C++ → BPIR (lexer + parser)
-│   ├── backends/
-│   │   ├── IBlueprintReader.h       the contract
-│   │   ├── BackendFactory.{h,cpp}   config + Create()
-│   │   ├── MockBlueprintReader.{h,cpp}
-│   │   ├── CommandletBlueprintReader.{h,cpp}
-│   │   ├── LiveBlueprintReader.{h,cpp}
-│   │   ├── AutoBlueprintReader.{h,cpp}
-│   │   ├── CachingBlueprintReader.{h,cpp}
-│   │   └── ReadOnlyBlueprintReader.{h,cpp}
-│   └── util/
-│       └── SingleInstanceLock.{h,cpp}
-├── tests/                           doctest cases (~350 mock + live)
-├── scripts/                         JSON-RPC + smoke harnesses
-├── fixtures/                        BP_*.json mock data
-├── third_party/
-│   ├── nlohmann_json/
-│   ├── fmt/
-│   └── doctest/
-├── CMakeLists.txt
-└── vcpkg.json                       declared but not consumed by default
+Plugins/BlueprintReader/Tests/
+├── BlueprintReaderMcp/                          Program target → BlueprintReaderMcp.exe
+│   ├── BlueprintReaderMcp.{Target,Build}.cs
+│   └── Private/
+│       └── main.cpp                              entry + doctor/config subcommands
+├── BlueprintReaderMcpCore/                       static-lib module (linked by both Programs)
+│   ├── BlueprintReaderMcpCore.Build.cs
+│   └── Private/
+│       ├── Env.{h,cpp}                           env-var helpers
+│       ├── Diagnostics.{h,cpp}                   setup checks (doctor + startup)
+│       ├── BlueprintReaderTypes.h                wire shapes (shared with the plugin)
+│       ├── jsonrpc/
+│       │   ├── Server.{h,cpp}                    JSON-RPC 2.0 transport + notification queue
+│       │   └── Mcp.{h,cpp}                       MCP handshake + tools/call wrapper
+│       ├── tools/
+│       │   ├── ToolRegistry.{h,cpp}              descriptor + dispatch table + active subset
+│       │   ├── ToolCategories.{h,cpp}            category → tool-list map (filter UX)
+│       │   ├── BlueprintTools.{h,cpp}            ~118 tool registrations + enable_tool_category
+│       │   ├── ApplyOps.{h,cpp}                  apply_ops + preview_ops
+│       │   ├── CompileFunction.{h,cpp}           compile_function
+│       │   ├── JsonProjection.{h,cpp}            `fields` projection + `limit`/`offset`
+│       │   ├── TypeShorthand.{h,cpp}             "Vector" → BPPinType expansion
+│       │   ├── Bpir.{h,cpp}                      BPIR AST (BP↔C++ pivot)
+│       │   ├── Decompile.{h,cpp}                 BP graph → BPIR
+│       │   ├── codegen/                          BPIR → C++ emission
+│       │   └── parse/                            C++ → BPIR (lexer + parser)
+│       └── backends/
+│           ├── IBlueprintReader.h                the contract
+│           ├── BackendFactory.{h,cpp}            config + Create()
+│           ├── MockBlueprintReader.{h,cpp}
+│           ├── CommandletBlueprintReader.{h,cpp}
+│           ├── SocketBlueprintReader.{h,cpp}     shared by live + cmdlet attach
+│           ├── AutoBlueprintReader.{h,cpp}
+│           ├── CachingBlueprintReader.{h,cpp}
+│           └── ReadOnlyBlueprintReader.{h,cpp}
+├── BlueprintReaderMcpTests/                      Program target → BlueprintReaderMcpTests.exe
+│   ├── BlueprintReaderMcpTests.{Target,Build}.cs
+│   ├── Private/                                  doctest cases (~461 mock + live)
+│   └── fixtures/                                 BP_*.json mock data
+└── ThirdParty/                                   vendored, header-only
+    ├── nlohmann_json/
+    ├── fmt/
+    └── doctest/
 ```
+
+Build: `Build.bat BlueprintReaderMcp Win64 Development -project=…` or
+the wrapper `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`.
+Output lands at `<Project>/Binaries/Win64/BlueprintReaderMcp.exe`.
 
 ## Entry point
 
@@ -419,7 +432,7 @@ for what the live backend connects to.
 
 ## Single-instance lock
 
-Two `bp-reader-mcp.exe` processes against the same project would
+Two `BlueprintReaderMcp.exe` processes against the same project would
 spawn two commandlet daemons; both would hold open the same
 `.uasset` files; one would lose `SavePackage` to a sharing
 violation; DDC corruption is on the table. The lock prevents it.
@@ -464,73 +477,52 @@ for not wedging the project state.
 
 ## Build
 
-`CMakeLists.txt:1-122`. Three rules worth knowing:
+UBT targets — see `BlueprintReaderMcp.Build.cs`,
+`BlueprintReaderMcpCore.Build.cs`, and the `.Target.cs` files in the
+sibling directories. Three rules worth knowing:
 
 ### Vendored deps, no network
 
-Lines 35-61:
+The three vendored libraries (nlohmann_json, fmt, doctest) live
+under `Tests/ThirdParty/` and are wired into the `Core` module via
+`PrivateIncludePaths` in `BlueprintReaderMcpCore.Build.cs`:
 
-```cmake
-add_library(nlohmann_json INTERFACE)
-target_include_directories(nlohmann_json INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json)
-
-add_library(fmt INTERFACE)
-target_include_directories(fmt INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt)
-target_compile_definitions(fmt INTERFACE FMT_HEADER_ONLY=1)
-
-add_library(doctest INTERFACE)
-target_include_directories(doctest INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/doctest)
+```csharp
+string ThirdParty = Path.Combine(ModuleDirectory, "..", "ThirdParty");
+PublicIncludePaths.Add(Path.Combine(ThirdParty, "nlohmann_json"));
+PublicIncludePaths.Add(Path.Combine(ThirdParty, "fmt"));
+PublicDefinitions.Add("FMT_HEADER_ONLY=1");
+// doctest is added only by BlueprintReaderMcpTests.Build.cs since
+// production code doesn't pull it in.
 ```
 
 All three deps are header-only when consumed this way. fmt uses
-`FMT_HEADER_ONLY=1` to keep template instantiations inline so we
-don't need `src/format.cc` + `src/os.cc`. A fresh clone builds with
-no `git submodule`, no `FetchContent`, no `vcpkg install`, no
-network access — which is what makes the
-`BlueprintReader.uplugin` `PreBuildSteps` reliable (UE plugin
-PreBuild runs in a sandbox where network access isn't guaranteed).
+`FMT_HEADER_ONLY=1` to keep template instantiations inline. A fresh
+clone builds with no submodules, no `FetchContent`, no `vcpkg
+install`, no network access — vendored deps stay self-contained
+under the plugin's source tree.
 
-### Warnings-as-errors for unused parameters
+### Warnings + flag posture
 
-Lines 12-33:
+`BlueprintReaderMcpCore.Build.cs` flips a handful of UE Program
+defaults to match the CMake build's posture:
 
-```cmake
-add_compile_options(/we4100 /we4101 /we4189 /we4505)
-```
-
-The motivating case was the `visited` parameter in
-`DecompileStatement` — clean at MSVC `/W4` here but flagged as a
-warning in a downstream consumer's stricter build. Promoting the
-relevant warnings to errors makes us catch them on this side.
+- `bForceEnableExceptions = true` — `nlohmann::json` throws on parse.
+- `bUseRTTI = true` — the decorator chain uses `dynamic_cast`.
+- `bCompileAgainstEngine = false`, `bCompileAgainstCoreUObject =
+  false` — pure C++ stdlib, no UE prelude.
+- `bAddDefaultIncludePaths = false` — don't drag `CoreMinimal.h`
+  into TUs that don't need it.
+- `PCHUsage = PCHUsageMode.NoPCHs` — per-TU compile, no shared PCH.
+- `bUseUnityBuild = false` (in the Target).
 
 ### Fixtures staging
 
-Lines 111-116:
-
-```cmake
-add_custom_command(TARGET bp-reader-mcp POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
-        "$<TARGET_FILE_DIR:bp-reader-mcp>/fixtures"
-    COMMENT "Staging fixtures next to bp-reader-mcp.exe"
-)
-```
-
-The mock backend's default fixture path is `<exe>/fixtures`. Post-
-build copy makes the default work without env vars.
-
-### `vcpkg.json` — declared but not consumed
-
-`mcp-server/vcpkg.json` exists and lists `nlohmann-json`, `fmt`,
-`doctest` as dependencies. It's not used by the default CMake
-configuration — `find_package` is never called for these names. The
-manifest is kept for the day someone wants a non-vendored build
-(corporate compliance, security review needing fresh CVE pulls,
-etc.); flipping the CMakeLists to `find_package(...)` instead of
-the vendored `INTERFACE` libraries is a contained change.
+The mock backend's default fixture path is `<exe>/fixtures`. The
+fixtures themselves live at `Tests/BlueprintReaderMcpTests/fixtures/`
+in the source tree; the build's POST_BUILD step (in
+`Build-MCPServer.ps1`) copies them next to the built exe so the
+default works without env vars.
 
 ## Testing
 
@@ -547,7 +539,7 @@ TEST_CASE("ToolRegistry exposes 119 tools (12 read + 22 write + 3 meta + 3 batch
     with input schemas")
 ```
 
-Test layout: doctest cases live in `mcp-server/tests/`. Mock-only
+Test layout: doctest cases live in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/`. Mock-only
 runs need no env (these are the CI default). Live cases auto-skip
 when `BP_READER_PROJECT` / `BP_READER_ENGINE_DIR` aren't set;
 setting both enables the live integration suite. CI runs only the
@@ -560,7 +552,7 @@ mock subset; live cases run locally on developer machines.
   lifecycle, threading.
 - [03-plugin-internals.md](03-plugin-internals.md) — the UE-side
   counterpart of every protocol described here.
-- `mcp-server/scripts/roundtrip.ps1` — shows end-to-end framing
-  against a running `bp-reader-mcp.exe`.
-- `mcp-server/tests/test_mcp.cpp` — the canonical example of an
+- `(removed in the UBT migration: roundtrip.ps1` — shows end-to-end framing
+  against a running `BlueprintReaderMcp.exe`.
+- `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp` — the canonical example of an
   in-process MCP handshake + `tools/list` + `tools/call`.

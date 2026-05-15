@@ -435,7 +435,7 @@ nlohmann::json CommandletBlueprintReader::RunOpDaemon(
 ```
 
 `SocketBlueprintReader::RunOp`
-(`mcp-server/src/backends/SocketBlueprintReader.cpp:RunOp`) frames a
+(`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/SocketBlueprintReader.cpp:RunOp`) frames a
 request, calls `SendAll`, reads one line back with `RecvLine`, and
 either returns the embedded `json` field or throws. Same shape on
 the wire as live. Same C++ code paths after the wire.
@@ -560,12 +560,12 @@ Claude Code sessions:
 # Terminal A
 $env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 $env:BP_READER_BACKEND = "commandlet"
-& "D:/Projects/UE5_MCP/Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe"
+& "D:/Projects/UE5_MCP/Binaries/Win64/BlueprintReaderMcp.exe"
 
 # Terminal B (simultaneously)
 $env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
 $env:BP_READER_BACKEND = "commandlet"
-& "D:/Projects/UE5_MCP/Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe"
+& "D:/Projects/UE5_MCP/Binaries/Win64/BlueprintReaderMcp.exe"
 ```
 
 Send a `tools/call list_blueprints` to each. Both should succeed.
