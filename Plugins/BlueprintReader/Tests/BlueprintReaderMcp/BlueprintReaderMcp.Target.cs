@@ -37,6 +37,13 @@ public class BlueprintReaderMcpTarget : TargetRules
         LinkType = TargetLinkType.Monolithic;
         LaunchModuleName = "BlueprintReaderMcp";
 
+        // V6 defaults: see the [Upgrade] block UBT prints without this.
+        // The Program is standalone C++20 stdlib-only -- the V6 flags
+        // (strict conformance, IWYU PCH usage, no legacy include paths,
+        // C++20 default, format-string validation) are all compatible
+        // with what this target already wants.
+        DefaultBuildSettings = BuildSettingsVersion.V6;
+
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
         CppStandard = CppStandardVersion.Cpp20;
 
