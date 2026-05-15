@@ -1085,6 +1085,33 @@ public:
     virtual SelectionResult GetSelectedActors() {
         throw BlueprintReaderError("GetSelectedActors not supported by this backend");
     }
+
+    // One-call situational awareness: what assets are open, which is
+    // active, what level is loaded, where's the viewport camera, what
+    // actors are selected, is PIE running. Inspired by Epic
+    // AIAssistant's Slate-querier surface — a single call answers
+    // "what is the user looking at right now?". Returns raw JSON
+    // because the shape has 6+ optional fields each with their own
+    // structure; constructing a flat struct hierarchy adds noise the
+    // tools/call layer just re-serializes anyway.
+    virtual BPRJson GetEditorState() {
+        throw BlueprintReaderError("GetEditorState not supported by this backend");
+    }
+
+    // Run a Python script in the editor. Gated server-side by
+    // BP_READER_ALLOW_PYTHON=1 — when off, returns
+    // {ok: false, error: "python_disabled"} rather than throwing.
+    // Mirrors Epic AIAssistant's code-as-tool capability.
+    struct PythonResult {
+        bool        ok = false;
+        std::string error;          // "python_disabled" when env-gated off
+        std::string commandResult;
+        BPRJson     log;            // array of {type, output} entries
+    };
+    virtual PythonResult RunPythonScript(std::string_view code) {
+        (void)code;
+        throw BlueprintReaderError("RunPythonScript not supported by this backend");
+    }
     // `replace=true` clears existing selection first; `false` adds to it.
     virtual SelectionResult SetSelection(
         const std::vector<std::string>& actorNames, bool replace = true) {
