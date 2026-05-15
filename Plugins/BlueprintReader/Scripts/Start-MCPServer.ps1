@@ -63,6 +63,17 @@ if (-not $Exe) {
     }
 }
 if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) {
+    # Best-effort .uproject for the build hint. If -UProject wasn't
+    # passed, fall back to a single .uproject in $ProjectDir; if there's
+    # 0 or 2+, show a placeholder. PowerShell's `-or` is boolean, NOT a
+    # null-coalescing operator -- `$x -or '<placeholder>'` evaluates to
+    # `True`, not to $x's value, so don't use it here.
+    $uprojectHint = if ($UProject) {
+        $UProject
+    } else {
+        $found = @(Get-ChildItem -LiteralPath $ProjectDir -Filter '*.uproject' -ErrorAction SilentlyContinue)
+        if ($found.Count -eq 1) { $found[0].FullName } else { '<your.uproject>' }
+    }
     Write-Error @"
 $tag BlueprintReaderMcp.exe not found.
   Tried:
@@ -70,9 +81,9 @@ $tag BlueprintReaderMcp.exe not found.
     $($PluginDir)\mcp-server\build\Release\bp-reader-mcp.exe (legacy CMake build)
 
   Build with:
-    Build.bat BlueprintReaderMcp Win64 Development -project="$($uproject -or '<your.uproject>')"
+    Build.bat BlueprintReaderMcp Win64 Development -project="$uprojectHint"
   Or use the wrapper:
-    .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 -EngineDir "<engine>" -ProjectFile "<your.uproject>"
+    .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 -EngineDir "<engine>" -ProjectFile "$uprojectHint"
 "@
     exit 1
 }
