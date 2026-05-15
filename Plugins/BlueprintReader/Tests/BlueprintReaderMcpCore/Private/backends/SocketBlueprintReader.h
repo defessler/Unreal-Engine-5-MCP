@@ -164,6 +164,13 @@ public:
     SelectionResult GetSelectedActors() override;
     BPRJson GetEditorState() override;
     PythonResult RunPythonScript(std::string_view code) override;
+    AssetGraphResult GetReferencers(std::string_view assetPath) override;
+    AssetGraphResult GetDependencies(std::string_view assetPath) override;
+    ConfigReadResult ReadConfigValue(std::string_view section, std::string_view key,
+                                     std::string_view file) override;
+    ConfigWriteResult SetConfigValue(std::string_view section, std::string_view key,
+                                     std::string_view value, std::string_view file) override;
+    BuildLightingResult BuildLighting(std::string_view quality) override;
     SelectionResult SetSelection(const std::vector<std::string>& actorNames,
                                  bool replace) override;
     SpawnActorResult SpawnActor(std::string_view classPath,
