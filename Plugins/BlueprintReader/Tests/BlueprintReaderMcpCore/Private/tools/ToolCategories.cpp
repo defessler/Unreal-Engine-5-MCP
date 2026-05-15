@@ -59,9 +59,10 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
             // Batches + ops
             "apply_ops",
             "compile_function",
-            // Discoverability
+            // Discoverability + situational awareness
             "list_node_kinds",
             "list_pin_categories",
+            "get_editor_state",
             "shutdown_daemon",
         }},
 
@@ -119,12 +120,14 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
         {"editor", {
             "pie_start", "pie_stop",
             "get_selected_actors", "set_selection",
+            "get_editor_state",
             "spawn_actor", "set_actor_transform", "delete_actor",
             "focus_actor", "set_camera_transform",
             "take_screenshot", "take_viewport_screenshot",
             "set_show_flag",
             "console_command", "get_cvar", "set_cvar",
             "read_output_log",
+            "run_python_script",
             "live_coding_compile",
         }},
 
