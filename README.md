@@ -121,6 +121,22 @@ drop in as additional codegen + parser pairs without touching the IR.
   (`TakeDamage` shadowing AActor::TakeDamage, etc.). Pair with
   `write_generated_source` to drop `.h`/`.cpp` into
   `<Project>/Source/<Module>/Generated/`.
+- **Auto-lowered structural patterns** — what used to require manual
+  porting now lands as real compilable scaffolds. **Stateful macros**
+  (`DoOnce`, `FlipFlop`, `DoN`) get synth `bool` / `int32` member
+  variables plus guarded `if` blocks. **Latent actions**
+  (`Delay`, `RetriggerableDelay`, `DelayUntilNextTick`) split the
+  parent function at the delay boundary: pre-delay code ends with
+  `GetWorld()->GetTimerManager().SetTimer(...)`, post-delay code
+  lives as a generated `UFUNCTION()` continuation method, and an
+  `FTimerHandle` member tracks the timer for cancel/state.
+  **EnhancedInput** (`K2Node_EnhancedInputAction`) generates one
+  `UFUNCTION()` callback per wired trigger pin, a
+  `TObjectPtr<UInputAction>` UPROPERTY per action, and a synthesized
+  `SetupPlayerInputComponent` override that wraps `EIC->BindAction(...)`
+  calls in a `Cast<UEnhancedInputComponent>` guard. Nested patterns
+  compose (a `Delay` inside an EnhancedInput callback still lowers
+  correctly).
 - **C++ → BP** — `parse_cpp_function` produces BPIR; pipe through
   `compile_function` to materialize the BP graph.
 - **Round-trip identity** — for the patterns `transpile_function` emits,
@@ -129,9 +145,10 @@ drop in as additional codegen + parser pairs without touching the IR.
 
 Subset accepted by the parser: if/else, range-based for, while, switch,
 return, break, continue, calls, member access, `Cast<T>()`, unary +
-binary operators with full C++ precedence. Anything outside the subset
-(timelines, latent actions, anim graphs, raw pointer arithmetic) is
-flagged in a sidecar JSON for manual port. See
+binary operators with full C++ precedence. Patterns still landing as
+TODO + sidecar (no auto-lowering yet): timelines, async tasks with
+typed payload pins, anim graphs, Gate macro (multi-input stateful),
+legacy non-EnhancedInput nodes, raw pointer arithmetic. See
 [Tool Reference → Transpile tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#transpile-tools)
 and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
 
