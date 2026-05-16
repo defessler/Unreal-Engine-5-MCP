@@ -411,6 +411,55 @@ TEST_CASE("EmitCppClass: non-reserved name emits as normal UFUNCTION") {
     CHECK_FALSE(Contains(out.headerSource, "virtual void CustomLogic"));
 }
 
+// ===== BlueprintImplementableEvent / BlueprintNativeEvent ==================
+//
+// BlueprintImplementableEvent: header decl only. UE generates the
+// dispatcher in generated.cpp -- emitting an impl would conflict.
+//
+// BlueprintNativeEvent: same _Implementation suffix as RPCs. UHT
+// generates the dispatch wrapper that calls _Implementation by
+// default, with BPs free to override the bare name.
+
+TEST_CASE("EmitCppClass: BlueprintImplementableEvent has no impl body") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "OnSomething"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"BlueprintImplementableEvent"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    // Header decl is present.
+    CHECK(Contains(out.headerSource, "UFUNCTION(BlueprintImplementableEvent)"));
+    CHECK(Contains(out.headerSource, "void OnSomething("));
+    // No impl at all -- if we emitted one, UHT would conflict.
+    CHECK_FALSE(Contains(out.implSource, "::OnSomething("));
+    CHECK_FALSE(Contains(out.implSource, "OnSomething_Implementation"));
+}
+
+TEST_CASE("EmitCppClass: BlueprintNativeEvent gets _Implementation suffix on impl") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "OnReady"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"BlueprintNativeEvent"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    // Header decl with the specifier; bare name (no suffix on header).
+    CHECK(Contains(out.headerSource, "UFUNCTION(BlueprintNativeEvent)"));
+    CHECK(Contains(out.headerSource, "void OnReady("));
+    CHECK_FALSE(Contains(out.headerSource, "OnReady_Implementation"));
+    // Impl has the _Implementation suffix.
+    CHECK(Contains(out.implSource, "::OnReady_Implementation("));
+}
+
 // ===== Default-value cleanup ==============================================
 
 TEST_CASE("EmitCppClass: float default trims trailing zeros") {
