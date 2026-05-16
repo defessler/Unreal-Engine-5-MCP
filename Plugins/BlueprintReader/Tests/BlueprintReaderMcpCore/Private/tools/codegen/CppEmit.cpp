@@ -41,6 +41,67 @@ std::string SanitizeIdentifier(std::string_view in) {
     return out;
 }
 
+// ResolvedRef: classifies an asset-path-ish identifier and gives the
+// clean C++ form. BPIR carries fully-qualified asset paths in `cast.to`,
+// `call`-form fnName, and some metadata fields; without classification +
+// stripping, those paths leak into C++ output verbatim as illegal
+// identifiers like `/Script/MyGame.FooSubsystem::IsBar(...)`.
+//
+// Kinds:
+//   Plain    — no `/Script/` or `/Game/` prefix detected; pass through.
+//   Native   — `/Script/<Module>.<Class>[::<Member>]` — strip prefix to bare class.
+//   BpClass  — `/Game/<Path>.<Asset>_C[::<Member>]` — BP-only class. The
+//              member call must go through reflection (FindFunction +
+//              ProcessEvent) since the C++ binary has no symbol for it.
+struct ResolvedRef {
+    enum class Kind { Plain, Native, BpClass };
+    Kind kind = Kind::Plain;
+    std::string bareOwner;   // stripped class name (no path, no _C suffix)
+    std::string memberName;  // function / property after `::`, or empty
+};
+
+ResolvedRef ResolveAssetPath(std::string_view ref) {
+    ResolvedRef out;
+    // Split owner / member at the LAST `::` so we don't accidentally
+    // split inside template arguments (rare here but defensive).
+    std::string_view owner = ref;
+    std::string_view member;
+    if (auto pos = ref.rfind("::"); pos != std::string_view::npos) {
+        owner  = ref.substr(0, pos);
+        member = ref.substr(pos + 2);
+    }
+    out.memberName = std::string(member);
+
+    auto stripTrailingC = [](std::string_view s) -> std::string_view {
+        if (s.size() > 2 && s.substr(s.size() - 2) == "_C") {
+            return s.substr(0, s.size() - 2);
+        }
+        return s;
+    };
+
+    if (owner.rfind("/Script/", 0) == 0) {
+        // /Script/<Module>.<Class>
+        auto dot = owner.find_last_of('.');
+        std::string_view bare = (dot == std::string_view::npos) ? owner : owner.substr(dot + 1);
+        out.kind = ResolvedRef::Kind::Native;
+        out.bareOwner = std::string(stripTrailingC(bare));
+        return out;
+    }
+    if (owner.rfind("/Game/", 0) == 0) {
+        // /Game/<Path>.<Asset>_C  -- BP class.
+        auto dot = owner.find_last_of('.');
+        std::string_view bare = (dot == std::string_view::npos) ? owner : owner.substr(dot + 1);
+        out.kind = ResolvedRef::Kind::BpClass;
+        out.bareOwner = std::string(stripTrailingC(bare));
+        return out;
+    }
+    // Plain identifier. Still strip _C if present (sometimes Cast<X_C>
+    // shows up post-decompile without the path prefix).
+    out.bareOwner = std::string(stripTrailingC(owner));
+    out.kind = ResolvedRef::Kind::Plain;
+    return out;
+}
+
 // ----- Type shorthand → C++ -----------------------------------------------
 // Inverse of TypeShorthand.cpp's parser. Bidirectional with a caveat:
 // some BPPinType shapes don't have a clean shorthand round-trip
@@ -374,6 +435,13 @@ struct Emitter {
     // instead of std::make_tuple which isn't part of UE's allowed stdlib.
     std::vector<std::string> outputNames;
 
+    // Sanitized parameter + local names. Used to disambiguate member
+    // accesses that shadow a parameter: `void SetPlayer(Player) { Player
+    // = Player; }` is a self-assignment unless we emit `this->Player =
+    // Player;` for the LHS. Populated by EmitCppFunctionBody from
+    // doc["inputs"] + doc["locals"].
+    std::set<std::string> paramAndLocalNames;
+
     void Indent() {
         for (int i = 0; i < indentLevel * opts.indentSpaces; ++i) out << ' ';
     }
@@ -384,7 +452,17 @@ struct Emitter {
     std::string EmitExpr(const nlohmann::json& e) {
         std::string form = DetectExpressionForm(e);
         if (form == "var") {
-            return SanitizeIdentifier(e["var"].get<std::string>());
+            std::string name = SanitizeIdentifier(e["var"].get<std::string>());
+            // Disambiguate member access shadowed by a parameter / local.
+            // BP allows a function param to share its name with a member
+            // (`SetPlayer(Player) { Player = Player; }` -- the LHS is the
+            // member, the RHS is the param). Without `this->`, both sides
+            // refer to the param and the assignment is a self-assign.
+            std::string scope = e.value("scope", "");
+            if (scope == "member" && paramAndLocalNames.count(name) > 0) {
+                return "this->" + name;
+            }
+            return name;
         }
         if (form == "lit") {
             return EmitLit(e["lit"]);
@@ -393,7 +471,13 @@ struct Emitter {
             return EmitCallExpr(e);
         }
         if (form == "cast") {
-            std::string target = e.value("to", "");
+            // Cast<T> target. Strip /Script/<Mod>. or /Game/<Path>. asset
+            // paths down to the bare class name; otherwise the C++ output
+            // contains `Cast</Game/UI/X.WB_X_C>(...)` which doesn't
+            // compile.
+            ResolvedRef r = ResolveAssetPath(e.value("to", ""));
+            std::string target = r.bareOwner;
+            if (target.empty()) target = "UObject";
             std::string inner = EmitExpr(e["cast"]);
             return fmt::format("Cast<{}>({})", target, inner);
         }
@@ -570,9 +654,40 @@ struct Emitter {
             }
         }
 
-        // Default: render as Foo(a, b, c). If the name is qualified
-        // (Owner::Func), keep the qualifier — the agent / user resolves
-        // include + scope.
+        // Resolve the qualified call name. Strips /Script/<Mod>. and
+        // /Game/<Path>. asset paths to bare class names, and classifies
+        // BP-class targets so we can route them through reflection. Also
+        // sanitizes the member name (BP function names can contain
+        // spaces if the BP author renamed them).
+        ResolvedRef ref = ResolveAssetPath(fnName);
+        std::string resolvedMember = SanitizeIdentifier(ref.memberName);
+        std::string resolvedOwner  = ref.bareOwner;
+
+        // BP-only target: no C++ symbol exists for `resolvedOwner::resolvedMember`.
+        // Lower to a UFunction reflection call so the C++ output at least
+        // compiles and dispatches at runtime. We don't know the target
+        // object expression -- BP `self` is implicit for cross-BP calls
+        // routed through a sub-widget member -- so the agent fills in the
+        // receiver via a TODO marker. Args are still emitted as a struct
+        // skeleton so the layout is visible.
+        if (ref.kind == ResolvedRef::Kind::BpClass && !resolvedMember.empty()) {
+            return EmitBpReflectionCall(e, resolvedOwner, resolvedMember);
+        }
+
+        // Rebuild a usable C++ qualifier from the resolved parts. If we
+        // had an owner originally, keep the qualifier; otherwise emit the
+        // bare member.
+        std::string emittedName;
+        if (!resolvedOwner.empty() && !resolvedMember.empty()) {
+            emittedName = resolvedOwner + "::" + resolvedMember;
+        } else if (!resolvedMember.empty()) {
+            emittedName = resolvedMember;
+        } else {
+            // Unqualified call (no `::`). Sanitize the whole thing -- BP
+            // function names with display-name spaces appear here.
+            emittedName = SanitizeIdentifier(ref.bareOwner);
+        }
+
         std::string args;
         bool first = true;
         if (needsThis) { args = "this"; first = false; }
@@ -583,7 +698,79 @@ struct Emitter {
                 args += EmitExpr(v);
             }
         }
-        return fmt::format("{}({})", fnName, args);
+        return fmt::format("{}({})", emittedName, args);
+    }
+
+    // EmitBpReflectionCall: the target is a BP-only class (no C++ symbol).
+    // Generate a UFunction lookup + ProcessEvent dispatch so the call
+    // compiles and works at runtime against any object whose class
+    // exposes the named UFUNCTION. Args are packed into a local struct
+    // matching the BP function's parameter layout.
+    //
+    // The receiver is unknown to BPIR for a bare cross-BP call -- the BP
+    // graph has it on the `self` input pin which BuildExpression already
+    // captures, but the call statement we render here is the expression
+    // form (no surrounding statement target). For safety we route through
+    // `this` and emit a TODO so the agent can swap in the sub-widget
+    // reference. Statement-form calls populate a `target` field that
+    // EmitStatement passes through; expression form has to rely on this
+    // TODO.
+    //
+    // No-arg case is the easy one and compiles directly. Arg-bearing
+    // cases emit a struct with the call's argument values; arg types
+    // can't be recovered from BPIR alone (the BP-only function has no
+    // C++ signature), so the struct's member types come out as `auto`
+    // and the user must retype them.
+    std::string EmitBpReflectionCall(const nlohmann::json& e,
+                                     std::string_view ownerClass,
+                                     std::string_view memberName) {
+        const bool hasArgs = e.contains("args") && e["args"].is_object() && !e["args"].empty();
+        nlohmann::json note;
+        note["node_class"]   = "K2Node_CallFunction";
+        note["treatment"]    = "bp_reflection_call";
+        note["target_class"] = std::string(ownerClass);
+        note["target_func"]  = std::string(memberName);
+        note["hint"]         = "Either also transpile the target BP class "
+                               "(so the call binds to a C++ method) or "
+                               "fill in the target receiver in the "
+                               "generated ProcessEvent block.";
+        notes.push_back(std::move(note));
+
+        // We emit a parenthesized comma-expression-style lambda so the
+        // call fits in an expression slot. Statement-form callers strip
+        // the parens.
+        if (!hasArgs) {
+            return fmt::format(
+                "([&]{{ if (UFunction* F__ = this->FindFunction(TEXT(\"{member}\"))) {{ "
+                "this->ProcessEvent(F__, nullptr); }} /* TODO[bpr-bpcall]: receiver "
+                "for {owner}::{member} -- swap `this` for the sub-widget reference. */ }})()",
+                fmt::arg("member", memberName), fmt::arg("owner", ownerClass));
+        }
+
+        // Pack args into a local struct. Order matches BPIR `args`
+        // iteration (alphabetical due to nlohmann::json object storage)
+        // which is NOT the BP parameter order; the TODO tells the user
+        // to reorder if the call signature is order-sensitive.
+        std::string fields;
+        std::string inits;
+        bool first = true;
+        for (auto& [k, v] : e["args"].items()) {
+            std::string n = SanitizeIdentifier(k);
+            if (n.empty()) n = "Arg";
+            fields += fmt::format("auto {}; ", n);
+            if (!first) inits += ", ";
+            first = false;
+            inits += EmitExpr(v);
+        }
+        return fmt::format(
+            "([&]{{ if (UFunction* F__ = this->FindFunction(TEXT(\"{member}\"))) {{ "
+            "struct {{ {fields}}} P__ {{ {inits} }}; "
+            "this->ProcessEvent(F__, &P__); }} /* TODO[bpr-bpcall]: receiver + "
+            "arg types/order for {owner}::{member} */ }})()",
+            fmt::arg("member", memberName),
+            fmt::arg("fields", fields),
+            fmt::arg("inits",  inits),
+            fmt::arg("owner",  ownerClass));
     }
 
     // SpawnActorFromClass → `GetWorld()->SpawnActor<AActor>(Class,
@@ -799,7 +986,15 @@ struct Emitter {
         if (form == "set") {
             std::string varName = SanitizeIdentifier(s.value("set", ""));
             std::string val = EmitExpr(s["to"]);
-            Line(fmt::format("{} = {};", varName, val));
+            // Same shadowing rule as the `var` expression branch:
+            // member-scoped writes must be prefixed `this->` when the
+            // LHS name collides with a parameter / local.
+            std::string scope = s.value("scope", "");
+            std::string lhs = varName;
+            if (scope == "member" && paramAndLocalNames.count(varName) > 0) {
+                lhs = "this->" + varName;
+            }
+            Line(fmt::format("{} = {};", lhs, val));
             return;
         }
         if (form == "call") {
@@ -856,7 +1051,8 @@ struct Emitter {
         }
         if (form == "cast") {
             std::string castVal = EmitExpr(s["cast"]);
-            std::string target  = s.value("to", "");
+            ResolvedRef r = ResolveAssetPath(s.value("to", ""));
+            std::string target  = r.bareOwner.empty() ? std::string("UObject") : r.bareOwner;
             std::string asName  = SanitizeIdentifier(s.value("as", "AsCast"));
             if (asName.empty()) asName = "AsCast";
             Line(fmt::format("if (auto* {} = Cast<{}>({})) {{", asName, target, castVal));
@@ -1078,6 +1274,19 @@ CppEmitResult EmitCppFunctionBody(const nlohmann::json& doc, CppEmitOptions opts
             em.outputNames.push_back(SanitizeIdentifier(o.value("name", "")));
         }
     }
+    // Collect param + local names for the `this->` shadowing check in
+    // `var` / `set` emission. Output names matter too -- they're ref-out
+    // params on the C++ side and share the namespace with inputs.
+    auto addNames = [&](const char* field) {
+        if (!doc.contains(field) || !doc[field].is_array()) return;
+        for (const auto& v : doc[field]) {
+            std::string n = SanitizeIdentifier(v.value("name", ""));
+            if (!n.empty()) em.paramAndLocalNames.insert(std::move(n));
+        }
+    };
+    addNames("inputs");
+    addNames("outputs");
+    addNames("locals");
     if (doc.contains("body")) em.EmitStatementList(doc["body"]);
     return CppEmitResult{em.out.str(), std::move(em.notes)};
 }

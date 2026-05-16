@@ -846,3 +846,131 @@ TEST_CASE("Codegen: sequence drops empty branches silently") {
     CHECK(Contains(out.source, "Real();"));
     CHECK_FALSE(Contains(out.source, "// sequence branch"));
 }
+
+// ===== Asset-path resolution + reflection-based BP calls ===================
+//
+// BPIR carries fully-qualified asset paths from the live BP graph. Without
+// resolution at codegen, those paths leak into the C++ output verbatim and
+// break compilation. The resolver also classifies BP-only targets so we
+// can route them through a UFunction reflection lookup instead of an
+// undefined symbol.
+
+TEST_CASE("Codegen: Cast<T> strips /Script/<Module>. prefix") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "AsActor"}, {"to",
+             json{{"cast", json{{"var","Source"}}},
+                  {"to", "/Script/Engine.Actor"}}}}
+    })));
+    CHECK(Contains(out.source, "Cast<Actor>(Source)"));
+    CHECK_FALSE(Contains(out.source, "/Script/"));
+}
+
+TEST_CASE("Codegen: Cast<T> strips /Game/<Path>.<Asset>_C path and _C suffix") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"cast", json{{"var","Source"}}},
+             {"to", "/Game/Widgets/WB_Example.WB_Example_C"},
+             {"as", "AsExample"},
+             {"success", json::array()},
+             {"fail",    json::array()}}
+    })));
+    CHECK(Contains(out.source, "Cast<WB_Example>(Source)"));
+    CHECK_FALSE(Contains(out.source, "/Game/"));
+    CHECK_FALSE(Contains(out.source, "_C>"));
+}
+
+TEST_CASE("Codegen: call with /Script/<Module>. qualifier strips to bare class") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call", "/Script/Engine.KismetSystemLibrary::PrintString"},
+             {"args", json{{"InString", json{{"lit", "hi"}}}}}}
+    })));
+    CHECK(Contains(out.source, "KismetSystemLibrary::PrintString"));
+    CHECK_FALSE(Contains(out.source, "/Script/"));
+}
+
+TEST_CASE("Codegen: BP-only call target lowers to FindFunction + ProcessEvent (no-args)") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call", "/Game/Widgets/WB_Example.WB_Example_C::Refresh"}}
+    })));
+    CHECK(Contains(out.source, "FindFunction(TEXT(\"Refresh\"))"));
+    CHECK(Contains(out.source, "ProcessEvent"));
+    CHECK(Contains(out.source, "TODO[bpr-bpcall]"));
+    CHECK_FALSE(Contains(out.source, "/Game/"));
+}
+
+TEST_CASE("Codegen: BP-only call target with args packs a local struct + ProcessEvent") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call", "/Game/Widgets/WB_Example.WB_Example_C::SetValues"},
+             {"args", json{
+                 {"Count", json{{"lit", 3}}},
+                 {"Label", json{{"lit", "hi"}}},
+             }}}
+    })));
+    CHECK(Contains(out.source, "FindFunction(TEXT(\"SetValues\"))"));
+    CHECK(Contains(out.source, "struct {"));
+    CHECK(Contains(out.source, "ProcessEvent(F__, &P__)"));
+    CHECK(Contains(out.source, "auto Count"));
+    CHECK(Contains(out.source, "auto Label"));
+    // Sidecar note carries the unresolved target for triage.
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "bp_reflection_call" &&
+            n.value("target_func", "") == "SetValues") { found = true; break; }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("Codegen: call with display-name leakage (`Set Resources`) sanitizes the member") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"call", "KismetSystemLibrary::Set Resources"}}
+    })));
+    CHECK(Contains(out.source, "KismetSystemLibrary::SetResources"));
+    CHECK_FALSE(Contains(out.source, "Set Resources"));
+}
+
+// ===== this-> disambiguation (#15) =========================================
+
+TEST_CASE("Codegen: member-scope set shadowed by parameter gets `this->` prefix") {
+    json doc = MakeFn(json::array({
+        json{{"set", "Player"}, {"scope", "member"},
+             {"to",  json{{"var", "Player"}, {"scope", "input"}}}}
+    }), {
+        json{{"name", "Player"}, {"type", "object:Actor"}},
+    });
+    auto out = EmitCppFunction(doc);
+    CHECK(Contains(out.source, "this->Player = Player;"));
+}
+
+TEST_CASE("Codegen: member-scope var expr shadowed by parameter gets `this->` prefix") {
+    json doc = MakeFn(json::array({
+        json{{"set", "Local"}, {"scope", "local"},
+             {"to",  json{{"var", "Player"}, {"scope", "member"}}}}
+    }), {
+        json{{"name", "Player"}, {"type", "object:Actor"}},
+    });
+    auto out = EmitCppFunction(doc);
+    CHECK(Contains(out.source, "Local = this->Player;"));
+}
+
+TEST_CASE("Codegen: member-scope name that doesn't shadow stays unqualified") {
+    json doc = MakeFn(json::array({
+        json{{"set", "Health"}, {"scope", "member"}, {"to", json{{"lit", 100}}}}
+    }), {
+        json{{"name", "Player"}, {"type", "object:Actor"}},  // different name
+    });
+    auto out = EmitCppFunction(doc);
+    CHECK(Contains(out.source, "Health = 100;"));
+    CHECK_FALSE(Contains(out.source, "this->Health"));
+}
+
+TEST_CASE("Codegen: local-scope var skips the shadow check entirely") {
+    json doc = MakeFn(json::array({
+        json{{"set", "Player"}, {"scope", "local"},
+             {"to",  json{{"var", "Player"}, {"scope", "input"}}}}
+    }), {
+        json{{"name", "Player"}, {"type", "object:Actor"}},
+    });
+    auto out = EmitCppFunction(doc);
+    // Local Player gets the param's value -- no `this->` anywhere.
+    CHECK(Contains(out.source, "Player = Player;"));
+    CHECK_FALSE(Contains(out.source, "this->Player"));
+}
