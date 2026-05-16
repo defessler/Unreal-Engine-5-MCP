@@ -18,6 +18,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
 #include "K2Node_Composite.h"
+#include "K2Node_BaseMCDelegate.h"
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
@@ -263,6 +264,22 @@ namespace
 		{
 			Extras.Add(TEXT("kind"), TEXT("CreateDelegate"));
 			Extras.Add(TEXT("delegateName"), MakeDel->GetFunctionName().ToString());
+			return;
+		}
+		// K2Node_BaseMCDelegate is the base for Call/Add/Remove/Clear
+		// delegate ops. The property name + owning class come off the
+		// DelegateReference member; without surfacing them here, the
+		// transpiler can't lower these nodes to Broadcast / AddDynamic
+		// / RemoveDynamic / Clear because it has no way to recover the
+		// property name from pin metadata alone.
+		if (UK2Node_BaseMCDelegate* DelOp = Cast<UK2Node_BaseMCDelegate>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("DelegateOp"));
+			Extras.Add(TEXT("delegateProperty"), DelOp->GetPropertyName().ToString());
+			if (UClass* ScopeClass = DelOp->DelegateReference.GetMemberParentClass(nullptr))
+			{
+				Extras.Add(TEXT("delegateClass"), ScopeClass->GetName());
+			}
 			return;
 		}
 		if (Node->IsA<UK2Node_FunctionEntry>())
