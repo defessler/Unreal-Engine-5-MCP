@@ -56,7 +56,8 @@ const std::vector<std::string>& StatementFormsImpl() {
 const std::vector<std::string>& ExpressionFormsImpl() {
     static const std::vector<std::string> forms = {
         "var", "lit", "call",
-        "cast", "member", "index", "self", "new_array", "new_struct",
+        "cast", "member", "index", "self",
+        "new_array", "new_struct", "new_set", "new_map",
     };
     return forms;
 }
@@ -130,6 +131,29 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path) {
         std::size_t i = 0;
         for (const auto& el : expr["new_array"]) {
             ValidateExpression(el, fmt::format("{}.new_array[{}]", path, i++));
+        }
+    } else if (form == "new_set") {
+        // {new_set: [<expr>...]}
+        RequireArray(expr["new_set"], fmt::format("{}.new_set", path));
+        std::size_t i = 0;
+        for (const auto& el : expr["new_set"]) {
+            ValidateExpression(el, fmt::format("{}.new_set[{}]", path, i++));
+        }
+    } else if (form == "new_map") {
+        // {new_map: [{key: <expr>, value: <expr>}, ...]}
+        RequireArray(expr["new_map"], fmt::format("{}.new_map", path));
+        std::size_t i = 0;
+        for (const auto& pair : expr["new_map"]) {
+            RequireObject(pair, fmt::format("{}.new_map[{}]", path, i));
+            if (!pair.contains("key")) {
+                Bad(path, fmt::format(R"({}.new_map[{}] missing "key")", path, i));
+            }
+            if (!pair.contains("value")) {
+                Bad(path, fmt::format(R"({}.new_map[{}] missing "value")", path, i));
+            }
+            ValidateExpression(pair["key"],   fmt::format("{}.new_map[{}].key",   path, i));
+            ValidateExpression(pair["value"], fmt::format("{}.new_map[{}].value", path, i));
+            ++i;
         }
     } else if (form == "new_struct") {
         // {new_struct: "<type>", fields: {name: <expr>}}

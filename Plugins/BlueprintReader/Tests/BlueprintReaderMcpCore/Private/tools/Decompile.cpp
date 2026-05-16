@@ -3,6 +3,7 @@
 
 #include <fmt/core.h>
 
+#include <cstring>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -322,6 +323,74 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
             arr.push_back(BuildExpression(w, producer, p));
         }
         return nlohmann::json{{"new_array", std::move(arr)}};
+    }
+    if (producer.Class.find("K2Node_MakeSet") != std::string::npos) {
+        // K2Node_MakeSet: like MakeArray but produces a TSet. Pin
+        // shape is identical -- a series of value input pins, one
+        // output. Element order isn't semantically significant for
+        // sets but we preserve BP-pin order for stability.
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& p : producer.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            arr.push_back(BuildExpression(w, producer, p));
+        }
+        return nlohmann::json{{"new_set", std::move(arr)}};
+    }
+    if (producer.Class.find("K2Node_MakeMap") != std::string::npos) {
+        // K2Node_MakeMap: input pins are pairs. UE names them
+        // "Key_0", "Value_0", "Key_1", "Value_1", ... (or just
+        // "Key 0" / "Value 0" in older versions). Match on prefix
+        // so we pick up both shapes, then sort by the numeric tail
+        // to keep declaration order.
+        struct Pair { const BPPin* key = nullptr; const BPPin* val = nullptr; };
+        std::map<int, Pair> bySlot;
+        auto parseSlot = [](const std::string& s, const char* prefix) -> int {
+            std::size_t plen = std::strlen(prefix);
+            if (s.size() < plen) return -1;
+            if (s.compare(0, plen, prefix) != 0) return -1;
+            // Skip an optional separator (' ' or '_') after the prefix.
+            std::size_t i = plen;
+            if (i < s.size() && (s[i] == ' ' || s[i] == '_')) ++i;
+            if (i >= s.size()) return -1;
+            try { return std::stoi(s.substr(i)); } catch (...) { return -1; }
+        };
+        for (const auto& p : producer.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            if (int slot = parseSlot(p.Name, "Key");   slot >= 0) bySlot[slot].key = &p;
+            if (int slot = parseSlot(p.Name, "Value"); slot >= 0) bySlot[slot].val = &p;
+        }
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& [slot, pp] : bySlot) {
+            if (!pp.key || !pp.val) continue;  // skip incomplete pairs
+            nlohmann::json entry;
+            entry["key"]   = BuildExpression(w, producer, *pp.key);
+            entry["value"] = BuildExpression(w, producer, *pp.val);
+            arr.push_back(std::move(entry));
+        }
+        return nlohmann::json{{"new_map", std::move(arr)}};
+    }
+    if (producer.Class.find("K2Node_BreakStruct") != std::string::npos) {
+        // K2Node_BreakStruct: input is the struct, outputs are
+        // per-field accessors. The downstream consumer's pin is named
+        // for the field; we lower to {member: <struct>, name: <field>}.
+        // BP also uses K2Node_BreakStructHelper for some variants --
+        // the substring match catches both.
+        // Locate the input struct pin. UE typically names it after
+        // the struct type (e.g. "Vector"), but the safest path is
+        // "the only Input data pin".
+        const BPPin* inPin = nullptr;
+        for (const auto& p : producer.Pins) {
+            if (p.Direction == "Input" && p.Type.Category != "exec") {
+                inPin = &p;
+                break;
+            }
+        }
+        if (!inPin) return LiteralFromDefault(outputPin);
+        nlohmann::json structExpr = BuildExpression(w, producer, *inPin);
+        return nlohmann::json{
+            {"member", std::move(structExpr)},
+            {"name",   outputPin.Name},
+        };
     }
     if (producer.Class.find("K2Node_MakeStruct") != std::string::npos) {
         std::string structType;

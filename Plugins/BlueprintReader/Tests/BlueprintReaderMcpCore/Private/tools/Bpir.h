@@ -61,6 +61,8 @@
 //   {self: null}                                    // K2Node_Self
 //   {new_array: [<expr>...]}                        // K2Node_MakeArray
 //   {new_struct: "<type>", fields: {name: <expr>}}  // K2Node_MakeStruct
+//   {new_set: [<expr>...]}                          // K2Node_MakeSet
+//   {new_map: [{key: <expr>, value: <expr>}...]}    // K2Node_MakeMap
 //
 // Type strings reuse the shorthand grammar (tools/TypeShorthand.cpp):
 // "float", "int", "object:Actor", "[]float", "{string:int}", etc.
