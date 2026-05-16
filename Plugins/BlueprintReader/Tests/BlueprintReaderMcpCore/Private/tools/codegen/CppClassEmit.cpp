@@ -706,6 +706,32 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 
     H << "#include \"" << ParentClassToHeader(parentClass) << "\"\n";
 
+    // Resolve component class paths to bare C++ class names. SCS
+    // components carry their class as `/Script/Engine.StaticMeshComponent`
+    // etc.; we strip to `StaticMeshComponent` then U-prefix it. For BP
+    // class component types, strip _C. Used by both forward decls and
+    // the UPROPERTY+constructor emission below.
+    auto resolveComponentClass = [](std::string_view classPath) -> std::string {
+        // Take the last segment after the dot.
+        std::string_view bare = classPath;
+        if (auto dot = bare.find_last_of('.'); dot != std::string_view::npos) {
+            bare = bare.substr(dot + 1);
+        }
+        // Strip _C suffix (BP class).
+        if (bare.size() > 2 && bare.substr(bare.size() - 2) == "_C") {
+            bare = bare.substr(0, bare.size() - 2);
+        }
+        std::string s(bare);
+        // U-prefix unless already prefixed. Components are always
+        // UObject-derived (UActorComponent etc.), never A-prefixed.
+        if (s.size() >= 2 &&
+            (s[0] == 'A' || s[0] == 'U') &&
+            s[1] >= 'A' && s[1] <= 'Z') {
+            return s;
+        }
+        return "U" + s;
+    };
+
     // Forward declarations for UPROPERTY-referenced object types.
     // UE convention: forward declare in the header, include in the .cpp.
     // Avoids pulling in every Component/Asset header into downstream
@@ -714,6 +740,15 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     // needed). Component types get a `class` forward decl; we don't
     // emit declarations for types we don't recognize as UObject-derived.
     std::set<std::string> forwardDecls;
+    // SCS components also need forward declarations.
+    if (doc.contains("components") && doc["components"].is_array()) {
+        for (const auto& c : doc["components"]) {
+            std::string cls = resolveComponentClass(c.value("class", ""));
+            if (!cls.empty() && cls != parentClass) {
+                forwardDecls.insert(std::move(cls));
+            }
+        }
+    }
     if (doc.contains("variables") && doc["variables"].is_array()) {
         for (const auto& v : doc["variables"]) {
             std::string typeStr = v.value("type", "");
@@ -958,13 +993,37 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     // reserved virtual methods.
     bool isActorDerived = !parentClass.empty() && parentClass[0] == 'A';
 
+    // SCS-tracked components. These come from the BP's Construction
+    // Script panel (and the SCS hierarchy) rather than from explicit
+    // BP variables. The C++ binding pattern is:
+    //   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+    //   UStaticMeshComponent* MeshComponent;
+    // ...then the constructor body creates them via
+    // CreateDefaultSubobject<T>(TEXT("Name")) and wires parent attach.
+    // Without this scaffold, the transpiled actor class has no
+    // components even though the source BP does.
+    bool hasComponents = doc.contains("components") &&
+                        doc["components"].is_array() &&
+                        !doc["components"].empty();
+    if (hasComponents) {
+        for (const auto& c : doc["components"]) {
+            std::string nm  = c.value("name",  "Component");
+            std::string cls = resolveComponentClass(c.value("class", ""));
+            if (cls.empty()) cls = "UActorComponent";
+            H << "    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=\"Components\")\n";
+            H << "    TObjectPtr<" << cls << "> " << nm << ";\n";
+        }
+        H << "\n";
+    }
+
     // Constructor: required when the class needs runtime configuration
-    // we can express in C++ (e.g. enabling replication so the
-    // DOREPLIFETIME registrations actually take effect). Without
-    // `bReplicates = true`, registering replicated UPROPERTYs is a no-op
-    // at runtime — silently wrong, very hard to debug. Emit one
-    // whenever we have replicated vars on an Actor-derived class.
-    bool emitConstructor = isActorDerived && anyReplicated;
+    // we can express in C++. Three reasons to emit one:
+    //   - replicated vars (need `bReplicates = true`)
+    //   - components (need CreateDefaultSubobject + attach setup)
+    //   - both
+    // Without one, replicated UPROPERTYs are silently broken and
+    // components are silently missing.
+    bool emitConstructor = (isActorDerived && anyReplicated) || hasComponents;
     if (emitConstructor) {
         H << "    " << className << "();\n\n";
     }
@@ -1031,13 +1090,52 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     }
     I << "\n";
 
-    // Constructor body: enable replication so the DOREPLIFETIME calls
-    // below actually register at runtime. Without this, every
-    // Replicated UPROPERTY silently fails to replicate — one of the
-    // top BP-to-C++ port footguns.
+    // Constructor body. Three responsibilities (each optional):
+    //   1. CreateDefaultSubobject + attach for each SCS component.
+    //   2. RootComponent assignment when one component is flagged
+    //      is_root.
+    //   3. bReplicates = true when any UPROPERTY is replicated.
+    // Without (1), the C++ actor is missing components the BP has.
+    // Without (3), Replicated UPROPERTYs silently fail to replicate.
     if (emitConstructor) {
         I << className << "::" << className << "() {\n";
-        I << "    bReplicates = true;\n";
+
+        if (hasComponents) {
+            // First pass: instantiate every component. We do this in
+            // declaration order so the root (if any) is created before
+            // children that attach to it.
+            std::string rootCompName;
+            for (const auto& c : doc["components"]) {
+                std::string nm  = c.value("name", "Component");
+                std::string cls = resolveComponentClass(c.value("class", ""));
+                if (cls.empty()) cls = "UActorComponent";
+                I << "    " << nm << " = CreateDefaultSubobject<" << cls
+                  << ">(TEXT(\"" << nm << "\"));\n";
+                if (c.value("is_root", false)) rootCompName = nm;
+            }
+            // Second pass: attach non-root components to either their
+            // explicit parent (if BP set one) or to the root.
+            for (const auto& c : doc["components"]) {
+                if (c.value("is_root", false)) continue;
+                std::string nm = c.value("name", "Component");
+                std::string parent = c.value("parent", std::string{});
+                if (parent.empty() && !rootCompName.empty()) {
+                    parent = rootCompName;
+                }
+                if (!parent.empty()) {
+                    I << "    " << nm << "->SetupAttachment(" << parent << ");\n";
+                }
+            }
+            // Wire the root explicitly. RootComponent assignment is
+            // what makes UE treat the component as the actor's root.
+            if (!rootCompName.empty()) {
+                I << "    RootComponent = " << rootCompName << ";\n";
+            }
+        }
+
+        if (anyReplicated) {
+            I << "    bReplicates = true;\n";
+        }
         I << "}\n\n";
     }
 
