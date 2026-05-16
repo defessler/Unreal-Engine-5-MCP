@@ -39,6 +39,15 @@ struct FBPPinInfo
 	TArray<FBPPinLinkInfo> LinkedTo;
 };
 
+// One parameter on a multicast-delegate variable's signature function.
+// Captured per-variable so the C++ codegen can emit the right
+// DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params variant.
+struct FBPDelegateParam
+{
+	FString Name;   // Parameter name on the signature UFunction.
+	FString Type;   // Same FormatPinType form as a regular variable.
+};
+
 struct FBPVariableInfo
 {
 	FString Name;
@@ -52,6 +61,11 @@ struct FBPVariableInfo
 	bool bIsEditable = false;
 	bool bIsBlueprintReadOnly = false;
 	bool bIsExposeOnSpawn = false;
+	// Populated only when Type is mcdelegate / MulticastDelegate /
+	// MulticastInlineDelegate. Empty otherwise. Allows codegen to emit
+	// the matching DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params(F<Name>,
+	// T1, P1, T2, P2, ...) instead of the zero-arg DECLARE.
+	TArray<FBPDelegateParam> DelegateParams;
 };
 
 struct FBPNodeInfo
@@ -86,6 +100,12 @@ struct FBPComponentPropertyOverride
 	FString Name;       // Property name on the component class.
 	FString Type;       // FProperty class name (FloatProperty, StructProperty, etc.)
 	FString ValueText;  // ExportText output ("X=100,Y=0,Z=50", "0.5", "/Game/Mesh.Mesh", etc.)
+	// For ObjectProperty / ClassProperty / SoftObjectProperty /
+	// SoftClassProperty: the C++ class of the asset the property
+	// points to (e.g. "USkeletalMesh", "UMaterialInterface"). Empty
+	// for non-asset-ref property types. Used by codegen to fill in
+	// the `T` in `ConstructorHelpers::FObjectFinder<T>`.
+	FString PropertyClass;
 };
 
 struct FBPComponentInfo

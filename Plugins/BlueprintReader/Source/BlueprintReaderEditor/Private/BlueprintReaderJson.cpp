@@ -106,6 +106,22 @@ namespace
 		Obj->SetBoolField(TEXT("editable"), Var.bIsEditable);
 		Obj->SetBoolField(TEXT("blueprintReadOnly"), Var.bIsBlueprintReadOnly);
 		Obj->SetBoolField(TEXT("exposeOnSpawn"), Var.bIsExposeOnSpawn);
+		// Multicast delegate variables carry signature params for the
+		// codegen-side DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
+		// variant. Omit when empty so non-delegate vars stay lean.
+		if (Var.DelegateParams.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Params;
+			Params.Reserve(Var.DelegateParams.Num());
+			for (const FBPDelegateParam& P : Var.DelegateParams)
+			{
+				auto PObj = MakeShared<FJsonObject>();
+				PObj->SetStringField(TEXT("name"), P.Name);
+				PObj->SetStringField(TEXT("type"), P.Type);
+				Params.Add(MakeShared<FJsonValueObject>(PObj));
+			}
+			Obj->SetArrayField(TEXT("delegateParams"), Params);
+		}
 		return Obj;
 	}
 
@@ -115,6 +131,10 @@ namespace
 		Obj->SetStringField(TEXT("name"),  Override.Name);
 		Obj->SetStringField(TEXT("type"),  Override.Type);
 		Obj->SetStringField(TEXT("value"), Override.ValueText);
+		if (!Override.PropertyClass.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("property_class"), Override.PropertyClass);
+		}
 		return Obj;
 	}
 

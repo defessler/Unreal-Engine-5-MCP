@@ -119,6 +119,12 @@ struct BPGraph
 
 // ----- BPVariable -----------------------------------------------------------
 
+struct BPDelegateParam
+{
+    BPRString Name;
+    BPRString Type;  // BPIR type-shorthand string ("float", "object:Actor", etc.)
+};
+
 struct BPVariable
 {
     BPRString Name;
@@ -130,6 +136,11 @@ struct BPVariable
     BPROptionalString RepCondition;
     bool ExposeOnSpawn = false;
     BPROptionalString RepNotifyFunc;
+    // Populated only for multicast delegate variables (type category
+    // mcdelegate / MulticastDelegate / MulticastInlineDelegate).
+    // CppClassEmit reads this to emit the matching
+    // DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params variant.
+    BPRArray<BPDelegateParam> DelegateParams;
 };
 
 // ----- BPFunctionSummary ----------------------------------------------------
@@ -171,6 +182,10 @@ struct BPComponentPropertyOverride
     BPRString Name;       // Property name on the component class.
     BPRString Type;       // FProperty class name (FloatProperty, StructProperty, ...).
     BPRString ValueText;  // ExportText output.
+    BPRString PropertyClass;  // For asset-ref types: the C++ class
+                              // of the asset (e.g. "USkeletalMesh").
+                              // Empty for non-asset-ref props. Used
+                              // for ConstructorHelpers::FObjectFinder<T>.
 };
 
 struct BPComponent
@@ -377,6 +392,19 @@ inline void from_json(const nlohmann::json& j, BPGraph& v)
     j.at("connections").get_to(v.Connections);
 }
 
+inline void to_json(nlohmann::json& j, const BPDelegateParam& v)
+{
+    j = nlohmann::json{
+        {"name", v.Name},
+        {"type", v.Type},
+    };
+}
+inline void from_json(const nlohmann::json& j, BPDelegateParam& v)
+{
+    j.at("name").get_to(v.Name);
+    j.at("type").get_to(v.Type);
+}
+
 inline void to_json(nlohmann::json& j, const BPVariable& v)
 {
     j = nlohmann::json{
@@ -399,6 +427,9 @@ inline void to_json(nlohmann::json& j, const BPVariable& v)
     if (v.RepNotifyFunc.has_value() && !v.RepNotifyFunc->empty()) {
         j["rep_notify_func"] = *v.RepNotifyFunc;
     }
+    if (!v.DelegateParams.empty()) {
+        j["delegate_params"] = v.DelegateParams;
+    }
 }
 inline void from_json(const nlohmann::json& j, BPVariable& v)
 {
@@ -417,6 +448,9 @@ inline void from_json(const nlohmann::json& j, BPVariable& v)
     }
     if (auto it = j.find("rep_notify_func"); it != j.end() && it->is_string()) {
         v.RepNotifyFunc = it->get<std::string>();
+    }
+    if (auto it = j.find("delegate_params"); it != j.end() && it->is_array()) {
+        v.DelegateParams = it->get<std::vector<BPDelegateParam>>();
     }
 }
 
@@ -497,12 +531,18 @@ inline void to_json(nlohmann::json& j, const BPComponentPropertyOverride& v)
         {"type",  v.Type},
         {"value", v.ValueText},
     };
+    if (!v.PropertyClass.empty()) {
+        j["property_class"] = v.PropertyClass;
+    }
 }
 inline void from_json(const nlohmann::json& j, BPComponentPropertyOverride& v)
 {
     j.at("name").get_to(v.Name);
     j.at("type").get_to(v.Type);
     j.at("value").get_to(v.ValueText);
+    if (j.contains("property_class") && j.at("property_class").is_string()) {
+        j.at("property_class").get_to(v.PropertyClass);
+    }
 }
 
 inline void to_json(nlohmann::json& j, const BPComponent& v)

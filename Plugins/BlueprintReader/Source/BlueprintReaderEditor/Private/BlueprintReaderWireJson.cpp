@@ -63,6 +63,23 @@ namespace
 		SetStringOrNull(Obj, TEXT("category"), V.Category);
 		Obj->SetBoolField(TEXT("is_replicated"), V.bIsReplicated);
 		Obj->SetBoolField(TEXT("is_editable"), V.bIsEditable);
+		// Multicast delegate variables: surface signature params for
+		// CppClassEmit's DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
+		// variant selection. Empty for non-delegate vars (omitted from
+		// the wire to keep payloads lean).
+		if (V.DelegateParams.Num() > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> Params;
+			Params.Reserve(V.DelegateParams.Num());
+			for (const FBPDelegateParam& P : V.DelegateParams)
+			{
+				auto PObj = MakeShared<FJsonObject>();
+				PObj->SetStringField(TEXT("name"), P.Name);
+				PObj->SetStringField(TEXT("type"), P.Type);
+				Params.Add(MakeShared<FJsonValueObject>(PObj));
+			}
+			Obj->SetArrayField(TEXT("delegate_params"), Params);
+		}
 		return Obj;
 	}
 
@@ -450,6 +467,10 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::ComponentsToJson(const 
 			PObj->SetStringField(TEXT("name"),  P.Name);
 			PObj->SetStringField(TEXT("type"),  P.Type);
 			PObj->SetStringField(TEXT("value"), P.ValueText);
+			if (!P.PropertyClass.IsEmpty())
+			{
+				PObj->SetStringField(TEXT("property_class"), P.PropertyClass);
+			}
 			Props.Add(MakeShared<FJsonValueObject>(PObj));
 		}
 		Obj->SetArrayField(TEXT("properties"), Props);

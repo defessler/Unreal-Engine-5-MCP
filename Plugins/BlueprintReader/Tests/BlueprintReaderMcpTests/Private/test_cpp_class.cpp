@@ -1308,6 +1308,155 @@ TEST_CASE("EmitCppClass: FString default with backslash escapes both") {
     CHECK(Contains(out.headerSource, R"(TEXT("C:\\Path\\file"))"));
 }
 
+// ===== ConstructionScript -> AActor::OnConstruction override ==============
+//
+// BP exposes the construction script under "ConstructionScript" or
+// "UserConstructionScript"; the matching C++ override is
+// AActor::OnConstruction(const FTransform&). The BP-side function NAME
+// doesn't match the C++ override NAME, so the rewriter has to translate
+// at emission rather than just override-tagging.
+
+TEST_CASE("EmitCppClass: ConstructionScript function emits as OnConstruction override") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "ConstructionScript"},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource,
+        "virtual void OnConstruction(const FTransform& Transform) override;"));
+    CHECK_FALSE(Contains(out.headerSource, "void ConstructionScript("));
+    CHECK(Contains(out.implSource, "::OnConstruction(const FTransform& Transform)"));
+    CHECK_FALSE(Contains(out.implSource, "::ConstructionScript"));
+}
+
+// ===== Delegate signature param threading =================================
+//
+// When the plugin introspector surfaces delegate_params on a multicast
+// delegate variable, CppClassEmit emits the matching _NParams variant
+// of DECLARE_DYNAMIC_MULTICAST_DELEGATE.
+
+TEST_CASE("EmitCppClass: delegate with one param emits _OneParam variant") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name", "OnPickup"}, {"type", "mcdelegate"},
+             {"delegate_params", json::array({
+                 json{{"name", "Item"}, {"type", "object:Actor"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource,
+        "DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPickup, AActor*, Item);"));
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "delegate_typedef_resolved" &&
+            n.value("param_count", 0)  == 1) found = true;
+    }
+    CHECK(found);
+}
+
+TEST_CASE("EmitCppClass: delegate with two params emits _TwoParams variant") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name", "OnDamaged"}, {"type", "mcdelegate"},
+             {"delegate_params", json::array({
+                 json{{"name", "Amount"},   {"type", "float"}},
+                 json{{"name", "Attacker"}, {"type", "object:Actor"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDamaged, "));
+    CHECK(Contains(out.headerSource, "float, Amount"));
+    CHECK(Contains(out.headerSource, "AActor*, Attacker"));
+}
+
+TEST_CASE("EmitCppClass: delegate with empty delegate_params keeps zero-arg DECLARE") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name", "OnReady"}, {"type", "mcdelegate"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnReady);"));
+    CHECK(Contains(out.headerSource, "TODO[bpr-delegate-signature]"));
+}
+
+TEST_CASE("EmitCppClass: delegate with sanitized param name") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name", "OnFoo"}, {"type", "mcdelegate"},
+             {"delegate_params", json::array({
+                 json{{"name", "Bad Name"}, {"type", "int"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFoo, int32, BadName);"));
+    CHECK_FALSE(Contains(out.headerSource, "Bad Name"));
+}
+
+// ===== Asset-ref property_class threading =================================
+
+TEST_CASE("EmitCppClass: component asset-ref with property_class fills in FObjectFinder<T>") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "SK"},
+             {"class", "/Script/Engine.SkeletalMeshComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "SkeletalMesh"},
+                      {"type", "ObjectProperty"},
+                      {"value", "/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"},
+                      {"property_class", "USkeletalMesh"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    // Compileable: FObjectFinder<USkeletalMesh> instead of FObjectFinder<T>.
+    CHECK(Contains(out.implSource,
+        "ConstructorHelpers::FObjectFinder<USkeletalMesh> SkeletalMeshFinder"));
+    CHECK(Contains(out.implSource, "if (SkeletalMeshFinder.Succeeded())"));
+    CHECK(Contains(out.implSource, "SK->SkeletalMesh = SkeletalMeshFinder.Object"));
+    // No TODO when class is resolved.
+    CHECK_FALSE(Contains(out.implSource, "TODO[bpr-asset-ref]"));
+    // Sidecar note carries the resolved class.
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "asset_ref_objectfinder_resolved" &&
+            n.value("asset_class", "") == "USkeletalMesh") found = true;
+    }
+    CHECK(found);
+}
+
+TEST_CASE("EmitCppClass: component asset-ref without property_class still emits FObjectFinder with T placeholder + TODO") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "SK"},
+             {"class", "/Script/Engine.SkeletalMeshComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "SkeletalMesh"},
+                      {"type", "ObjectProperty"},
+                      {"value", "/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    // Compileable shell, but T needs to be replaced.
+    CHECK(Contains(out.implSource, "ConstructorHelpers::FObjectFinder<T>"));
+    CHECK(Contains(out.implSource, "TODO[bpr-asset-ref]"));
+}
+
+TEST_CASE("EmitCppClass: UserConstructionScript alias also routes to OnConstruction") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "UserConstructionScript"},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "virtual void OnConstruction"));
+}
+
 TEST_CASE("EmitCppClass: component string property with embedded quote is escaped") {
     auto cls = MakeMinimalClass("AActor");
     cls["components"] = json::array({
