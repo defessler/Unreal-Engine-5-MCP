@@ -974,3 +974,38 @@ TEST_CASE("Codegen: local-scope var skips the shadow check entirely") {
     CHECK(Contains(out.source, "Player = Player;"));
     CHECK_FALSE(Contains(out.source, "this->Player"));
 }
+
+// ===== TSet / TMap construction ============================================
+
+TEST_CASE("Codegen: new_set emits brace-init for TSet construction") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Tags"}, {"to", json{{"new_set", json::array({
+            json{{"lit", "alpha"}},
+            json{{"lit", "beta"}},
+        })}}}}
+    })));
+    CHECK(Contains(out.source, R"({TEXT("alpha"), TEXT("beta")})"));
+}
+
+TEST_CASE("Codegen: new_map emits initializer-list-style pairs") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Counts"}, {"to", json{{"new_map", json::array({
+            json{{"key", json{{"lit", "a"}}}, {"value", json{{"lit", 1}}}},
+            json{{"key", json{{"lit", "b"}}}, {"value", json{{"lit", 2}}}},
+        })}}}}
+    })));
+    CHECK(Contains(out.source, R"({ TEXT("a"), 1 })"));
+    CHECK(Contains(out.source, R"({ TEXT("b"), 2 })"));
+}
+
+TEST_CASE("Codegen: member expression handles BreakStruct-shape access") {
+    // Pre-decompile, this is what a BreakStruct -> downstream consumer
+    // path produces: {member: <struct expr>, name: "<field>"}. CppEmit
+    // renders as `<struct>.<field>` already; this case pins that
+    // shape against future regressions.
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "X"}, {"to",
+             json{{"member", json{{"var", "Loc"}}}, {"name", "X"}}}}
+    })));
+    CHECK(Contains(out.source, "X = Loc.X;"));
+}
