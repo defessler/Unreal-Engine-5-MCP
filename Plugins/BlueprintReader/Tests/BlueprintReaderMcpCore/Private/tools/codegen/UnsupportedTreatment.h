@@ -50,19 +50,19 @@ namespace bpr::tools {
 // Decision returned by ClassifyUnsupported. Drives both the inline
 // rendering and the sidecar entry shape.
 struct UnsupportedClassification {
-    enum class Kind {
-        TodoComment,    // no good substitution; emit `// TODO[bpr-unsupported]`
-        Approximation,  // best-effort C++ stub generated; user verifies
-    };
-    Kind kind = Kind::TodoComment;
+	enum class Kind {
+		TodoComment,    // no good substitution; emit `// TODO[bpr-unsupported]`
+		Approximation,  // best-effort C++ stub generated; user verifies
+	};
+	Kind kind = Kind::TodoComment;
 
-    // Pre-built C++ snippet for inline emission (when Kind ==
-    // Approximation). Empty for TodoComment kind.
-    std::string snippet;
+	// Pre-built C++ snippet for inline emission (when Kind ==
+	// Approximation). Empty for TodoComment kind.
+	std::string snippet;
 
-    // Human-readable summary that goes into the sidecar's
-    // manual_steps / verify fields.
-    std::string note;
+	// Human-readable summary that goes into the sidecar's
+	// manual_steps / verify fields.
+	std::string note;
 };
 
 // Inspect an `{unsupported: {node_class, ...}}` BPIR statement and
@@ -76,7 +76,7 @@ UnsupportedClassification ClassifyUnsupported(const nlohmann::json& unsupportedF
 // BP + generated files. Returns a top-level object suitable for
 // writing to disk as `<class>.transpile-notes.json`.
 nlohmann::json BuildSidecar(std::string_view sourceBp,
-                            const std::vector<std::string>& generatedFiles,
-                            const nlohmann::json& notes);
+							const std::vector<std::string>& generatedFiles,
+							const nlohmann::json& notes);
 
 } // namespace bpr::tools

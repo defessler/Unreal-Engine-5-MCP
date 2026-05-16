@@ -24,23 +24,23 @@
 namespace bpr::diag {
 
 enum class Severity {
-    Ok,       // green — found and healthy
-    Info,     // blue — auto-discovered, etc. (informational)
-    Warning,  // yellow — likely-fine-but-suspicious
-    Error,    // red — will not work
+	Ok,       // green — found and healthy
+	Info,     // blue — auto-discovered, etc. (informational)
+	Warning,  // yellow — likely-fine-but-suspicious
+	Error,    // red — will not work
 };
 
 struct Finding {
-    Severity severity = Severity::Ok;
-    std::string label;     // short summary line
-    std::string detail;    // longer context (file path, etc.)
-    std::string fix_hint;  // optional: copy-paste-able next step
+	Severity severity = Severity::Ok;
+	std::string label;     // short summary line
+	std::string detail;    // longer context (file path, etc.)
+	std::string fix_hint;  // optional: copy-paste-able next step
 };
 
 struct Report {
-    std::vector<Finding> findings;
-    bool HasError() const;
-    bool HasWarning() const;
+	std::vector<Finding> findings;
+	bool HasError() const;
+	bool HasWarning() const;
 };
 
 // Run every check that doesn't require driving the daemon (synchronous,

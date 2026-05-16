@@ -56,71 +56,71 @@ namespace BlueprintReader
 class FLiveServer
 {
 public:
-    FLiveServer();
-    ~FLiveServer();
+	FLiveServer();
+	~FLiveServer();
 
-    // Starts the listener. Resolution order for the bind port:
-    //   1. `Port` arg (non-zero)
-    //   2. `BP_READER_LIVE_PORT` env var (non-zero)
-    //   3. ephemeral (kernel picks a free port)
-    // Token resolution:
-    //   1. `BP_READER_LIVE_TOKEN` env var if set
-    //   2. random 128-bit GUID (default)
-    // Returns true if the listener bound + the handshake file was
-    // written. Returns false if `BP_READER_LIVE_DISABLED=1` is set, or
-    // if the bind failed (port in use, perms). Failure is logged but
-    // doesn't fail the editor module — daemon mode still works.
-    bool Start(int32 Port = 0);
+	// Starts the listener. Resolution order for the bind port:
+	//   1. `Port` arg (non-zero)
+	//   2. `BP_READER_LIVE_PORT` env var (non-zero)
+	//   3. ephemeral (kernel picks a free port)
+	// Token resolution:
+	//   1. `BP_READER_LIVE_TOKEN` env var if set
+	//   2. random 128-bit GUID (default)
+	// Returns true if the listener bound + the handshake file was
+	// written. Returns false if `BP_READER_LIVE_DISABLED=1` is set, or
+	// if the bind failed (port in use, perms). Failure is logged but
+	// doesn't fail the editor module — daemon mode still works.
+	bool Start(int32 Port = 0);
 
-    // Tears down the listener and any active connection threads. Called
-    // on module shutdown. Idempotent.
-    void Stop();
+	// Tears down the listener and any active connection threads. Called
+	// on module shutdown. Idempotent.
+	void Stop();
 
-    // Returns the actual port the listener bound to (useful if Start was
-    // called with port 0 to mean "use env var" — caller can log it).
-    int32 GetListenPort() const { return BoundPort; }
+	// Returns the actual port the listener bound to (useful if Start was
+	// called with port 0 to mean "use env var" — caller can log it).
+	int32 GetListenPort() const { return BoundPort; }
 
 private:
-    // FTcpListener accept callback. Spawns a per-connection worker
-    // thread; returns true so the listener keeps the connection (the
-    // worker takes ownership of the socket).
-    bool OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& Endpoint);
+	// FTcpListener accept callback. Spawns a per-connection worker
+	// thread; returns true so the listener keeps the connection (the
+	// worker takes ownership of the socket).
+	bool OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& Endpoint);
 
-    // Write `<ProjectDir>/Saved/bp-reader-live.json` so the MCP server
-    // can discover port + token without the user having to plumb env
-    // vars through their MCP client config. Idempotent (overwrites any
-    // stale file from a prior crashed editor session). Returns true on
-    // success; logs a warning and returns false on I/O failure (the
-    // listener still works for callers who already know the port +
-    // token via env var).
-    bool WriteHandshakeFile();
+	// Write `<ProjectDir>/Saved/bp-reader-live.json` so the MCP server
+	// can discover port + token without the user having to plumb env
+	// vars through their MCP client config. Idempotent (overwrites any
+	// stale file from a prior crashed editor session). Returns true on
+	// success; logs a warning and returns false on I/O failure (the
+	// listener still works for callers who already know the port +
+	// token via env var).
+	bool WriteHandshakeFile();
 
-    // Delete the handshake file written by WriteHandshakeFile. Called
-    // from Stop(). Best-effort — missing file is fine.
-    void DeleteHandshakeFile();
+	// Delete the handshake file written by WriteHandshakeFile. Called
+	// from Stop(). Best-effort — missing file is fine.
+	void DeleteHandshakeFile();
 
-    // Path the handshake file is written to. Encapsulated so tests +
-    // the delete path agree.
-    static FString HandshakeFilePath();
+	// Path the handshake file is written to. Encapsulated so tests +
+	// the delete path agree.
+	static FString HandshakeFilePath();
 
-    // Persistent "preferred port" cache. Survives editor shutdown so
-    // the next launch can try the same port the previous run bound.
-    // Stays at `<Project>/Saved/bp-reader-live-port.json` — separate
-    // from the handshake file (which IS deleted on shutdown so MCP
-    // probes fail fast against a dead editor). Implementation in
-    // BlueprintReaderLiveServer.cpp.
-    static FString PortCacheFilePath();
-    static int32   ReadCachedPort();
-    static void    WriteCachedPort(int32 Port);
+	// Persistent "preferred port" cache. Survives editor shutdown so
+	// the next launch can try the same port the previous run bound.
+	// Stays at `<Project>/Saved/bp-reader-live-port.json` — separate
+	// from the handshake file (which IS deleted on shutdown so MCP
+	// probes fail fast against a dead editor). Implementation in
+	// BlueprintReaderLiveServer.cpp.
+	static FString PortCacheFilePath();
+	static int32   ReadCachedPort();
+	static void    WriteCachedPort(int32 Port);
 
-    TUniquePtr<FTcpListener> Listener;
-    // FSocket pre-bound (so port 0 → kernel-picks-port works AND we can
-    // see the actual port). Listener takes a reference; we own the
-    // lifetime and destroy in Stop(). Null when Listener is null.
-    FSocket* ListenerSocket = nullptr;
-    FString ExpectedToken;        // env-var override OR random GUID
-    int32 BoundPort = 0;
-    bool  HandshakeWritten = false;
+	TUniquePtr<FTcpListener> Listener;
+	// FSocket pre-bound (so port 0 → kernel-picks-port works AND we can
+	// see the actual port). Listener takes a reference; we own the
+	// lifetime and destroy in Stop(). Null when Listener is null.
+	FSocket* ListenerSocket = nullptr;
+	FString ExpectedToken;        // env-var override OR random GUID
+	int32 BoundPort = 0;
+	bool  HandshakeWritten = false;
 };
 
 // Module-level singleton accessor. The editor module owns one instance
