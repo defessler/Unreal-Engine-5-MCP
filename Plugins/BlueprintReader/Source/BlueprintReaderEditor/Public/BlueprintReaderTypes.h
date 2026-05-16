@@ -76,12 +76,30 @@ struct FBPGraphInfo
 	TArray<FBPVariableInfo> LocalVariables;
 };
 
+// Single property override on an SCS subobject. Captured as a raw
+// ExportText string so the C++ codegen side can parse it back into a
+// matching literal. The Type field is the bare FProperty class name
+// (e.g. "StructProperty", "FloatProperty") so codegen can dispatch on
+// it without needing UE reflection.
+struct FBPComponentPropertyOverride
+{
+	FString Name;       // Property name on the component class.
+	FString Type;       // FProperty class name (FloatProperty, StructProperty, etc.)
+	FString ValueText;  // ExportText output ("X=100,Y=0,Z=50", "0.5", "/Game/Mesh.Mesh", etc.)
+};
+
 struct FBPComponentInfo
 {
 	FString Name;
 	FString ClassPath;
 	FString ParentName;
 	bool bIsRoot = false;
+	// Property values that differ from the component class's CDO --
+	// the "default values" panel in BP's Components view. Surfaced so
+	// transpile_blueprint can emit `Comp->Property = X;` in the C++
+	// constructor. Empty for components that use the class defaults
+	// (rare in practice).
+	TArray<FBPComponentPropertyOverride> Properties;
 };
 
 struct FBPInterfaceInfo

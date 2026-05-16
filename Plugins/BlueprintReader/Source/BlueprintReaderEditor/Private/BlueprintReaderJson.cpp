@@ -109,6 +109,15 @@ namespace
 		return Obj;
 	}
 
+	TSharedRef<FJsonObject> ToJson(const FBPComponentPropertyOverride& Override)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetStringField(TEXT("name"),  Override.Name);
+		Obj->SetStringField(TEXT("type"),  Override.Type);
+		Obj->SetStringField(TEXT("value"), Override.ValueText);
+		return Obj;
+	}
+
 	TSharedRef<FJsonObject> ToJson(const FBPComponentInfo& Comp)
 	{
 		auto Obj = MakeShared<FJsonObject>();
@@ -116,6 +125,13 @@ namespace
 		Obj->SetStringField(TEXT("class"), Comp.ClassPath);
 		Obj->SetStringField(TEXT("parent"), Comp.ParentName);
 		Obj->SetBoolField(TEXT("root"), Comp.bIsRoot);
+		TArray<TSharedPtr<FJsonValue>> Props;
+		Props.Reserve(Comp.Properties.Num());
+		for (const FBPComponentPropertyOverride& P : Comp.Properties)
+		{
+			Props.Add(MakeShared<FJsonValueObject>(ToJson(P)));
+		}
+		Obj->SetArrayField(TEXT("properties"), Props);
 		return Obj;
 	}
 
