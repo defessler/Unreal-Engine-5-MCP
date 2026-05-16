@@ -1,0 +1,188 @@
+{
+    "summary": {
+        "asset_path": "/Game/Characters/BP_ExampleCharacter",
+        "name": "BP_ExampleCharacter",
+        "parent_class": "ACharacter",
+        "modified_iso": "2026-05-16T00:00:00Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Characters/BP_ExampleCharacter",
+        "name": "BP_ExampleCharacter",
+        "parent_class": "ACharacter",
+        "interfaces": [],
+        "variables": [
+            {
+                "name": "Health",
+                "type": {
+                    "category": "real", "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false, "is_set": false, "is_map": false
+                },
+                "default_value": "100.0",
+                "category": "Stats",
+                "is_replicated": true,
+                "is_editable": true
+            },
+            {
+                "name": "MaxHealth",
+                "type": {
+                    "category": "real", "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false, "is_set": false, "is_map": false
+                },
+                "default_value": "100.0",
+                "category": "Stats",
+                "is_replicated": false,
+                "is_editable": true
+            },
+            {
+                "name": "BaseTurnRate",
+                "type": {
+                    "category": "real", "sub_category": "float",
+                    "sub_category_object": null,
+                    "is_array": false, "is_set": false, "is_map": false
+                },
+                "default_value": "45.0",
+                "category": "Input",
+                "is_replicated": false,
+                "is_editable": true
+            },
+            {
+                "name": "OnHealthChanged",
+                "type": {
+                    "category": "mcdelegate", "sub_category": null,
+                    "sub_category_object": null,
+                    "is_array": false, "is_set": false, "is_map": false
+                },
+                "default_value": null,
+                "category": "Default",
+                "is_replicated": false,
+                "is_editable": true
+            }
+        ],
+        "functions": [
+            { "name": "BeginPlay" },
+            { "name": "Tick" },
+            { "name": "ApplyHealing" },
+            { "name": "OnRep_Health" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph",         "type": "EventGraph"   },
+            { "name": "ConstructionScript", "type": "Construction" },
+            { "name": "BeginPlay",          "type": "Function"     },
+            { "name": "Tick",               "type": "Function"     },
+            { "name": "ApplyHealing",       "type": "Function"     },
+            { "name": "OnRep_Health",       "type": "Function"     }
+        ]
+    },
+    "components": [
+        {
+            "name": "CapsuleComponent",
+            "class": "/Script/Engine.CapsuleComponent",
+            "parent": null,
+            "is_root": true,
+            "properties": [
+                { "name": "CapsuleHalfHeight", "type": "FloatProperty",  "value": "88.0" },
+                { "name": "CapsuleRadius",     "type": "FloatProperty",  "value": "42.0" }
+            ]
+        },
+        {
+            "name": "SkeletalMesh",
+            "class": "/Script/Engine.SkeletalMeshComponent",
+            "parent": "CapsuleComponent",
+            "is_root": false,
+            "properties": [
+                { "name": "RelativeLocation", "type": "StructProperty", "value": "(X=0.0,Y=0.0,Z=-90.0)" },
+                { "name": "RelativeRotation", "type": "StructProperty", "value": "(Pitch=0.0,Yaw=-90.0,Roll=0.0)" },
+                { "name": "SkeletalMesh",     "type": "ObjectProperty", "value": "/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin" }
+            ]
+        },
+        {
+            "name": "SpringArm",
+            "class": "/Script/Engine.SpringArmComponent",
+            "parent": "CapsuleComponent",
+            "is_root": false,
+            "properties": [
+                { "name": "TargetArmLength",  "type": "FloatProperty",  "value": "300.0" },
+                { "name": "RelativeRotation", "type": "StructProperty", "value": "(Pitch=-15.0,Yaw=0.0,Roll=0.0)" },
+                { "name": "bUsePawnControlRotation", "type": "BoolProperty", "value": "true" }
+            ]
+        },
+        {
+            "name": "FollowCamera",
+            "class": "/Script/Engine.CameraComponent",
+            "parent": "SpringArm",
+            "is_root": false,
+            "properties": [
+                { "name": "bUsePawnControlRotation", "type": "BoolProperty", "value": "false" }
+            ]
+        }
+    ],
+    "functions": [
+        {
+            "name": "Tick",
+            "inputs": [
+                {
+                    "name": "DeltaSeconds",
+                    "type": {
+                        "category": "real", "sub_category": "float",
+                        "sub_category_object": null,
+                        "is_array": false, "is_set": false, "is_map": false
+                    },
+                    "default_value": null,
+                    "category": "",
+                    "is_replicated": false,
+                    "is_editable": false
+                }
+            ],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "Tick",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "10000000-0000-0000-0000-000000000001",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "Tick",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "extras": { "kind": "FunctionEntry" },
+                        "pins": [
+                            {
+                                "id": "10000000-0000-0000-0000-000000000002",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec", "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false, "is_set": false, "is_map": false
+                                },
+                                "default_value": null, "default_text": null,
+                                "is_hidden": false, "is_reference": false, "is_const": false,
+                                "linked_to": []
+                            },
+                            {
+                                "id": "10000000-0000-0000-0000-000000000003",
+                                "name": "DeltaSeconds",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "real", "sub_category": "float",
+                                    "sub_category_object": null,
+                                    "is_array": false, "is_set": false, "is_map": false
+                                },
+                                "default_value": null, "default_text": null,
+                                "is_hidden": false, "is_reference": false, "is_const": false,
+                                "linked_to": []
+                            }
+                        ]
+                    }
+                ],
+                "connections": [],
+                "local_variables": []
+            }
+        }
+    ],
+    "graphs": []
+}
