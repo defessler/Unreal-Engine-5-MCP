@@ -355,6 +355,20 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
             {"to", targetClass},
         };
     }
+    // FunctionEntry / Event / CustomEvent output data pin — resolve to
+    // the parameter name. Without this, a downstream VariableSet that
+    // reads from a FunctionEntry pin gets a TODO sentinel where the
+    // parameter reference should be. See diagnostics finding #6.
+    if (producer.Class.find("K2Node_FunctionEntry") != std::string::npos ||
+        producer.Class.find("K2Node_Event")         != std::string::npos ||
+        producer.Class.find("K2Node_CustomEvent")   != std::string::npos) {
+        // outputPin.Name is the parameter's canonical name. Treat as a
+        // variable in input scope so codegen renders it directly.
+        return nlohmann::json{
+            {"var",   outputPin.Name},
+            {"scope", "input"},
+        };
+    }
     // Anything else: emit a BPIR `unsupported`-shaped expression. This
     // isn't a valid BPIR expression form per validator, so we wrap it
     // in a `lit` with a string telling consumers what we couldn't
