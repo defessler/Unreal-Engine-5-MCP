@@ -501,6 +501,36 @@ struct Emitter {
             s += "}";
             return s;
         }
+        if (form == "new_set") {
+            // TSet<T> supports brace-init from an initializer_list in
+            // UE 5.x. The element type comes from context (the
+            // assignment LHS), so we emit a bare braced list and let
+            // the C++ compiler / target type drive deduction.
+            std::string s = "{";
+            bool first = true;
+            for (const auto& el : e["new_set"]) {
+                if (!first) s += ", ";
+                first = false;
+                s += EmitExpr(el);
+            }
+            s += "}";
+            return s;
+        }
+        if (form == "new_map") {
+            // TMap<K,V> supports initializer_list of TPair<K,V> in
+            // UE 5.x via `TMap<K,V>{{k,v}, {k,v}}`. Bare braces with
+            // {key, value} pairs let the LHS type drive deduction.
+            std::string s = "{";
+            bool first = true;
+            for (const auto& kv : e["new_map"]) {
+                if (!first) s += ", ";
+                first = false;
+                s += fmt::format("{{ {}, {} }}",
+                    EmitExpr(kv["key"]), EmitExpr(kv["value"]));
+            }
+            s += "}";
+            return s;
+        }
         if (form == "new_struct") {
             std::string type = e.value("new_struct", "");
             std::string s = type + "{";

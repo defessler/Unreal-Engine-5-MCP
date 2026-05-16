@@ -127,6 +127,30 @@ TEST_CASE("BPIR: broadcast prop name must be a string") {
     CHECK_THROWS_AS(ValidateBpir(fn), std::invalid_argument);
 }
 
+TEST_CASE("BPIR: new_set + new_map expression forms validate") {
+    json fn = MakeMinimalFunction();
+    fn["body"] = json::array({
+        json{{"set", "S"}, {"to", json{{"new_set", json::array({
+            json{{"lit", 1}}, json{{"lit", 2}}
+        })}}}},
+        json{{"set", "M"}, {"to", json{{"new_map", json::array({
+            json{{"key", json{{"lit", "a"}}}, {"value", json{{"lit", 1}}}},
+            json{{"key", json{{"lit", "b"}}}, {"value", json{{"lit", 2}}}}
+        })}}}},
+    });
+    CHECK_NOTHROW(ValidateBpir(fn));
+}
+
+TEST_CASE("BPIR: new_map entry must have both key and value") {
+    json fn = MakeMinimalFunction();
+    fn["body"] = json::array({
+        json{{"set", "M"}, {"to", json{{"new_map", json::array({
+            json{{"key", json{{"lit", "a"}}}}  // missing value
+        })}}}},
+    });
+    CHECK_THROWS_AS(ValidateBpir(fn), std::invalid_argument);
+}
+
 TEST_CASE("BPIR: statement with no recognized form is rejected") {
     json fn = MakeMinimalFunction();
     fn["body"] = json::array({json{{"unknown_form", "nope"}}});
