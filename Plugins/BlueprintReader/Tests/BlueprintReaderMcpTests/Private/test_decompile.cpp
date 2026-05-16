@@ -148,3 +148,122 @@ TEST_CASE("E2E: BP_Enemy generates UFUNCTION for each function") {
     CHECK(ContainsStr(out.headerSource, "OnDeath"));
     CHECK(ContainsStr(out.headerSource, "UFUNCTION(BlueprintCallable)"));
 }
+
+// ===== End-to-end ThirdPersonCharacter-shaped BP ==========================
+//
+// BP_ExampleCharacter exercises a realistic actor BP: ACharacter parent,
+// four SCS components (CapsuleComponent / SkeletalMesh / SpringArm /
+// FollowCamera) with property overrides, a replicated variable +
+// RepNotify, a multicast delegate variable, and parent-virtual overrides
+// (BeginPlay / Tick). This is the bar for "fully transpile a BP" --
+// every category from the diagnostic + every Stage-3 finding must
+// produce compileable output.
+
+TEST_CASE("E2E full BP: ExampleCharacter -> header carries every expected piece") {
+    Fixture f;
+    auto bpir = DecompileBlueprint(f.reader, "/Game/Characters/BP_ExampleCharacter");
+    auto out  = EmitCppClass(bpir);
+
+    // Class name + parent.
+    CHECK(ContainsStr(out.headerSource, "ABP_ExampleCharacter_Generated"));
+    CHECK(ContainsStr(out.headerSource, "public ACharacter"));
+    // Header include for parent (GameFramework/Character.h is what
+    // ParentClassToHeader maps ACharacter to).
+    CHECK(ContainsStr(out.headerSource, "Character.h"));
+
+    // Variables -> UPROPERTY decls.
+    CHECK(ContainsStr(out.headerSource, "float Health"));
+    CHECK(ContainsStr(out.headerSource, "float MaxHealth"));
+    CHECK(ContainsStr(out.headerSource, "float BaseTurnRate"));
+
+    // Replicated variable on Health.
+    CHECK(ContainsStr(out.headerSource, "Replicated"));
+
+    // Multicast delegate variable -> DECLARE + F<Name> typedef.
+    CHECK(ContainsStr(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHealthChanged)"));
+    CHECK(ContainsStr(out.headerSource, "FOnHealthChanged OnHealthChanged"));
+
+    // SCS components -> UPROPERTY decls.
+    CHECK(ContainsStr(out.headerSource, "TObjectPtr<UCapsuleComponent> CapsuleComponent"));
+    CHECK(ContainsStr(out.headerSource, "TObjectPtr<USkeletalMeshComponent> SkeletalMesh"));
+    CHECK(ContainsStr(out.headerSource, "TObjectPtr<USpringArmComponent> SpringArm"));
+    CHECK(ContainsStr(out.headerSource, "TObjectPtr<UCameraComponent> FollowCamera"));
+
+    // Forward decls for components.
+    CHECK(ContainsStr(out.headerSource, "class UCapsuleComponent;"));
+    CHECK(ContainsStr(out.headerSource, "class USpringArmComponent;"));
+
+    // BeginPlay / Tick come through as virtual overrides (no UFUNCTION
+    // decoration since they're on the void-virtual whitelist).
+    CHECK(ContainsStr(out.headerSource, "virtual void BeginPlay() override"));
+    CHECK(ContainsStr(out.headerSource, "virtual void Tick("));
+
+    // ApplyHealing is custom -> regular UFUNCTION.
+    CHECK(ContainsStr(out.headerSource, "void ApplyHealing("));
+}
+
+TEST_CASE("E2E full BP: ExampleCharacter -> impl ctor wires components + defaults + replication") {
+    Fixture f;
+    auto bpir = DecompileBlueprint(f.reader, "/Game/Characters/BP_ExampleCharacter");
+    auto out  = EmitCppClass(bpir);
+
+    // Constructor exists.
+    CHECK(ContainsStr(out.implSource, "::ABP_ExampleCharacter_Generated()"));
+
+    // Components instantiated.
+    CHECK(ContainsStr(out.implSource,
+        "CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT(\"CapsuleComponent\"))"));
+    CHECK(ContainsStr(out.implSource,
+        "SkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT(\"SkeletalMesh\"))"));
+    CHECK(ContainsStr(out.implSource,
+        "SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT(\"SpringArm\"))"));
+    CHECK(ContainsStr(out.implSource,
+        "FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT(\"FollowCamera\"))"));
+
+    // SetupAttachment hierarchy.
+    CHECK(ContainsStr(out.implSource, "SkeletalMesh->SetupAttachment(CapsuleComponent)"));
+    CHECK(ContainsStr(out.implSource, "SpringArm->SetupAttachment(CapsuleComponent)"));
+    CHECK(ContainsStr(out.implSource, "FollowCamera->SetupAttachment(SpringArm)"));
+    CHECK(ContainsStr(out.implSource, "RootComponent = CapsuleComponent"));
+
+    // Component default properties (scalar / FVector / FRotator).
+    CHECK(ContainsStr(out.implSource, "CapsuleComponent->CapsuleHalfHeight = 88.0f"));
+    CHECK(ContainsStr(out.implSource, "CapsuleComponent->CapsuleRadius = 42.0f"));
+    CHECK(ContainsStr(out.implSource, "SpringArm->TargetArmLength = 300.0f"));
+    CHECK(ContainsStr(out.implSource, "SpringArm->bUsePawnControlRotation = true"));
+    CHECK(ContainsStr(out.implSource, "FollowCamera->bUsePawnControlRotation = false"));
+    CHECK(ContainsStr(out.implSource,
+        "SkeletalMesh->RelativeLocation = FVector(0.0f, 0.0f, -90.0f)"));
+    CHECK(ContainsStr(out.implSource,
+        "SkeletalMesh->RelativeRotation = FRotator(0.0f, -90.0f, 0.0f)"));
+    CHECK(ContainsStr(out.implSource,
+        "SpringArm->RelativeRotation = FRotator(-15.0f, 0.0f, 0.0f)"));
+
+    // Skeletal mesh asset ref -> ConstructorHelpers TODO scaffold.
+    CHECK(ContainsStr(out.implSource, "TODO[bpr-asset-ref]"));
+    CHECK(ContainsStr(out.implSource, "SK_Mannequin"));
+
+    // Replication wiring.
+    CHECK(ContainsStr(out.implSource, "bReplicates = true"));
+    CHECK(ContainsStr(out.implSource,
+        "void ABP_ExampleCharacter_Generated::GetLifetimeReplicatedProps("));
+    CHECK(ContainsStr(out.implSource,
+        "DOREPLIFETIME(ABP_ExampleCharacter_Generated, Health)"));
+}
+
+TEST_CASE("E2E full BP: ExampleCharacter -> output is non-trivial (size sanity)") {
+    Fixture f;
+    auto bpir = DecompileBlueprint(f.reader, "/Game/Characters/BP_ExampleCharacter");
+    auto out  = EmitCppClass(bpir);
+    // Both halves should be substantial -- not a stub.
+    CHECK(out.headerSource.size() > 1500);
+    CHECK(out.implSource.size()   > 1200);
+    // Notes should carry the asset-ref TODO at minimum.
+    bool foundAssetRef = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "asset_ref_objectfinder_stub") {
+            foundAssetRef = true;
+        }
+    }
+    CHECK(foundAssetRef);
+}
