@@ -81,6 +81,19 @@ nlohmann::json VariableDeclToJson(const BPVariable& v) {
     if (v.RepCondition && !v.RepCondition->empty()) j["rep_condition"]   = *v.RepCondition;
     if (v.ExposeOnSpawn)                            j["expose_on_spawn"] = true;
     if (v.RepNotifyFunc && !v.RepNotifyFunc->empty()) j["rep_notify_func"] = *v.RepNotifyFunc;
+    // Multicast delegate signature params: surface so CppClassEmit
+    // can choose the matching DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
+    // variant. Omit when empty.
+    if (!v.DelegateParams.empty()) {
+        nlohmann::json params = nlohmann::json::array();
+        for (const auto& dp : v.DelegateParams) {
+            params.push_back(nlohmann::json{
+                {"name", dp.Name},
+                {"type", dp.Type},
+            });
+        }
+        j["delegate_params"] = std::move(params);
+    }
     return j;
 }
 
@@ -1535,11 +1548,15 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
             if (!c.Properties.empty()) {
                 nlohmann::json props = nlohmann::json::array();
                 for (const auto& p : c.Properties) {
-                    props.push_back(nlohmann::json{
+                    nlohmann::json pj = {
                         {"name",  p.Name},
                         {"type",  p.Type},
                         {"value", p.ValueText},
-                    });
+                    };
+                    if (!p.PropertyClass.empty()) {
+                        pj["property_class"] = p.PropertyClass;
+                    }
+                    props.push_back(std::move(pj));
                 }
                 cj["properties"] = std::move(props);
             }
