@@ -42,6 +42,13 @@
 //   {while: <expr>, body: [s]}                      // WhileLoop macro
 //   {sequence: [[s1], [s2], ...]}                   // K2Node_ExecutionSequence
 //   {break: null} | {continue: null}                // loop control
+//   {broadcast: "<prop>", [target: <expr>],         // K2Node_CallDelegate
+//    [args: {pin: <expr>, ...}]}
+//   {bind_delegate: "<prop>", [target: <expr>],     // K2Node_AddDelegate
+//    handler: "<fn>"}
+//   {unbind_delegate: "<prop>", [target: <expr>],   // K2Node_RemoveDelegate
+//    handler: "<fn>"}
+//   {clear_delegate: "<prop>", [target: <expr>]}    // K2Node_ClearDelegate
 //   {unsupported: {node_class, guid, reason, fields?}}  // safety valve
 //
 // Expression forms:

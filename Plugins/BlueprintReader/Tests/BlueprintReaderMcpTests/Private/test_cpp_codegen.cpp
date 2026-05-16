@@ -659,3 +659,190 @@ TEST_CASE("Codegen rejects malformed BPIR") {
     };
     CHECK_THROWS_AS(EmitCppFunctionBody(bad), std::invalid_argument);
 }
+
+// ===== Identifier sanitization =============================================
+//
+// BP display names can contain spaces, punctuation, and other characters
+// that are illegal in C++ identifiers. CppEmit's SanitizeIdentifier strips
+// non-[A-Za-z0-9_] chars uniformly at every identifier emission point so a
+// BP function named "Set Resources" or a cast-as local called
+// "AsExample Bar" comes out as compilable C++.
+
+TEST_CASE("Codegen: function name with spaces is sanitized") {
+    json doc = MakeFn(json::array());
+    doc["name"] = "Set Resources";
+    auto out = EmitCppFunction(doc);
+    CHECK(Contains(out.source, "void SetResources()"));
+    CHECK_FALSE(Contains(out.source, "Set Resources("));
+}
+
+TEST_CASE("Codegen: parameter name with spaces is sanitized") {
+    json doc = MakeFn(json::array(), {
+        json{{"name", "Build Plot"}, {"type", "object:Actor"}},
+    });
+    auto out = EmitCppFunction(doc);
+    CHECK(Contains(out.source, "BuildPlot"));
+    CHECK_FALSE(Contains(out.source, "Build Plot"));
+}
+
+TEST_CASE("Codegen: cast-as local name with spaces is sanitized") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"cast", json{{"var","Other"}}},
+             {"to", "AActor"},
+             {"as", "AsExample Bar"},
+             {"success", json::array()},
+             {"fail",    json::array()}}
+    })));
+    CHECK(Contains(out.source, "AsExampleBar"));
+    CHECK_FALSE(Contains(out.source, "AsExample Bar"));
+}
+
+TEST_CASE("Codegen: var expression with spaces is sanitized") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "Output"}, {"to", json{{"var","Selected Plot"}}}}
+    })));
+    CHECK(Contains(out.source, "Output = SelectedPlot;"));
+}
+
+TEST_CASE("Codegen: identifier starting with digit gets underscore prefix") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "2ndValue"}, {"to", json{{"lit", 1}}}}
+    })));
+    CHECK(Contains(out.source, "_2ndValue = 1;"));
+}
+
+// ===== Multi-output returns ================================================
+//
+// std::make_tuple is not part of UE's allowed stdlib subset; multi-output
+// BP functions must lower to out-param assignments + bare return.
+
+TEST_CASE("Codegen: 2+ outputs lower return-array to per-output assignments") {
+    json doc = MakeFn(json::array({
+        json{{"return", json::array({
+            json{{"lit", 1}},
+            json{{"var", "Health"}},
+        })}}
+    }), /*inputs=*/{}, /*outputs=*/{
+        json{{"name", "First"},  {"type", "int"}},
+        json{{"name", "Second"}, {"type", "int"}},
+    });
+    auto out = EmitCppFunction(doc);
+    CHECK_FALSE(Contains(out.source, "std::make_tuple"));
+    CHECK(Contains(out.source, "First = 1;"));
+    CHECK(Contains(out.source, "Second = Health;"));
+    CHECK(Contains(out.source, "return;"));
+    // Out-params present in signature.
+    CHECK(Contains(out.source, "int32& First"));
+    CHECK(Contains(out.source, "int32& Second"));
+}
+
+TEST_CASE("Codegen: singleton return array still emits by-value when no out-params") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"return", json::array({json{{"lit", 42}}})}}
+    })));
+    CHECK_FALSE(Contains(out.source, "std::make_tuple"));
+    CHECK(Contains(out.source, "return 42;"));
+}
+
+TEST_CASE("Codegen: multi-output with display-name leakage gets sanitized in assignments") {
+    json doc = MakeFn(json::array({
+        json{{"return", json::array({
+            json{{"lit", true}},
+        })}}
+    }), /*inputs=*/{}, /*outputs=*/{
+        json{{"name", "Is Valid"},        {"type", "bool"}},
+        json{{"name", "Result Inventory"},{"type", "object:Actor"}},
+    });
+    auto out = EmitCppFunction(doc);
+    // Signature out-param names sanitized.
+    CHECK(Contains(out.source, "bool& IsValid"));
+    CHECK(Contains(out.source, "& ResultInventory"));
+    // Return-form should use the sanitized names too (we only have one
+    // value here so only the first slot gets assigned).
+    CHECK(Contains(out.source, "IsValid ="));
+}
+
+// ===== Delegate ops ========================================================
+
+TEST_CASE("Codegen: broadcast renders Broadcast() with args") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"broadcast", "OnSomethingHappened"},
+             {"args", json{
+                 {"Payload", json{{"var", "Result"}}},
+             }}}
+    })));
+    CHECK(Contains(out.source, "OnSomethingHappened.Broadcast(Result);"));
+}
+
+TEST_CASE("Codegen: broadcast with explicit target renders <target>->Prop.Broadcast(...)") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"broadcast", "OnSomethingHappened"},
+             {"target", json{{"var", "Listener"}}},
+             {"args", json{
+                 {"Payload", json{{"var", "Result"}}},
+             }}}
+    })));
+    CHECK(Contains(out.source, "Listener->OnSomethingHappened.Broadcast(Result);"));
+}
+
+TEST_CASE("Codegen: bind_delegate renders AddDynamic with handler reference") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"bind_delegate", "OnSomethingHappened"},
+             {"target",  json{{"var", "Listener"}}},
+             {"handler", "HandleSomething"}}
+    })));
+    CHECK(Contains(out.source,
+        "Listener->OnSomethingHappened.AddDynamic(this, &ThisClass::HandleSomething);"));
+}
+
+TEST_CASE("Codegen: unbind_delegate renders RemoveDynamic") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"unbind_delegate", "OnSomethingHappened"},
+             {"target",  json{{"var", "Listener"}}},
+             {"handler", "HandleSomething"}}
+    })));
+    CHECK(Contains(out.source,
+        "Listener->OnSomethingHappened.RemoveDynamic(this, &ThisClass::HandleSomething);"));
+}
+
+TEST_CASE("Codegen: clear_delegate renders Clear()") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"clear_delegate", "OnSomethingHappened"},
+             {"target",  json{{"var", "Listener"}}}}
+    })));
+    CHECK(Contains(out.source, "Listener->OnSomethingHappened.Clear();"));
+}
+
+TEST_CASE("Codegen: bind_delegate with empty handler emits a TODO marker") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"bind_delegate", "OnReady"},
+             {"handler", ""}}
+    })));
+    CHECK(Contains(out.source, "TODO[bpr-delegate]"));
+    CHECK(Contains(out.source, "OnReady.AddDynamic"));
+}
+
+// ===== Sequence noise drop =================================================
+
+TEST_CASE("Codegen: sequence inlines statements without branch-marker comments") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"sequence", json::array({
+            json::array({json{{"call","StepOne"}}}),
+            json::array({json{{"call","StepTwo"}}}),
+        })}}
+    })));
+    CHECK(Contains(out.source, "StepOne();"));
+    CHECK(Contains(out.source, "StepTwo();"));
+    CHECK_FALSE(Contains(out.source, "// sequence branch"));
+}
+
+TEST_CASE("Codegen: sequence drops empty branches silently") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"sequence", json::array({
+            json::array({json{{"call","Real"}}}),
+            json::array(),  // empty branch
+        })}}
+    })));
+    CHECK(Contains(out.source, "Real();"));
+    CHECK_FALSE(Contains(out.source, "// sequence branch"));
+}

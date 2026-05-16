@@ -759,6 +759,42 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         auto isForEach = (bare == "ForEachLoop" || bare == "ForEachLoopWithBreak");
         auto isReverseForEach = (bare == "ReverseForEachLoop");
         auto isWhile = (bare == "WhileLoop");
+        auto isIsValid = (bare == "IsValid");
+
+        if (isIsValid) {
+            // IsValid macro pins: input InputObject, two exec outputs
+            // (IsValid -> then branch, IsNotValid -> else branch). Lower
+            // to a {if} statement form with the `IsValid(<input>)` call
+            // as the condition. Most common BP macro by a wide margin;
+            // without this lowering, every IsValid in a graph becomes a
+            // sidecar TODO entry that breaks control flow.
+            const BPPin* inputPin = w.GetPin(n, "InputObject");
+            if (!inputPin) inputPin = w.GetPin(n, "Object");  // alt name in some variants
+            nlohmann::json inputExpr = inputPin
+                ? BuildExpression(w, n, *inputPin)
+                : nlohmann::json{{"self", nullptr}};
+
+            nlohmann::json cond = {
+                {"call", "IsValid"},
+                {"args", nlohmann::json{{"Object", inputExpr}}},
+            };
+
+            const BPNode* thenStart = w.FollowExec(n, "IsValid");
+            const BPNode* elseStart = w.FollowExec(n, "IsNotValid");
+            std::set<std::string> vt, ve;
+            nlohmann::json thenBody = DecompileStatementsFrom(w, thenStart, stopAt, vt);
+            nlohmann::json elseBody = DecompileStatementsFrom(w, elseStart, stopAt, ve);
+
+            nlohmann::json stmt = {{"if", std::move(cond)}};
+            if (!thenBody.empty()) stmt["then"] = std::move(thenBody);
+            if (!elseBody.empty()) stmt["else"] = std::move(elseBody);
+            r.statement = std::move(stmt);
+            // Both branches are walked into terminal positions; no
+            // continuation past this node (IsValid's only exec outputs
+            // are the two branches).
+            r.terminatesExec = true;
+            return r;
+        }
 
         if (isForEach || isReverseForEach) {
             // ForEachLoop pins: input Array, output exec LoopBody +
@@ -897,6 +933,98 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         r.statement = std::move(stmt);
         r.next = w.FollowExec(n, "then");
         return r;
+    }
+
+    // Delegate ops — Call/Add/Remove/Clear, all deriving from
+    // UK2Node_BaseMCDelegate. The plugin introspector surfaces
+    // `delegateProperty` (and `delegateClass`) in Meta via the
+    // DelegateOp Extras handler; we use the K2 class to pick which
+    // BPIR statement form to emit.
+    //
+    //   CallDelegate   -> {broadcast: <prop>, [target], [args]}
+    //   AddDelegate    -> {bind_delegate: <prop>, [target], handler: <fn>}
+    //   RemoveDelegate -> {unbind_delegate: <prop>, [target], handler: <fn>}
+    //   ClearDelegate  -> {clear_delegate: <prop>, [target]}
+    //
+    // target defaults to `self` if the "self" input pin isn't connected.
+    {
+        const bool isCall   = n.Class.find("K2Node_CallDelegate")   != std::string::npos;
+        const bool isAdd    = n.Class.find("K2Node_AddDelegate")    != std::string::npos;
+        const bool isRemove = n.Class.find("K2Node_RemoveDelegate") != std::string::npos;
+        const bool isClear  = n.Class.find("K2Node_ClearDelegate")  != std::string::npos;
+        if (isCall || isAdd || isRemove || isClear) {
+            std::string prop;
+            if (n.Meta.is_object()) prop = n.Meta.value("delegateProperty", std::string{});
+            // If introspector meta is missing (older plugin builds), fall
+            // through to the generic unsupported path with the node class
+            // captured so the sidecar is still actionable.
+            if (prop.empty()) {
+                nlohmann::json fields = nlohmann::json::object();
+                if (n.Meta.is_object()) fields = n.Meta;
+                r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+                    {"node_class", n.Class},
+                    {"guid", n.Id},
+                    {"reason",
+                     "Delegate op missing 'delegateProperty' in meta. "
+                     "Plugin introspector may predate BaseMCDelegate "
+                     "support; rebuild the editor module."},
+                    {"fields", std::move(fields)},
+                }}};
+                r.next = w.FollowExec(n, "then");
+                return r;
+            }
+
+            // Target = `self` input if connected, else the implicit self.
+            // Connectedness is determined by inEdges (BPPin::Links isn't
+            // populated by every backend; inEdges is the canonical map).
+            nlohmann::json target;
+            if (const BPPin* sp = w.GetPin(n, "self")) {
+                auto eIt = w.inEdges.find({n.Id, sp->Id});
+                if (eIt != w.inEdges.end() && !eIt->second.empty()) {
+                    target = BuildExpression(w, n, *sp);
+                }
+            }
+
+            if (isCall) {
+                nlohmann::json args = nlohmann::json::object();
+                for (const auto& p : n.Pins) {
+                    if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+                    if (p.Name == "self") continue;
+                    args[p.Name] = BuildExpression(w, n, p);
+                }
+                nlohmann::json stmt = {{"broadcast", prop}};
+                if (!target.is_null()) stmt["target"] = std::move(target);
+                if (!args.empty()) stmt["args"] = std::move(args);
+                r.statement = std::move(stmt);
+            } else if (isClear) {
+                nlohmann::json stmt = {{"clear_delegate", prop}};
+                if (!target.is_null()) stmt["target"] = std::move(target);
+                r.statement = std::move(stmt);
+            } else {
+                // Add or Remove. The bound function name comes from the
+                // K2Node_CreateDelegate node connected to the "Delegate"
+                // input pin -- that node's meta carries `delegateName`.
+                std::string handler;
+                if (const BPPin* dp = w.GetPin(n, "Delegate")) {
+                    auto eIt = w.inEdges.find({n.Id, dp->Id});
+                    if (eIt != w.inEdges.end() && !eIt->second.empty()) {
+                        if (const BPNode* maker = w.GetNode(eIt->second.front().node)) {
+                            if (maker->Meta.is_object()) {
+                                handler = maker->Meta.value("delegateName", std::string{});
+                            }
+                        }
+                    }
+                }
+                nlohmann::json stmt = {
+                    {isAdd ? "bind_delegate" : "unbind_delegate", prop},
+                };
+                if (!target.is_null()) stmt["target"] = std::move(target);
+                stmt["handler"] = handler;  // empty -> caller surfaces a sidecar note
+                r.statement = std::move(stmt);
+            }
+            r.next = w.FollowExec(n, "then");
+            return r;
+        }
     }
 
     // CallFunction (statement form — return value, if any, is unused).
