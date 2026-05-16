@@ -44,7 +44,11 @@ const std::vector<std::string>& StatementFormsImpl() {
     static const std::vector<std::string> forms = {
         "if", "set", "call", "comment",
         "return", "cast", "switch", "for_each", "while", "sequence",
-        "break", "continue", "unsupported",
+        "break", "continue",
+        // Multicast-delegate ops. See K2Node_BaseMCDelegate subclasses
+        // (CallDelegate, AddDelegate, RemoveDelegate, ClearDelegate).
+        "broadcast", "bind_delegate", "unbind_delegate", "clear_delegate",
+        "unsupported",
     };
     return forms;
 }
@@ -240,6 +244,35 @@ void ValidateStatement(const nlohmann::json& stmt, std::string_view path) {
         }
     } else if (form == "break" || form == "continue") {
         // Value of break/continue is conventionally null but ignored.
+    } else if (form == "broadcast" ||
+               form == "bind_delegate" ||
+               form == "unbind_delegate" ||
+               form == "clear_delegate") {
+        // Delegate ops carry the property name as the form's value and an
+        // optional `target` expression (defaults to `self`).
+        if (!stmt[form].is_string()) {
+            Bad(path, fmt::format(
+                R"(field "{}" must be a string (the delegate property name))", form));
+        }
+        if (auto tIt = stmt.find("target"); tIt != stmt.end()) {
+            ValidateExpression(*tIt, fmt::format("{}.target", path));
+        }
+        if (form == "broadcast") {
+            if (auto aIt = stmt.find("args"); aIt != stmt.end()) {
+                if (!aIt->is_object()) Bad(path, R"(field "args" must be an object)");
+                for (auto& [pinName, valExpr] : aIt->items()) {
+                    ValidateExpression(valExpr,
+                        fmt::format("{}.args.{}", path, pinName));
+                }
+            }
+        } else if (form == "bind_delegate" || form == "unbind_delegate") {
+            // {bind_delegate: "<prop>", [target: <expr>], handler: "<fn>"}
+            if (!stmt.contains("handler") || !stmt["handler"].is_string()) {
+                Bad(path, fmt::format(
+                    R"({} requires a string "handler" field (the bound function name))",
+                    form));
+            }
+        }
     } else if (form == "unsupported") {
         const auto& u = stmt["unsupported"];
         if (!u.is_object()) {

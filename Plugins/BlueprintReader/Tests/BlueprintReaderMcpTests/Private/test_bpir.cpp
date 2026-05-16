@@ -92,9 +92,39 @@ TEST_CASE("BPIR: every statement form validates with a minimal example") {
         json{{"sequence", json::array({json::array(), json::array()})}},
         json{{"break", nullptr}},
         json{{"continue", nullptr}},
+        json{{"broadcast", "OnSomething"}},
+        json{{"broadcast", "OnSomething"}, {"target", json{{"var","Listener"}}},
+             {"args", json{{"Payload", json{{"lit", 1}}}}}},
+        json{{"bind_delegate",   "OnSomething"}, {"handler", "Handle"}},
+        json{{"unbind_delegate", "OnSomething"}, {"handler", "Handle"}},
+        json{{"clear_delegate",  "OnSomething"}},
         json{{"unsupported", json{{"node_class","K2Node_Timeline"}}}},
     });
     CHECK_NOTHROW(ValidateBpir(fn));
+}
+
+TEST_CASE("BPIR: bind_delegate requires handler string") {
+    json fn = MakeMinimalFunction();
+    fn["body"] = json::array({
+        json{{"bind_delegate", "OnReady"}},  // missing handler
+    });
+    CHECK_THROWS_AS(ValidateBpir(fn), std::invalid_argument);
+}
+
+TEST_CASE("BPIR: clear_delegate accepts no handler") {
+    json fn = MakeMinimalFunction();
+    fn["body"] = json::array({
+        json{{"clear_delegate", "OnReady"}},  // no handler needed
+    });
+    CHECK_NOTHROW(ValidateBpir(fn));
+}
+
+TEST_CASE("BPIR: broadcast prop name must be a string") {
+    json fn = MakeMinimalFunction();
+    fn["body"] = json::array({
+        json{{"broadcast", 42}},  // non-string
+    });
+    CHECK_THROWS_AS(ValidateBpir(fn), std::invalid_argument);
 }
 
 TEST_CASE("BPIR: statement with no recognized form is rejected") {
