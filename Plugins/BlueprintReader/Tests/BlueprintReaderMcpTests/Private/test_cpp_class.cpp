@@ -628,3 +628,66 @@ TEST_CASE("EmitCppClass: FString / FName defaults wrap with TEXT()") {
     CHECK(Contains(out.headerSource, R"(Greeting = TEXT("Hello, World"))"));
     CHECK(Contains(out.headerSource, R"(Tag = TEXT("Player"))"));
 }
+
+// ===== Multicast delegate variable handling ================================
+//
+// BP multicast delegate variables arrive with type category `mcdelegate`
+// (or the prefixed variants). Without a typedef, that literal string
+// leaks into the C++ header and breaks compilation. We emit a
+// DECLARE_DYNAMIC_MULTICAST_DELEGATE between the includes and the
+// UCLASS, with the F<VarName> typedef, then use that typedef as the
+// member's type. Param threading is a future PR -- for now the macro
+// is zero-args + a TODO that flags it.
+
+TEST_CASE("EmitCppClass: mcdelegate var emits DECLARE macro + F<Name> typedef") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","OnSomethingHappened"}, {"type","mcdelegate"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource,
+        "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSomethingHappened);"));
+    // The UPROPERTY uses the typedef, not the literal "mcdelegate".
+    CHECK(Contains(out.headerSource, "FOnSomethingHappened OnSomethingHappened"));
+    CHECK_FALSE(Contains(out.headerSource, "mcdelegate OnSomethingHappened"));
+    // TODO marker present so the agent knows the params are stubbed.
+    CHECK(Contains(out.headerSource, "TODO[bpr-delegate-signature]"));
+    // Sidecar note carries the treatment marker.
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "delegate_typedef_stub" &&
+            n.value("bp_var_name", "") == "OnSomethingHappened") {
+            found = true; break;
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("EmitCppClass: mcdelegate-prefixed types (with sub-category) also match") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","OnReady"}, {"type","MulticastInlineDelegate"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnReady);"));
+    CHECK(Contains(out.headerSource, "FOnReady OnReady"));
+}
+
+TEST_CASE("EmitCppClass: mcdelegate var with F-prefix name isn't double-prefixed") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","FOnStuff"}, {"type","mcdelegate"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnStuff);"));
+    CHECK_FALSE(Contains(out.headerSource, "FFOnStuff"));
+}
+
+TEST_CASE("EmitCppClass: no mcdelegate vars -> no DECLARE emitted") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE"));
+}

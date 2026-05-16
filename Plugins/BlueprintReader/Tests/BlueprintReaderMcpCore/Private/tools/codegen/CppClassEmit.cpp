@@ -742,6 +742,68 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         }
     }
 
+    // Multicast-delegate property declarations. BP multicast delegate
+    // variables come over the wire with type category `mcdelegate` /
+    // `MulticastDelegate` -- not a real C++ type. UE's convention is
+    // a DECLARE_DYNAMIC_MULTICAST_DELEGATE_NParams macro emitted
+    // BEFORE the UCLASS body, with the resulting typedef used as the
+    // property's type.
+    //
+    // We don't yet have signature info (param types) threaded from the
+    // BP wire format to the BPIR class doc, so for now we emit
+    // zero-param declarations + a TODO note pointing the user at the BP
+    // signature graph. When BPIR carries a `delegates[]` field with the
+    // signature (future PR), this loop will materialize the
+    // _OneParam/_TwoParams/... variant with real types. The map below
+    // is consulted by the variable-emission loop further down to
+    // substitute the typedef name for the placeholder `mcdelegate`
+    // type.
+    auto isMcDelegateType = [](const std::string& s) {
+        static const std::vector<std::string> tags = {
+            "mcdelegate", "MulticastDelegate", "MulticastInlineDelegate"
+        };
+        for (const auto& tag : tags) {
+            if (s == tag) return true;
+            if (s.size() > tag.size() &&
+                s.compare(0, tag.size(), tag) == 0 &&
+                (s[tag.size()] == ':' || s[tag.size()] == '(')) {
+                return true;
+            }
+        }
+        return false;
+    };
+    auto deriveTypedefName = [](const std::string& varName) {
+        if (varName.size() >= 2 && varName[0] == 'F' &&
+            varName[1] >= 'A' && varName[1] <= 'Z') {
+            return varName;
+        }
+        return std::string("F") + varName;
+    };
+    std::map<std::string, std::string> mcDelegateTypedefs;  // varName -> typedefName
+    if (doc.contains("variables") && doc["variables"].is_array()) {
+        for (const auto& v : doc["variables"]) {
+            std::string t = v.value("type", "");
+            if (!isMcDelegateType(t)) continue;
+            std::string varName = v.value("name", "Delegate");
+            mcDelegateTypedefs[varName] = deriveTypedefName(varName);
+        }
+    }
+    for (const auto& [varName, typedefName] : mcDelegateTypedefs) {
+        H << "// TODO[bpr-delegate-signature]: fill in delegate params from BP "
+             "signature graph (the zero-arg form below is a placeholder).\n";
+        H << "DECLARE_DYNAMIC_MULTICAST_DELEGATE(" << typedefName << ");\n";
+        nlohmann::json note;
+        note["node_class"]    = "MulticastDelegateProperty";
+        note["treatment"]     = "delegate_typedef_stub";
+        note["delegate_name"] = typedefName;
+        note["bp_var_name"]   = varName;
+        note["hint"]          = "Replace DECLARE_DYNAMIC_MULTICAST_DELEGATE with "
+                                "the _NParams variant matching the BP delegate "
+                                "signature graph's parameter list.";
+        out.notes.push_back(std::move(note));
+    }
+    if (!mcDelegateTypedefs.empty()) H << "\n";
+
     // .generated.h must be the LAST include in any UCLASS-bearing header.
     H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
 
@@ -770,7 +832,18 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     bool anyReplicated = false;
     if (doc.contains("variables") && doc["variables"].is_array()) {
         for (const auto& v : doc["variables"]) {
-            H << RenderUPropertyDecl(v);
+            // Substitute mcdelegate placeholder with the F<Name>
+            // typedef we emitted above. Cheaper than threading state
+            // into RenderUPropertyDecl: clone the var doc and rewrite
+            // its `type` field for the call.
+            auto it = mcDelegateTypedefs.find(v.value("name", ""));
+            if (it != mcDelegateTypedefs.end()) {
+                nlohmann::json patched = v;
+                patched["type"] = it->second;
+                H << RenderUPropertyDecl(patched);
+            } else {
+                H << RenderUPropertyDecl(v);
+            }
             if (v.value("replicated", false)) anyReplicated = true;
         }
         if (!doc["variables"].empty()) H << "\n";
