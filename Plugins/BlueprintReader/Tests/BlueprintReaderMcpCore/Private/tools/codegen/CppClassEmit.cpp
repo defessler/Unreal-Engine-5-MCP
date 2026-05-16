@@ -559,6 +559,17 @@ const std::unordered_set<std::string>& UeOverridableVoidVirtuals() {
     return s;
 }
 
+// Recognize BP's construction-script entry points. BP exposes the
+// function under "ConstructionScript" (UE 5.7+: "UserConstructionScript");
+// the matching C++ override is `virtual void OnConstruction(const
+// FTransform& Transform)`. Treated as a special case rather than added
+// to UeOverridableVoidVirtuals because the function name on the BP
+// side doesn't match the C++ override name -- we rewrite at emission.
+bool IsConstructionScriptFunction(const nlohmann::json& fn) {
+    std::string name = fn.value("name", "");
+    return name == "ConstructionScript" || name == "UserConstructionScript";
+}
+
 // Render UFUNCTION decl for the header.
 //   UFUNCTION(BlueprintCallable, Category="Combat")
 //   void TakeDamage(float Amount, bool& Killed);
@@ -614,6 +625,16 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
         isPure = fn["metadata"].value("pure", false);
     }
     const char* constSuffix = isPure ? " const" : "";
+
+    // ConstructionScript / UserConstructionScript: BP exposes the
+    // function under those names but the matching C++ override is
+    // AActor::OnConstruction(const FTransform&). Rewrite the name AND
+    // force the canonical signature; BP's ConstructionScript can't add
+    // arguments anyway.
+    if (IsConstructionScriptFunction(fn)) {
+        return std::string(
+            "    virtual void OnConstruction(const FTransform& Transform) override;\n");
+    }
 
     // Override path. Only safe when the parent's signature is
     // known-void-return (UeOverridableVoidVirtuals) AND the BP function
@@ -855,6 +876,16 @@ std::string RenderUFunctionImpl(const std::string& className,
     }
     std::string fnName = SanitizeIdentifier(fn.value("name", ""));
     if (fnName.empty()) fnName = "Fn";
+    // ConstructionScript / UserConstructionScript -> OnConstruction
+    // (the canonical AActor virtual). Force the canonical signature
+    // here too -- ignore whatever BPIR carries for the inputs since
+    // BP can't add args to ConstructionScript.
+    if (IsConstructionScriptFunction(fn)) {
+        return fmt::format(
+            "void {}::OnConstruction(const FTransform& Transform) {{\n{}}}\n",
+            className,
+            EmitCppFunctionBody(fn, emitOpts).source);
+    }
     // RPCs and BlueprintNativeEvent both rename the impl to
     // <FnName>_Implementation. The header decl stays as <FnName> --
     // UHT generates the dispatch wrapper that calls _Implementation.
@@ -1122,27 +1153,79 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         }
         return out;
     };
-    std::map<std::string, std::string> mcDelegateTypedefs;  // varName -> typedefName
+    // Collect mcdelegate vars + their signature params (if surfaced by
+    // the introspector via the variable's `delegate_params` field).
+    struct McDelegateInfo {
+        std::string typedefName;
+        nlohmann::json params;  // array of {name, type}
+    };
+    std::map<std::string, McDelegateInfo> mcDelegateTypedefs;
     if (doc.contains("variables") && doc["variables"].is_array()) {
         for (const auto& v : doc["variables"]) {
             std::string t = v.value("type", "");
             if (!isMcDelegateType(t)) continue;
             std::string varName = v.value("name", "Delegate");
-            mcDelegateTypedefs[varName] = deriveTypedefName(varName);
+            McDelegateInfo info;
+            info.typedefName = deriveTypedefName(varName);
+            if (v.contains("delegate_params") && v["delegate_params"].is_array()) {
+                info.params = v["delegate_params"];
+            } else {
+                info.params = nlohmann::json::array();
+            }
+            mcDelegateTypedefs[varName] = std::move(info);
         }
     }
-    for (const auto& [varName, typedefName] : mcDelegateTypedefs) {
-        H << "// TODO[bpr-delegate-signature]: fill in delegate params from BP "
-             "signature graph (the zero-arg form below is a placeholder).\n";
-        H << "DECLARE_DYNAMIC_MULTICAST_DELEGATE(" << typedefName << ");\n";
+    // Word forms for the macro suffix. UE's DECLARE family caps at
+    // nine params (DECLARE_DYNAMIC_MULTICAST_DELEGATE_NineParams) with
+    // distinct names per slot. Anything beyond emits a TODO marker.
+    static const char* kNParamSuffix[] = {
+        "",          // 0 -> plain DECLARE_DYNAMIC_MULTICAST_DELEGATE
+        "_OneParam", "_TwoParams", "_ThreeParams", "_FourParams",
+        "_FiveParams", "_SixParams", "_SevenParams", "_EightParams",
+        "_NineParams",
+    };
+    constexpr std::size_t kMaxParams = sizeof(kNParamSuffix) / sizeof(kNParamSuffix[0]) - 1;
+
+    for (const auto& [varName, info] : mcDelegateTypedefs) {
+        const std::size_t paramCount = info.params.size();
         nlohmann::json note;
         note["node_class"]    = "MulticastDelegateProperty";
-        note["treatment"]     = "delegate_typedef_stub";
-        note["delegate_name"] = typedefName;
+        note["delegate_name"] = info.typedefName;
         note["bp_var_name"]   = varName;
-        note["hint"]          = "Replace DECLARE_DYNAMIC_MULTICAST_DELEGATE with "
+        note["param_count"]   = paramCount;
+        if (paramCount == 0) {
+            // No signature plumbed through (older plugin / no params).
+            // Emit zero-arg DECLARE + a hint.
+            H << "// TODO[bpr-delegate-signature]: fill in delegate params from BP "
+                 "signature graph (the zero-arg form below is a placeholder).\n";
+            H << "DECLARE_DYNAMIC_MULTICAST_DELEGATE(" << info.typedefName << ");\n";
+            note["treatment"] = "delegate_typedef_stub";
+            note["hint"]      = "Replace DECLARE_DYNAMIC_MULTICAST_DELEGATE with "
                                 "the _NParams variant matching the BP delegate "
                                 "signature graph's parameter list.";
+        } else if (paramCount > kMaxParams) {
+            // BP delegates don't usually have >9 params, but just in
+            // case, fall back to the zero-arg DECLARE with a TODO so
+            // the user picks the right variant by hand.
+            H << "// TODO[bpr-delegate-signature]: BP delegate has " << paramCount
+              << " params; DECLARE_DYNAMIC_MULTICAST_DELEGATE caps at 9. Refactor or grow the macro family.\n";
+            H << "DECLARE_DYNAMIC_MULTICAST_DELEGATE(" << info.typedefName << ");\n";
+            note["treatment"] = "delegate_typedef_too_many_params";
+            note["hint"]      = "DECLARE_DYNAMIC_MULTICAST_DELEGATE caps at 9 params.";
+        } else {
+            // Emit the matching _NParams variant.
+            //   DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnX, int32, A, float, B)
+            H << "DECLARE_DYNAMIC_MULTICAST_DELEGATE" << kNParamSuffix[paramCount]
+              << "(" << info.typedefName;
+            for (const auto& p : info.params) {
+                std::string pname = SanitizeIdentifier(p.value("name", ""));
+                if (pname.empty()) pname = "Arg";
+                std::string ptype = MapBpirTypeToCppArg(p.value("type", "void"));
+                H << ", " << ptype << ", " << pname;
+            }
+            H << ");\n";
+            note["treatment"] = "delegate_typedef_resolved";
+        }
         out.notes.push_back(std::move(note));
     }
     if (!mcDelegateTypedefs.empty()) H << "\n";
@@ -1199,7 +1282,7 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
             nlohmann::json patched = v;
             auto td = mcDelegateTypedefs.find(v.value("name", ""));
             if (td != mcDelegateTypedefs.end()) {
-                patched["type"] = td->second;
+                patched["type"] = td->second.typedefName;
             }
             // Category: remap > default > original. Apply remap first
             // (project-specific normalization), then categoryDefault
@@ -1412,30 +1495,44 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
                     if (!v.code.empty()) {
                         I << "    " << nm << "->" << pname << " = " << v.code << ";\n";
                     } else if (v.isAssetRef && !v.assetPath.empty()) {
-                        // Asset ref -- ConstructorHelpers::FObjectFinder
-                        // pattern. UE enforces this only-runs-in-ctor
+                        // Asset ref -- emit ConstructorHelpers::FObjectFinder
+                        // skeleton. UE enforces this only-runs-in-ctor
                         // path via a static local + Object/Class
                         // assignment guarded by Succeeded().
-                        // The asset path commonly comes through as
-                        // "/Game/Path.Asset" or "/Game/Path.Asset_C".
-                        // Strip a trailing _C for FObjectFinder<UClass>
-                        // tracking (we don't know the class type yet,
-                        // so emit a comment + the canonical pattern
-                        // skeleton).
-                        I << "    // TODO[bpr-asset-ref]: load via "
-                          << "ConstructorHelpers::FObjectFinder<T> for "
-                          << pname << " = " << v.assetPath << "\n";
-                        I << "    //   static ConstructorHelpers::FObjectFinder<T> "
-                          << pname << "Finder(TEXT(\"" << v.assetPath << "\"));\n";
-                        I << "    //   if (" << pname << "Finder.Succeeded()) "
-                          << nm << "->" << pname << " = " << pname << "Finder.Object;\n";
+                        //
+                        // When the plugin introspector surfaced the asset
+                        // type via property_class, fill it in; otherwise
+                        // leave `T` as a TODO so the agent retypes.
+                        std::string assetClass = p.value("property_class", std::string{});
+                        const std::string templateArg = assetClass.empty() ? std::string("T") : assetClass;
+                        const std::string templateMissingHint =
+                            assetClass.empty()
+                                ? std::string(" (replace `T` with the asset's C++ class)")
+                                : std::string();
+                        // Emit a fully-formed compileable block, not a
+                        // comment-only stub. Using a static local
+                        // ConstructorHelpers::FObjectFinder is the
+                        // canonical UE pattern.
+                        I << "    {\n";
+                        I << "        static ConstructorHelpers::FObjectFinder<" << templateArg
+                          << "> " << pname << "Finder(TEXT(\"" << v.assetPath << "\"));\n";
+                        I << "        if (" << pname << "Finder.Succeeded()) { "
+                          << nm << "->" << pname << " = " << pname << "Finder.Object; }\n";
+                        I << "    }";
+                        if (assetClass.empty()) {
+                            I << "  // TODO[bpr-asset-ref]" << templateMissingHint;
+                        }
+                        I << "\n";
                         nlohmann::json note;
-                        note["node_class"]   = "SCSComponentDefault";
-                        note["treatment"]    = "asset_ref_objectfinder_stub";
-                        note["component"]    = nm;
-                        note["property"]     = pname;
-                        note["asset_path"]   = v.assetPath;
-                        note["property_type"]= ptype;
+                        note["node_class"]    = "SCSComponentDefault";
+                        note["treatment"]     = assetClass.empty()
+                                                ? "asset_ref_objectfinder_stub"
+                                                : "asset_ref_objectfinder_resolved";
+                        note["component"]     = nm;
+                        note["property"]      = pname;
+                        note["asset_path"]    = v.assetPath;
+                        note["property_type"] = ptype;
+                        if (!assetClass.empty()) note["asset_class"] = assetClass;
                         out.notes.push_back(std::move(note));
                     } else {
                         // Untranslatable -- emit a clear TODO with
