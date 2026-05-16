@@ -18,20 +18,20 @@
 namespace bpr::tools {
 
 struct CppEmitOptions {
-    enum class Mode { Readable, Compilable };
-    Mode mode = Mode::Readable;
-    int  indentSpaces = 4;
-    // When true, every BPIR `{call: "+"}` etc. is rendered with the
-    // operator alias (e.g. `a + b`) instead of the canonical
-    // `UKismetMathLibrary::Add_IntInt(a, b)` call. Default true.
-    bool useOperatorAliases = true;
+	enum class Mode { Readable, Compilable };
+	Mode mode = Mode::Readable;
+	int  indentSpaces = 4;
+	// When true, every BPIR `{call: "+"}` etc. is rendered with the
+	// operator alias (e.g. `a + b`) instead of the canonical
+	// `UKismetMathLibrary::Add_IntInt(a, b)` call. Default true.
+	bool useOperatorAliases = true;
 };
 
 struct CppEmitResult {
-    std::string source;
-    // Each unsupported / approximation node encountered. Whole-class
-    // codegen builds a sidecar JSON from this for triage.
-    nlohmann::json notes = nlohmann::json::array();
+	std::string source;
+	// Each unsupported / approximation node encountered. Whole-class
+	// codegen builds a sidecar JSON from this for triage.
+	nlohmann::json notes = nlohmann::json::array();
 };
 
 // Emit C++ for a BPIR function doc. Caller handles surrounding scaffold
@@ -42,13 +42,13 @@ struct CppEmitResult {
 // Throws std::invalid_argument if `bpirFunctionDoc` doesn't validate
 // (we re-run the validator here so codegen never sees a malformed doc).
 CppEmitResult EmitCppFunctionBody(const nlohmann::json& bpirFunctionDoc,
-                                  CppEmitOptions opts = {});
+								  CppEmitOptions opts = {});
 
 // Emit a complete `<returnType> <name>(<args>) { <body> }` block.
 // Useful for standalone-snippet rendering and for the tests that pin
 // specific outputs.
 CppEmitResult EmitCppFunction(const nlohmann::json& bpirFunctionDoc,
-                              CppEmitOptions opts = {});
+							  CppEmitOptions opts = {});
 
 // Collapse non-`[A-Za-z0-9_]` chars to nothing so BP display names with
 // spaces ("Set Resources", "AsExample Bar") become legal C++

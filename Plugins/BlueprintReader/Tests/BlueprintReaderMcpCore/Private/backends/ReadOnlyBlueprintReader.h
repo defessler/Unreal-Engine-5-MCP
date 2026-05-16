@@ -27,212 +27,212 @@ namespace bpr::backends {
 
 class ReadOnlyBlueprintReader : public IBlueprintReader {
 public:
-    explicit ReadOnlyBlueprintReader(std::unique_ptr<IBlueprintReader> inner);
+	explicit ReadOnlyBlueprintReader(std::unique_ptr<IBlueprintReader> inner);
 
-    // ----- read tools (pass-through) --------------------------------
-    std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;
-    BPMetadata                  ReadBlueprint(std::string_view assetPath) override;
-    BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) override;
-    BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
-    std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
-    std::vector<BPComponent>    GetComponents(std::string_view assetPath) override;
-    std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
-                                          std::string_view kind = {}) override;
+	// ----- read tools (pass-through) --------------------------------
+	std::vector<BPAssetSummary> ListBlueprints(std::string_view path) override;
+	BPMetadata                  ReadBlueprint(std::string_view assetPath) override;
+	BPGraph                     GetGraph(std::string_view assetPath, std::string_view graphName) override;
+	BPFunction                  GetFunction(std::string_view assetPath, std::string_view fnName) override;
+	std::vector<BPVariable>     ListVariables(std::string_view assetPath) override;
+	std::vector<BPComponent>    GetComponents(std::string_view assetPath) override;
+	std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
+										  std::string_view kind = {}) override;
 
-    // ----- write tools (all throw) ----------------------------------
-    void AddVariable(std::string_view, std::string_view, const BPPinType&,
-                     std::string_view, std::string_view, bool, bool) override;
-    void SetNodePosition(std::string_view, std::string_view, std::string_view,
-                         int, int) override;
-    void DeleteNode(std::string_view, std::string_view, std::string_view) override;
-    std::string AddNode(std::string_view, std::string_view, std::string_view,
-                        int, int,
-                        const std::map<std::string, std::string, std::less<>>&) override;
-    void WirePins(std::string_view, std::string_view, std::string_view,
-                  std::string_view, std::string_view, std::string_view) override;
-    void DeleteVariable(std::string_view, std::string_view) override;
-    void RenameVariable(std::string_view, std::string_view, std::string_view) override;
-    AddFunctionResult AddFunction(std::string_view, std::string_view) override;
-    void AddFunctionInput(std::string_view, std::string_view, std::string_view,
-                          const BPPinType&) override;
-    void AddFunctionOutput(std::string_view, std::string_view, std::string_view,
-                           const BPPinType&) override;
-    void DeleteFunction(std::string_view, std::string_view) override;
-    void SetVariableDefault(std::string_view, std::string_view, std::string_view) override;
-    CreateBlueprintResult CreateBlueprint(std::string_view, std::string_view) override;
-    void SetPinDefault(std::string_view, std::string_view, std::string_view,
-                       std::string_view, std::string_view) override;
-    void RetypeVariable(std::string_view, std::string_view,
-                        const BPPinType&) override;
-    void SetVariableCategory(std::string_view, std::string_view,
-                             std::string_view) override;
-    DuplicateBlueprintResult DuplicateBlueprint(std::string_view,
-                                                std::string_view) override;
-    WriteGeneratedSourceResult WriteGeneratedSource(std::string_view,
-                                                    std::string_view,
-                                                    bool) override;
+	// ----- write tools (all throw) ----------------------------------
+	void AddVariable(std::string_view, std::string_view, const BPPinType&,
+					 std::string_view, std::string_view, bool, bool) override;
+	void SetNodePosition(std::string_view, std::string_view, std::string_view,
+						 int, int) override;
+	void DeleteNode(std::string_view, std::string_view, std::string_view) override;
+	std::string AddNode(std::string_view, std::string_view, std::string_view,
+						int, int,
+						const std::map<std::string, std::string, std::less<>>&) override;
+	void WirePins(std::string_view, std::string_view, std::string_view,
+				  std::string_view, std::string_view, std::string_view) override;
+	void DeleteVariable(std::string_view, std::string_view) override;
+	void RenameVariable(std::string_view, std::string_view, std::string_view) override;
+	AddFunctionResult AddFunction(std::string_view, std::string_view) override;
+	void AddFunctionInput(std::string_view, std::string_view, std::string_view,
+						  const BPPinType&) override;
+	void AddFunctionOutput(std::string_view, std::string_view, std::string_view,
+						   const BPPinType&) override;
+	void DeleteFunction(std::string_view, std::string_view) override;
+	void SetVariableDefault(std::string_view, std::string_view, std::string_view) override;
+	CreateBlueprintResult CreateBlueprint(std::string_view, std::string_view) override;
+	void SetPinDefault(std::string_view, std::string_view, std::string_view,
+					   std::string_view, std::string_view) override;
+	void RetypeVariable(std::string_view, std::string_view,
+						const BPPinType&) override;
+	void SetVariableCategory(std::string_view, std::string_view,
+							 std::string_view) override;
+	DuplicateBlueprintResult DuplicateBlueprint(std::string_view,
+												std::string_view) override;
+	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view,
+													std::string_view,
+													bool) override;
 
-    // ----- Project + Content Browser ops --------------------------------
-    // Reads pass through; writes (save/move/delete/create) throw the
-    // read-only error.
-    ProjectMetadata GetProjectMetadata() override;
-    SaveAllResult SaveAll(bool) override;
-    MoveAssetResult MoveAsset(std::string_view, std::string_view) override;
-    DeleteAssetResult DeleteAsset(std::string_view, bool) override;
-    CreateFolderResult CreateFolder(std::string_view) override;
-    std::vector<BPAssetSummary> ListDataTables(std::string_view) override;
-    DataTableInfo ReadDataTable(std::string_view) override;
-    AddDataRowResult AddDataRow(std::string_view, std::string_view,
-                                const nlohmann::json&, bool) override;
-    SetDataRowValueResult SetDataRowValue(std::string_view, std::string_view,
-                                          std::string_view, std::string_view) override;
-    AddComponentResult AddComponent(std::string_view, std::string_view,
-                                    std::string_view, std::string_view,
-                                    std::string_view) override;
-    RemoveComponentResult RemoveComponent(std::string_view, std::string_view) override;
-    AttachComponentResult AttachComponent(std::string_view, std::string_view,
-                                          std::string_view, std::string_view) override;
-    SetComponentPropertyResult SetComponentProperty(std::string_view, std::string_view,
-                                                    std::string_view, std::string_view) override;
+	// ----- Project + Content Browser ops --------------------------------
+	// Reads pass through; writes (save/move/delete/create) throw the
+	// read-only error.
+	ProjectMetadata GetProjectMetadata() override;
+	SaveAllResult SaveAll(bool) override;
+	MoveAssetResult MoveAsset(std::string_view, std::string_view) override;
+	DeleteAssetResult DeleteAsset(std::string_view, bool) override;
+	CreateFolderResult CreateFolder(std::string_view) override;
+	std::vector<BPAssetSummary> ListDataTables(std::string_view) override;
+	DataTableInfo ReadDataTable(std::string_view) override;
+	AddDataRowResult AddDataRow(std::string_view, std::string_view,
+								const nlohmann::json&, bool) override;
+	SetDataRowValueResult SetDataRowValue(std::string_view, std::string_view,
+										  std::string_view, std::string_view) override;
+	AddComponentResult AddComponent(std::string_view, std::string_view,
+									std::string_view, std::string_view,
+									std::string_view) override;
+	RemoveComponentResult RemoveComponent(std::string_view, std::string_view) override;
+	AttachComponentResult AttachComponent(std::string_view, std::string_view,
+										  std::string_view, std::string_view) override;
+	SetComponentPropertyResult SetComponentProperty(std::string_view, std::string_view,
+													std::string_view, std::string_view) override;
 
-    // ----- Live editor ops ----------------------------------------------
-    // Reads (GetCVar, GetSelectedActors, ReadOutputLog, ConsoleCommand,
-    // PieStart, LiveCodingCompile) pass through — they don't mutate
-    // .uasset files which is what read-only mode is protecting. Real
-    // mutations (SetCVar, SetSelection, SpawnActor, SetActorTransform,
-    // DeleteActor, PieStop) reject. PieStart/Stop are debatable; we
-    // gate Stop only since Start is "trigger an editor mode" not a write.
-    ConsoleCommandResult ConsoleCommand(std::string_view) override;
-    CVarValue GetCVar(std::string_view) override;
-    CVarValue SetCVar(std::string_view, std::string_view) override;
-    PieResult PieStart(std::string_view) override;
-    PieResult PieStop() override;
-    LiveCodingResult LiveCodingCompile() override;
-    SelectionResult GetSelectedActors() override;
-    SelectionResult SetSelection(const std::vector<std::string>&, bool) override;
-    SpawnActorResult SpawnActor(std::string_view,
-        double, double, double, double, double, double,
-        double, double, double) override;
-    void SetActorTransform(std::string_view,
-        double, double, double, double, double, double,
-        double, double, double) override;
-    DeleteActorResult DeleteActor(std::string_view) override;
-    OutputLogResult ReadOutputLog(int, std::string_view) override;
-    // Automation tests pass through — they're read-shaped (trigger a run,
-    // return what happened); they don't mutate .uasset files directly.
-    AutomationRunResult RunAutomationTests(std::string_view) override;
+	// ----- Live editor ops ----------------------------------------------
+	// Reads (GetCVar, GetSelectedActors, ReadOutputLog, ConsoleCommand,
+	// PieStart, LiveCodingCompile) pass through — they don't mutate
+	// .uasset files which is what read-only mode is protecting. Real
+	// mutations (SetCVar, SetSelection, SpawnActor, SetActorTransform,
+	// DeleteActor, PieStop) reject. PieStart/Stop are debatable; we
+	// gate Stop only since Start is "trigger an editor mode" not a write.
+	ConsoleCommandResult ConsoleCommand(std::string_view) override;
+	CVarValue GetCVar(std::string_view) override;
+	CVarValue SetCVar(std::string_view, std::string_view) override;
+	PieResult PieStart(std::string_view) override;
+	PieResult PieStop() override;
+	LiveCodingResult LiveCodingCompile() override;
+	SelectionResult GetSelectedActors() override;
+	SelectionResult SetSelection(const std::vector<std::string>&, bool) override;
+	SpawnActorResult SpawnActor(std::string_view,
+		double, double, double, double, double, double,
+		double, double, double) override;
+	void SetActorTransform(std::string_view,
+		double, double, double, double, double, double,
+		double, double, double) override;
+	DeleteActorResult DeleteActor(std::string_view) override;
+	OutputLogResult ReadOutputLog(int, std::string_view) override;
+	// Automation tests pass through — they're read-shaped (trigger a run,
+	// return what happened); they don't mutate .uasset files directly.
+	AutomationRunResult RunAutomationTests(std::string_view) override;
 
-    // ----- Material authoring ------------------------------------------
-    // Reads (list/read) pass through; writes (add expression, connect,
-    // set parameter, compile) throw the read-only error.
-    std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
-    MaterialInfo ReadMaterial(std::string_view) override;
-    AddMaterialExpressionResult AddMaterialExpression(std::string_view,
-        std::string_view, int, int) override;
-    ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
-        std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    SetMaterialParameterResult SetMaterialParameter(std::string_view,
-        std::string_view, std::string_view) override;
-    SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
-        std::string_view, std::string_view, std::string_view) override;
-    CompileMaterialResult CompileMaterial(std::string_view) override;
+	// ----- Material authoring ------------------------------------------
+	// Reads (list/read) pass through; writes (add expression, connect,
+	// set parameter, compile) throw the read-only error.
+	std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+	MaterialInfo ReadMaterial(std::string_view) override;
+	AddMaterialExpressionResult AddMaterialExpression(std::string_view,
+		std::string_view, int, int) override;
+	ConnectMaterialResult ConnectMaterialExpressions(std::string_view,
+		std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	SetMaterialParameterResult SetMaterialParameter(std::string_view,
+		std::string_view, std::string_view) override;
+	SetMIParameterResult SetMaterialInstanceParameter(std::string_view,
+		std::string_view, std::string_view, std::string_view) override;
+	CompileMaterialResult CompileMaterial(std::string_view) override;
 
-    // ----- UMG widget authoring ----------------------------------------
-    WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
-    AddWidgetResult AddWidget(std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+	// ----- UMG widget authoring ----------------------------------------
+	WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+	AddWidgetResult AddWidget(std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
 
-    // ----- Behavior Tree (Stage 2) -------------------------------------
-    std::vector<BPAssetSummary> ListBehaviorTrees(std::string_view) override;
-    BehaviorTreeInfo ReadBehaviorTree(std::string_view) override;
-    AddBTNodeResult AddBTNode(std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    SetBTNodePropertyResult SetBTNodeProperty(std::string_view, std::string_view,
-        std::string_view, std::string_view) override;
-    CompileBehaviorTreeResult CompileBehaviorTree(std::string_view) override;
+	// ----- Behavior Tree (Stage 2) -------------------------------------
+	std::vector<BPAssetSummary> ListBehaviorTrees(std::string_view) override;
+	BehaviorTreeInfo ReadBehaviorTree(std::string_view) override;
+	AddBTNodeResult AddBTNode(std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	SetBTNodePropertyResult SetBTNodeProperty(std::string_view, std::string_view,
+		std::string_view, std::string_view) override;
+	CompileBehaviorTreeResult CompileBehaviorTree(std::string_view) override;
 
-    // ----- DataAsset (Stage 2) -----------------------------------------
-    std::vector<BPAssetSummary> ListDataAssets(std::string_view) override;
-    DataAssetInfo ReadDataAsset(std::string_view) override;
-    CreateDataAssetResult CreateDataAsset(std::string_view, std::string_view) override;
-    SetDataAssetPropertyResult SetDataAssetProperty(std::string_view,
-        std::string_view, std::string_view) override;
+	// ----- DataAsset (Stage 2) -----------------------------------------
+	std::vector<BPAssetSummary> ListDataAssets(std::string_view) override;
+	DataAssetInfo ReadDataAsset(std::string_view) override;
+	CreateDataAssetResult CreateDataAsset(std::string_view, std::string_view) override;
+	SetDataAssetPropertyResult SetDataAssetProperty(std::string_view,
+		std::string_view, std::string_view) override;
 
-    // ----- StateTree (Stage 2) -----------------------------------------
-    std::vector<BPAssetSummary> ListStateTrees(std::string_view) override;
-    StateTreeInfo ReadStateTree(std::string_view) override;
-    AddStateTreeStateResult AddStateTreeState(std::string_view,
-        std::string_view, std::string_view) override;
-    SetStateTreeTransitionResult SetStateTreeTransition(std::string_view,
-        std::string_view, std::string_view, std::string_view) override;
-    CompileStateTreeResult CompileStateTree(std::string_view) override;
+	// ----- StateTree (Stage 2) -----------------------------------------
+	std::vector<BPAssetSummary> ListStateTrees(std::string_view) override;
+	StateTreeInfo ReadStateTree(std::string_view) override;
+	AddStateTreeStateResult AddStateTreeState(std::string_view,
+		std::string_view, std::string_view) override;
+	SetStateTreeTransitionResult SetStateTreeTransition(std::string_view,
+		std::string_view, std::string_view, std::string_view) override;
+	CompileStateTreeResult CompileStateTree(std::string_view) override;
 
-    // ----- Stage 3 ----------------------------------------------------
-    // Profile + stats + screenshots + viewport reads pass through —
-    // they don't mutate .uasset files. Cook / package + camera write +
-    // show flag are arguable; treat as read-shaped diagnostics (they
-    // produce artifacts, not .uasset edits). Only writes that touch
-    // the project tree (none here) would reject.
-    StartProfileResult StartProfile(std::string_view) override;
-    StopProfileResult StopProfile() override;
-    StatGroupResult GetStats(std::string_view) override;
-    ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
-    CookResult CookContent(std::string_view) override;
-    CookResult PackageProject(std::string_view, std::string_view) override;
-    ClassInfo IntrospectClass(std::string_view) override;
-    FindClassResult FindClass(std::string_view) override;
-    std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
-    FocusActorResult FocusActor(std::string_view) override;
-    SetCameraResult SetCameraTransform(double, double, double,
-                                       double, double, double) override;
-    ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
-    SetShowFlagResult SetShowFlag(std::string_view, bool) override;
+	// ----- Stage 3 ----------------------------------------------------
+	// Profile + stats + screenshots + viewport reads pass through —
+	// they don't mutate .uasset files. Cook / package + camera write +
+	// show flag are arguable; treat as read-shaped diagnostics (they
+	// produce artifacts, not .uasset edits). Only writes that touch
+	// the project tree (none here) would reject.
+	StartProfileResult StartProfile(std::string_view) override;
+	StopProfileResult StopProfile() override;
+	StatGroupResult GetStats(std::string_view) override;
+	ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
+	CookResult CookContent(std::string_view) override;
+	CookResult PackageProject(std::string_view, std::string_view) override;
+	ClassInfo IntrospectClass(std::string_view) override;
+	FindClassResult FindClass(std::string_view) override;
+	std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
+	FocusActorResult FocusActor(std::string_view) override;
+	SetCameraResult SetCameraTransform(double, double, double,
+									   double, double, double) override;
+	ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
+	SetShowFlagResult SetShowFlag(std::string_view, bool) override;
 
-    // ----- Stage 4: reads pass through, writes reject ------------------
-    std::vector<BPAssetSummary> ListNiagaraSystems(std::string_view) override;
-    NiagaraSystemInfo ReadNiagaraSystem(std::string_view) override;
-    CreateNiagaraSystemResult CreateNiagaraSystem(std::string_view) override;
-    SetNiagaraParameterResult SetNiagaraParameter(std::string_view,
-        std::string_view, std::string_view) override;
-    std::vector<BPAssetSummary> ListLevelSequences(std::string_view) override;
-    LevelSequenceInfo ReadLevelSequence(std::string_view) override;
-    AddSequenceTrackResult AddSequenceTrack(std::string_view,
-        std::string_view, std::string_view) override;
-    SetSequencePlaybackRangeResult SetSequencePlaybackRange(std::string_view,
-        double, double) override;
-    GameplayTagListResult ListGameplayTags(std::string_view) override;
-    AddGameplayTagResult AddGameplayTag(std::string_view, std::string_view) override;
-    AbilitySetInfo ReadAbilitySet(std::string_view) override;
-    std::vector<BPAssetSummary> ListAnimBlueprints(std::string_view) override;
-    AnimBlueprintInfo ReadAnimBlueprint(std::string_view) override;
-    AddAnimStateResult AddAnimState(std::string_view, std::string_view,
-        std::string_view) override;
-    CompileAnimBlueprintResult CompileAnimBlueprint(std::string_view) override;
+	// ----- Stage 4: reads pass through, writes reject ------------------
+	std::vector<BPAssetSummary> ListNiagaraSystems(std::string_view) override;
+	NiagaraSystemInfo ReadNiagaraSystem(std::string_view) override;
+	CreateNiagaraSystemResult CreateNiagaraSystem(std::string_view) override;
+	SetNiagaraParameterResult SetNiagaraParameter(std::string_view,
+		std::string_view, std::string_view) override;
+	std::vector<BPAssetSummary> ListLevelSequences(std::string_view) override;
+	LevelSequenceInfo ReadLevelSequence(std::string_view) override;
+	AddSequenceTrackResult AddSequenceTrack(std::string_view,
+		std::string_view, std::string_view) override;
+	SetSequencePlaybackRangeResult SetSequencePlaybackRange(std::string_view,
+		double, double) override;
+	GameplayTagListResult ListGameplayTags(std::string_view) override;
+	AddGameplayTagResult AddGameplayTag(std::string_view, std::string_view) override;
+	AbilitySetInfo ReadAbilitySet(std::string_view) override;
+	std::vector<BPAssetSummary> ListAnimBlueprints(std::string_view) override;
+	AnimBlueprintInfo ReadAnimBlueprint(std::string_view) override;
+	AddAnimStateResult AddAnimState(std::string_view, std::string_view,
+		std::string_view) override;
+	CompileAnimBlueprintResult CompileAnimBlueprint(std::string_view) override;
 
-    // ----- batch sentinels ------------------------------------------
-    // BeginBatch / EndBatch are technically not writes themselves, but in
-    // read-only mode they're still no-ops because no writes can happen
-    // inside a batch. Pass-through to the inner so apply_ops with all-read
-    // ops still works correctly (preview-style batches).
-    void BeginBatch() override;
-    nlohmann::json EndBatch(bool skipCompile = false) override;
-    // ShutdownDaemon is allowed in read-only mode — releasing the daemon
-    // is the whole reason this mode exists ("let me work in the editor
-    // without daemon contention").
-    nlohmann::json ShutdownDaemon() override;
+	// ----- batch sentinels ------------------------------------------
+	// BeginBatch / EndBatch are technically not writes themselves, but in
+	// read-only mode they're still no-ops because no writes can happen
+	// inside a batch. Pass-through to the inner so apply_ops with all-read
+	// ops still works correctly (preview-style batches).
+	void BeginBatch() override;
+	nlohmann::json EndBatch(bool skipCompile = false) override;
+	// ShutdownDaemon is allowed in read-only mode — releasing the daemon
+	// is the whole reason this mode exists ("let me work in the editor
+	// without daemon contention").
+	nlohmann::json ShutdownDaemon() override;
 
 private:
-    std::unique_ptr<IBlueprintReader> inner_;
+	std::unique_ptr<IBlueprintReader> inner_;
 };
 
 // Factory: wraps `inner` if `readOnly`, otherwise returns `inner` unchanged.
 std::unique_ptr<IBlueprintReader> MaybeWrapReadOnly(
-    std::unique_ptr<IBlueprintReader> inner, bool readOnly);
+	std::unique_ptr<IBlueprintReader> inner, bool readOnly);
 
 } // namespace bpr::backends
