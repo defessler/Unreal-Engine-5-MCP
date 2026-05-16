@@ -50,6 +50,15 @@ CppEmitResult EmitCppFunctionBody(const nlohmann::json& bpirFunctionDoc,
 CppEmitResult EmitCppFunction(const nlohmann::json& bpirFunctionDoc,
                               CppEmitOptions opts = {});
 
+// Collapse non-`[A-Za-z0-9_]` chars to nothing so BP display names with
+// spaces ("Set Resources", "AsExample Bar") become legal C++
+// identifiers ("SetResources", "AsExampleBar"). Prepends `_` if the
+// result would start with a digit. Exposed so CppClassEmit (which
+// renders class-level UPROPERTY / UFUNCTION decls + impl signatures)
+// can sanitize at the same emission points the function-body emitter
+// already covers.
+std::string SanitizeIdentifier(std::string_view in);
+
 // Convert a BPIR type-shorthand string ("float", "object:Actor",
 // "[]float", "{string:int}") to the C++ form ("float", "AActor*",
 // "TArray<float>", "TMap<FString, int32>"). Exposed so other codegen

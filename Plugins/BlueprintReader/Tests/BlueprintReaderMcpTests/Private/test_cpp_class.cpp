@@ -1244,3 +1244,81 @@ TEST_CASE("EmitCppClass: component property of unknown type emits TODO") {
     }
     CHECK(found);
 }
+
+// ===== Class-level identifier sanitization (bug-hunt pass 2) ==============
+//
+// Class-level emitters (RenderUPropertyDecl, RenderUFunctionDecl,
+// RenderUFunctionImpl) previously didn't sanitize names. A BP variable
+// or function name with spaces ("Selected Plot", "Apply Healing") would
+// leak as `float Selected Plot;` / `void Apply Healing();` which don't
+// compile.
+
+TEST_CASE("EmitCppClass: variable name with spaces sanitizes at UPROPERTY emission") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name", "Selected Plot"}, {"type", "object:Actor"}, {"editable", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "SelectedPlot"));
+    CHECK_FALSE(Contains(out.headerSource, "Selected Plot;"));
+}
+
+TEST_CASE("EmitCppClass: function name with spaces sanitizes at decl + impl") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "Apply Healing"},
+            {"inputs", json::array({json{{"name", "Heal Amount"}, {"type", "float"}}})},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    // Header decl + impl both use the sanitized form.
+    CHECK(Contains(out.headerSource, "ApplyHealing"));
+    CHECK(Contains(out.headerSource, "HealAmount"));
+    CHECK_FALSE(Contains(out.headerSource, "Apply Healing"));
+    CHECK(Contains(out.implSource, "::ApplyHealing("));
+    CHECK_FALSE(Contains(out.implSource, "Apply Healing"));
+}
+
+// ===== TEXT() escaping (bug-hunt pass 18) =================================
+//
+// BP string / name defaults with embedded `"` or `\` previously leaked
+// into the output verbatim, producing un-compileable TEXT() literals.
+
+TEST_CASE("EmitCppClass: FString default with embedded double-quote is escaped") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Greeting"}, {"type","string"}, {"editable", true},
+             {"default", "Hello \"world\""}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, R"(TEXT("Hello \"world\""))"));
+    // The unescaped form would be `TEXT("Hello "world"")` -- check absent.
+    CHECK_FALSE(Contains(out.headerSource, R"(TEXT("Hello "world""))"));
+}
+
+TEST_CASE("EmitCppClass: FString default with backslash escapes both") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Path"}, {"type","string"}, {"editable", true},
+             {"default", "C:\\Path\\file"}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, R"(TEXT("C:\\Path\\file"))"));
+}
+
+TEST_CASE("EmitCppClass: component string property with embedded quote is escaped") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "X"},
+             {"class", "/Script/Engine.SceneComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "Tooltip"}, {"type", "StrProperty"},
+                      {"value", "Press \"E\" to use"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, R"(TEXT("Press \"E\" to use"))"));
+}

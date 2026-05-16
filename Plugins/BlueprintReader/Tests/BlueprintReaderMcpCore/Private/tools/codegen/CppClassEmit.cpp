@@ -3,12 +3,14 @@
 
 #include <fmt/core.h>
 
+#include <cctype>
 #include <map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace bpr::tools {
 
@@ -446,7 +448,9 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
     // UPROPERTY-context type: wraps UObject* members with TObjectPtr<>
     // per UE5 convention (Epic recommends since 5.0).
     std::string cppType = MapBpirTypeToCppMember(typeStr);
-    std::string name    = v.value("name", "Var");
+    std::string rawName = v.value("name", "");
+    std::string name    = SanitizeIdentifier(rawName);
+    if (name.empty()) name = "Var";
     std::string defaultStr = v.value("default", std::string{});
     // Safety default for primitive UPROPERTYs: BP defaults bool to
     // false, numerics to 0 — when BP doesn't carry an explicit value,
@@ -484,10 +488,22 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
             auto dot = trimmed.find('.');
             if (dot != std::string::npos) trimmed = trimmed.substr(0, dot);
             line += fmt::format(" = {}", trimmed);
-        } else if (cppType == "FString") {
-            line += fmt::format(" = TEXT(\"{}\")", defaultStr);
-        } else if (cppType == "FName") {
-            line += fmt::format(" = TEXT(\"{}\")", defaultStr);
+        } else if (cppType == "FString" || cppType == "FName") {
+            // Escape embedded `"` / `\` / newlines so a BP default like
+            // Hello "world" doesn't break the TEXT() literal.
+            std::string escaped;
+            escaped.reserve(defaultStr.size() + 4);
+            for (char c : defaultStr) {
+                switch (c) {
+                case '\\': escaped += "\\\\"; break;
+                case '"':  escaped += "\\\""; break;
+                case '\n': escaped += "\\n";  break;
+                case '\r': escaped += "\\r";  break;
+                case '\t': escaped += "\\t";  break;
+                default:   escaped.push_back(c); break;
+                }
+            }
+            line += fmt::format(" = TEXT(\"{}\")", escaped);
         }
         // Other types: skip the inline default. Constructor body or
         // BeginPlay can set them later.
@@ -574,7 +590,8 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
             first = false;
             args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
-            args += in.value("name", "Arg");
+            std::string nm = SanitizeIdentifier(in.value("name", ""));
+            args += nm.empty() ? std::string("Arg") : nm;
         }
     }
     if (fn.contains("outputs") && fn["outputs"].is_array() &&
@@ -583,10 +600,12 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
             if (!args.empty()) args += ", ";
             args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
-            args += out.value("name", "Out");
+            std::string nm = SanitizeIdentifier(out.value("name", ""));
+            args += nm.empty() ? std::string("Out") : nm;
         }
     }
-    std::string fnName = fn.value("name", "Fn");
+    std::string fnName = SanitizeIdentifier(fn.value("name", ""));
+    if (fnName.empty()) fnName = "Fn";
     // BlueprintPure → emit `const` on the member function. UE auto-
     // derives the Pure-ness from const-ness when the function has a
     // return value, so this keeps the two specifiers in lockstep.
@@ -659,7 +678,19 @@ EmittedValue TranslateComponentPropertyValue(const std::string& propType,
     if (propType == "NameProperty" ||
         propType == "StrProperty"  ||
         propType == "TextProperty") {
-        out.code = fmt::format("TEXT(\"{}\")", valueText);
+        std::string escaped;
+        escaped.reserve(valueText.size() + 4);
+        for (char c : valueText) {
+            switch (c) {
+            case '\\': escaped += "\\\\"; break;
+            case '"':  escaped += "\\\""; break;
+            case '\n': escaped += "\\n";  break;
+            case '\r': escaped += "\\r";  break;
+            case '\t': escaped += "\\t";  break;
+            default:   escaped.push_back(c); break;
+            }
+        }
+        out.code = fmt::format("TEXT(\"{}\")", escaped);
         return out;
     }
     if (propType == "ByteProperty" || propType == "EnumProperty") {
@@ -808,7 +839,8 @@ std::string RenderUFunctionImpl(const std::string& className,
             first = false;
             args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
-            args += in.value("name", "Arg");
+            std::string nm = SanitizeIdentifier(in.value("name", ""));
+            args += nm.empty() ? std::string("Arg") : nm;
         }
     }
     if (fn.contains("outputs") && fn["outputs"].is_array() &&
@@ -817,10 +849,12 @@ std::string RenderUFunctionImpl(const std::string& className,
             if (!args.empty()) args += ", ";
             args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
-            args += out.value("name", "Out");
+            std::string nm = SanitizeIdentifier(out.value("name", ""));
+            args += nm.empty() ? std::string("Out") : nm;
         }
     }
-    std::string fnName = fn.value("name", "Fn");
+    std::string fnName = SanitizeIdentifier(fn.value("name", ""));
+    if (fnName.empty()) fnName = "Fn";
     // RPCs and BlueprintNativeEvent both rename the impl to
     // <FnName>_Implementation. The header decl stays as <FnName> --
     // UHT generates the dispatch wrapper that calls _Implementation.
