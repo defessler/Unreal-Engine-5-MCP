@@ -38,45 +38,45 @@
 namespace bpr::tools {
 
 enum class CppTokenKind {
-    // Literals + identifiers.
-    Identifier,         // foo, MyClass
-    QualifiedName,      // Owner::Func — emitted as one token
-    NumberLiteral,      // 42, 3.14, 1.0f
-    StringLiteral,      // "foo" or TEXT("foo")
-    BoolLiteral,        // true / false
-    NullLiteral,        // nullptr
+	// Literals + identifiers.
+	Identifier,         // foo, MyClass
+	QualifiedName,      // Owner::Func — emitted as one token
+	NumberLiteral,      // 42, 3.14, 1.0f
+	StringLiteral,      // "foo" or TEXT("foo")
+	BoolLiteral,        // true / false
+	NullLiteral,        // nullptr
 
-    // Keywords.
-    KwIf, KwElse, KwFor, KwWhile, KwSwitch, KwCase, KwDefault,
-    KwReturn, KwBreak, KwContinue, KwThis, KwAuto, KwConst,
+	// Keywords.
+	KwIf, KwElse, KwFor, KwWhile, KwSwitch, KwCase, KwDefault,
+	KwReturn, KwBreak, KwContinue, KwThis, KwAuto, KwConst,
 
-    // Operators / punctuation.
-    Plus, Minus, Star, Slash, Percent,
-    EqEq, NotEq, Less, LessEq, Greater, GreaterEq,
-    AmpAmp, PipePipe, Bang,
-    Assign,             // =
-    PlusEq, MinusEq, StarEq, SlashEq,
-    Arrow,              // ->
-    Dot,                // .
-    Comma, Semicolon, Colon,
-    LParen, RParen, LBrace, RBrace, LBracket, RBracket,
-    Ampersand,          // & — used for ref params / addr-of (rare)
+	// Operators / punctuation.
+	Plus, Minus, Star, Slash, Percent,
+	EqEq, NotEq, Less, LessEq, Greater, GreaterEq,
+	AmpAmp, PipePipe, Bang,
+	Assign,             // =
+	PlusEq, MinusEq, StarEq, SlashEq,
+	Arrow,              // ->
+	Dot,                // .
+	Comma, Semicolon, Colon,
+	LParen, RParen, LBrace, RBrace, LBracket, RBracket,
+	Ampersand,          // & — used for ref params / addr-of (rare)
 
-    // Special tokens — the parser dispatches on these directly.
-    Cast,               // "Cast" keyword (we treat as keyword to drive Cast<T>(...) parsing)
-    Eof,
+	// Special tokens — the parser dispatches on these directly.
+	Cast,               // "Cast" keyword (we treat as keyword to drive Cast<T>(...) parsing)
+	Eof,
 };
 
 struct CppToken {
-    CppTokenKind kind = CppTokenKind::Eof;
-    std::string  text;        // raw lexeme (for identifiers, numbers, strings)
-    int          line = 1;
-    int          column = 1;
+	CppTokenKind kind = CppTokenKind::Eof;
+	std::string  text;        // raw lexeme (for identifiers, numbers, strings)
+	int          line = 1;
+	int          column = 1;
 };
 
 class CppLexError : public std::runtime_error {
 public:
-    using std::runtime_error::runtime_error;
+	using std::runtime_error::runtime_error;
 };
 
 // Tokenize a string into a token stream. Throws CppLexError with a

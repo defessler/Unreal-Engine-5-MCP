@@ -11,12 +11,12 @@
 using namespace bpr::backends;
 
 TEST_CASE("Two MockBlueprintReader instances share fixtures without locking") {
-    auto reader1 = bpr::test::MakeMockReader();
-    auto reader2 = bpr::test::MakeMockReader();
+	auto reader1 = bpr::test::MakeMockReader();
+	auto reader2 = bpr::test::MakeMockReader();
 
-    auto a = reader1.ListBlueprints("/Game");
-    auto b = reader2.ListBlueprints("/Game");
+	auto a = reader1.ListBlueprints("/Game");
+	auto b = reader2.ListBlueprints("/Game");
 
-    CHECK(a.size() == b.size());
-    CHECK(a.size() > 0);
+	CHECK(a.size() == b.size());
+	CHECK(a.size() > 0);
 }
