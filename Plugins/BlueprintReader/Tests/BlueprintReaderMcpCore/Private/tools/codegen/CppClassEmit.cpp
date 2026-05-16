@@ -519,9 +519,43 @@ const std::unordered_set<std::string>& UeReservedMethodNames() {
     return s;
 }
 
+// Subset of UeReservedMethodNames where the parent's signature is
+// known to be void-return AND the BP author can't add args that don't
+// already exist on the parent (UE constrains BP overrides to the
+// inherited signature). For these names, when BP also reports a
+// void-return function, we can safely emit
+// `virtual void <Name>(args) override;`. Outside this set, the override
+// emission would risk emitting a signature that doesn't match the
+// parent (e.g. void TakeDamage when AActor::TakeDamage returns float).
+const std::unordered_set<std::string>& UeOverridableVoidVirtuals() {
+    static const std::unordered_set<std::string> s = {
+        // AActor
+        "BeginPlay", "EndPlay", "Tick", "Destroyed",
+        "PostInitProperties", "PreInitializeComponents",
+        "PostInitializeComponents",
+        // APawn
+        "PossessedBy", "UnPossessed", "Restart",
+        // ACharacter
+        "StopJumping", "Landed", "Falling", "OnLanded",
+        // UObject
+        "PostLoad",
+    };
+    return s;
+}
+
 // Render UFUNCTION decl for the header.
 //   UFUNCTION(BlueprintCallable, Category="Combat")
 //   void TakeDamage(float Amount, bool& Killed);
+//
+// Exception: when the BP function name matches a UE base-class virtual
+// (BeginPlay / Tick / EndPlay / ...), emit it as a true C++ override
+// (`virtual void BeginPlay() override;`) instead of a fresh UFUNCTION.
+// Without that, the generated method shadows the inherited virtual
+// rather than overriding it -- the BP's BeginPlay logic never runs at
+// the actor's lifecycle moment. Angelscript spells this as
+// `UFUNCTION(BlueprintOverride) void BeginPlay() {}`; the matching C++
+// idiom is a virtual override (no UFUNCTION required, UE's reflection
+// finds the override via its UFunction tag on the parent).
 std::string RenderUFunctionDecl(const nlohmann::json& fn) {
     std::string specs = BuildUFunctionList(fn);
     std::string returnType = "void";
@@ -561,6 +595,19 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
         isPure = fn["metadata"].value("pure", false);
     }
     const char* constSuffix = isPure ? " const" : "";
+
+    // Override path. Only safe when the parent's signature is
+    // known-void-return (UeOverridableVoidVirtuals) AND the BP function
+    // is also void. Outside this whitelist, falling back to UFUNCTION +
+    // a sidecar collision warning is the right call -- the agent
+    // refactors manually after checking the parent's signature.
+    bool hasOutputs = fn.contains("outputs") && fn["outputs"].is_array() &&
+                      !fn["outputs"].empty();
+    if (!hasOutputs && UeOverridableVoidVirtuals().count(fnName)) {
+        // No UFUNCTION decoration -- override inherits parent's tag.
+        return fmt::format("    virtual void {}({}){} override;\n",
+                           fnName, args, constSuffix);
+    }
     return fmt::format("    UFUNCTION({})\n    {} {}({}){};\n",
                        specs, returnType, fnName, args, constSuffix);
 }
@@ -1052,26 +1099,54 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         if (emittedAny) H << "\n";
     }
 
-    // UFUNCTION decls + collision-warning sweep.
+    // UFUNCTION decls. RenderUFunctionDecl auto-detects when the BP
+    // function name matches a UE base-class virtual AND the BP signature
+    // is void-return (the safe-override heuristic), and emits a
+    // `virtual ... override;` line in those cases. Otherwise the
+    // shadowing risk gets a sidecar warning.
     if (doc.contains("functions") && doc["functions"].is_array()) {
         for (const auto& fn : doc["functions"]) {
             H << RenderUFunctionDecl(fn);
-            // Collision check — emitting our own `UFUNCTION() bool
-            // TakeDamage(float)` shadows the inherited UE virtual rather
-            // than overriding it. Surface a sidecar note so the agent
-            // knows to rename or convert to a real override.
             std::string fnName = fn.value("name", "");
-            if (UeReservedMethodNames().count(fnName)) {
+            if (!UeReservedMethodNames().count(fnName)) continue;
+            bool hasOutputs = fn.contains("outputs") &&
+                              fn["outputs"].is_array() &&
+                              !fn["outputs"].empty();
+            const bool overrideEmitted =
+                !hasOutputs && UeOverridableVoidVirtuals().count(fnName);
+            if (overrideEmitted) {
+                // Override was emitted.
+                nlohmann::json info = {
+                    {"node_class", "<virtual-override>"},
+                    {"function",   fnName},
+                    {"parent",     parentClass},
+                    {"reason",
+                        fmt::format(
+                            "Function '{}' matches a UE base-class virtual on "
+                            "'{}' and was emitted as `virtual ... override`. "
+                            "Verify the inherited signature matches and add a "
+                            "`Super::{}` call inside the body if the parent's "
+                            "implementation needs to run.",
+                            fnName, parentClass, fnName)},
+                    {"treatment", "virtual_override"},
+                };
+                out.notes.push_back(std::move(info));
+            } else {
+                // Risky: BP function has a return value but matches a
+                // reserved name. Emit normal UFUNCTION (already done) +
+                // a warning so the agent knows to investigate.
                 nlohmann::json warn = {
                     {"node_class", "<name-collision>"},
                     {"function",   fnName},
                     {"parent",     parentClass},
                     {"reason",
                         fmt::format(
-                            "Generated UFUNCTION '{}' shadows the inherited UE "
-                            "virtual method on '{}'. Rename (e.g. '{}{}') or "
-                            "refactor to the real override signature.",
-                            fnName, parentClass, "Bp_", fnName)},
+                            "Generated UFUNCTION '{}' may shadow the inherited UE "
+                            "virtual on '{}'. The BP signature has a return value "
+                            "that probably doesn't match the parent's. Either "
+                            "rename the BP function or refactor to a proper "
+                            "override matching the parent's signature.",
+                            fnName, parentClass)},
                     {"treatment", "todo_comment"},
                 };
                 out.notes.push_back(std::move(warn));

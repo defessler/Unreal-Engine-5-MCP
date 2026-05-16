@@ -299,9 +299,57 @@ TEST_CASE("EmitCppClass: UObject parent + replicated UPROPERTY → no bReplicate
     CHECK_FALSE(Contains(out.implSource, "bReplicates = true;"));
 }
 
-// ===== Name-collision warning =============================================
+// ===== Virtual-override emission ==========================================
+//
+// BP functions whose name matches a known-void-return UE base-class
+// virtual (BeginPlay, Tick, EndPlay, Destroyed, ...) AND whose BP
+// signature is also void get emitted as `virtual void Name(args)
+// override;`. The Angelscript equivalent is
+// `UFUNCTION(BlueprintOverride) void BeginPlay() {}`. Reserved names
+// with non-void BP returns (or non-whitelisted names like TakeDamage
+// where the parent has a non-void return) fall back to UFUNCTION +
+// a sidecar collision warning -- the agent verifies the parent
+// signature before refactoring.
 
-TEST_CASE("EmitCppClass: UFUNCTION shadowing AActor::TakeDamage emits a sidecar warning") {
+TEST_CASE("EmitCppClass: BeginPlay emits as virtual override (no UFUNCTION)") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "BeginPlay"},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "virtual void BeginPlay() override;"));
+    CHECK_FALSE(Contains(out.headerSource, "UFUNCTION(BlueprintCallable)\n    void BeginPlay"));
+    // Sidecar note with the override treatment.
+    bool foundOverride = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "virtual_override" &&
+            n.value("function", "")  == "BeginPlay") {
+            foundOverride = true;
+        }
+    }
+    CHECK(foundOverride);
+}
+
+TEST_CASE("EmitCppClass: Tick emits as virtual override with DeltaSeconds arg") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "Tick"},
+            {"inputs", json::array({json{{"name","DeltaSeconds"},{"type","float"}}})},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "virtual void Tick(float DeltaSeconds) override;"));
+}
+
+TEST_CASE("EmitCppClass: TakeDamage NOT auto-overridden (parent returns float, risky)") {
+    // TakeDamage's parent virtual has a non-void return. Auto-emitting
+    // override would risk a signature mismatch. Fall back to UFUNCTION
+    // + collision warning so the agent verifies + refactors.
     auto cls = MakeMinimalClass();
     cls["functions"] = json::array({
         json{
@@ -311,17 +359,56 @@ TEST_CASE("EmitCppClass: UFUNCTION shadowing AActor::TakeDamage emits a sidecar 
         },
     });
     auto out = EmitCppClass(cls);
-    // Code still generates (we don't auto-rename — could break BP-side
-    // expectations). The warning is in the sidecar.
-    CHECK(Contains(out.headerSource, "TakeDamage"));
+    CHECK_FALSE(Contains(out.headerSource, "virtual void TakeDamage"));
+    CHECK(Contains(out.headerSource, "UFUNCTION("));
     bool foundCollision = false;
     for (const auto& n : out.notes) {
-        if (n.value("node_class", "") == "<name-collision>") {
+        if (n.value("treatment", "") == "todo_comment" &&
+            n.value("function", "")  == "TakeDamage") {
             foundCollision = true;
-            CHECK(n.value("function", "") == "TakeDamage");
         }
     }
     CHECK(foundCollision);
+}
+
+TEST_CASE("EmitCppClass: reserved name with BP outputs gets collision warning") {
+    // BeginPlay is on the override whitelist, but if the BP author
+    // added a return value, the BP signature doesn't match the
+    // parent. Warn instead of emitting an incorrect override.
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "BeginPlay"},
+            {"outputs", json::array({json{{"name","Ready"},{"type","bool"}}})},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.headerSource, "virtual void BeginPlay"));
+    bool foundCollision = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "todo_comment" &&
+            n.value("function", "")  == "BeginPlay") {
+            foundCollision = true;
+        }
+    }
+    CHECK(foundCollision);
+}
+
+TEST_CASE("EmitCppClass: non-reserved name emits as normal UFUNCTION") {
+    // Regression check: only the whitelisted reserved-virtual names
+    // get the override treatment; everything else stays UFUNCTION.
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "CustomLogic"},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "UFUNCTION("));
+    CHECK(Contains(out.headerSource, "void CustomLogic("));
+    CHECK_FALSE(Contains(out.headerSource, "virtual void CustomLogic"));
 }
 
 // ===== Default-value cleanup ==============================================
