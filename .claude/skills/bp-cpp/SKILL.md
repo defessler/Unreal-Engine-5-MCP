@@ -67,7 +67,10 @@ Returns:
   registration, operator-aliased function bodies.
 - `header_file` / `impl_file` — suggested filenames.
 - `sidecar` — JSON listing every unsupported/approximation node
-  (timelines, latent actions, anim graphs, …) plus `manual_steps`.
+  (timelines, anim graphs, niagara, Gate macro, async tasks with typed
+  payloads, …) plus `manual_steps`. Common things that USED to be
+  unsupported but are now auto-lowered: DoOnce / FlipFlop / DoN,
+  Delay / RetriggerableDelay / DelayUntilNextTick, K2Node_EnhancedInputAction.
 - `sidecar_file` — `<Class>.transpile-notes.json`.
 
 Then `write_generated_source` each file under
@@ -137,23 +140,36 @@ class-scaffold decoration, not body content), templates beyond
 Don't try to massage the user's input — surface the line:col
 diagnostic directly.
 
+## Auto-lowered structural patterns
+
+These used to need manual TODO porting; decompile + codegen now emit
+real compilable scaffolds for them automatically. See
+[10-bp-to-cpp-node-coverage.md](../../../docs/design/10-bp-to-cpp-node-coverage.md)
+for the full status legend.
+
+| K2 node | Auto-lowering |
+|---------|---------------|
+| `K2Node_SpawnActorFromClass`, `K2Node_AddComponent`, `K2Node_DestroyActor` | Real `GetWorld()->SpawnActor<T>(...)` / `NewObject + RegisterComponent` / `<Target>->Destroy()` |
+| Loops: `ForEachLoop`, `ForEachLoopWithBreak`, `ReverseForEachLoop`, `WhileLoop`, `IsValid` | `for (auto& X : Arr)`, `while (...)`, `if (IsValid(X))` |
+| Stateful macros: `DoOnce`, `FlipFlop`, `DoN` | Synth `bool`/`int32` member + guarded `if` block. Per-instance flag/counter derived from node GUID. |
+| Latent: `Delay`, `RetriggerableDelay`, `DelayUntilNextTick` | `GetWorld()->GetTimerManager().SetTimer(...)` + synth `FTimerHandle` member + generated `UFUNCTION()` continuation method carrying the post-delay body. Nested delays chain naturally. |
+| EnhancedInput: `K2Node_EnhancedInputAction` | Per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue)` callback + synth `TObjectPtr<UInputAction>` UPROPERTY + auto-generated `SetupPlayerInputComponent` override wrapping `EIC->BindAction(...)` in a `Cast<UEnhancedInputComponent>` guard. |
+| ConstructionScript / UserConstructionScript | `virtual void OnConstruction(const FTransform&) override` |
+
 ## Unsupported nodes — TODO + sidecar
 
-When a BP construct doesn't map cleanly to compilable C++, codegen
-emits a TODO and the sidecar records what's left to do by hand.
-Common patterns:
+When a BP construct still doesn't map cleanly to compilable C++,
+codegen emits a TODO and the sidecar records what's left to do by hand.
+Common patterns still landing here:
 
 | K2 node | Treatment | Sidecar |
 |---------|-----------|---------|
 | `K2Node_Timeline` | `UTimelineComponent*` member stub | Configure curve assets in editor |
-| `K2Node_LatentAbilityCall` / `K2Node_AsyncAction` | TODO comment | Bind named exec outputs to delegates manually |
-| `K2Node_AnimNode_*` / `K2Node_NiagaraXxx` | TODO comment | Manual port required (AnimInstance / Niagara) |
-| Anything else | TODO comment with offending K2 class | Manual port; add a treatment-table entry if it's common |
-
-**Not** on this list: `K2Node_SpawnActorFromClass`, `K2Node_AddComponent`.
-Decompile recognizes them as structured BPIR calls; CppEmit lowers to
-real `GetWorld()->SpawnActor<T>(...)` / `NewObject + RegisterComponent`
-blocks. No TODO needed.
+| Gate macro (multi-input stateful: Enter / Open / Close / Toggle) | TODO comment | Walker doesn't yet thread entry-pin info; agent adds `bool b<Tag>_IsOpen` + branching manually. |
+| Async tasks with typed payload pins (`LoadAsset`, `OnSuccess(Payload)`-shaped) | TODO comment | The Delay lowering only handles the `Duration → Completed` shape; tasks whose continuation needs typed parameters fall through. |
+| Legacy `K2Node_InputAction` / `_InputKey` / `_InputAxis` | TODO comment | Pre-EnhancedInput nodes. Migrate to EnhancedInput (which IS auto-lowered) or wire `InputComponent->BindAction(FName, ...)` manually. |
+| `K2Node_AnimNode_*` / `K2Node_NiagaraXxx` | TODO comment | Manual port required (AnimInstance / Niagara). |
+| Anything else | TODO comment with offending K2 class | Manual port; add a treatment-table entry if it's common. |
 
 Surface the sidecar to the user when their BP has any unsupported
 nodes — it's the triage list for "what do I still need to do by hand?"

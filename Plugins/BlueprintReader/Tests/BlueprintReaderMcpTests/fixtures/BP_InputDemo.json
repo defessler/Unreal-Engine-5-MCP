@@ -1,0 +1,201 @@
+{
+    "summary": {
+        "asset_path": "/Game/Input/BP_InputDemo",
+        "name": "BP_InputDemo",
+        "parent_class": "APawn",
+        "modified_iso": "2026-05-16T11:00:00Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Input/BP_InputDemo",
+        "name": "BP_InputDemo",
+        "parent_class": "APawn",
+        "interfaces": [],
+        "variables": [],
+        "functions": [],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [
+                {
+                    "id": "EI001AAA-1111-2222-3333-444455556666",
+                    "class": "K2Node_EnhancedInputAction",
+                    "title": "EnhancedInputAction IA_Jump",
+                    "position": { "x": -240, "y": 0 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "EI001AAA-1111-2222-3333-444455556601",
+                            "name": "Started",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EI001AAA-1111-2222-3333-444455556602",
+                            "name": "Triggered",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EI001AAA-1111-2222-3333-444455556603",
+                            "name": "Completed",
+                            "direction": "Output",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EI001AAA-1111-2222-3333-444455556604",
+                            "name": "ActionValue",
+                            "direction": "Output",
+                            "type": {
+                                "category": "struct",
+                                "sub_category": null,
+                                "sub_category_object": "InputActionValue",
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        }
+                    ],
+                    "meta": {
+                        "input_action": "/Game/Input/IA_Jump.IA_Jump"
+                    }
+                },
+                {
+                    "id": "EI002BBB-1111-2222-3333-444455556666",
+                    "class": "K2Node_CallFunction",
+                    "title": "Print 'Jump Started'",
+                    "position": { "x": 160, "y": -80 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "EI002BBB-1111-2222-3333-444455556601",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EI002BBB-1111-2222-3333-444455556602",
+                            "name": "InString",
+                            "direction": "Input",
+                            "type": {
+                                "category": "string",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "Jump Started"
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "PrintString",
+                        "function_owner": "KismetSystemLibrary",
+                        "targetFunction": "PrintString",
+                        "targetClass": "KismetSystemLibrary"
+                    }
+                },
+                {
+                    "id": "EI003CCC-1111-2222-3333-444455556666",
+                    "class": "K2Node_CallFunction",
+                    "title": "Print 'Jump Triggered'",
+                    "position": { "x": 160, "y": 80 },
+                    "comment": null,
+                    "pins": [
+                        {
+                            "id": "EI003CCC-1111-2222-3333-444455556601",
+                            "name": "execute",
+                            "direction": "Input",
+                            "type": {
+                                "category": "exec",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": null
+                        },
+                        {
+                            "id": "EI003CCC-1111-2222-3333-444455556602",
+                            "name": "InString",
+                            "direction": "Input",
+                            "type": {
+                                "category": "string",
+                                "sub_category": null,
+                                "sub_category_object": null,
+                                "is_array": false,
+                                "is_set": false,
+                                "is_map": false
+                            },
+                            "default_value": "Jump Triggered"
+                        }
+                    ],
+                    "meta": {
+                        "function_name": "PrintString",
+                        "function_owner": "KismetSystemLibrary",
+                        "targetFunction": "PrintString",
+                        "targetClass": "KismetSystemLibrary"
+                    }
+                }
+            ],
+            "connections": [
+                {
+                    "from_node": "EI001AAA-1111-2222-3333-444455556666",
+                    "from_pin": "EI001AAA-1111-2222-3333-444455556601",
+                    "to_node": "EI002BBB-1111-2222-3333-444455556666",
+                    "to_pin": "EI002BBB-1111-2222-3333-444455556601"
+                },
+                {
+                    "from_node": "EI001AAA-1111-2222-3333-444455556666",
+                    "from_pin": "EI001AAA-1111-2222-3333-444455556602",
+                    "to_node": "EI003CCC-1111-2222-3333-444455556666",
+                    "to_pin": "EI003CCC-1111-2222-3333-444455556601"
+                }
+            ]
+        }
+    ],
+    "functions": [],
+    "components": [
+        {"name": "DefaultSceneRoot", "class": "/Script/Engine.SceneComponent",
+         "parent": null, "is_root": true}
+    ]
+}

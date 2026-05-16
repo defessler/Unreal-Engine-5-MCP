@@ -1201,6 +1201,63 @@ struct Emitter {
 				EmitGetDataTableRow(s);
 				return;
 			}
+			// EnhancedInput binding sentinel — emitted by
+			// ProcessEnhancedInputBindings inside a Cast<UEnhancedInputComponent>
+			// success block, so the local `EIC` variable is in scope.
+			// Always statement-form; takes Action (var expression),
+			// Trigger (string lit), Callback (string lit). Renders as:
+			//   EIC->BindAction(<Action>, ETriggerEvent::<Trigger>, this, &ThisClass::<Cb>);
+			if (fnName == "__bpr_bind_input_action") {
+				auto a = (s.contains("args") && s["args"].is_object())
+							 ? s["args"] : nlohmann::json::object();
+				std::string actionExpr = a.contains("Action")
+					? EmitExpr(a["Action"]) : "/* missing */";
+				auto unwrapLit = [](const nlohmann::json& v) -> std::string {
+					if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
+						return v["lit"].get<std::string>();
+					}
+					return {};
+				};
+				std::string trigger  = SanitizeIdentifier(unwrapLit(a.value("Trigger",  nlohmann::json{})));
+				std::string callback = SanitizeIdentifier(unwrapLit(a.value("Callback", nlohmann::json{})));
+				Line(fmt::format(
+					"EIC->BindAction({}, ETriggerEvent::{}, this, &ThisClass::{});",
+					actionExpr, trigger, callback));
+				return;
+			}
+			// Latent-action lowering sentinel — Decompile.cpp's Delay
+			// handler emits this to wire up the timer + generated
+			// continuation method. Args use string literals for
+			// Handle/Callback names which we unwrap here as bare
+			// identifiers (the validator only accepts string-typed
+			// expressions, so this round-trip is intentional).
+			if (fnName == "__bpr_set_timer") {
+				auto a = (s.contains("args") && s["args"].is_object())
+							 ? s["args"] : nlohmann::json::object();
+				std::string duration = a.contains("Duration")
+					? EmitExpr(a["Duration"]) : "0.0f";
+				// Handle / Callback come over as {lit: "<ident>"}.
+				auto unwrap = [](const nlohmann::json& v) -> std::string {
+					if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
+						return v["lit"].get<std::string>();
+					}
+					return {};
+				};
+				std::string handle   = SanitizeIdentifier(unwrap(a.value("Handle",   nlohmann::json{})));
+				std::string callback = SanitizeIdentifier(unwrap(a.value("Callback", nlohmann::json{})));
+				bool looping = false;
+				if (auto lit = a.find("Looping"); lit != a.end()
+					&& lit->is_object() && lit->contains("lit")
+					&& (*lit)["lit"].is_boolean()) {
+					looping = (*lit)["lit"].get<bool>();
+				}
+				// Idiomatic UE5 pattern — bare member-pointer overload
+				// is fast and avoids the FTimerDelegate intermediate.
+				Line(fmt::format(
+					"GetWorld()->GetTimerManager().SetTimer({}, this, &ThisClass::{}, {}, {});",
+					handle, callback, duration, looping ? "true" : "false"));
+				return;
+			}
 			// Statement form — discard return value.
 			std::string call = EmitCallExpr(s);
 			// Strip the surrounding parens if it's an operator (rare in
@@ -1607,4 +1664,4 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
 	return CppEmitResult{s.str(), std::move(bodyResult.notes)};
 }
 
-}    // namespace bpr::tools
+} // namespace bpr::tools

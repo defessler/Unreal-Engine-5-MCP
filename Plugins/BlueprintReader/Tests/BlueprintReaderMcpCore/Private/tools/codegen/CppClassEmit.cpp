@@ -415,16 +415,21 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
 	// mentions BlueprintImplementableEvent / BlueprintNativeEvent
 	// inference from BP metadata; v1 ships the common case and adds
 	// explicit specifiers when the metadata carries them.
-	bool sawExplicit = false;
+	//
+	// An EXPLICITLY empty `ufunction_specifiers: []` means "bare
+	// UFUNCTION()" — used by latent-action continuations (timer
+	// callbacks reflect via member pointer, so no specifier needed).
+	// Distinct from "key absent" which falls back to BlueprintCallable.
+	bool hasExplicit = false;
 	bool isPure = false;
 	if (fnDoc.contains("metadata") && fnDoc["metadata"].is_object()) {
 		const auto& md = fnDoc["metadata"];
 		if (md.contains("ufunction_specifiers") &&
 			md["ufunction_specifiers"].is_array()) {
+			hasExplicit = true;  // key present — caller is in charge
 			for (const auto& s : md["ufunction_specifiers"]) {
 				if (s.is_string()) {
 					specs.push_back(s.get<std::string>());
-					sawExplicit = true;
 				}
 			}
 		}
@@ -433,7 +438,7 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
 		// a return value. Matches UE's BlueprintPure semantics.
 		isPure = md.value("pure", false);
 	}
-	if (!sawExplicit) {
+	if (!hasExplicit) {
 		specs.push_back(isPure ? "BlueprintPure" : "BlueprintCallable");
 	}
 	std::string out;
@@ -591,6 +596,9 @@ const std::unordered_set<std::string>& UeOverridableVoidVirtuals() {
 		"PostInitializeComponents",
 		// APawn
 		"PossessedBy", "UnPossessed", "Restart",
+		"SetupPlayerInputComponent",   // EnhancedInput auto-lowering
+									   // target — synth fn emitted by
+									   // ProcessEnhancedInputBindings.
 		// ACharacter
 		"StopJumping", "Landed", "Falling", "OnLanded",
 		// UObject
@@ -1765,4 +1773,4 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	return out;
 }
 
-}    // namespace bpr::tools
+} // namespace bpr::tools
