@@ -151,6 +151,34 @@ struct Walker {
 	// And the reverse, for tracing data flow backward.
 	std::map<std::pair<std::string, std::string>, std::vector<EdgeEnd>> inEdges;
 
+	// Synthetic member variables emitted by stateful-macro lowering
+	// (DoOnce / FlipFlop / DoN) and by latent-action lowering
+	// (Delay → FTimerHandle). Keyed by var name so duplicate
+	// registrations from multiple visit paths collapse into one decl.
+	// Value is a BPIR variable-decl object (same shape as VariableDeclToJson
+	// output) so DecompileBlueprint can merge them straight into the
+	// class's variables[] array.
+	//
+	// mutable: per-node handlers take `const Walker&`, but the synth-var
+	// set is logically session-state that grows during the walk. Avoids
+	// threading a separate mutable-collector parameter through every
+	// handler signature.
+	mutable std::map<std::string, nlohmann::json> autoSynthVars;
+
+	// Synthetic class-level functions emitted by latent-action lowering.
+	// Each Delay/Timeline boundary splits the parent function: the
+	// post-delay exec flow lives as a generated continuation UFUNCTION
+	// that the timer callback invokes. Each entry is a complete BPIR
+	// function doc (kind="function", with its own body[] etc.) ready
+	// for DecompileBlueprint to hoist into the class's functions[]
+	// array.
+	//
+	// Stored as a vector (not a map) because continuation names are
+	// already unique per node GUID and the emission order is meaningful
+	// (sibling continuations should appear in walk order for stable
+	// diffs).
+	mutable std::vector<nlohmann::json> autoSynthFunctions;
+
 	Walker(const BPGraph& g, const BPFunction& f,
 		   const std::set<std::string>& memberVars)
 		: graph(g), function(f), memberVarNames(memberVars)
@@ -722,6 +750,12 @@ nlohmann::json DecompileStatementsFrom(const Walker& w,
 // caller should stop).
 struct DecompileResult {
 	nlohmann::json statement;
+	// Optional sidecar statements emitted BEFORE `statement` in the
+	// caller's output array. Used by stateful-macro lowering to
+	// surface "you also need to handle Reset elsewhere"-style
+	// unsupported notes inline at the macro's call site, where they're
+	// most discoverable, rather than as a top-level summary.
+	nlohmann::json preStatements = nlohmann::json::array();
 	const BPNode* next = nullptr;
 	bool terminatesExec = false;  // return / break / continue / dangling
 };
@@ -755,6 +789,16 @@ nlohmann::json DecompileStatementsFrom(const Walker& w,
 		}
 		visited.insert(cur->Id);
 		DecompileResult res = DecompileStatement(w, *cur, stopAt, visited);
+		// Flush any sidecar statements emitted ahead of the main
+		// statement (e.g. stateful-macro "Reset pin unhandled" notes
+		// surface inline so the agent sees them at the relevant call
+		// site).
+		if (res.preStatements.is_array()) {
+			for (auto& s : res.preStatements)
+			{
+				out.push_back(std::move(s));
+			}
+		}
 		// Skip the no-op pseudo-statement that DecompileStatement uses
 		// to mean "this node is structural-only" (FunctionEntry).
 		if (!res.statement.is_null() &&
@@ -1178,6 +1222,22 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		auto isWhile = (bare == "WhileLoop");
 		auto isIsValid = (bare == "IsValid");
 
+		// Stateful macros — BP's library encodes "do this once",
+		// "alternate between A and B", "loop N times" as macro
+		// instances backed by hidden state. They can't be inlined as
+		// pure control flow; each needs a synthetic class-level
+		// variable that survives across calls. We lower:
+		//   DoOnce   -> bool flag, body fires once until reset
+		//   FlipFlop -> bool flag, alternates A/B on each call
+		//   DoN     -> int counter, body fires N times then stops
+		// The synth-var name is derived from the node GUID so two
+		// distinct DoOnce instances in the same class get separate
+		// flags, but the same instance visited from multiple call
+		// paths shares one flag (which matches BP semantics).
+		auto isDoOnce  = (bare == "DoOnce");
+		auto isFlipFlop = (bare == "FlipFlop");
+		auto isDoN     = (bare == "DoN");
+
 		if (isIsValid) {
 			// IsValid macro pins: input InputObject, two exec outputs
 			// (IsValid -> then branch, IsNotValid -> else branch). Lower
@@ -1268,6 +1328,303 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, &n, v);
 			r.statement = {{"while", cond}, {"body", std::move(body)}};
 			r.next = w.FollowExec(n, "Completed");
+			return r;
+		}
+
+		// Helper: derive a unique, identifier-safe tag for a stateful
+		// macro instance from its node GUID. We use 8 hex chars so the
+		// synth-var names stay readable (e.g. b__BprDoOnce_a1b2c3d4_HasFired)
+		// while still being collision-free across a sane class size.
+		auto tagFromGuid = [](const std::string& guid) {
+			std::string out;
+			out.reserve(8);
+			for (char c : guid) {
+				if (out.size() == 8)
+				{
+					break;
+				}
+				if ((c >= '0' && c <= '9') ||
+					(c >= 'a' && c <= 'f') ||
+					(c >= 'A' && c <= 'F'))
+				{
+					out.push_back(c);
+				}
+			}
+			// Pad if a malformed/short GUID would otherwise produce
+			// colliding tags. Unlikely but defensive.
+			while (out.size() < 8)
+			{
+				out.push_back('0');
+			}
+			return out;
+		};
+
+		// Helper: register a synthetic class-level variable. Keyed by
+		// name so re-registration from multiple visit paths is idempotent.
+		auto registerSynthVar = [&w](const std::string& name,
+									 const std::string& shorthandType,
+									 const std::string& defaultValue) {
+			if (w.autoSynthVars.count(name))
+			{
+				return;
+			}
+			nlohmann::json decl = {
+				{"name", name},
+				{"type", shorthandType},
+				{"category", "BPR|AutoSynth"},
+			};
+			if (!defaultValue.empty())
+			{
+				decl["default"] = defaultValue;
+			}
+			w.autoSynthVars[name] = std::move(decl);
+		};
+
+		// DoOnce — semantics: the body after `Completed` runs the
+		// first time the Start exec input fires, and not again until
+		// Reset is pulsed. We lower the Start side to:
+		//   if (!b__BprDoOnce_<tag>_HasFired) {
+		//       b__BprDoOnce_<tag>_HasFired = true;
+		//       <Completed body>
+		//   }
+		//
+		// Multiple Start-side call paths in the same class share the
+		// same flag — that matches BP's single-instance semantics
+		// because the synth var name is derived from the macro node's
+		// GUID, which is the same across all visit paths.
+		//
+		// Reset-side wiring isn't covered by this single visit: the
+		// macro is visited once via the Start exec entry. If Reset
+		// is also wired upstream, we surface a sidecar so the
+		// transpile result flags the gap rather than silently dropping
+		// the reset path. (Caller can manually add
+		// `<flag> = false;` where the Reset exec line would have led.)
+		if (isDoOnce) {
+			const std::string tag = tagFromGuid(n.Id);
+			const std::string flagName = fmt::format("b__BprDoOnce_{}_HasFired", tag);
+			// bStartClosed input: if true, the macro "starts fired"
+			// and Start does nothing until Reset. Read literal/default
+			// off the input pin.
+			bool startClosed = false;
+			if (const BPPin* sc = w.GetPin(n, "StartClosed")) {
+				if (sc->DefaultValue && *sc->DefaultValue == "true") {
+					startClosed = true;
+				}
+			}
+			registerSynthVar(flagName, "bool", startClosed ? "true" : "false");
+
+			const BPNode* bodyStart = w.FollowExec(n, "Completed");
+			std::set<std::string> v;
+			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, stopAt, v);
+
+			// Build: if (!flag) { flag = true; <body> }
+			// BPIR expression forms: variable read = {var, scope},
+			// operators = {call: "KismetMathLibrary::<op>", args}.
+			// CppEmit's OpReverseMap maps these back to the C++ operator.
+			nlohmann::json setFlag = {
+				{"set", flagName},
+				{"scope", "member"},
+				{"to",    nlohmann::json{{"lit", true}}},
+			};
+			nlohmann::json thenBlock = nlohmann::json::array();
+			thenBlock.push_back(std::move(setFlag));
+			if (body.is_array()) {
+				for (auto& s : body)
+				{
+					thenBlock.push_back(std::move(s));
+				}
+			}
+			nlohmann::json cond = {
+				{"call", "KismetMathLibrary::Not_PreBool"},
+				{"args", nlohmann::json{
+					{"A", nlohmann::json{
+						{"var", flagName},
+						{"scope", "member"},
+					}},
+				}},
+			};
+			r.statement = {
+				{"if",   std::move(cond)},
+				{"then", std::move(thenBlock)},
+			};
+
+			// Sidecar if Reset is wired — agent-actionable note.
+			if (const BPPin* rp = w.GetPin(n, "Reset")) {
+				auto eIt = w.inEdges.find({n.Id, rp->Id});
+				if (eIt != w.inEdges.end() && !eIt->second.empty()) {
+					nlohmann::json note = {
+						{"unsupported", nlohmann::json{
+							{"node_class", n.Class},
+							{"guid", n.Id},
+							{"reason", fmt::format(
+								"DoOnce Reset pin has incoming edge(s); "
+								"synth flag '{}' isn't reset on that path. "
+								"Add `{} = false;` at the upstream Reset call "
+								"site to restore one-shot behavior.",
+								flagName, flagName)},
+						}},
+					};
+					// Attach as a peer statement before the if. Walker's
+					// top-level collectUnsupported pass will pick it up.
+					r.preStatements.push_back(std::move(note));
+				}
+			}
+			r.terminatesExec = true;
+			return r;
+		}
+
+		// FlipFlop — alternates between A and B exec outputs on each
+		// call. Single exec input (Input), two outputs (A, B), plus
+		// a data output IsA (bool, true when next call goes to A).
+		// Lower to:
+		//   if (b__BprFlipFlop_<tag>_IsA) {
+		//       b__BprFlipFlop_<tag>_IsA = false;
+		//       <A body>
+		//   } else {
+		//       b__BprFlipFlop_<tag>_IsA = true;
+		//       <B body>
+		//   }
+		//
+		// The flag is initialized to true to match BP behavior
+		// (first call routes to A).
+		if (isFlipFlop) {
+			const std::string tag = tagFromGuid(n.Id);
+			const std::string flagName = fmt::format("b__BprFlipFlop_{}_IsA", tag);
+			registerSynthVar(flagName, "bool", "true");
+
+			const BPNode* aStart = w.FollowExec(n, "A");
+			const BPNode* bStart = w.FollowExec(n, "B");
+			std::set<std::string> va, vb;
+			nlohmann::json aBody = DecompileStatementsFrom(w, aStart, stopAt, va);
+			nlohmann::json bBody = DecompileStatementsFrom(w, bStart, stopAt, vb);
+
+			// Prepend the flag-flip to each branch so the *next* call
+			// routes to the opposite side.
+			auto prependFlip = [&](nlohmann::json& body, bool toValue) {
+				nlohmann::json setFlag = {
+					{"set", flagName},
+					{"scope", "member"},
+					{"to",    nlohmann::json{{"lit", toValue}}},
+				};
+				nlohmann::json out = nlohmann::json::array();
+				out.push_back(std::move(setFlag));
+				if (body.is_array()) {
+					for (auto& s : body)
+					{
+						out.push_back(std::move(s));
+					}
+				}
+				body = std::move(out);
+			};
+			prependFlip(aBody, false);
+			prependFlip(bBody, true);
+
+			// Condition is a plain bool read.
+			nlohmann::json cond = {
+				{"var", flagName},
+				{"scope", "member"},
+			};
+			r.statement = {
+				{"if",   std::move(cond)},
+				{"then", std::move(aBody)},
+				{"else", std::move(bBody)},
+			};
+			r.terminatesExec = true;
+			return r;
+		}
+
+		// DoN — body runs at most N times across all Enter exec calls
+		// (Reset zeroes the counter). N comes from the N input pin,
+		// either as a literal default or a wired upstream value.
+		//
+		// Lower to:
+		//   if (i__BprDoN_<tag>_Counter < <N expr>) {
+		//       ++i__BprDoN_<tag>_Counter;
+		//       <Exit body>
+		//   }
+		//
+		// We pull N from the input pin's default value when possible;
+		// if it's wired up (rare for DoN's N pin) we fall back to a
+		// captured-expression form via __bpr_doN_n placeholder so the
+		// codegen can render the upstream expression.
+		if (isDoN) {
+			const std::string tag = tagFromGuid(n.Id);
+			const std::string counterName = fmt::format("i__BprDoN_{}_Counter", tag);
+			registerSynthVar(counterName, "int", "0");
+
+			// N expression. Prefer wired expression; fall back to
+			// pin default.
+			nlohmann::json nExpr;
+			if (const BPPin* np = w.GetPin(n, "N")) {
+				nExpr = BuildExpression(w, n, *np);
+			} else {
+				nExpr = nlohmann::json{{"lit", 0}};
+			}
+
+			const BPNode* bodyStart = w.FollowExec(n, "Exit");
+			std::set<std::string> v;
+			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, stopAt, v);
+
+			// ++counter — emit as set-with-Add expression because BPIR
+			// doesn't have a unary-increment statement form. Lowered
+			// via the canonical UKismetMathLibrary::Add_IntInt operator
+			// call which CppEmit reverses to `lhs + rhs`.
+			nlohmann::json incrCounter = {
+				{"set", counterName},
+				{"scope", "member"},
+				{"to", nlohmann::json{
+					{"call", "KismetMathLibrary::Add_IntInt"},
+					{"args", nlohmann::json{
+						{"A", nlohmann::json{
+							{"var", counterName},
+							{"scope", "member"},
+						}},
+						{"B", nlohmann::json{{"lit", 1}}},
+					}},
+				}},
+			};
+			nlohmann::json thenBlock = nlohmann::json::array();
+			thenBlock.push_back(std::move(incrCounter));
+			if (body.is_array()) {
+				for (auto& s : body)
+				{
+					thenBlock.push_back(std::move(s));
+				}
+			}
+			nlohmann::json cond = {
+				{"call", "KismetMathLibrary::Less_IntInt"},
+				{"args", nlohmann::json{
+					{"A", nlohmann::json{
+						{"var", counterName},
+						{"scope", "member"},
+					}},
+					{"B", std::move(nExpr)},
+				}},
+			};
+			r.statement = {
+				{"if",   std::move(cond)},
+				{"then", std::move(thenBlock)},
+			};
+
+			// Reset-pin sidecar — same pattern as DoOnce.
+			if (const BPPin* rp = w.GetPin(n, "Reset")) {
+				auto eIt = w.inEdges.find({n.Id, rp->Id});
+				if (eIt != w.inEdges.end() && !eIt->second.empty()) {
+					nlohmann::json note = {
+						{"unsupported", nlohmann::json{
+							{"node_class", n.Class},
+							{"guid", n.Id},
+							{"reason", fmt::format(
+								"DoN Reset pin has incoming edge(s); "
+								"synth counter '{}' isn't reset on that path. "
+								"Add `{} = 0;` at the upstream Reset call site.",
+								counterName, counterName)},
+						}},
+					};
+					r.preStatements.push_back(std::move(note));
+				}
+			}
+			r.terminatesExec = true;
 			return r;
 		}
 
@@ -1513,37 +1870,138 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		}
 		std::string fqName = ownerCl.empty() ? fnName : (ownerCl + "::" + fnName);
 
-		// Latent action special-case: Delay can't be expressed as a
-		// single C++ statement (the post-delay code needs to live in
-		// a timer callback). Emit a TODO with the canonical hint so
-		// the agent knows what to refactor. Common LatentInfo-pinned
-		// call sites: KismetSystemLibrary::Delay, RetriggerableDelay,
-		// DelayUntilNextTick.
+		// Latent action lowering — Delay (and its kin) can't be inlined
+		// as a single C++ statement because the post-delay exec must
+		// run in a later stack frame. Approach:
+		//   1. The pre-delay portion of the current function ends with a
+		//      SetTimer call that schedules a continuation method.
+		//   2. The post-delay exec flow is captured into a generated
+		//      class-level UFUNCTION (the "continuation") which the timer
+		//      callback invokes.
+		//   3. A synthetic FTimerHandle member variable is added so the
+		//      timer can be canceled / queried if needed.
+		//
+		// This solves the "continuation-passing" structural gap by
+		// generating the missing artifact (a real callable method)
+		// instead of leaving a TODO for the agent. Multiple delays in
+		// sequence work naturally — the continuation's walk is just
+		// another DecompileStatementsFrom call against the same Walker,
+		// so nested delays produce nested continuations.
+		//
+		// Common latent calls: KismetSystemLibrary::Delay,
+		// RetriggerableDelay, DelayUntilNextTick.
 		if (fnName == "Delay" || fnName == "RetriggerableDelay" ||
 			fnName == "DelayUntilNextTick") {
-			nlohmann::json fields = nlohmann::json::object();
-			// Capture the Duration pin if present so the manual
-			// refactor has a sensible default.
-			if (const BPPin* dp = w.GetPin(n, "Duration")) {
-				fields["duration"] = BuildExpression(w, n, *dp);
+			// 1) Identifier-safe tag from the node GUID.
+			std::string tag;
+			tag.reserve(8);
+			for (char c : n.Id) {
+				if (tag.size() == 8)
+				{
+					break;
+				}
+				if ((c >= '0' && c <= '9') ||
+					(c >= 'a' && c <= 'f') ||
+					(c >= 'A' && c <= 'F'))
+				{
+					tag.push_back(c);
+				}
 			}
-			fields["target_function"] = fnName;
-			r.statement = nlohmann::json{{"unsupported", nlohmann::json{
-				{"node_class", n.Class},
-				{"target_function", fnName},
-				{"guid", n.Id},
-				{"reason",
-				 "Latent action — split into FTimerHandle + "
-				 "GetWorld()->GetTimerManager().SetTimer(...) callback. "
-				 "The post-delay exec flow must move to the timer's "
-				 "bound function."},
-				{"fields", std::move(fields)},
-			}}};
-			// The exec continues after the timer fires, but in C++ that
-			// becomes a separate function — we don't try to walk past
-			// here from this position; treat as exec-terminating so the
-			// walker doesn't double-emit downstream statements as if
-			// they ran synchronously.
+			while (tag.size() < 8)
+			{
+				tag.push_back('0');
+			}
+
+			// 2) Names. Parent function name prefixes both so two delays
+			//    in different parents don't collide.
+			const std::string parentName = w.function.Name;
+			const std::string contName    = fmt::format("{}_DelayCont_{}", parentName, tag);
+			const std::string handleName  = fmt::format("{}_DelayHandle_{}", parentName, tag);
+
+			// 3) Synth FTimerHandle member. Emitted via the same
+			//    auto_synth_vars channel the stateful-macro lowering
+			//    uses, so DecompileBlueprint hoists it into class
+			//    variables[].
+			if (!w.autoSynthVars.count(handleName)) {
+				nlohmann::json handleDecl = {
+					{"name", handleName},
+					{"type", "struct:TimerHandle"},
+					{"category", "BPR|AutoSynth"},
+				};
+				w.autoSynthVars[handleName] = std::move(handleDecl);
+			}
+
+			// 4) Build the continuation body by walking the post-delay
+			//    exec. Delay's exec output is named "Completed" on
+			//    latent UFUNCTIONs (UE convention); fall back to "then"
+			//    just in case the introspector serializes it differently.
+			const BPNode* contStart = w.FollowExec(n, "Completed");
+			if (!contStart)
+			{
+				contStart = w.FollowExec(n, "then");
+			}
+			std::set<std::string> contVisited;
+			nlohmann::json contBody = DecompileStatementsFrom(
+				w, contStart, /*stopAt=*/nullptr, contVisited);
+
+			// 5) Synth continuation function doc. Bare UFUNCTION() is
+			//    sufficient — timer callbacks are invoked via
+			//    reflection, not BP-exposed (callers don't need
+			//    BlueprintCallable). Empty ufunction_specifiers signals
+			//    BuildUFunctionList to skip its BlueprintCallable
+			//    default.
+			nlohmann::json contMetadata = {
+				{"asset_path", w.function.Name},  // placeholder; corrected below
+				{"ufunction_specifiers", nlohmann::json::array()},
+				{"generated_by", "bpr-delay-continuation"},
+				{"source_node_guid", n.Id},
+			};
+			// Forward the parent's asset_path if available so downstream
+			// tooling can locate the synthetic function in context.
+			// (DecompileFunction sets the doc's metadata.asset_path post
+			// hoc; we can't read it from here, so leave a placeholder.)
+			nlohmann::json contDoc = {
+				{"version", kBpirSchemaVersion},
+				{"kind",    "function"},
+				{"name",    contName},
+				{"metadata", std::move(contMetadata)},
+				{"inputs",  nlohmann::json::array()},
+				{"outputs", nlohmann::json::array()},
+				{"locals",  nlohmann::json::array()},
+				{"body",    std::move(contBody)},
+			};
+			w.autoSynthFunctions.push_back(std::move(contDoc));
+
+			// 6) Emit the SetTimer call as the pre-delay statement and
+			//    terminate the current exec flow. CppEmit's
+			//    __bpr_set_timer handler will render this as
+			//    `GetWorld()->GetTimerManager().SetTimer(...)` with the
+			//    right argument ordering.
+			nlohmann::json args = nlohmann::json::object();
+			// Duration: from the pin, or 0 (DelayUntilNextTick).
+			if (const BPPin* dp = w.GetPin(n, "Duration")) {
+				args["Duration"] = BuildExpression(w, n, *dp);
+			} else {
+				args["Duration"] = nlohmann::json{{"lit", 0.0}};
+			}
+			// Handle + callback: literal strings; CppEmit's sentinel
+			// handler unwraps them as bare identifiers.
+			args["Handle"]   = nlohmann::json{{"lit", handleName}};
+			args["Callback"] = nlohmann::json{{"lit", contName}};
+			// Looping flag — RetriggerableDelay reuses the same handle
+			// semantically but the UE-side overload still wants a bool;
+			// we set false here because BP's Delay-family is one-shot,
+			// and RetriggerableDelay's "retrigger" semantics need
+			// explicit cancel-and-rebind which the agent handles.
+			args["Looping"] = nlohmann::json{{"lit", false}};
+			args["Kind"]    = nlohmann::json{{"lit", fnName}};  // for diagnostics
+
+			r.statement = nlohmann::json{
+				{"call", "__bpr_set_timer"},
+				{"args", std::move(args)},
+			};
+			// Post-Delay code lives in the continuation now; the parent
+			// function's exec terminates here.
 			r.terminatesExec = true;
 			return r;
 		}
@@ -1616,6 +2074,303 @@ const BPNode* FindFunctionEntry(const BPGraph& g) {
 		}
 	}
 	return nullptr;
+}
+
+// ----- EnhancedInput auto-lowering ---------------------------------------
+// Intent: in UE, the K2Node_EnhancedInputAction event node in an event
+// graph binds a UInputAction asset to a chain of BP nodes that runs
+// when the input fires. The C++ idiom is fundamentally different —
+// inputs are bound centrally in `SetupPlayerInputComponent` and each
+// trigger event becomes its own UFUNCTION callback.
+//
+// This pass scans event graphs for input action nodes, generates the
+// per-trigger callbacks, registers the UInputAction* member, and
+// synthesizes a SetupPlayerInputComponent override that wires
+// everything together. Output is appended to the class's variables[]
+// and functions[] arrays so downstream codegen treats it identically
+// to BP-authored content.
+//
+// Per-class aggregation: bindings collected across ALL event graphs
+// are routed into a single SetupPlayerInputComponent override (one per
+// class is the UE rule). Multiple input action nodes referencing the
+// same asset share one UInputAction* member.
+//
+// Returns true if any bindings were generated (caller can use this
+// to bump test expectations).
+void ProcessEnhancedInputBindings(
+	backends::IBlueprintReader& reader,
+	std::string_view assetPath,
+	const BPMetadata& meta,
+	const std::set<std::string>& memberVarNames,
+	nlohmann::json& variables,
+	nlohmann::json& functions) {
+	// Aggregation state.
+	struct Binding {
+		std::string actionMember;
+		std::string trigger;       // "Started" / "Triggered" / "Ongoing" / "Canceled" / "Completed"
+		std::string callbackName;
+	};
+	std::vector<Binding> bindings;
+	std::map<std::string, std::string> actionPathToMember;  // dedup
+	// Mirror the class-level dedup of variables already on the class.
+	std::set<std::string> alreadyHaveVarName;
+	for (const auto& v : variables) {
+		if (v.is_object() && v.contains("name") && v["name"].is_string()) {
+			alreadyHaveVarName.insert(v["name"].get<std::string>());
+		}
+	}
+
+	auto deriveActionName = [](const std::string& path) {
+		std::string name = path;
+		if (auto slash = name.find_last_of('/'); slash != std::string::npos) {
+			name = name.substr(slash + 1);
+		}
+		if (auto dot = name.find('.'); dot != std::string::npos) {
+			name = name.substr(0, dot);
+		}
+		// Strip trailing _C if a class path snuck through.
+		if (name.size() > 2 && name.substr(name.size() - 2) == "_C") {
+			name = name.substr(0, name.size() - 2);
+		}
+		// Sanitize for C++ identifier rules.
+		std::string out;
+		for (char c : name) {
+			if ((c >= '0' && c <= '9') ||
+				(c >= 'a' && c <= 'z') ||
+				(c >= 'A' && c <= 'Z') ||
+				c == '_')
+			{
+				out.push_back(c);
+			}
+		}
+		if (out.empty())
+		{
+			out = "Unknown";
+		}
+		if (out.front() >= '0' && out.front() <= '9')
+		{
+			out.insert(out.begin(), '_');
+		}
+		return out;
+	};
+
+	for (const auto& gsum : meta.Graphs) {
+		if (gsum.Type != "EventGraph")
+		{
+			continue;
+		}
+		BPGraph graph;
+		try {
+			graph = reader.GetGraph(assetPath, gsum.Name);
+		} catch (...) {
+			continue;
+		}
+
+		// Dummy BPFunction for the Walker — event graphs don't have
+		// local var scope, so all variable references are members (or
+		// unscoped). Walker's ScopeForVariable returns "" for unknown
+		// names which is fine for input-event walks (no locals to
+		// collide with).
+		BPFunction dummyFn;
+		dummyFn.Name = gsum.Name;
+		Walker walker(graph, dummyFn, memberVarNames);
+
+		for (const BPNode& n : graph.Nodes) {
+			if (n.Class.find("K2Node_EnhancedInputAction") == std::string::npos)
+			{
+				continue;
+			}
+
+			// Locate the action asset. The plugin introspector writes
+			// this under a few possible keys depending on version.
+			std::string actionPath;
+			if (n.Meta.is_object()) {
+				actionPath = n.Meta.value("input_action", std::string{});
+				if (actionPath.empty()) actionPath = n.Meta.value("inputAction", std::string{});
+				if (actionPath.empty()) actionPath = n.Meta.value("action_path", std::string{});
+				if (actionPath.empty()) actionPath = n.Meta.value("action", std::string{});
+			}
+			// Normalize: strip a leading IA_/UA_ prefix so downstream
+			// names don't double up (avoid `OnIA_IA_Jump_Started` from
+			// an asset already named `IA_Jump`). The bare name is used
+			// in callback identifiers; the member is always re-prefixed
+			// with IA_ for clarity at the class API surface.
+			const std::string rawActionName = deriveActionName(actionPath);
+			std::string actionName = rawActionName;
+			if (actionName.rfind("IA_", 0) == 0)
+			{
+				actionName = actionName.substr(3);
+			}
+			else if (actionName.rfind("UA_", 0) == 0) actionName = actionName.substr(3);
+			if (actionName.empty())
+			{
+				actionName = "Unknown";
+			}
+
+			const std::string memberName = std::string("IA_") + actionName;
+
+			// Register the member (idempotent across multiple input
+			// nodes referencing the same action). memberName is derived
+			// deterministically from actionPath above, so seeing the
+			// same action twice just skips the duplicate decl.
+			if (!actionPathToMember.count(actionPath) && !alreadyHaveVarName.count(memberName)) {
+				actionPathToMember[actionPath] = memberName;
+				alreadyHaveVarName.insert(memberName);
+				nlohmann::json varDecl = {
+					{"name", memberName},
+					{"type", "object:InputAction"},
+					{"editable", true},
+					{"category", "Input"},
+				};
+				variables.push_back(std::move(varDecl));
+			}
+
+			// Walk each wired output exec pin → generate one callback
+			// UFUNCTION per trigger event.
+			for (const BPPin& pin : n.Pins) {
+				if (pin.Direction != "Output" || pin.Type.Category != "exec")
+				{
+					continue;
+				}
+				const std::string& trigger = pin.Name;
+				auto outIt = walker.outEdges.find({n.Id, pin.Id});
+				if (outIt == walker.outEdges.end() || outIt->second.empty())
+				{
+					continue;
+				}
+
+				const std::string callbackName = fmt::format("OnIA_{}_{}", actionName, trigger);
+
+				// Build the callback body by walking the post-event exec.
+				const BPNode* bodyStart = walker.GetNode(outIt->second.front().node);
+				std::set<std::string> visited;
+				nlohmann::json cbBody = DecompileStatementsFrom(walker, bodyStart, nullptr, visited);
+
+				// Flush any auto-synth state the body walk produced
+				// (e.g. a DoOnce or Delay inside the callback) into the
+				// class. They aren't tied to the callback specifically.
+				for (auto& [name, decl] : walker.autoSynthVars) {
+					if (!alreadyHaveVarName.count(name)) {
+						alreadyHaveVarName.insert(name);
+						variables.push_back(decl);
+					}
+				}
+				walker.autoSynthVars.clear();
+				for (auto& contFn : walker.autoSynthFunctions) {
+					functions.push_back(std::move(contFn));
+				}
+				walker.autoSynthFunctions.clear();
+
+				// Synthesize the callback function doc. Takes the input
+				// value as a parameter so the agent can read action
+				// value / axis data; mirrors UE's EnhancedInput delegate
+				// signature `void(const FInputActionValue&)`. We emit
+				// it as by-value `FInputActionValue Value` for now —
+				// it's a small struct (cheap to copy) and the agent
+				// can switch to const-ref if they want.
+				nlohmann::json cbDoc = {
+					{"version", kBpirSchemaVersion},
+					{"kind",    "function"},
+					{"name",    callbackName},
+					{"metadata", nlohmann::json{
+						{"asset_path", std::string(assetPath)},
+						// No specifiers → bare UFUNCTION(). EnhancedInput
+						// dispatch uses member-pointer binding, so the
+						// function doesn't need BP exposure.
+						{"ufunction_specifiers", nlohmann::json::array()},
+						{"generated_by", "bpr-enhanced-input"},
+						{"source_node_guid", n.Id},
+					}},
+					{"inputs", nlohmann::json::array({
+						nlohmann::json{
+							{"name", "Value"},
+							{"type", "struct:InputActionValue"},
+						}
+					})},
+					{"outputs", nlohmann::json::array()},
+					{"locals",  nlohmann::json::array()},
+					{"body",    std::move(cbBody)},
+				};
+				functions.push_back(std::move(cbDoc));
+
+				bindings.push_back({memberName, trigger, callbackName});
+			}
+		}
+	}
+
+	if (bindings.empty())
+	{
+		return;  // No input bindings; nothing more to do.
+	}
+
+	// Synthesize the SetupPlayerInputComponent override. Body:
+	//   Super::SetupPlayerInputComponent(PlayerInputComponent);
+	//   if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
+	//       EIC->BindAction(<Action>, ETriggerEvent::<Trigger>, this, &ThisClass::<Cb>);
+	//       ...
+	//   }
+	nlohmann::json setupBody = nlohmann::json::array();
+
+	setupBody.push_back(nlohmann::json{
+		{"call", "Super::SetupPlayerInputComponent"},
+		{"args", nlohmann::json{
+			{"PlayerInputComponent", nlohmann::json{
+				{"var", "PlayerInputComponent"},
+				{"scope", "input"},
+			}},
+		}},
+	});
+
+	nlohmann::json castSuccess = nlohmann::json::array();
+	for (const auto& b : bindings) {
+		castSuccess.push_back(nlohmann::json{
+			{"call", "__bpr_bind_input_action"},
+			{"args", nlohmann::json{
+				{"Action",   nlohmann::json{{"var", b.actionMember}, {"scope", "member"}}},
+				{"Trigger",  nlohmann::json{{"lit", b.trigger}}},
+				{"Callback", nlohmann::json{{"lit", b.callbackName}}},
+			}},
+		});
+	}
+
+	setupBody.push_back(nlohmann::json{
+		{"cast", nlohmann::json{
+			{"var", "PlayerInputComponent"},
+			{"scope", "input"},
+		}},
+		// Prefixed name so the renderer's Cast<{}>() lands on the right
+		// C++ class. ResolveAssetPath in CppEmit doesn't add the U
+		// prefix automatically for bare identifiers.
+		{"to", "UEnhancedInputComponent"},
+		{"as", "EIC"},
+		{"success", std::move(castSuccess)},
+		{"fail", nlohmann::json::array()},
+	});
+
+	nlohmann::json setupFn = {
+		{"version", kBpirSchemaVersion},
+		{"kind",    "function"},
+		{"name",    "SetupPlayerInputComponent"},
+		{"metadata", nlohmann::json{
+			{"asset_path", std::string(assetPath)},
+			// Empty specifiers + the whitelisted virtual name causes
+			// CppClassEmit to emit it as `virtual void
+			// SetupPlayerInputComponent(UInputComponent*) override;`
+			// without a UFUNCTION decoration.
+			{"ufunction_specifiers", nlohmann::json::array()},
+			{"generated_by", "bpr-enhanced-input"},
+		}},
+		{"inputs", nlohmann::json::array({
+			nlohmann::json{
+				{"name", "PlayerInputComponent"},
+				{"type", "object:InputComponent"},
+			},
+		})},
+		{"outputs", nlohmann::json::array()},
+		{"locals",  nlohmann::json::array()},
+		{"body",    std::move(setupBody)},
+	};
+	functions.push_back(std::move(setupFn));
 }
 
 }    // namespace decompile_detail
@@ -1771,6 +2526,38 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 		doc["unsupported_nodes"] = std::move(unsupportedSummary);
 	}
 
+	// Auto-synthesized member variables — populated during the walk
+	// by stateful-macro handlers (DoOnce/FlipFlop/DoN) and latent-
+	// action handlers (Delay → FTimerHandle). Surface them so
+	// DecompileBlueprint can merge them into the class's variables[]
+	// array. Keyed by name in the walker so emission order is stable
+	// (map iteration order).
+	if (!walker.autoSynthVars.empty()) {
+		nlohmann::json synth = nlohmann::json::array();
+		for (const auto& [name, decl] : walker.autoSynthVars) {
+			(void)name;
+			synth.push_back(decl);
+		}
+		doc["auto_synth_vars"] = std::move(synth);
+	}
+
+	// Auto-synthesized continuation functions — emitted by latent-
+	// action lowering (each Delay produces one). Fix up the metadata's
+	// asset_path here so it matches the parent function's context;
+	// the handler couldn't know it at emission time. Order is preserved
+	// (vector iteration).
+	if (!walker.autoSynthFunctions.empty()) {
+		nlohmann::json synth = nlohmann::json::array();
+		for (auto& fnDoc : walker.autoSynthFunctions) {
+			if (fnDoc.is_object() && fnDoc.contains("metadata")
+				&& fnDoc["metadata"].is_object()) {
+				fnDoc["metadata"]["asset_path"] = std::string(assetPath);
+			}
+			synth.push_back(fnDoc);
+		}
+		doc["auto_synth_funcs"] = std::move(synth);
+	}
+
 	// Sanity-check before returning. If the decompile pass produced
 	// something the validator rejects, that's a bug in this file —
 	// surface it loudly rather than passing through to codegen.
@@ -1807,6 +2594,99 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 				})},
 			});
 		}
+	}
+
+	// Hoist auto-synthesized vars from each function doc into the
+	// class-level variables[] array. Stateful-macro lowering
+	// (DoOnce/FlipFlop/DoN) and latent-action lowering
+	// (Delay → FTimerHandle) need real class members to persist
+	// across calls, so their decls live next to user-declared BP
+	// variables and go through the same UPROPERTY emission path.
+	//
+	// Deduped by name in case the same conceptual flag was registered
+	// from multiple functions (unlikely — node GUIDs are per-instance
+	// — but the per-name idempotency mirrors the in-walker dedup).
+	{
+		std::set<std::string> alreadyHaveVar;
+		for (const auto& v : variables) {
+			if (v.is_object() && v.contains("name") && v["name"].is_string()) {
+				alreadyHaveVar.insert(v["name"].get<std::string>());
+			}
+		}
+		for (auto& fn : functions) {
+			if (!fn.is_object())
+			{
+				continue;
+			}
+			auto it = fn.find("auto_synth_vars");
+			if (it == fn.end() || !it->is_array())
+			{
+				continue;
+			}
+			for (auto& v : *it) {
+				if (!v.is_object() || !v.contains("name") || !v["name"].is_string())
+				{
+					continue;
+				}
+				const auto& name = v["name"].get<std::string>();
+				if (alreadyHaveVar.count(name))
+				{
+					continue;
+				}
+				alreadyHaveVar.insert(name);
+				variables.push_back(v);
+			}
+			// Remove from the function doc — the class-level surface
+			// is canonical; leaving stale copies on each function would
+			// confuse downstream readers.
+			fn.erase("auto_synth_vars");
+		}
+	}
+
+	// Hoist auto-synthesized continuation functions into the class's
+	// functions[] array. Each Delay node in a parent function
+	// produces one continuation; we append them directly after the
+	// parent so the generated header reads in roughly walk order
+	// (parent / cont_1 / cont_2 / next-parent / ...).
+	//
+	// The continuation docs are full BPIR function docs ready for
+	// CppClassEmit. The validator runs against them via the
+	// ValidateClassDoc call at the end (which walks functions[]).
+	{
+		nlohmann::json hoisted = nlohmann::json::array();
+		for (auto& fn : functions) {
+			// Extract continuations BEFORE pushing the parent so the
+			// pushed copy doesn't carry the auto_synth_funcs key.
+			nlohmann::json continuations = nlohmann::json::array();
+			if (fn.is_object()) {
+				auto it = fn.find("auto_synth_funcs");
+				if (it != fn.end() && it->is_array()) {
+					continuations = std::move(*it);
+					fn.erase("auto_synth_funcs");
+				}
+			}
+			hoisted.push_back(std::move(fn));
+			for (auto& contFn : continuations) {
+				hoisted.push_back(std::move(contFn));
+			}
+		}
+		functions = std::move(hoisted);
+	}
+
+	// EnhancedInput pass: scan event graphs for K2Node_EnhancedInputAction
+	// nodes and synthesize the per-trigger callbacks + a
+	// SetupPlayerInputComponent override. Mutates variables[] and
+	// functions[] in place, appending the generated content. No-op when
+	// the class has no input action events.
+	{
+		std::set<std::string> memberVarNamesForInput;
+		for (const auto& v : meta.Variables)
+		{
+			memberVarNamesForInput.insert(v.Name);
+		}
+		ProcessEnhancedInputBindings(reader, assetPath, meta,
+									 memberVarNamesForInput,
+									 variables, functions);
 	}
 
 	nlohmann::json interfaces = nlohmann::json::array();
@@ -1876,4 +2756,4 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 	return doc;
 }
 
-}    // namespace bpr::tools
+} // namespace bpr::tools
