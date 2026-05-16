@@ -93,7 +93,7 @@ if ($targetCsText -match 'DefaultBuildSettings\s*=\s*BuildSettingsVersion\.V6') 
     Write-Host '[ OK ] BlueprintReaderMcp.Target.cs sets DefaultBuildSettings = V6 (commit 8e37b72)' -ForegroundColor Green
 } else {
     Write-Host '[MISS] BlueprintReaderMcp.Target.cs does not set DefaultBuildSettings = V6' -ForegroundColor Red
-    Write-Host '       (commit 8e37b72). Build will print a noisy [Upgrade] block — usually a sign that' -ForegroundColor DarkGray
+    Write-Host '       (commit 8e37b72). Build will print a noisy [Upgrade] block -- usually a sign that' -ForegroundColor DarkGray
     Write-Host '       the plugin copy is older than PR #98.' -ForegroundColor DarkGray
     $freshOk = $false
 }
@@ -195,19 +195,66 @@ if (-not $freshOk) {
 
 if (-not $mcpOk) {
     Write-Host 'Fix for missing BlueprintReaderMcp.exe:' -ForegroundColor Yellow
-    Write-Host '  The MCP server is its own UBT Program target (no longer a'
-    Write-Host '  PreBuildStep of the editor build). Build it explicitly:'
+    Write-Host '  The .uplugin has a PreBuildSteps hook (PR #97) that builds the'
+    Write-Host '  MCP server as part of every editor build. If the exe is missing'
+    Write-Host '  but freshness checks above are all green, the most likely cause'
+    Write-Host '  is UBT cache: the editor target''s cached PreBuild-N.bat predates'
+    Write-Host '  the .uplugin update and doesn''t invoke the new hook yet.'
     Write-Host ''
+
+    # Diagnostic: read the cached PreBuild-N.bat and report whether it
+    # references our hook. If it doesn't, the user needs to force a
+    # regeneration; if it does, the hook fired but its inner UBT build
+    # failed (so the user needs to look at the editor build log).
+    $intermediateRoot = Join-Path $ProjectDir 'Intermediate\Build\Win64\x64'
+    $cachedHits  = @()
+    $cachedMisses = @()
+    if (Test-Path -LiteralPath $intermediateRoot) {
+        $cachedBats = Get-ChildItem -LiteralPath $intermediateRoot -Recurse `
+            -Filter 'PreBuild-*.bat' -ErrorAction SilentlyContinue
+        foreach ($bat in $cachedBats) {
+            $text = Get-Content -Raw -LiteralPath $bat.FullName -ErrorAction SilentlyContinue
+            if ($text -match 'PreBuildHook\.ps1') {
+                $cachedHits += $bat.FullName
+            } else {
+                $cachedMisses += $bat.FullName
+            }
+        }
+    }
+
+    if ($cachedMisses.Count -gt 0 -and $cachedHits.Count -eq 0) {
+        Write-Host '  Diagnosis: cached PreBuild-N.bat does NOT reference PreBuildHook.ps1' -ForegroundColor Red
+        Write-Host '  Found these stale cache files:'
+        foreach ($p in ($cachedMisses | Select-Object -First 4)) {
+            Write-Host ('    ' + $p) -ForegroundColor DarkGray
+        }
+        Write-Host '  Fix: regenerate project files OR delete those .bat files and rebuild.' -ForegroundColor Yellow
+        Write-Host ''
+    } elseif ($cachedHits.Count -gt 0) {
+        Write-Host '  Cached PreBuild-N.bat DOES reference PreBuildHook.ps1 -- so the hook' -ForegroundColor DarkCyan
+        Write-Host '  was wired up, but its inner UBT invocation failed during the last' -ForegroundColor DarkCyan
+        Write-Host '  editor build. Re-run the editor build and inspect the output for' -ForegroundColor DarkCyan
+        Write-Host '  "[BlueprintReader/PreBuild]" and "[BlueprintReader/MCP]" lines.' -ForegroundColor DarkCyan
+        Write-Host ''
+    }
+
+    Write-Host '  Fastest one-shot fix: run the wrapper script directly.' -ForegroundColor Yellow
+    if ($uproject) {
+        Write-Host ('    & "{0}\Scripts\Build-MCPServer.ps1" `' -f $PluginDir)
+        Write-Host '        -EngineDir "<path to your engine root>" `'
+        Write-Host ('        -ProjectFile "{0}"' -f $uproject)
+    } else {
+        Write-Host ('    & "{0}\Scripts\Build-MCPServer.ps1" -EngineDir "<engine>" -ProjectFile "<your.uproject>"' -f $PluginDir)
+    }
+    Write-Host ''
+    Write-Host '  Or trigger via the editor build (forces PreBuildSteps to re-fire):' -ForegroundColor Yellow
     Write-Host '    & "<EngineDir>\Engine\Build\BatchFiles\Build.bat" `'
-    Write-Host '        BlueprintReaderMcp Win64 Development `'
+    Write-Host ('        {0} Win64 Development -Rebuild `' -f $editorTarget)
     if ($uproject) {
         Write-Host ('        -project="{0}"' -f $uproject)
     } else {
         Write-Host '        -project="<path to your .uproject>"'
     }
-    Write-Host ''
-    Write-Host '  Or use the wrapper script (builds Mcp + Tests):'
-    Write-Host ('    & "{0}\Scripts\Build-MCPServer.ps1" -EngineDir "<engine>" -ProjectFile "<your.uproject>"' -f $PluginDir)
     Write-Host ''
     $problems += 'MCP server not built'
 }
