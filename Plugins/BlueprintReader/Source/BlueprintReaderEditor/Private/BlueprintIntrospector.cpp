@@ -11,6 +11,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraph/EdGraphSchema.h"
+#include "EdGraphSchema_K2.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Class.h"
 #include "UObject/SoftObjectPath.h"
@@ -74,6 +75,74 @@ namespace
 		V.bIsBlueprintReadOnly = (Var.PropertyFlags & CPF_BlueprintReadOnly) != 0;
 		V.bIsExposeOnSpawn     = Var.HasMetaData(TEXT("ExposeOnSpawn"));
 		return V;
+	}
+
+	// Read delegate-signature params off a BP's generated class for a
+	// multicast-delegate variable. Populates V.DelegateParams when the
+	// property is one of FMulticastInlineDelegateProperty /
+	// FMulticastSparseDelegateProperty (BP's typical mcdelegate kinds).
+	// No-op when the type is anything else. Used by codegen to emit the
+	// matching _NParams DECLARE variant.
+	void PopulateDelegateParams(FBPVariableInfo& V, UClass* GeneratedClass)
+	{
+		if (!GeneratedClass) return;
+		FProperty* Prop = GeneratedClass->FindPropertyByName(*V.Name);
+		if (!Prop) return;
+		FMulticastDelegateProperty* DelProp = CastField<FMulticastDelegateProperty>(Prop);
+		if (!DelProp || !DelProp->SignatureFunction) return;
+		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+		if (!K2Schema) return;
+		for (TFieldIterator<FProperty> It(DelProp->SignatureFunction); It; ++It)
+		{
+			FProperty* Param = *It;
+			if (!Param || !Param->HasAnyPropertyFlags(CPF_Parm)) continue;
+			if (Param->HasAnyPropertyFlags(CPF_ReturnParm))      continue;
+			FEdGraphPinType PinType;
+			if (!K2Schema->ConvertPropertyToPinType(Param, PinType))
+			{
+				continue;
+			}
+			FBPDelegateParam DP;
+			DP.Name = Param->GetName();
+			DP.Type = FBlueprintIntrospector::FormatPinType(PinType);
+			V.DelegateParams.Add(MoveTemp(DP));
+		}
+	}
+
+	// Return the bare C++ class name for an asset-ref property, with
+	// the correct U/A prefix. Empty for non-asset-ref properties.
+	// Codegen uses this to fill in `T` in `ConstructorHelpers::FObjectFinder<T>`.
+	FString GetAssetRefPropertyClassName(FProperty* Prop)
+	{
+		if (!Prop) return FString();
+		UClass* AssetClass = nullptr;
+		if (FObjectProperty* OP = CastField<FObjectProperty>(Prop))
+		{
+			AssetClass = OP->PropertyClass;
+		}
+		else if (FClassProperty* CP = CastField<FClassProperty>(Prop))
+		{
+			AssetClass = CP->MetaClass;
+		}
+		else if (FSoftObjectProperty* SOP = CastField<FSoftObjectProperty>(Prop))
+		{
+			AssetClass = SOP->PropertyClass;
+		}
+		else if (FSoftClassProperty* SCP = CastField<FSoftClassProperty>(Prop))
+		{
+			AssetClass = SCP->MetaClass;
+		}
+		if (!AssetClass) return FString();
+		// AssetClass->GetName() returns the bare name without prefix
+		// (e.g. "SkeletalMesh"). UE convention: U-prefix unless the
+		// class is Actor-derived (then A-prefix). UClass::IsChildOf
+		// gives us the test.
+		const FString Bare = AssetClass->GetName();
+		if (AssetClass->IsChildOf(AActor::StaticClass()))
+		{
+			return FString::Printf(TEXT("A%s"), *Bare);
+		}
+		return FString::Printf(TEXT("U%s"), *Bare);
 	}
 
 	void ExtractK2Extras(UEdGraphNode* Node, TMap<FString, FString>& Extras)
@@ -451,9 +520,18 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		Info.Interfaces.Add(MoveTemp(I));
 	}
 
-	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
 	{
-		Info.Variables.Add(VariableDescToInfo(Var));
+		UClass* GenClass = Blueprint->GeneratedClass;
+		if (!GenClass) GenClass = Blueprint->SkeletonGeneratedClass;
+		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+		{
+			FBPVariableInfo V = VariableDescToInfo(Var);
+			// Multicast delegate variables: read signature params off
+			// the generated class so codegen can emit the matching
+			// DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params variant.
+			PopulateDelegateParams(V, GenClass);
+			Info.Variables.Add(MoveTemp(V));
+		}
 	}
 
 	if (USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript)
@@ -507,6 +585,11 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 						Prop->ExportTextItem_Direct(ValueStr, TemplatePtr, CDOPtr, nullptr,
 						                            PPF_None);
 						Override.ValueText = MoveTemp(ValueStr);
+						// Asset-ref properties: capture the property's
+						// class so codegen can fill in the
+						// ConstructorHelpers::FObjectFinder<T> template
+						// arg instead of leaving T as a TODO.
+						Override.PropertyClass = GetAssetRefPropertyClassName(Prop);
 						C.Properties.Add(MoveTemp(Override));
 					}
 				}
