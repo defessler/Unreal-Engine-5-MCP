@@ -17,27 +17,29 @@ namespace bpr::tools {
 
 namespace {
 
-// SanitizeIdentifier: collapse any sequence of non-`[A-Za-z0-9_]` chars to
-// nothing, so BP display names with spaces ("Set Resources", "AsWB Resource
-// Bar") become legal C++ identifiers ("SetResources", "AsWBResourceBar").
-// Also leading-digit-safe: prepend `_` if the result would otherwise start
-// with a digit (rare but possible from numeric BP names).
-//
-// Applied uniformly at every identifier emission point -- function decl
-// names, parameter names, locals, member access LHS, cast-as locals, var
-// expressions, delegate property names, handler names. Empty input -> empty
-// output (callers should check before emitting).
-std::string SanitizeIdentifier(std::string_view in) {
+// SanitizeIdentifier lives at file scope (defined below, outside the
+// anon namespace) so CppClassEmit.cpp -- a separate translation unit --
+// can call it through the public header. All call sites in this TU
+// use the unqualified name; ADL + the file-scope declaration resolve
+// to the external-linkage version.
+
+// Escape a string for embedding inside a TEXT("...") wide-string literal.
+// Without this, a BP default like Hello "world" leaks into the C++ as
+// `TEXT("Hello "world"")` which doesn't compile. Handles the C++
+// literal escapes: backslash, double-quote, newline, carriage return,
+// tab. Tabs and CRs in BP data are rare but possible.
+std::string EscapeForCppStringLiteral(std::string_view in) {
     std::string out;
-    out.reserve(in.size());
+    out.reserve(in.size() + 4);
     for (char c : in) {
-        const unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc) || c == '_') {
-            out.push_back(c);
+        switch (c) {
+        case '\\': out += "\\\\"; break;
+        case '"':  out += "\\\""; break;
+        case '\n': out += "\\n";  break;
+        case '\r': out += "\\r";  break;
+        case '\t': out += "\\t";  break;
+        default:   out.push_back(c); break;
         }
-    }
-    if (!out.empty() && std::isdigit(static_cast<unsigned char>(out.front()))) {
-        out.insert(out.begin(), '_');
     }
     return out;
 }
@@ -560,8 +562,11 @@ struct Emitter {
             // If the string starts with /* it's a sentinel comment from
             // decompile (unsupported expression); pass through as-is.
             if (s.find("/*") == 0) return s;
-            // Otherwise quote it as a C++ string literal.
-            return fmt::format("TEXT(\"{}\")", s);
+            // Otherwise quote it as a C++ string literal. Escape embedded
+            // quotes / backslashes / newlines / etc.; without this, a
+            // BP string default like Hello "world" leaks as
+            // TEXT("Hello "world"") which doesn't compile.
+            return fmt::format("TEXT(\"{}\")", EscapeForCppStringLiteral(s));
         }
         return "/*<unknown-lit>*/";
     }
@@ -1288,6 +1293,26 @@ struct Emitter {
 };
 
 } // namespace
+
+std::string SanitizeIdentifier(std::string_view in) {
+    // Public-API wrapper around the anon-namespace helper so CppClassEmit
+    // (a separate TU) can sanitize at its UPROPERTY / UFUNCTION emission
+    // sites with the same algorithm the function-body emitter uses.
+    // Disambiguates from the anon-namespace `SanitizeIdentifier` (same
+    // name, internal linkage) by qualifying the call to the helper.
+    std::string out;
+    out.reserve(in.size());
+    for (char c : in) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '_') {
+            out.push_back(c);
+        }
+    }
+    if (!out.empty() && std::isdigit(static_cast<unsigned char>(out.front()))) {
+        out.insert(out.begin(), '_');
+    }
+    return out;
+}
 
 std::string MapBpirTypeToCpp(std::string_view bpirType) {
     return MapTypeRecursive(bpirType, /*forMember=*/false);
