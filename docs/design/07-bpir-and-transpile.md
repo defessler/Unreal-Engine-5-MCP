@@ -213,10 +213,38 @@ Cleanly supported (the comment at `Decompile.h:22-23`):
 `if/then/else`, `set/call/return`, `cast`, `sequence`, `var/lit/call`
 expressions, `self`.
 
-Emitted as `unsupported`: Switch (we have the statement form but the
-inference from K2Node_Switch* is brittle, currently), ForEachLoop /
-WhileLoop / DoOnce macros, timelines, async actions, latent — anything
-domain-specific or non-portable.
+Emitted as `unsupported`: Timelines, async actions with typed payloads,
+AnimGraph / Niagara nodes, the Gate macro variant, legacy
+K2Node_InputAction nodes — anything domain-specific or non-portable
+that hasn't been given a dedicated auto-lowering pass.
+
+**Auto-lowered** (decompile produces real compilable scaffolds —
+either inline statements with synth class members, or synth functions
+on the class doc that the codegen treats identically to BP-authored
+content):
+- Loops: `ForEachLoop` / `ForEachLoopWithBreak` / `ReverseForEachLoop` /
+  `WhileLoop` / `IsValid` → native `for` / `while` / `if (IsValid(X))`.
+- Stateful macros: `DoOnce` / `FlipFlop` / `DoN` → synth `bool` /
+  `int32` member (unique per node GUID, hoisted into class
+  `variables[]` by DecompileBlueprint) + guarded `if` block.
+- Latent: `Delay` / `RetriggerableDelay` / `DelayUntilNextTick` →
+  `__bpr_set_timer` sentinel statement + synth `FTimerHandle` member +
+  generated `UFUNCTION()` continuation method whose body is the
+  post-delay exec. Continuations are pushed into the walker's
+  `autoSynthFunctions` collector and hoisted onto the class
+  `functions[]` array, so they go through the same codegen pipeline
+  as BP-authored functions.
+- EnhancedInput: `K2Node_EnhancedInputAction` event nodes →
+  `DecompileBlueprint`'s `ProcessEnhancedInputBindings` pass scans
+  event graphs, generates per-trigger `UFUNCTION()` callbacks +
+  `TObjectPtr<UInputAction>` UPROPERTY + a synthesized
+  `SetupPlayerInputComponent` override that wires everything in a
+  `Cast<UEnhancedInputComponent>` block.
+
+Each auto-lowering shares the same `Walker.autoSynthVars` /
+`Walker.autoSynthFunctions` channel so a Delay inside an EnhancedInput
+callback works correctly — the continuation participates in the same
+hoist pass.
 
 The validator runs on the way out (`Decompile.cpp` calls `ValidateBpir`
 on its result before returning) so a bug in the decompile pass
@@ -368,8 +396,18 @@ classes to recipes. Real entries:
   `UTimelineComponent` setup.
 - `K2Node_AsyncAction` → TodoComment + note about
   `UAsyncAction*::CreateXxx` + delegate binding.
-- `target_function=Delay` → TodoComment + the canonical
-  `FTimerManager::SetTimer(...)` refactor hint.
+- `K2Node_LatentAbilityCall` / async tasks with typed payload pins →
+  TodoComment + note about `UAsyncAction*::CreateXxx` + delegate
+  binding.
+
+Note: `Delay` / `RetriggerableDelay` / `DelayUntilNextTick` treatment
+entries in `UnsupportedTreatment.cpp` are now defensive — the
+decompile-side handler emits a `__bpr_set_timer` sentinel +
+auto-generated continuation method, so the classifier rarely sees an
+`unsupported` Delay. The table entries stay as a safety net for cases
+where introspection meta is missing (older plugin builds, malformed
+nodes); when they fire, they still produce the same SetTimer-style
+TodoComment hint.
 
 A few node kinds get `Approximation` treatment instead — the
 `K2Node_SpawnActorFromClass` case mentioned in the header comment

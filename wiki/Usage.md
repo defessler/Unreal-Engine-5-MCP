@@ -208,14 +208,25 @@ pair — same IR, no plumbing changes elsewhere.
 
 ### Where the C++ won't compile cleanly
 
-UE has constructs that don't map 1:1 to plain C++:
+A shrinking list. Most "structural" patterns that BP used to require
+manual porting for are now auto-lowered. The constructs that still
+need TODO + sidecar attention:
 
 - **Timelines** (`K2Node_Timeline`) — emitted as a stub `UTimelineComponent*`
   member with a TODO comment. Manually configure the timeline's curve
   assets in the editor.
-- **Latent ability calls / async actions** — emitted as a TODO with
-  the offending node class. The named exec outputs
-  (`Completed`, `Cancelled`, ...) need manual delegate binding code.
+- **Async tasks with typed payload pins** (e.g. `LoadAsset`'s
+  `OnSuccess(Payload)`) — the Delay lowering handles only the
+  `Duration → Completed` shape; tasks whose continuation needs typed
+  parameters fall through to a TODO with the offending node class.
+- **Gate macro** (multi-input stateful: `Enter` / `Open` / `Close` /
+  `Toggle`) — the walker doesn't yet thread entry-pin info, so Gate
+  emits a TODO. Other stateful macros (DoOnce, FlipFlop, DoN) ARE
+  auto-lowered.
+- **Legacy input nodes** (`K2Node_InputAction`, `K2Node_InputKey`,
+  `K2Node_InputAxis`) — pre-EnhancedInput. Migrate the BP to
+  EnhancedInput (which IS auto-lowered) or wire
+  `InputComponent->BindAction(FName, ...)` manually.
 - **Anim graph / Niagara module-graph nodes** — domain-specific; not
   portable to actor-side C++. Move the logic to a `UAnimInstance`
   subclass / Niagara emitter as appropriate.
@@ -228,6 +239,18 @@ What *does* port automatically:
   with full `FActorSpawnParameters` wiring.
 - `K2Node_AddComponent` → `NewObject + SetRelativeTransform +
   RegisterComponent` block.
+- **Stateful macros**: `DoOnce` / `FlipFlop` / `DoN` → synth class
+  member (per-instance, derived from node GUID) + guarded `if` block.
+- **Latent actions**: `Delay` / `RetriggerableDelay` /
+  `DelayUntilNextTick` → `GetWorld()->GetTimerManager().SetTimer(...)`
+  + generated `UFUNCTION()` continuation method + `FTimerHandle`
+  member. Nested delays chain naturally.
+- **EnhancedInput**: `K2Node_EnhancedInputAction` → per-trigger
+  `UFUNCTION()` callback + `TObjectPtr<UInputAction>` UPROPERTY +
+  auto-generated `SetupPlayerInputComponent` override wrapping
+  `EIC->BindAction(...)` in a `Cast<UEnhancedInputComponent>` guard.
+- **ConstructionScript / UserConstructionScript** →
+  `virtual void OnConstruction(const FTransform&) override`.
 
 `transpile_blueprint` writes a `<Class>_Generated.transpile-notes.json`
 sidecar listing every unsupported node + manual step. Use it as a

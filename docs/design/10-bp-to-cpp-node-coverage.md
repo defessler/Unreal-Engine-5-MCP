@@ -69,10 +69,10 @@ PR numbers refer to the merge that added the support.
 | `WhileLoop` | ✅ | `while (<cond>) { ... }` | |
 | `IsValid` | ✅ | `if (IsValid(X)) { ... } else { ... }` | (#103) |
 | `IsValidClass` | ❌ | -- | Falls through to unsupported. Add as a near-zero-cost follow-up. |
-| `Gate` | ❌ | -- | Stateful (bool member + branch). |
-| `DoOnce` | ❌ | -- | Stateful (bool guard). |
-| `DoN` | ❌ | -- | Stateful (counter). |
-| `FlipFlop` | ❌ | -- | Stateful (toggle member). |
+| `Gate` | ❌ | -- | Stateful (multi-input macro); deferred — walker needs entry-pin awareness to differentiate Enter / Open / Close / Toggle. |
+| `DoOnce` | ✅ | `if (!b__BprDoOnce_<tag>_HasFired) { b...HasFired = true; <body> }` | Synth `bool` member auto-hoisted into class. `StartClosed` default honored. Reset-pin upstream wiring surfaces as inline `unsupported` sidecar. |
+| `DoN` | ✅ | `if (i__BprDoN_<tag>_Counter < <N>) { i...Counter = i...Counter + 1; <body> }` | Synth `int32` member; `N` read from pin (literal or expression). Reset-pin upstream → sidecar. |
+| `FlipFlop` | ✅ | `if (b__BprFlipFlop_<tag>_IsA) { b...IsA = false; <A> } else { b...IsA = true; <B> }` | Synth `bool` member initialized to `true` so first call routes to A (matches BP semantics). |
 | `ForEachElementInEnum` | ❌ | -- | Could lower to a for-loop over `EnumType::Type::MAX`; not done. |
 
 ## Casting / type checks
@@ -123,8 +123,9 @@ PR numbers refer to the merge that added the support.
 | `K2Node_CustomEvent` | ✅ | `UFUNCTION(BlueprintCallable) void <Name>()` | Output pins -> input params via FunctionEntry handler (#104). |
 | `K2Node_ActorBoundEvent` | ⚠️ | Bound handler + `AddDynamic` | Resolved on Add/RemoveDelegate side. |
 | `K2Node_ComponentBoundEvent` | ⚠️ | Same as ActorBoundEvent | |
-| `K2Node_InputAction` / `_InputKey` / `_InputAxis` / `_InputTouch` / `_InputVectorAxisEvent` | ❌ | -- | EnhancedInput migration recommended; manual port for now. |
+| `K2Node_InputAction` / `_InputKey` / `_InputAxis` / `_InputTouch` / `_InputVectorAxisEvent` | ❌ | -- | Legacy input system. EnhancedInput migration recommended; manual port for now. |
 | `K2Node_InputActionEvent` and event-shaped variants | ❌ | -- | Same as above. |
+| `K2Node_EnhancedInputAction` | ✅ | Per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue Value);` callback + synth `UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input") TObjectPtr<UInputAction> IA_<Name>;` member + auto-generated `virtual void SetupPlayerInputComponent(UInputComponent*) override` that wraps `EIC->BindAction(...)` calls in a `Cast<UEnhancedInputComponent>` guard. | Event-graph scan in DecompileBlueprint produces this from the K2Node_EnhancedInputAction nodes scattered across event graphs. Unwired output pins produce no callback. Agent must add `#include "InputAction.h"`, `#include "EnhancedInputComponent.h"`, `#include "InputActionValue.h"` in the .cpp. |
 
 ## Delegates
 
@@ -208,7 +209,7 @@ PR numbers refer to the merge that added the support.
 | `K2Node_BaseAsyncTask` | ❌ | -- | Latent UBlueprintAsyncActionBase pattern. Falls through. |
 | `K2Node_AsyncAction` | ❌ | -- | Same. UE generates the dispatcher; C++ port requires explicit Activate/OnCompleted wiring. |
 | `K2Node_LatentGameplayTaskCall` | ❌ | -- | UGameplayTask subclass; manual port. |
-| `K2Node_CallFunction` (latent: Delay / RetriggerableDelay / DelayUntilNextTick) | ❌ | -- | Structured TODO with canonical FTimerHandle hint. |
+| `K2Node_CallFunction` (latent: Delay / RetriggerableDelay / DelayUntilNextTick) | ✅ | `GetWorld()->GetTimerManager().SetTimer(<H>, this, &ThisClass::<Cont>, <Duration>, false);` + generated `UFUNCTION()` continuation method + synth `FTimerHandle` member. | Function-splitting via the auto-synth function channel. See Remaining-gaps table for details. |
 
 ## Class / interface emission (whole-class transpile)
 
@@ -232,20 +233,26 @@ PR numbers refer to the merge that added the support.
 | Virtual override for void parent virtuals | ✅ | `virtual void BeginPlay() override` for BeginPlay/Tick/EndPlay/... | (#109) |
 | ConstructionScript -> OnConstruction override | ✅ | `virtual void OnConstruction(const FTransform& Transform) override` for BP's ConstructionScript / UserConstructionScript | (#150) |
 
-## Remaining gaps (inherent static-transpile limits)
+## Remaining gaps
 
-These are NOT fixable by plumbing more data through -- they're
-structural differences between bp-reader (static C++ generation) and
-Angelscript (runtime reflection). They emit clear TODO scaffolds with
-sidecar entries; the agent does the manual port.
+Most of the "structural" items here have now been auto-lowered via
+synth member variables and synth functions: DoOnce / FlipFlop / DoN
+(stateful macros), Delay (continuation-passing), and EnhancedInput
+(event-graph aggregation + SetupPlayerInputComponent synthesis).
+What's left is the Gate macro variant (entry-pin-aware walker
+required) and async tasks with typed payload pins. The rest emit
+clear TODO scaffolds with sidecar entries; the agent does the manual
+port.
 
 | Item | Reason | Workaround |
 |---|---|---|
-| Latent actions (Delay, Timeline, Async tasks) | Post-latent exec flow has to become a separate function (callback). Can't be expressed as a single in-line statement. | Sidecar TODO with canonical `FTimerHandle` + `GetTimerManager().SetTimer(...)` hint. |
-| Stateful macros (Gate, DoOnce, DoN, FlipFlop) | Need injected member variables; current pipeline only adds vars that exist in the BP. | Sidecar TODO. Agent adds the state member + branch by hand. |
-| EnhancedInput | InputAction asset registration is a runtime concern; static transpile can't preserve the asset bindings. | Sidecar TODO. Agent registers `UInputAction*` member + binding in `SetupPlayerInputComponent`. |
+| Delay / RetriggerableDelay / DelayUntilNextTick | Continuation-passing — post-delay exec must run later, in a new stack frame. | ✅ now auto-lowered. Each `Delay` produces (1) a `__bpr_set_timer` sentinel statement that becomes `GetWorld()->GetTimerManager().SetTimer(handle, this, &ThisClass::<Cont>, duration, false);`, (2) a synth `FTimerHandle <ParentFn>_DelayHandle_<tag>` member, (3) a generated `UFUNCTION()` continuation method named `<ParentFn>_DelayCont_<tag>` whose body is the post-delay exec. Nested delays chain naturally because continuation walks share the same auto-synth collector. |
+| Timeline, Async tasks (other latent UFUNCTIONs) | Same continuation-passing shape as Delay, but their inputs/outputs vary per task. | The Delay lowering covers the `Duration → Completed` pattern. Async tasks with output pins (e.g. `OnSuccess(Payload)` exec on `LoadAsset`) still emit `unsupported` because the continuation needs typed parameters that come over the wire from the task. Tracked separately. |
+| Gate macro (multi-input stateful macro) | Walker visits the node once per exec entry, but Gate's semantics differ across Enter / Open / Close / Toggle pins. Differentiation requires entry-pin awareness in `DecompileStatementsFrom`. | Falls through to unsupported sidecar. Agent adds `bool b<Tag>_IsOpen` + manual Open/Close/Toggle wiring. |
+| DoOnce / FlipFlop / DoN | ✅ now lowered automatically — synth member var + guarded `if` block. Per-instance flag/counter is derived from node GUID so duplicate instances are independent. Reset-pin upstream wiring still surfaces as an inline sidecar (agent adds the `<flag> = false;` at the Reset call site). | See "Loops" table. |
+| EnhancedInput | ✅ now auto-lowered. Event-graph scan finds `K2Node_EnhancedInputAction` nodes; each wired trigger pin becomes its own `UFUNCTION()` callback, the action asset becomes a `TObjectPtr<UInputAction>` UPROPERTY, and a synthetic `SetupPlayerInputComponent` override wraps `EIC->BindAction(...)` calls in a `Cast<UEnhancedInputComponent>` guard. | See the K2Node table row for `K2Node_EnhancedInputAction`. |
 | BP function `targetClass` -> include path | Resolver knows the bare class name (via `ResolveAssetPath`) but not which header file to include. | Agent adds the `#include` manually. Could be automated by indexing `Source/<Module>/**/*.h` at session start. |
-| EnhancedInput migration | Modern UE uses InputAction assets, not legacy K2Node_InputAction | Map InputAction asset -> `UInputAction*` member + binding in `SetupPlayerInputComponent`. |
+| Legacy K2Node_InputAction / InputKey / InputAxis | Old input system (pre-EnhancedInput). Different binding shape: `InputComponent->BindAction("ActionName", IE_Pressed, ...)` rather than EnhancedInput's typed `UInputAction*` member. | Not auto-lowered. Agent migrates manually to EnhancedInput (which IS auto-lowered) or to the legacy `InputComponent->BindAction(FName, ...)` pattern. |
 
 ## Sentinel reference
 
@@ -264,6 +271,8 @@ sentinel is a two-side change (decompile emits, codegen renders).
 | `__bpr_get_data_table_row` | `if (auto* Row = DataTable->FindRow<FRowType>(...)) { ... }` |
 | `__bpr_select_ternary` | `(<Index> ? <True> : <False>)` |
 | `__bpr_select_n` | `(<Index> == 0 ? <O_0> : (<Index> == 1 ? <O_1> : <O_N>))` |
+| `__bpr_set_timer` | `GetWorld()->GetTimerManager().SetTimer(<Handle>, this, &ThisClass::<Callback>, <Duration>, <Looping>);` — emitted by the Delay lowering, paired with a synth `FTimerHandle` member + a generated `UFUNCTION()` continuation method. |
+| `__bpr_bind_input_action` | `EIC->BindAction(<Action>, ETriggerEvent::<Trigger>, this, &ThisClass::<Callback>);` — emitted by the EnhancedInput lowering inside the synthesized `SetupPlayerInputComponent` override's `Cast<UEnhancedInputComponent>` success block. |
 
 ## See also
 

@@ -696,7 +696,10 @@ the BPIR through your own analysis.
 
 Returns `{ok, bpir, unsupported_count}`. The `bpir` doc validates
 against the BPIR schema; any K2 nodes that don't pattern-match a known
-control structure (timelines, latent ability calls, anim graphs, etc.)
+control structure (Timelines, latent ability calls, anim graphs, the
+Gate macro, etc. — but **not** stateful macros DoOnce/FlipFlop/DoN,
+Delay/RetriggerableDelay/DelayUntilNextTick, or EnhancedInput, which
+auto-lower to real C++ scaffolding)
 appear in the body as `{unsupported: {...}}` statements with the
 offending node's class + GUID + reason for triage.
 
@@ -832,18 +835,46 @@ canonical C++ idiom):
   if-cast-success pattern (statement form)
 - `K2Node_Knot` (reroute) → transparent passthrough on both exec +
   data flow
+- **Stateful macros**: `DoOnce` / `FlipFlop` / `DoN` → synth class-
+  level `bool` / `int32` member (per-instance, derived from node GUID)
+  plus a guarded `if` block. Reset-pin upstream wiring emits an inline
+  sidecar (agent adds `<flag> = false;` at the Reset call site).
+- **Latent**: `Delay` / `RetriggerableDelay` / `DelayUntilNextTick` →
+  `GetWorld()->GetTimerManager().SetTimer(<Handle>, this,
+  &ThisClass::<Cont>, <Duration>, false);` + synth `FTimerHandle
+  <ParentFn>_DelayHandle_<tag>` member + generated `UFUNCTION()`
+  continuation method carrying the post-delay exec. Nested delays
+  chain naturally (continuations participate in the same auto-synth
+  collector).
+- **EnhancedInput**: `K2Node_EnhancedInputAction` in event graphs →
+  per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue)`
+  callback + synth `TObjectPtr<UInputAction>` UPROPERTY + auto-
+  generated `virtual void SetupPlayerInputComponent(UInputComponent*)
+  override` that wraps `EIC->BindAction(...)` calls in a
+  `Cast<UEnhancedInputComponent>` guard. Unwired trigger pins emit no
+  callback. Agent adds `#include "InputAction.h"`,
+  `#include "EnhancedInputComponent.h"`,
+  `#include "InputActionValue.h"` in the `.cpp`.
+- **ConstructionScript / UserConstructionScript** → `virtual void
+  OnConstruction(const FTransform& Transform) override`
 
-**Things that emit a TODO + sidecar refactor hint** (latent or
-stateful — no single-statement C++ equivalent):
+**Things that still emit a TODO + sidecar refactor hint**:
 
-- `Delay` / `RetriggerableDelay` / `DelayUntilNextTick` → FTimerManager
-  pattern with the canonical SetTimer hint
-- `LoadAsset` / `LoadAssetClass` → FStreamableManager async load
-- `K2Node_MultiGate` → int32 state + switch refactor
-- `K2Node_Timeline` → UTimelineComponent member + PlayFromStart
+- `LoadAsset` / `LoadAssetClass` → FStreamableManager async load.
+  Async tasks whose continuation needs typed parameters (e.g.
+  `OnSuccess(Payload)`) aren't covered by the Delay lowering yet.
+- `K2Node_MultiGate` → int32 state + switch refactor.
+- `Gate` macro (multi-input stateful: Enter / Open / Close / Toggle)
+  → walker needs entry-pin awareness to differentiate; agent adds
+  `bool b<Tag>_IsOpen` + branching manually.
+- `K2Node_Timeline` → UTimelineComponent member + PlayFromStart.
 - `K2Node_AsyncAction` / `K2Node_LatentAbilityCall` → UAsyncAction
-  callback pattern
-- `K2Node_AnimNode_*` → move to UAnimInstance-derived class
+  callback pattern.
+- `K2Node_AnimNode_*` → move to UAnimInstance-derived class.
+- Legacy `K2Node_InputAction` / `_InputKey` / `_InputAxis` → pre-
+  EnhancedInput nodes. Migrate the BP to EnhancedInput (which IS
+  auto-lowered) or wire `InputComponent->BindAction(FName, ...)`
+  manually.
 
 **Name-collision warnings** in the sidecar when BP overrides UE
 reserved virtual methods (`TakeDamage`, `Tick`, `BeginPlay`, `Jump`,

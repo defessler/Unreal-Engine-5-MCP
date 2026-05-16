@@ -1,0 +1,762 @@
+{
+    "summary": {
+        "asset_path": "/Game/Tests/BP_StatefulMacros",
+        "name": "BP_StatefulMacros",
+        "parent_class": "AActor",
+        "modified_iso": "2026-05-16T10:00:00Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Tests/BP_StatefulMacros",
+        "name": "BP_StatefulMacros",
+        "parent_class": "AActor",
+        "interfaces": [],
+        "variables": [],
+        "functions": [
+            { "name": "TestDoOnce" },
+            { "name": "TestFlipFlop" },
+            { "name": "TestDoN" },
+            { "name": "TestDelay" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [],
+            "connections": []
+        }
+    ],
+    "functions": [
+        {
+            "name": "TestDoOnce",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "TestDoOnce",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "A001AAAA-1111-2222-3333-444455556666",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "TestDoOnce",
+                        "position": { "x": -320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "A001AAAA-1111-2222-3333-444455556601",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "A002AAAA-1111-2222-3333-444455556666",
+                        "class": "K2Node_MacroInstance",
+                        "title": "Do Once",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "A002AAAA-1111-2222-3333-444455556601",
+                                "name": "Start",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "A002AAAA-1111-2222-3333-444455556602",
+                                "name": "Reset",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "A002AAAA-1111-2222-3333-444455556603",
+                                "name": "StartClosed",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "bool",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "false"
+                            },
+                            {
+                                "id": "A002AAAA-1111-2222-3333-444455556604",
+                                "name": "Completed",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {
+                            "macro_path": "/Engine/EditorBlueprintResources/StandardMacros.StandardMacros:DoOnce"
+                        }
+                    },
+                    {
+                        "id": "A003AAAA-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print String",
+                        "position": { "x": 320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "A003AAAA-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "A003AAAA-1111-2222-3333-444455556602",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "Fired once"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary"
+                        }
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "A001AAAA-1111-2222-3333-444455556666",
+                        "from_pin": "A001AAAA-1111-2222-3333-444455556601",
+                        "to_node": "A002AAAA-1111-2222-3333-444455556666",
+                        "to_pin": "A002AAAA-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "A002AAAA-1111-2222-3333-444455556666",
+                        "from_pin": "A002AAAA-1111-2222-3333-444455556604",
+                        "to_node": "A003AAAA-1111-2222-3333-444455556666",
+                        "to_pin": "A003AAAA-1111-2222-3333-444455556601"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "TestFlipFlop",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "TestFlipFlop",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "B001BBBB-1111-2222-3333-444455556666",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "TestFlipFlop",
+                        "position": { "x": -320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "B001BBBB-1111-2222-3333-444455556601",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "B002BBBB-1111-2222-3333-444455556666",
+                        "class": "K2Node_MacroInstance",
+                        "title": "Flip Flop",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "B002BBBB-1111-2222-3333-444455556601",
+                                "name": "Input",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "B002BBBB-1111-2222-3333-444455556602",
+                                "name": "A",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "B002BBBB-1111-2222-3333-444455556603",
+                                "name": "B",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {
+                            "macro_path": "/Engine/EditorBlueprintResources/StandardMacros.StandardMacros:FlipFlop"
+                        }
+                    },
+                    {
+                        "id": "B003BBBB-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print String A",
+                        "position": { "x": 320, "y": -80 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "B003BBBB-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "B003BBBB-1111-2222-3333-444455556602",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "A"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary"
+                        }
+                    },
+                    {
+                        "id": "B004BBBB-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print String B",
+                        "position": { "x": 320, "y": 80 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "B004BBBB-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "B004BBBB-1111-2222-3333-444455556602",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "B"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary"
+                        }
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "B001BBBB-1111-2222-3333-444455556666",
+                        "from_pin": "B001BBBB-1111-2222-3333-444455556601",
+                        "to_node": "B002BBBB-1111-2222-3333-444455556666",
+                        "to_pin": "B002BBBB-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "B002BBBB-1111-2222-3333-444455556666",
+                        "from_pin": "B002BBBB-1111-2222-3333-444455556602",
+                        "to_node": "B003BBBB-1111-2222-3333-444455556666",
+                        "to_pin": "B003BBBB-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "B002BBBB-1111-2222-3333-444455556666",
+                        "from_pin": "B002BBBB-1111-2222-3333-444455556603",
+                        "to_node": "B004BBBB-1111-2222-3333-444455556666",
+                        "to_pin": "B004BBBB-1111-2222-3333-444455556601"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "TestDoN",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "TestDoN",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "C001CCCC-1111-2222-3333-444455556666",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "TestDoN",
+                        "position": { "x": -320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "C001CCCC-1111-2222-3333-444455556601",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "C002CCCC-1111-2222-3333-444455556666",
+                        "class": "K2Node_MacroInstance",
+                        "title": "Do N",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "C002CCCC-1111-2222-3333-444455556601",
+                                "name": "Enter",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "C002CCCC-1111-2222-3333-444455556602",
+                                "name": "N",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "int",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "3"
+                            },
+                            {
+                                "id": "C002CCCC-1111-2222-3333-444455556603",
+                                "name": "Reset",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "C002CCCC-1111-2222-3333-444455556604",
+                                "name": "Exit",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {
+                            "macro_path": "/Engine/EditorBlueprintResources/StandardMacros.StandardMacros:DoN"
+                        }
+                    },
+                    {
+                        "id": "C003CCCC-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print String",
+                        "position": { "x": 320, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "C003CCCC-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "C003CCCC-1111-2222-3333-444455556602",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "Tick"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary"
+                        }
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "C001CCCC-1111-2222-3333-444455556666",
+                        "from_pin": "C001CCCC-1111-2222-3333-444455556601",
+                        "to_node": "C002CCCC-1111-2222-3333-444455556666",
+                        "to_pin": "C002CCCC-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "C002CCCC-1111-2222-3333-444455556666",
+                        "from_pin": "C002CCCC-1111-2222-3333-444455556604",
+                        "to_node": "C003CCCC-1111-2222-3333-444455556666",
+                        "to_pin": "C003CCCC-1111-2222-3333-444455556601"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "TestDelay",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "TestDelay",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "D001DDDD-1111-2222-3333-444455556666",
+                        "class": "K2Node_FunctionEntry",
+                        "title": "TestDelay",
+                        "position": { "x": -480, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "D001DDDD-1111-2222-3333-444455556601",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {}
+                    },
+                    {
+                        "id": "D002DDDD-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print 'Pre'",
+                        "position": { "x": -160, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "D002DDDD-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "D002DDDD-1111-2222-3333-444455556602",
+                                "name": "then",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "D002DDDD-1111-2222-3333-444455556603",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "Pre"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary",
+                            "targetFunction": "PrintString",
+                            "targetClass": "KismetSystemLibrary"
+                        }
+                    },
+                    {
+                        "id": "D003DDDD-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Delay",
+                        "position": { "x": 160, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "D003DDDD-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "D003DDDD-1111-2222-3333-444455556602",
+                                "name": "Duration",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "real",
+                                    "sub_category": "float",
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "2.0"
+                            },
+                            {
+                                "id": "D003DDDD-1111-2222-3333-444455556603",
+                                "name": "Completed",
+                                "direction": "Output",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "Delay",
+                            "function_owner": "KismetSystemLibrary",
+                            "targetFunction": "Delay",
+                            "targetClass": "KismetSystemLibrary"
+                        }
+                    },
+                    {
+                        "id": "D004DDDD-1111-2222-3333-444455556666",
+                        "class": "K2Node_CallFunction",
+                        "title": "Print 'Post'",
+                        "position": { "x": 480, "y": 0 },
+                        "comment": null,
+                        "pins": [
+                            {
+                                "id": "D004DDDD-1111-2222-3333-444455556601",
+                                "name": "execute",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "exec",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": null
+                            },
+                            {
+                                "id": "D004DDDD-1111-2222-3333-444455556602",
+                                "name": "InString",
+                                "direction": "Input",
+                                "type": {
+                                    "category": "string",
+                                    "sub_category": null,
+                                    "sub_category_object": null,
+                                    "is_array": false,
+                                    "is_set": false,
+                                    "is_map": false
+                                },
+                                "default_value": "Post"
+                            }
+                        ],
+                        "meta": {
+                            "function_name": "PrintString",
+                            "function_owner": "KismetSystemLibrary",
+                            "targetFunction": "PrintString",
+                            "targetClass": "KismetSystemLibrary"
+                        }
+                    }
+                ],
+                "connections": [
+                    {
+                        "from_node": "D001DDDD-1111-2222-3333-444455556666",
+                        "from_pin": "D001DDDD-1111-2222-3333-444455556601",
+                        "to_node": "D002DDDD-1111-2222-3333-444455556666",
+                        "to_pin": "D002DDDD-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "D002DDDD-1111-2222-3333-444455556666",
+                        "from_pin": "D002DDDD-1111-2222-3333-444455556602",
+                        "to_node": "D003DDDD-1111-2222-3333-444455556666",
+                        "to_pin": "D003DDDD-1111-2222-3333-444455556601"
+                    },
+                    {
+                        "from_node": "D003DDDD-1111-2222-3333-444455556666",
+                        "from_pin": "D003DDDD-1111-2222-3333-444455556603",
+                        "to_node": "D004DDDD-1111-2222-3333-444455556666",
+                        "to_pin": "D004DDDD-1111-2222-3333-444455556601"
+                    }
+                ]
+            }
+        }
+    ],
+    "components": [
+        {"name": "DefaultSceneRoot", "class": "/Script/Engine.SceneComponent",
+         "parent": null, "is_root": true}
+    ]
+}

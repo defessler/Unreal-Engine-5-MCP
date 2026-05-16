@@ -126,7 +126,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	REQUIRE(callResult["content"].size() == 1);
 	auto inner = json::parse(callResult["content"][0]["text"].get<std::string>());
 	REQUIRE(inner.is_array());
-	CHECK(inner.size() == 4); // 4 fixtures all under /Game
+	CHECK(inner.size() == 6); // 6 fixtures all under /Game
 	// Make sure the canonical asset_path key is present, not assetPath.
 	CHECK(inner[0].contains("asset_path"));
 	CHECK(inner[0].contains("parent_class"));
