@@ -1,9 +1,43 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class BlueprintReaderEditor : ModuleRules
 {
 	public BlueprintReaderEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
+		// Tie "is the editor module up to date?" to "have any MCP server
+		// source files changed?" via ExternalDependencies. The .uplugin's
+		// PreBuildSteps hook only runs when UBT decides the editor target
+		// has work to do; if a user only edits MCP server source (under
+		// Plugins/BlueprintReader/Tests/), the editor target would
+		// otherwise stay clean and the hook never fires. Adding those
+		// files as ExternalDependencies makes UBT invalidate this module's
+		// makefile when MCP source changes, which triggers the editor
+		// rebuild path, which fires the hook, which rebuilds the MCP
+		// server. End result: editing MCP source then building the editor
+		// always picks up the new server, no extra invocation needed.
+		//
+		// Scope: source + headers + Build.cs/Target.cs under both Program
+		// targets. Skip ThirdParty/ — vendored deps change rarely and a
+		// bulk file enumeration there isn't worth the discovery cost.
+		string PluginDir = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", ".."));
+		string TestsDir = Path.Combine(PluginDir, "Tests");
+		if (Directory.Exists(TestsDir))
+		{
+			foreach (string SubdirName in new[] { "BlueprintReaderMcp", "BlueprintReaderMcpCore", "BlueprintReaderMcpTests" })
+			{
+				string SubdirFull = Path.Combine(TestsDir, SubdirName);
+				if (!Directory.Exists(SubdirFull)) { continue; }
+				foreach (string Pattern in new[] { "*.cpp", "*.h", "*.hpp", "*.cs" })
+				{
+					foreach (string FilePath in Directory.EnumerateFiles(SubdirFull, Pattern, SearchOption.AllDirectories))
+					{
+						ExternalDependencies.Add(FilePath);
+					}
+				}
+			}
+		}
+
 		// Required Target.cs settings for the consuming project. Without
 		// these, you get cryptic linker errors (missing UnrealEd internals,
 		// PrivateIncludePath resolution failures from the engine patches we
