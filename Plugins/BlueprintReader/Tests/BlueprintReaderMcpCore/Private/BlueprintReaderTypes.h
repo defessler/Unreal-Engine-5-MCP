@@ -163,12 +163,23 @@ struct BPAssetSummary
 // ----- BPComponent ----------------------------------------------------------
 // Returned by `get_components`. Mirrors the SCS hierarchy.
 
+// Single property override on an SCS subobject. Captured as raw
+// ExportText so the C++ codegen side can parse it back into a literal
+// (FVector(...), float, bool, asset ref, etc.).
+struct BPComponentPropertyOverride
+{
+    BPRString Name;       // Property name on the component class.
+    BPRString Type;       // FProperty class name (FloatProperty, StructProperty, ...).
+    BPRString ValueText;  // ExportText output.
+};
+
 struct BPComponent
 {
     BPRString Name;
     BPRString Class;
     BPROptionalString Parent;
     bool IsRoot = false;
+    BPRArray<BPComponentPropertyOverride> Properties;
 };
 
 // ----- BPMetadata -----------------------------------------------------------
@@ -479,13 +490,29 @@ inline void from_json(const nlohmann::json& j, BPMetadata& v)
     j.at("graphs").get_to(v.Graphs);
 }
 
+inline void to_json(nlohmann::json& j, const BPComponentPropertyOverride& v)
+{
+    j = nlohmann::json{
+        {"name",  v.Name},
+        {"type",  v.Type},
+        {"value", v.ValueText},
+    };
+}
+inline void from_json(const nlohmann::json& j, BPComponentPropertyOverride& v)
+{
+    j.at("name").get_to(v.Name);
+    j.at("type").get_to(v.Type);
+    j.at("value").get_to(v.ValueText);
+}
+
 inline void to_json(nlohmann::json& j, const BPComponent& v)
 {
     j = nlohmann::json{
-        {"name",    v.Name},
-        {"class",   v.Class},
-        {"parent",  v.Parent},
-        {"is_root", v.IsRoot},
+        {"name",       v.Name},
+        {"class",      v.Class},
+        {"parent",     v.Parent},
+        {"is_root",    v.IsRoot},
+        {"properties", v.Properties},
     };
 }
 inline void from_json(const nlohmann::json& j, BPComponent& v)
@@ -494,5 +521,9 @@ inline void from_json(const nlohmann::json& j, BPComponent& v)
     j.at("class").get_to(v.Class);
     j.at("parent").get_to(v.Parent);
     j.at("is_root").get_to(v.IsRoot);
+    // properties is new; older wire payloads might omit it.
+    if (j.contains("properties") && j.at("properties").is_array()) {
+        j.at("properties").get_to(v.Properties);
+    }
 }
 #endif // !WITH_UE

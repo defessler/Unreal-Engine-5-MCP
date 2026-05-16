@@ -612,6 +612,128 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
                        specs, returnType, fnName, args, constSuffix);
 }
 
+// Translate a single ExportText value (as captured by the plugin
+// introspector's property-override pass) into a C++ literal expression
+// suitable for a constructor-body assignment. Returns code="" when we
+// can't translate -- caller emits a TODO comment with the raw value.
+// Asset refs return isAssetRef=true so the caller can emit the
+// ConstructorHelpers::FObjectFinder pattern instead of a direct
+// literal.
+struct EmittedValue {
+    std::string code;
+    bool isAssetRef = false;
+    std::string assetPath;
+};
+
+EmittedValue TranslateComponentPropertyValue(const std::string& propType,
+                                             const std::string& valueText) {
+    EmittedValue out;
+    auto trimTrailingZeros = [](std::string s) {
+        if (s.find('.') == std::string::npos) return s + ".0";
+        while (s.size() > 2 && s.back() == '0' && s[s.size()-2] != '.') s.pop_back();
+        return s;
+    };
+    if (propType == "FloatProperty") {
+        out.code = trimTrailingZeros(valueText) + "f";
+        return out;
+    }
+    if (propType == "DoubleProperty" || propType == "RealProperty") {
+        out.code = trimTrailingZeros(valueText);
+        return out;
+    }
+    if (propType == "IntProperty"   || propType == "Int8Property"  ||
+        propType == "Int16Property" || propType == "Int32Property" ||
+        propType == "Int64Property" || propType == "UInt8Property" ||
+        propType == "UInt16Property"|| propType == "UInt32Property"||
+        propType == "UInt64Property") {
+        std::string s = valueText;
+        if (auto dot = s.find('.'); dot != std::string::npos) s = s.substr(0, dot);
+        out.code = s;
+        return out;
+    }
+    if (propType == "BoolProperty") {
+        out.code = (valueText == "true" || valueText == "True" ||
+                    valueText == "1") ? "true" : "false";
+        return out;
+    }
+    if (propType == "NameProperty" ||
+        propType == "StrProperty"  ||
+        propType == "TextProperty") {
+        out.code = fmt::format("TEXT(\"{}\")", valueText);
+        return out;
+    }
+    if (propType == "ByteProperty" || propType == "EnumProperty") {
+        out.code = valueText;
+        return out;
+    }
+    if (propType == "StructProperty") {
+        auto extract = [&](const std::vector<const char*>& fields) {
+            std::vector<std::string> values;
+            for (const char* f : fields) {
+                std::string key = std::string(f) + "=";
+                auto pos = valueText.find(key);
+                if (pos == std::string::npos) { values.push_back("0"); continue; }
+                pos += key.size();
+                std::size_t end = pos;
+                while (end < valueText.size() &&
+                       valueText[end] != ',' && valueText[end] != ')') {
+                    ++end;
+                }
+                values.push_back(valueText.substr(pos, end - pos));
+            }
+            return values;
+        };
+        // FRotator -- check Pitch/Yaw/Roll first since X/Y/Z would
+        // accidentally match its lat/long fields if Epic ever
+        // serializes that way.
+        if (valueText.find("Pitch=") != std::string::npos &&
+            valueText.find("Yaw=")   != std::string::npos &&
+            valueText.find("Roll=")  != std::string::npos) {
+            auto v = extract({"Pitch", "Yaw", "Roll"});
+            out.code = fmt::format("FRotator({}f, {}f, {}f)",
+                trimTrailingZeros(v[0]), trimTrailingZeros(v[1]), trimTrailingZeros(v[2]));
+            return out;
+        }
+        // FVector
+        if (valueText.find("X=") != std::string::npos &&
+            valueText.find("Y=") != std::string::npos &&
+            valueText.find("Z=") != std::string::npos) {
+            auto v = extract({"X", "Y", "Z"});
+            out.code = fmt::format("FVector({}f, {}f, {}f)",
+                trimTrailingZeros(v[0]), trimTrailingZeros(v[1]), trimTrailingZeros(v[2]));
+            return out;
+        }
+        // FVector2D
+        if (valueText.find("X=") != std::string::npos &&
+            valueText.find("Y=") != std::string::npos) {
+            auto v = extract({"X", "Y"});
+            out.code = fmt::format("FVector2D({}f, {}f)",
+                trimTrailingZeros(v[0]), trimTrailingZeros(v[1]));
+            return out;
+        }
+        // FLinearColor (RGBA float)
+        if (valueText.find("R=") != std::string::npos &&
+            valueText.find("G=") != std::string::npos &&
+            valueText.find("B=") != std::string::npos) {
+            auto v = extract({"R", "G", "B", "A"});
+            out.code = fmt::format("FLinearColor({}f, {}f, {}f, {}f)",
+                trimTrailingZeros(v[0]), trimTrailingZeros(v[1]),
+                trimTrailingZeros(v[2]), trimTrailingZeros(v[3]));
+            return out;
+        }
+        return out;  // unknown struct -- TODO
+    }
+    if (propType == "ObjectProperty"     ||
+        propType == "ClassProperty"      ||
+        propType == "SoftObjectProperty" ||
+        propType == "SoftClassProperty") {
+        out.isAssetRef = true;
+        out.assetPath  = valueText;
+        return out;
+    }
+    return out;
+}
+
 // Helpers that inspect a function's ufunction_specifiers list. Three
 // specifier families want different impl-side behavior:
 //
@@ -1238,6 +1360,66 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
             // what makes UE treat the component as the actor's root.
             if (!rootCompName.empty()) {
                 I << "    RootComponent = " << rootCompName << ";\n";
+            }
+            // Per-component property overrides: values authored in
+            // BP's Components panel that differ from the component
+            // class's CDO. Emitted after attachment so the hierarchy
+            // is in place before we tweak properties (UE doesn't
+            // strictly require it but reads cleaner).
+            for (const auto& c : doc["components"]) {
+                if (!c.contains("properties") || !c["properties"].is_array()) continue;
+                std::string nm = c.value("name", "Component");
+                for (const auto& p : c["properties"]) {
+                    std::string pname = p.value("name", "");
+                    std::string ptype = p.value("type", "");
+                    std::string pval  = p.value("value", "");
+                    if (pname.empty()) continue;
+                    EmittedValue v = TranslateComponentPropertyValue(ptype, pval);
+                    if (!v.code.empty()) {
+                        I << "    " << nm << "->" << pname << " = " << v.code << ";\n";
+                    } else if (v.isAssetRef && !v.assetPath.empty()) {
+                        // Asset ref -- ConstructorHelpers::FObjectFinder
+                        // pattern. UE enforces this only-runs-in-ctor
+                        // path via a static local + Object/Class
+                        // assignment guarded by Succeeded().
+                        // The asset path commonly comes through as
+                        // "/Game/Path.Asset" or "/Game/Path.Asset_C".
+                        // Strip a trailing _C for FObjectFinder<UClass>
+                        // tracking (we don't know the class type yet,
+                        // so emit a comment + the canonical pattern
+                        // skeleton).
+                        I << "    // TODO[bpr-asset-ref]: load via "
+                          << "ConstructorHelpers::FObjectFinder<T> for "
+                          << pname << " = " << v.assetPath << "\n";
+                        I << "    //   static ConstructorHelpers::FObjectFinder<T> "
+                          << pname << "Finder(TEXT(\"" << v.assetPath << "\"));\n";
+                        I << "    //   if (" << pname << "Finder.Succeeded()) "
+                          << nm << "->" << pname << " = " << pname << "Finder.Object;\n";
+                        nlohmann::json note;
+                        note["node_class"]   = "SCSComponentDefault";
+                        note["treatment"]    = "asset_ref_objectfinder_stub";
+                        note["component"]    = nm;
+                        note["property"]     = pname;
+                        note["asset_path"]   = v.assetPath;
+                        note["property_type"]= ptype;
+                        out.notes.push_back(std::move(note));
+                    } else {
+                        // Untranslatable -- emit a clear TODO with
+                        // the raw ExportText so the agent can fix
+                        // by hand.
+                        I << "    // TODO[bpr-component-default]: "
+                          << nm << "->" << pname << " = "
+                          << "/* " << ptype << ": " << pval << " */;\n";
+                        nlohmann::json note;
+                        note["node_class"] = "SCSComponentDefault";
+                        note["treatment"]  = "todo_unsupported_type";
+                        note["component"]  = nm;
+                        note["property"]   = pname;
+                        note["property_type"] = ptype;
+                        note["value_text"]    = pval;
+                        out.notes.push_back(std::move(note));
+                    }
+                }
             }
         }
 
