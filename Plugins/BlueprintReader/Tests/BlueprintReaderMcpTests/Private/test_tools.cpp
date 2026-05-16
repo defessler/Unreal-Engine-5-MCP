@@ -101,7 +101,7 @@ TEST_CASE("list_blueprints returns canonical BPAssetSummary array") {
     Fixture f;
     auto out = f.Call("list_blueprints", json{{"path", "/Game"}});
     REQUIRE(out.is_array());
-    CHECK(out.size() == 3);
+    CHECK(out.size() == 4);
     CHECK(out[0].contains("asset_path"));
     CHECK(out[0].contains("parent_class"));
     CHECK(out[0].contains("modified_iso"));
