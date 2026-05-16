@@ -899,3 +899,98 @@ TEST_CASE("EmitCppClass: BlueprintAuthorityOnly is NOT treated as an RPC marker"
     CHECK(Contains(out.implSource, "::AuthOnly("));
     CHECK_FALSE(Contains(out.implSource, "AuthOnly_Implementation"));
 }
+
+// ===== SCS components ======================================================
+//
+// Angelscript-validated. BP's Components panel (the SCS hierarchy) is a
+// separate stream from BP variables. C++ binding pattern: each component
+// gets a UPROPERTY field on the class + a CreateDefaultSubobject call
+// in the constructor + SetupAttachment to wire the hierarchy.
+
+TEST_CASE("EmitCppClass: components emit UPROPERTY + CreateDefaultSubobject in ctor") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Root"},
+             {"class", "/Script/Engine.SceneComponent"},
+             {"is_root", true}},
+        json{{"name", "Mesh"},
+             {"class", "/Script/Engine.StaticMeshComponent"},
+             {"parent", "Root"}},
+    });
+    auto out = EmitCppClass(cls);
+    // UPROPERTY decls.
+    CHECK(Contains(out.headerSource, "TObjectPtr<USceneComponent> Root;"));
+    CHECK(Contains(out.headerSource, "TObjectPtr<UStaticMeshComponent> Mesh;"));
+    CHECK(Contains(out.headerSource, R"(Category="Components")"));
+    // Forward decls.
+    CHECK(Contains(out.headerSource, "class USceneComponent;"));
+    CHECK(Contains(out.headerSource, "class UStaticMeshComponent;"));
+    // Constructor body.
+    CHECK(Contains(out.implSource,
+        R"(Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root")))"));
+    CHECK(Contains(out.implSource,
+        R"(Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh")))"));
+    CHECK(Contains(out.implSource, "Mesh->SetupAttachment(Root);"));
+    CHECK(Contains(out.implSource, "RootComponent = Root;"));
+}
+
+TEST_CASE("EmitCppClass: component without explicit parent attaches to root") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Root"}, {"class", "/Script/Engine.SceneComponent"},
+             {"is_root", true}},
+        json{{"name", "Floater"}, {"class", "/Script/Engine.StaticMeshComponent"}},
+    });
+    auto out = EmitCppClass(cls);
+    // Floater has no explicit parent -> attaches to Root.
+    CHECK(Contains(out.implSource, "Floater->SetupAttachment(Root);"));
+}
+
+TEST_CASE("EmitCppClass: no components -> no ctor / no SCS scaffolding") {
+    auto cls = MakeMinimalClass("AActor");
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.implSource, "CreateDefaultSubobject"));
+    CHECK_FALSE(Contains(out.implSource, "RootComponent"));
+}
+
+TEST_CASE("EmitCppClass: components + replication share one ctor") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Root"}, {"class", "/Script/Engine.SceneComponent"},
+             {"is_root", true}},
+    });
+    cls["variables"] = json::array({
+        json{{"name", "Hp"}, {"type", "float"}, {"replicated", true}},
+    });
+    auto out = EmitCppClass(cls);
+    // Both behaviors in one ctor body.
+    CHECK(Contains(out.implSource, "Root = CreateDefaultSubobject"));
+    CHECK(Contains(out.implSource, "bReplicates = true;"));
+    // Only one ctor declared in the header.
+    auto countCtor = [&](const std::string& s, const std::string& sub) {
+        std::size_t count = 0;
+        for (std::size_t pos = 0; (pos = s.find(sub, pos)) != std::string::npos; ++pos) {
+            ++count;
+        }
+        return count;
+    };
+    // Header ctor decl `: public AActor {` followed by `    AMyClass();`
+    // -- check the header ctor decl appears exactly once.
+    std::string ctorDecl = "    " + out.className + "();";
+    CHECK(countCtor(out.headerSource, ctorDecl) == 1);
+}
+
+TEST_CASE("EmitCppClass: BP-class component types get _C suffix stripped") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Custom"},
+             {"class", "/Game/Components/BPC_Custom.BPC_Custom_C"},
+             {"is_root", true}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.headerSource, "TObjectPtr<UBPC_Custom>"));
+    // The _C suffix shouldn't leak into the component type specifically.
+    // (Avoid bare "_C" check -- GENERATED_BODY etc. legitimately contain it.)
+    CHECK_FALSE(Contains(out.headerSource, "BPC_Custom_C"));
+    CHECK_FALSE(Contains(out.headerSource, "TObjectPtr<UBPC_Custom_C>"));
+}
