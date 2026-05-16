@@ -612,23 +612,56 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
                        specs, returnType, fnName, args, constSuffix);
 }
 
-// Detect whether a function carries any of UE's RPC specifiers
-// (Server / Client / NetMulticast). The C++ binding pattern for RPCs
-// is that the impl is named <FnName>_Implementation -- UE's reflection
-// generates the entry-point wrapper. Without the suffix, the linker
-// complains about a missing _Implementation symbol when UHT emits its
-// generated.cpp glue.
-bool IsRpcFunction(const nlohmann::json& fn) {
+// Helpers that inspect a function's ufunction_specifiers list. Three
+// specifier families want different impl-side behavior:
+//
+//   RPCs (Server / Client / NetMulticast)
+//     Impl is named <FnName>_Implementation. UHT generates the
+//     entry-point wrapper.
+//
+//   BlueprintNativeEvent
+//     Same _Implementation suffix as RPCs. The parent's UFunction
+//     glue calls _Implementation by default, with BPs free to
+//     override the bare name.
+//
+//   BlueprintImplementableEvent
+//     No impl emitted at all. UE generates the entire dispatcher;
+//     emitting a body would conflict with UHT's generated.cpp.
+//
+// All three are determined by the BP's authoring metadata; we read
+// them off metadata.ufunction_specifiers as set by the introspector.
+bool HasUFunctionSpecifier(const nlohmann::json& fn, std::string_view name) {
     if (!fn.contains("metadata") || !fn["metadata"].is_object()) return false;
     const auto& md = fn["metadata"];
     if (!md.contains("ufunction_specifiers") ||
         !md["ufunction_specifiers"].is_array()) return false;
     for (const auto& s : md["ufunction_specifiers"]) {
         if (!s.is_string()) continue;
-        const std::string& v = s.get_ref<const std::string&>();
-        if (v == "Server" || v == "Client" || v == "NetMulticast") return true;
+        if (s.get_ref<const std::string&>() == name) return true;
     }
     return false;
+}
+
+bool IsRpcFunction(const nlohmann::json& fn) {
+    return HasUFunctionSpecifier(fn, "Server")  ||
+           HasUFunctionSpecifier(fn, "Client")  ||
+           HasUFunctionSpecifier(fn, "NetMulticast");
+}
+
+bool IsBlueprintNativeEvent(const nlohmann::json& fn) {
+    return HasUFunctionSpecifier(fn, "BlueprintNativeEvent");
+}
+
+bool IsBlueprintImplementableEvent(const nlohmann::json& fn) {
+    return HasUFunctionSpecifier(fn, "BlueprintImplementableEvent");
+}
+
+// Combined check: does this function's impl need the
+// _Implementation suffix? Both RPCs and BlueprintNativeEvent take
+// this path; BlueprintImplementableEvent has no impl at all
+// (handled separately by the impl-loop skip).
+bool NeedsImplementationSuffix(const nlohmann::json& fn) {
+    return IsRpcFunction(fn) || IsBlueprintNativeEvent(fn);
 }
 
 // Function-body emission for the .cpp side. Re-uses CppEmit but
@@ -666,10 +699,10 @@ std::string RenderUFunctionImpl(const std::string& className,
         }
     }
     std::string fnName = fn.value("name", "Fn");
-    // RPC functions: rename the impl to <FnName>_Implementation. The
-    // header decl stays as <FnName> -- UHT generates the dispatch
-    // wrapper that calls _Implementation.
-    if (IsRpcFunction(fn)) {
+    // RPCs and BlueprintNativeEvent both rename the impl to
+    // <FnName>_Implementation. The header decl stays as <FnName> --
+    // UHT generates the dispatch wrapper that calls _Implementation.
+    if (NeedsImplementationSuffix(fn)) {
         fnName += "_Implementation";
     }
 
@@ -1245,6 +1278,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 
     if (doc.contains("functions") && doc["functions"].is_array()) {
         for (const auto& fn : doc["functions"]) {
+            // BlueprintImplementableEvent has no C++ impl -- UE's
+            // generated.cpp glue provides the entire dispatcher. The
+            // header decl alone is the full binding.
+            if (IsBlueprintImplementableEvent(fn)) continue;
             I << RenderUFunctionImpl(className, fn, opts.emitOpts, out.notes);
             I << "\n";
         }
