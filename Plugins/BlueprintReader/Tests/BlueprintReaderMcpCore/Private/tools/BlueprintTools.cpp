@@ -348,6 +348,18 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
                                       {"description","E.g. \"MYGAME_API\". Empty for bare class decl."}}},
                 {"class_name_suffix", {{"type","string"},
                                        {"description","Default \"_Generated\". Empty drops in place of the BP."}}},
+                {"class_name_prefix", {{"type","string"},
+                                       {"description","Inserted between UE's type letter (A/U/I) and the BP's CamelCased base name. Empty preserves legacy `ABP_Enemy` form."}}},
+                {"category_default", {{"type","string"},
+                                      {"description","Fallback UPROPERTY Category when the BP variable doesn't carry one. Empty -> no Category specifier emitted."}}},
+                {"category_remap", {{"type","object"},
+                                    {"description","BP category -> output category map. Applied before category_default. Useful for normalizing common BP categories like \"Default\" to a project's house category."},
+                                    {"additionalProperties", {{"type","string"}}}}},
+                {"uclass_meta", {{"type","object"},
+                                 {"description","Extra UCLASS() meta=(K=V, ...) entries. E.g. {\"PrioritizeCategories\":\"MyGame\"} folds into the UCLASS macro."},
+                                 {"additionalProperties", {{"type","string"}}}}},
+                {"delegate_typedef_pattern", {{"type","string"},
+                                              {"description","Pattern for derived multicast-delegate typedefs. `{Name}` is the variable name. Default `F{Name}` -> `FOnReady` for var `OnReady`. Use `F{Name}Delegate` for the `FOnReadyDelegate` house style."}}},
                 {"use_operator_aliases", {{"type","boolean"}}},
             }},
             {"required", nlohmann::json::array({"asset_path"})},
@@ -364,6 +376,21 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
             if (auto it = args.find("class_name_suffix"); it != args.end() && it->is_string()) {
                 opts.classNameSuffix = it->get<std::string>();
             }
+            opts.classNamePrefix   = OptString(args, "class_name_prefix",   "");
+            opts.categoryDefault   = OptString(args, "category_default",    "");
+            opts.delegateTypedefPattern = OptString(args, "delegate_typedef_pattern", "F{Name}");
+            // Object-shaped args -> std::map<string,string>. Skip silently
+            // if the caller passed a non-object or a non-string value;
+            // we don't want a typo to fail the whole transpile.
+            auto loadStringMap = [&](const char* key, std::map<std::string, std::string>& out) {
+                auto it = args.find(key);
+                if (it == args.end() || !it->is_object()) return;
+                for (auto& [k, v] : it->items()) {
+                    if (v.is_string()) out[k] = v.get<std::string>();
+                }
+            };
+            loadStringMap("category_remap", opts.categoryRemap);
+            loadStringMap("uclass_meta",    opts.uclassMeta);
             opts.emitOpts.useOperatorAliases = args.value("use_operator_aliases", true);
 
             nlohmann::json bpir = DecompileBlueprint(reader, asset);

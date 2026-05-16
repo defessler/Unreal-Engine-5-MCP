@@ -632,7 +632,34 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         parentRaw = doc["metadata"].value("parent_class", parentRaw);
     }
     std::string parentClass  = NormalizeParent(parentRaw);
+    // Project-prefix injection. PrefixClassName gives us
+    // "ABP_Enemy"; if the project passed classNamePrefix="Foo" we
+    // want "AFooBPEnemy" (UE letter + house prefix + camel-cased BP
+    // name with underscores collapsed). Empty prefix preserves the
+    // legacy "ABP_Enemy" form for backward compat.
     std::string baseClassName = PrefixClassName(bpName, parentClass);
+    if (!opts.classNamePrefix.empty()) {
+        // Strip the single UE type letter (A/U/I) off the front, then
+        // collapse underscores out of the BP-name part.
+        std::string ueLetter;
+        std::string rest = baseClassName;
+        if (!rest.empty() && (rest[0] == 'A' || rest[0] == 'U' || rest[0] == 'I')) {
+            ueLetter = rest.substr(0, 1);
+            rest = rest.substr(1);
+        }
+        std::string camel;
+        bool upNext = true;
+        for (char c : rest) {
+            if (c == '_') { upNext = true; continue; }
+            if (upNext) {
+                camel += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                upNext = false;
+            } else {
+                camel += c;
+            }
+        }
+        baseClassName = ueLetter + opts.classNamePrefix + camel;
+    }
     std::string className     = baseClassName + opts.classNameSuffix;
     std::string cleanFileBase = StripBpSuffix(bpName) + opts.classNameSuffix;
 
@@ -772,12 +799,32 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
         }
         return false;
     };
-    auto deriveTypedefName = [](const std::string& varName) {
-        if (varName.size() >= 2 && varName[0] == 'F' &&
-            varName[1] >= 'A' && varName[1] <= 'Z') {
-            return varName;
+    auto deriveTypedefName = [&opts](const std::string& varName) {
+        // Apply the user-configurable pattern. `{Name}` is the placeholder
+        // for the variable's name. If the var already starts with F+upper
+        // (Hungarian-prefixed by the BP author), strip the leading F
+        // before substitution to avoid `FF<Name>` in default-pattern
+        // mode.
+        std::string token = varName;
+        if (token.size() >= 2 && token[0] == 'F' &&
+            token[1] >= 'A' && token[1] <= 'Z') {
+            token = token.substr(1);
         }
-        return std::string("F") + varName;
+        const std::string& pattern = opts.delegateTypedefPattern.empty()
+            ? std::string("F{Name}")
+            : opts.delegateTypedefPattern;
+        std::string out;
+        const std::string ph = "{Name}";
+        std::size_t i = 0;
+        while (i < pattern.size()) {
+            if (pattern.compare(i, ph.size(), ph) == 0) {
+                out += token;
+                i += ph.size();
+            } else {
+                out += pattern[i++];
+            }
+        }
+        return out;
     };
     std::map<std::string, std::string> mcDelegateTypedefs;  // varName -> typedefName
     if (doc.contains("variables") && doc["variables"].is_array()) {
@@ -813,10 +860,25 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     // pattern for "Blueprintable but not part of the module's ABI".
     // When a real API macro is provided, plain `UCLASS(Blueprintable)`
     // with the macro on the class line is correct.
+    //
+    // opts.uclassMeta extends the macro with meta=(K1="V1", K2="V2"...)
+    // -- folded in as a single trailing argument. Projects that need
+    // `PrioritizeCategories="Foo"` or similar pass it via this map.
+    std::string uclassMetaArg;
+    if (!opts.uclassMeta.empty()) {
+        uclassMetaArg = ", meta=(";
+        bool first = true;
+        for (const auto& [k, v] : opts.uclassMeta) {
+            if (!first) uclassMetaArg += ", ";
+            first = false;
+            uclassMetaArg += fmt::format("{}=\"{}\"", k, v);
+        }
+        uclassMetaArg += ")";
+    }
     if (opts.moduleApiMacro.empty()) {
-        H << "UCLASS(MinimalAPI, Blueprintable)\n";
+        H << "UCLASS(MinimalAPI, Blueprintable" << uclassMetaArg << ")\n";
     } else {
-        H << "UCLASS(Blueprintable)\n";
+        H << "UCLASS(Blueprintable" << uclassMetaArg << ")\n";
     }
     H << "class ";
     if (!opts.moduleApiMacro.empty()) H << opts.moduleApiMacro << " ";
@@ -832,18 +894,35 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
     bool anyReplicated = false;
     if (doc.contains("variables") && doc["variables"].is_array()) {
         for (const auto& v : doc["variables"]) {
-            // Substitute mcdelegate placeholder with the F<Name>
-            // typedef we emitted above. Cheaper than threading state
-            // into RenderUPropertyDecl: clone the var doc and rewrite
-            // its `type` field for the call.
-            auto it = mcDelegateTypedefs.find(v.value("name", ""));
-            if (it != mcDelegateTypedefs.end()) {
-                nlohmann::json patched = v;
-                patched["type"] = it->second;
-                H << RenderUPropertyDecl(patched);
-            } else {
-                H << RenderUPropertyDecl(v);
+            // Build a patched view of the var so we can inject:
+            //  - mcdelegate typedef substitution (`type` field)
+            //  - category remap / default (`category` field)
+            // RenderUPropertyDecl reads both fields directly so this
+            // is the cleanest seam without changing the function's
+            // public signature.
+            nlohmann::json patched = v;
+            auto td = mcDelegateTypedefs.find(v.value("name", ""));
+            if (td != mcDelegateTypedefs.end()) {
+                patched["type"] = td->second;
             }
+            // Category: remap > default > original. Apply remap first
+            // (project-specific normalization), then categoryDefault
+            // when still empty. Skip both when no opts set, so the
+            // legacy behavior is unchanged.
+            std::string origCat = v.value("category", std::string{});
+            std::string finalCat = origCat;
+            if (!opts.categoryRemap.empty()) {
+                if (auto it = opts.categoryRemap.find(origCat); it != opts.categoryRemap.end()) {
+                    finalCat = it->second;
+                }
+            }
+            if (finalCat.empty() && !opts.categoryDefault.empty()) {
+                finalCat = opts.categoryDefault;
+            }
+            if (finalCat != origCat) {
+                patched["category"] = finalCat;
+            }
+            H << RenderUPropertyDecl(patched);
             if (v.value("replicated", false)) anyReplicated = true;
         }
         if (!doc["variables"].empty()) H << "\n";
