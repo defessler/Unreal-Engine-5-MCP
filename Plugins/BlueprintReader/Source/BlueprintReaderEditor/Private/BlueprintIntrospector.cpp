@@ -470,6 +470,48 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 				C.ParentName = Parent->GetVariableName().ToString();
 			}
 			C.bIsRoot = RootSet.Contains(Node);
+
+			// Read property overrides: compare each FProperty on the
+			// component template against the component class's CDO.
+			// Properties whose value differs are what the BP author
+			// edited in the Components panel (RelativeLocation, mesh
+			// assets, etc.). Skip transient + non-edit-anywhere
+			// properties -- those aren't real authored values.
+			UActorComponent* Template = Node->ComponentTemplate;
+			if (Template && Template->GetClass())
+			{
+				UObject* CDO = Template->GetClass()->GetDefaultObject();
+				if (CDO)
+				{
+					for (TFieldIterator<FProperty> It(Template->GetClass()); It; ++It)
+					{
+						FProperty* Prop = *It;
+						if (!Prop) continue;
+						// Skip non-authored properties (transient,
+						// internal-only, computed-at-runtime).
+						if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient |
+						                              CPF_NonPIEDuplicateTransient))
+						{
+							continue;
+						}
+						const void* TemplatePtr = Prop->ContainerPtrToValuePtr<void>(Template);
+						const void* CDOPtr      = Prop->ContainerPtrToValuePtr<void>(CDO);
+						if (Prop->Identical(TemplatePtr, CDOPtr, PPF_DeepComparison))
+						{
+							continue;
+						}
+						FBPComponentPropertyOverride Override;
+						Override.Name = Prop->GetName();
+						Override.Type = Prop->GetClass() ? Prop->GetClass()->GetName() : FString();
+						FString ValueStr;
+						Prop->ExportTextItem_Direct(ValueStr, TemplatePtr, CDOPtr, nullptr,
+						                            PPF_None);
+						Override.ValueText = MoveTemp(ValueStr);
+						C.Properties.Add(MoveTemp(Override));
+					}
+				}
+			}
+
 			Info.Components.Add(MoveTemp(C));
 		}
 	}

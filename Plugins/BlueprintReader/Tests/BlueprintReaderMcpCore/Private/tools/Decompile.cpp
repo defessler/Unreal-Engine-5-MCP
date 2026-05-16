@@ -1528,10 +1528,25 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
                 {"is_root", c.IsRoot},
             };
             if (c.Parent.has_value()) cj["parent"] = *c.Parent;
+            // Property overrides -- per-component values authored in
+            // the BP Components panel that differ from the component
+            // class's CDO. CppClassEmit emits these as
+            // `Comp->Property = X;` in the C++ constructor.
+            if (!c.Properties.empty()) {
+                nlohmann::json props = nlohmann::json::array();
+                for (const auto& p : c.Properties) {
+                    props.push_back(nlohmann::json{
+                        {"name",  p.Name},
+                        {"type",  p.Type},
+                        {"value", p.ValueText},
+                    });
+                }
+                cj["properties"] = std::move(props);
+            }
             components.push_back(std::move(cj));
         }
     } catch (...) {
-        // Backend without component support, or fetch errored —
+        // Backend without component support, or fetch errored --
         // proceed with empty components[]. Class still transpiles.
     }
 

@@ -438,6 +438,21 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::ComponentsToJson(const 
 		Obj->SetStringField(TEXT("class"), C.ClassPath);
 		SetStringOrNull(Obj, TEXT("parent"), C.ParentName);
 		Obj->SetBoolField(TEXT("is_root"), C.bIsRoot);
+		// Property overrides -- the values authored in the BP
+		// Components panel that differ from the component class's CDO.
+		// transpile_blueprint emits these as `Comp->Property = X;` in
+		// the C++ constructor.
+		TArray<TSharedPtr<FJsonValue>> Props;
+		Props.Reserve(C.Properties.Num());
+		for (const FBPComponentPropertyOverride& P : C.Properties)
+		{
+			auto PObj = MakeShared<FJsonObject>();
+			PObj->SetStringField(TEXT("name"),  P.Name);
+			PObj->SetStringField(TEXT("type"),  P.Type);
+			PObj->SetStringField(TEXT("value"), P.ValueText);
+			Props.Add(MakeShared<FJsonValueObject>(PObj));
+		}
+		Obj->SetArrayField(TEXT("properties"), Props);
 		Out.Add(MakeShared<FJsonValueObject>(Obj));
 	}
 	return Out;
