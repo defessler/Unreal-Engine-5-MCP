@@ -30,10 +30,10 @@ namespace BlueprintReader
 
 struct FLogSinkEntry
 {
-    FDateTime Timestamp;       // UTC capture time
-    ELogVerbosity::Type Verbosity = ELogVerbosity::NoLogging;
-    FName Category;
-    FString Message;
+	FDateTime Timestamp;       // UTC capture time
+	ELogVerbosity::Type Verbosity = ELogVerbosity::NoLogging;
+	FName Category;
+	FString Message;
 };
 
 // Custom output device. Owned by the module singleton; registered with
@@ -41,26 +41,26 @@ struct FLogSinkEntry
 class FLogSink : public FOutputDevice
 {
 public:
-    explicit FLogSink(int32 InCapacity = 1024);
-    virtual ~FLogSink() override;
+	explicit FLogSink(int32 InCapacity = 1024);
+	virtual ~FLogSink() override;
 
-    // FOutputDevice — runs on whatever thread emitted the log message.
-    virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity,
-                            const FName& Category) override;
+	// FOutputDevice — runs on whatever thread emitted the log message.
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity,
+							const FName& Category) override;
 
-    // Drain up to `MaxEntries` of the most recent log lines, optionally
-    // filtered by minimum verbosity (`Fatal`/`Error`/`Warning`/`Display`/
-    // `Log` — NoLogging accepts everything). Returns newest-last order.
-    void Drain(int32 MaxEntries,
-                ELogVerbosity::Type MinVerbosity,
-                TArray<FLogSinkEntry>& Out);
+	// Drain up to `MaxEntries` of the most recent log lines, optionally
+	// filtered by minimum verbosity (`Fatal`/`Error`/`Warning`/`Display`/
+	// `Log` — NoLogging accepts everything). Returns newest-last order.
+	void Drain(int32 MaxEntries,
+				ELogVerbosity::Type MinVerbosity,
+				TArray<FLogSinkEntry>& Out);
 
 private:
-    FCriticalSection Mu;
-    TArray<FLogSinkEntry> Ring;   // sized to Capacity, wraparound via Head
-    int32 Head = 0;               // index where the next entry writes
-    int32 Count = 0;              // entries currently stored (≤ Capacity)
-    int32 Capacity = 0;
+	FCriticalSection Mu;
+	TArray<FLogSinkEntry> Ring;   // sized to Capacity, wraparound via Head
+	int32 Head = 0;               // index where the next entry writes
+	int32 Count = 0;              // entries currently stored (≤ Capacity)
+	int32 Capacity = 0;
 };
 
 // Module-singleton accessor. Returns nullptr before StartupModule and

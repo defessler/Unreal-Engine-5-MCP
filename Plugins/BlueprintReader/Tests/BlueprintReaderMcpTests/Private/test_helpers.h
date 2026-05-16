@@ -9,24 +9,24 @@
 #include <memory>
 
 #if defined(_WIN32)
-    #include <windows.h>
+	#include <windows.h>
 #endif
 
 namespace bpr::test {
 
 inline std::filesystem::path TestExecutableDir() {
 #if defined(_WIN32)
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    if (n == 0 || n == MAX_PATH) return std::filesystem::current_path();
-    return std::filesystem::path(buf).parent_path();
+	wchar_t buf[MAX_PATH];
+	DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+	if (n == 0 || n == MAX_PATH) return std::filesystem::current_path();
+	return std::filesystem::path(buf).parent_path();
 #else
-    return std::filesystem::current_path();
+	return std::filesystem::current_path();
 #endif
 }
 
 inline std::filesystem::path FixturesDir() {
-    return TestExecutableDir() / "fixtures";
+	return TestExecutableDir() / "fixtures";
 }
 
 // Most tests want a mock reader pointed at the staged fixtures. These
@@ -34,11 +34,11 @@ inline std::filesystem::path FixturesDir() {
 // lookup so any future signature change to MockBlueprintReader
 // touches exactly one spot.
 inline backends::MockBlueprintReader MakeMockReader() {
-    return backends::MockBlueprintReader(FixturesDir());
+	return backends::MockBlueprintReader(FixturesDir());
 }
 
 inline std::unique_ptr<backends::MockBlueprintReader> MakeMockReaderUnique() {
-    return std::make_unique<backends::MockBlueprintReader>(FixturesDir());
+	return std::make_unique<backends::MockBlueprintReader>(FixturesDir());
 }
 
 } // namespace bpr::test
