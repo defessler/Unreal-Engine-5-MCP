@@ -3,6 +3,7 @@
 
 #include <fmt/core.h>
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <set>
@@ -241,6 +242,113 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
     }
     if (producer.Class.find("K2Node_Self") != std::string::npos) {
         return nlohmann::json{{"self", nullptr}};
+    }
+    if (producer.Class.find("K2Node_EnumLiteral") != std::string::npos) {
+        // Enum literal: BP picks a single named value of an enum type.
+        // Meta carries the enum type's path + the chosen value.
+        // C++ form: `EEnumType::ValueName`. Without this lowering,
+        // enum literals leak as TODO sentinels through any consumer.
+        std::string enumType, valueName;
+        if (producer.Meta.is_object()) {
+            enumType  = producer.Meta.value("enumType",  std::string{});
+            if (enumType.empty()) enumType = producer.Meta.value("enum",  std::string{});
+            valueName = producer.Meta.value("enumValue", std::string{});
+            if (valueName.empty()) valueName = producer.Meta.value("value", std::string{});
+        }
+        // Fallback: look at the named output pin for the value.
+        if (valueName.empty()) valueName = outputPin.Name;
+        // Strip /Script/Module. path from enum type if present.
+        if (auto dot = enumType.find_last_of('.'); dot != std::string::npos) {
+            enumType = enumType.substr(dot + 1);
+        }
+        // Prepend E if not already E-prefixed (UE convention).
+        if (!enumType.empty() && (enumType[0] != 'E' ||
+                                   (enumType.size() < 2 || enumType[1] < 'A' || enumType[1] > 'Z'))) {
+            enumType = "E" + enumType;
+        }
+        std::string qualified;
+        if (!enumType.empty()) qualified = enumType + "::" + valueName;
+        else                    qualified = valueName;
+        // Emit as a literal so codegen passes it through unchanged
+        // (string with leading '/' or '*' or '/*' is preserved verbatim
+        // -- not the case here, but for safety use the explicit form).
+        return nlohmann::json{{"lit", qualified}};
+    }
+    if (producer.Class.find("K2Node_Tunnel") != std::string::npos) {
+        // Tunnel nodes appear in macros / composite (collapsed) nodes
+        // as entry/exit points. On the data flow side they're pure
+        // passthroughs -- the consumer pin's source is whichever pin
+        // on the tunnel feeds it, which we already resolve via
+        // BuildExpression. If we somehow hit a Tunnel here (rare on
+        // post-expansion graphs), treat as a passthrough Knot.
+        for (const auto& p : producer.Pins) {
+            if (p.Direction == "Input" && p.Type.Category != "exec") {
+                return BuildExpression(w, producer, p);
+            }
+        }
+        return LiteralFromDefault(outputPin);
+    }
+    if (producer.Class.find("K2Node_Select") != std::string::npos) {
+        // K2Node_Select: picks one of N input value pins based on the
+        // "Index" pin. For the common N=2 bool case, lower to a C++
+        // ternary `(<Index> ? <Option_1> : <Option_0>)`. For N>2 with
+        // an int/enum index, lower to a chained ternary (more general
+        // and renders cleanly in most cases). Fall back to the TODO
+        // sentinel when the option pins can't be resolved.
+        const BPPin* indexPin = w.GetPin(producer, "Index");
+        if (!indexPin) {
+            // Some BP variants use "TargetExpression" or the bool's name.
+            for (const auto& p : producer.Pins) {
+                if (p.Direction == "Input" && p.Type.Category != "exec" &&
+                    p.Name.find("Option") == std::string::npos) {
+                    indexPin = &p;
+                    break;
+                }
+            }
+        }
+        // Collect option pins. UE names them "Option 0", "Option 1", ...
+        // or "False" / "True" for the bool case.
+        struct Opt { int slot; const BPPin* pin; };
+        std::vector<Opt> options;
+        for (const auto& p : producer.Pins) {
+            if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+            if (&p == indexPin) continue;
+            if (p.Name == "False") { options.push_back({0, &p}); continue; }
+            if (p.Name == "True")  { options.push_back({1, &p}); continue; }
+            // "Option <n>" or "Option_<n>".
+            std::size_t start = std::string::npos;
+            if (p.Name.size() > 7 && p.Name.compare(0, 6, "Option") == 0) start = 6;
+            if (start != std::string::npos) {
+                std::size_t i = start;
+                if (i < p.Name.size() && (p.Name[i] == ' ' || p.Name[i] == '_')) ++i;
+                try { options.push_back({std::stoi(p.Name.substr(i)), &p}); }
+                catch (...) { /* ignore unparseable */ }
+            }
+        }
+        std::sort(options.begin(), options.end(),
+                  [](const Opt& a, const Opt& b) { return a.slot < b.slot; });
+        if (!indexPin || options.size() < 2) {
+            return LiteralFromDefault(outputPin);
+        }
+        nlohmann::json indexExpr = BuildExpression(w, producer, *indexPin);
+        // Bool case: emit a single ternary.
+        if (options.size() == 2) {
+            return nlohmann::json{{"call", "__bpr_select_ternary"},
+                {"args", nlohmann::json{
+                    {"Index",  indexExpr},
+                    {"False",  BuildExpression(w, producer, *options[0].pin)},
+                    {"True",   BuildExpression(w, producer, *options[1].pin)},
+                }}};
+        }
+        // N-way: emit a __bpr_select_n sentinel that CppEmit lowers
+        // to chained ternaries.
+        nlohmann::json args = nlohmann::json::object();
+        args["Index"] = indexExpr;
+        for (const auto& opt : options) {
+            args[fmt::format("Option_{}", opt.slot)] =
+                BuildExpression(w, producer, *opt.pin);
+        }
+        return nlohmann::json{{"call", "__bpr_select_n"}, {"args", std::move(args)}};
     }
     if (producer.Class.find("K2Node_Literal") != std::string::npos) {
         // Literal nodes carry their value in meta.literalObject (object
@@ -550,6 +658,36 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
         else                          r.statement = nlohmann::json{{"return", returns}};
         r.terminatesExec = true;
         return r;
+    }
+
+    // K2Node_AssignmentStatement: BP's `<Lhs> = <Rhs>` node. Pins are
+    // "Variable" (LHS, must be a write-target -- VariableGet of a
+    // settable property) and "Value" (RHS expression). Less common
+    // than VariableSet but appears in macro-expanded graphs.
+    if (n.Class.find("K2Node_AssignmentStatement") != std::string::npos) {
+        const BPPin* lhsPin = w.GetPin(n, "Variable");
+        const BPPin* rhsPin = w.GetPin(n, "Value");
+        if (lhsPin && rhsPin) {
+            // The LHS is read as an expression (BuildExpression
+            // traces upstream to find what variable to write).
+            // Codegen renders `{set: <name>, to: <rhs>}` if we can
+            // narrow the LHS to a var name. Otherwise fall through
+            // to unsupported.
+            nlohmann::json lhsExpr = BuildExpression(w, n, *lhsPin);
+            if (lhsExpr.contains("var") && lhsExpr["var"].is_string()) {
+                nlohmann::json stmt = {
+                    {"set", lhsExpr["var"].get<std::string>()},
+                    {"to",  BuildExpression(w, n, *rhsPin)},
+                };
+                if (lhsExpr.contains("scope") && lhsExpr["scope"].is_string()) {
+                    stmt["scope"] = lhsExpr["scope"];
+                }
+                r.statement = std::move(stmt);
+                r.next = w.FollowExec(n, "then");
+                return r;
+            }
+        }
+        // Fallthrough: emit a generic unsupported entry.
     }
 
     // VariableSet: `{set: name, to: <expr>}`.
