@@ -13,6 +13,7 @@ This is the as-built reference for how bp-reader works today.
 | [07](07-bpir-and-transpile.md) | BPIR + transpile | The IR, codegen, C++ parser |
 | [08](08-error-diagnostics.md) | Errors + diagnostics | Exit codes, classified failures, recovery paths |
 | [09](09-testing.md) | Testing strategy | Mock fixtures, doctest, live tests, CI |
+| [10](10-bp-to-cpp-node-coverage.md) | BP → C++ node coverage | Per-K2Node mapping table, sentinel reference, supported / approximation / unsupported breakdown |
 
 Read in order if you're new to the codebase. Skip around if you're
 chasing a specific question — each file is self-contained.
