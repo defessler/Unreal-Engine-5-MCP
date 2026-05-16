@@ -1306,6 +1306,28 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
     nlohmann::json interfaces = nlohmann::json::array();
     for (const auto& i : meta.Interfaces) interfaces.push_back(i);
 
+    // Components: surface SCS-tracked subobjects so CppClassEmit can
+    // generate the CreateDefaultSubobject + SetupAttachment scaffolding
+    // a UE actor class needs. Without this, the transpiled C++ class
+    // would have no components even though the BP source does.
+    // Failure to fetch components doesn't fail the whole class
+    // decompile; we just emit an empty array.
+    nlohmann::json components = nlohmann::json::array();
+    try {
+        for (const auto& c : reader.GetComponents(assetPath)) {
+            nlohmann::json cj = {
+                {"name",    c.Name},
+                {"class",   c.Class},
+                {"is_root", c.IsRoot},
+            };
+            if (c.Parent.has_value()) cj["parent"] = *c.Parent;
+            components.push_back(std::move(cj));
+        }
+    } catch (...) {
+        // Backend without component support, or fetch errored —
+        // proceed with empty components[]. Class still transpiles.
+    }
+
     nlohmann::json doc = {
         {"version", kBpirSchemaVersion},
         {"kind", "class"},
@@ -1317,6 +1339,7 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
         {"interfaces", std::move(interfaces)},
         {"variables",  std::move(variables)},
         {"functions",  std::move(functions)},
+        {"components", std::move(components)},
     };
     ValidateBpir(doc);
     return doc;
