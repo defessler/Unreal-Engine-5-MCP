@@ -34,6 +34,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +52,37 @@ struct CppClassEmitOptions {
     // the plan's "companion file" convention. Set to empty to drop in
     // place of the BP entirely.
     std::string classNameSuffix = "_Generated";
+
+    // Prefix inserted between UE's type letter (A/U/I) and the BP's
+    // base name. Empty by default. Projects with a house naming
+    // convention can pass e.g. "Foo" to get "AFooBP_Enemy_Generated"
+    // instead of "ABP_Enemy_Generated". The BP base name itself is
+    // also CamelCased: "BP_Enemy" -> "BPEnemy" when this is non-empty
+    // (otherwise legacy "BP_Enemy" stays as-is for backward compat).
+    std::string classNamePrefix;
+
+    // Fallback category for UPROPERTY decls when the BP variable
+    // didn't carry one. Empty -> no Category= specifier emitted.
+    std::string categoryDefault;
+
+    // BP-category -> project-category remap. Applied after
+    // categoryDefault. Useful for normalizing "Default" /
+    // "Internal State" / typo'd variants to a project's house
+    // categorization. Keys are matched exactly (case-sensitive).
+    std::map<std::string, std::string> categoryRemap;
+
+    // Extra UCLASS() meta key-value pairs. Folded into the macro as
+    // `UCLASS(Blueprintable, meta=(K1="V1", K2="V2", ...))`. Projects
+    // requiring e.g. `PrioritizeCategories="MyGame"` can pass it here.
+    std::map<std::string, std::string> uclassMeta;
+
+    // Pattern for deriving a delegate typedef name from the BP
+    // multicast-delegate variable name. `{Name}` is replaced with the
+    // variable name verbatim (after F-prefix logic). Default "F{Name}"
+    // produces `FOnSomethingHappened` for var `OnSomethingHappened`.
+    // Set to "F{Name}Delegate" for the `FOnSomethingHappenedDelegate`
+    // house style.
+    std::string delegateTypedefPattern = "F{Name}";
 
     // Pass through to CppEmit for function bodies.
     CppEmitOptions emitOpts;

@@ -691,3 +691,121 @@ TEST_CASE("EmitCppClass: no mcdelegate vars -> no DECLARE emitted") {
     auto out = EmitCppClass(cls);
     CHECK_FALSE(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE"));
 }
+
+// ===== Public API: class_name_prefix =======================================
+
+TEST_CASE("EmitCppClass: class_name_prefix injects house prefix and CamelCases the BP name") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["name"] = "BP_Enemy";
+    CppClassEmitOptions opts;
+    opts.classNamePrefix = "Foo";
+    opts.classNameSuffix = "";  // drop-in replacement
+    auto out = EmitCppClass(cls, opts);
+    // Expect AFooBPEnemy (UE letter + house prefix + CamelCased name).
+    CHECK(out.className == "AFooBPEnemy");
+    CHECK(Contains(out.headerSource, "class AFooBPEnemy"));
+}
+
+TEST_CASE("EmitCppClass: class_name_prefix empty preserves legacy ABP_Enemy form") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["name"] = "BP_Enemy";
+    auto out = EmitCppClass(cls);  // default opts (empty prefix)
+    CHECK(out.className == "ABP_Enemy_Generated");
+}
+
+// ===== Public API: category_default / category_remap =======================
+
+TEST_CASE("EmitCppClass: category_default fills in when var has no category") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"}, {"editable", true}},
+    });
+    CppClassEmitOptions opts;
+    opts.categoryDefault = "MyGame";
+    auto out = EmitCppClass(cls, opts);
+    CHECK(Contains(out.headerSource, "Category=\"MyGame\""));
+}
+
+TEST_CASE("EmitCppClass: category_default does NOT override existing categories") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"}, {"editable", true},
+             {"category", "Stats"}},
+    });
+    CppClassEmitOptions opts;
+    opts.categoryDefault = "MyGame";
+    auto out = EmitCppClass(cls, opts);
+    CHECK(Contains(out.headerSource, "Category=\"Stats\""));
+    CHECK_FALSE(Contains(out.headerSource, "Category=\"MyGame\""));
+}
+
+TEST_CASE("EmitCppClass: category_remap rewrites BP categories to project ones") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","Health"}, {"type","float"}, {"editable", true},
+             {"category", "Default"}},
+        json{{"name","State"},  {"type","int"},   {"editable", true},
+             {"category", "Internal State"}},
+    });
+    CppClassEmitOptions opts;
+    opts.categoryRemap = {
+        {"Default",        "MyGame"},
+        {"Internal State", "MyGame|Debug"},
+    };
+    auto out = EmitCppClass(cls, opts);
+    CHECK(Contains(out.headerSource, "Category=\"MyGame\""));
+    CHECK(Contains(out.headerSource, "Category=\"MyGame|Debug\""));
+    CHECK_FALSE(Contains(out.headerSource, "Category=\"Default\""));
+    CHECK_FALSE(Contains(out.headerSource, "Category=\"Internal State\""));
+}
+
+// ===== Public API: uclass_meta =============================================
+
+TEST_CASE("EmitCppClass: uclass_meta folds into UCLASS(...) macro") {
+    auto cls = MakeMinimalClass();
+    CppClassEmitOptions opts;
+    opts.uclassMeta = {
+        {"PrioritizeCategories", "MyGame"},
+        {"DisplayName",          "Friendly Name"},
+    };
+    auto out = EmitCppClass(cls, opts);
+    CHECK(Contains(out.headerSource, "UCLASS("));
+    CHECK(Contains(out.headerSource, "meta=("));
+    CHECK(Contains(out.headerSource, "PrioritizeCategories=\"MyGame\""));
+    CHECK(Contains(out.headerSource, "DisplayName=\"Friendly Name\""));
+}
+
+TEST_CASE("EmitCppClass: empty uclass_meta keeps UCLASS line bare") {
+    auto cls = MakeMinimalClass();
+    auto out = EmitCppClass(cls);
+    CHECK_FALSE(Contains(out.headerSource, "meta=("));
+}
+
+// ===== Public API: delegate_typedef_pattern ================================
+
+TEST_CASE("EmitCppClass: delegate_typedef_pattern lets projects rename derived typedefs") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","OnReady"}, {"type","mcdelegate"}},
+    });
+    CppClassEmitOptions opts;
+    opts.delegateTypedefPattern = "F{Name}Delegate";
+    auto out = EmitCppClass(cls, opts);
+    CHECK(Contains(out.headerSource,
+        "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnReadyDelegate);"));
+    CHECK(Contains(out.headerSource, "FOnReadyDelegate OnReady"));
+    CHECK_FALSE(Contains(out.headerSource, "DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnReady);"));
+}
+
+TEST_CASE("EmitCppClass: delegate_typedef_pattern handles F-prefixed BP var names cleanly") {
+    auto cls = MakeMinimalClass();
+    cls["variables"] = json::array({
+        json{{"name","FOnReady"}, {"type","mcdelegate"}},
+    });
+    CppClassEmitOptions opts;
+    opts.delegateTypedefPattern = "F{Name}Delegate";
+    auto out = EmitCppClass(cls, opts);
+    // F stripped before substitution -> FOnReadyDelegate, not FFOnReadyDelegate.
+    CHECK(Contains(out.headerSource, "FOnReadyDelegate"));
+    CHECK_FALSE(Contains(out.headerSource, "FFOnReady"));
+}
