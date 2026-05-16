@@ -809,3 +809,93 @@ TEST_CASE("EmitCppClass: delegate_typedef_pattern handles F-prefixed BP var name
     CHECK(Contains(out.headerSource, "FOnReadyDelegate"));
     CHECK_FALSE(Contains(out.headerSource, "FFOnReady"));
 }
+
+// ===== RPC functions: _Implementation suffix ===============================
+//
+// UFUNCTION(Server) / UFUNCTION(Client) / UFUNCTION(NetMulticast) all
+// follow the same pattern in UE C++: the header decl uses the bare
+// function name, and the impl renames to <FnName>_Implementation. UHT
+// generates the dispatch wrapper that calls _Implementation when the
+// RPC fires.
+
+TEST_CASE("EmitCppClass: Server RPC renames impl to <FnName>_Implementation") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "ServerDoThing"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"Server", "Reliable"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    // Header keeps the bare name with the Server specifier.
+    CHECK(Contains(out.headerSource, "UFUNCTION(Server, Reliable)"));
+    CHECK(Contains(out.headerSource, "void ServerDoThing("));
+    // Impl gets _Implementation.
+    CHECK(Contains(out.implSource, "::ServerDoThing_Implementation("));
+    // No accidental _Implementation in the header decl.
+    CHECK_FALSE(Contains(out.headerSource, "ServerDoThing_Implementation"));
+}
+
+TEST_CASE("EmitCppClass: Client RPC renames impl to <FnName>_Implementation") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "ClientNotify"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"Client"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "::ClientNotify_Implementation("));
+}
+
+TEST_CASE("EmitCppClass: NetMulticast RPC renames impl to <FnName>_Implementation") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "BroadcastEffect"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"NetMulticast", "Unreliable"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "::BroadcastEffect_Implementation("));
+}
+
+TEST_CASE("EmitCppClass: non-RPC functions keep bare impl name") {
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "RegularFn"},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "::RegularFn("));
+    CHECK_FALSE(Contains(out.implSource, "RegularFn_Implementation"));
+}
+
+TEST_CASE("EmitCppClass: BlueprintAuthorityOnly is NOT treated as an RPC marker") {
+    // BlueprintAuthorityOnly is a BP-side specifier, not an actual
+    // RPC. UHT doesn't generate an _Implementation dispatch for it.
+    auto cls = MakeMinimalClass();
+    cls["functions"] = json::array({
+        json{
+            {"version", 1}, {"kind", "function"}, {"name", "AuthOnly"},
+            {"metadata", json{
+                {"ufunction_specifiers", json::array({"BlueprintAuthorityOnly"})},
+            }},
+            {"body", json::array()},
+        },
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "::AuthOnly("));
+    CHECK_FALSE(Contains(out.implSource, "AuthOnly_Implementation"));
+}
