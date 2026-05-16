@@ -565,6 +565,25 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
                        specs, returnType, fnName, args, constSuffix);
 }
 
+// Detect whether a function carries any of UE's RPC specifiers
+// (Server / Client / NetMulticast). The C++ binding pattern for RPCs
+// is that the impl is named <FnName>_Implementation -- UE's reflection
+// generates the entry-point wrapper. Without the suffix, the linker
+// complains about a missing _Implementation symbol when UHT emits its
+// generated.cpp glue.
+bool IsRpcFunction(const nlohmann::json& fn) {
+    if (!fn.contains("metadata") || !fn["metadata"].is_object()) return false;
+    const auto& md = fn["metadata"];
+    if (!md.contains("ufunction_specifiers") ||
+        !md["ufunction_specifiers"].is_array()) return false;
+    for (const auto& s : md["ufunction_specifiers"]) {
+        if (!s.is_string()) continue;
+        const std::string& v = s.get_ref<const std::string&>();
+        if (v == "Server" || v == "Client" || v == "NetMulticast") return true;
+    }
+    return false;
+}
+
 // Function-body emission for the .cpp side. Re-uses CppEmit but
 // renders as a method definition: ReturnType ClassName::FnName(args) { ... }
 std::string RenderUFunctionImpl(const std::string& className,
@@ -600,6 +619,12 @@ std::string RenderUFunctionImpl(const std::string& className,
         }
     }
     std::string fnName = fn.value("name", "Fn");
+    // RPC functions: rename the impl to <FnName>_Implementation. The
+    // header decl stays as <FnName> -- UHT generates the dispatch
+    // wrapper that calls _Implementation.
+    if (IsRpcFunction(fn)) {
+        fnName += "_Implementation";
+    }
 
     bool isPure = false;
     if (fn.contains("metadata") && fn["metadata"].is_object()) {
