@@ -138,7 +138,7 @@ PR numbers refer to the merge that added the support.
 | `K2Node_BaseMCDelegate` | ✅ | Base class for the four above; intermediate | (#103) |
 | `K2Node_AssignDelegate` | ⚠️ | Single-delegate variant; falls through; rare | |
 | `K2Node_DelegateSet` | ⚠️ | Same | |
-| Multicast delegate **variable** declaration | ✅ | `DECLARE_DYNAMIC_MULTICAST_DELEGATE(F<Name>); FOnX MyDelegate;` | (#105) Zero-param DECLARE today; param threading is the one remaining gap. |
+| Multicast delegate **variable** declaration | ✅ | `DECLARE_DYNAMIC_MULTICAST_DELEGATE[_NParams](F<Name>[, T1, P1, ...]); FOnX MyDelegate;` | (#105, #150) Plugin introspector reads SignatureFunction params; codegen picks `_OneParam`/`_TwoParams`/... up to `_NineParams` automatically. |
 
 ## Function definition
 
@@ -222,21 +222,29 @@ PR numbers refer to the merge that added the support.
 | ExposeOnSpawn | ✅ | `meta=(ExposeOnSpawn="true")` | |
 | Replication | ✅ | DOREPLIFETIME / DOREPLIFETIME_CONDITION | Pre-existing. |
 | SCS components | ✅ | `UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")` + `CreateDefaultSubobject` ctor body + `SetupAttachment` | (#108) |
-| Component default property overrides | ❌ | -- | Plugin introspector doesn't surface them yet. |
+| Component default property overrides | ✅ | `Comp->Property = FVector(...) / FRotator(...) / 0.5f` etc. in ctor | (#114) Translates Float/Int/Bool/Name/Str/Text/Byte/Enum/StructProperty/etc.; FObjectFinder scaffold for asset refs. |
+| Asset-ref `FObjectFinder<T>` template arg | ✅ | `ConstructorHelpers::FObjectFinder<USkeletalMesh> Finder(TEXT("..."));` | (#150) Plugin captures PropertyClass at introspection time; codegen fills in `T`. Falls back to `T` placeholder + TODO when older plugin didn't surface it. |
 | Interfaces (BP-implemented) | ✅ | `, public IFoo` in inheritance list | Pre-existing. |
 | Generated header position of .generated.h | ✅ | Last include before UCLASS | |
-| Delegate type declarations | ✅ partial | `DECLARE_DYNAMIC_MULTICAST_DELEGATE(F<Name>)` | (#105) Zero-arg; param threading pending. |
+| Delegate type declarations | ✅ | `DECLARE_DYNAMIC_MULTICAST_DELEGATE[_NParams](F<Name>[, T1, P1, ...])` | (#105, #150) Plugin reads delegate SignatureFunction params; codegen picks `_OneParam` through `_NineParams` automatically. |
 | Forward decls for component classes | ✅ | `class UStaticMeshComponent;` (etc.) | (#108) |
 | UFUNCTION decls | ✅ | `UFUNCTION(BlueprintCallable, Category="...")` or `BlueprintPure` | |
 | Virtual override for void parent virtuals | ✅ | `virtual void BeginPlay() override` for BeginPlay/Tick/EndPlay/... | (#109) |
+| ConstructionScript -> OnConstruction override | ✅ | `virtual void OnConstruction(const FTransform& Transform) override` for BP's ConstructionScript / UserConstructionScript | (#150) |
 
-## Gaps (require plugin-side work)
+## Remaining gaps (inherent static-transpile limits)
 
-| Item | Reason | Recommended fix |
+These are NOT fixable by plumbing more data through -- they're
+structural differences between bp-reader (static C++ generation) and
+Angelscript (runtime reflection). They emit clear TODO scaffolds with
+sidecar entries; the agent does the manual port.
+
+| Item | Reason | Workaround |
 |---|---|---|
-| Delegate signature param threading | Plugin's `DelegateSignatureGraphs` not surfaced through `BPMetadata` -> wire JSON -> BPIR | Add `delegates[]` to BPIR class doc with `params: [{name, type}]`; CppClassEmit switches to `DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params` variant. |
-| Component default property overrides | Introspector exposes component identity but not per-component property values authored in the Components panel | Extend `FBPComponentInfo` with a property-overrides map; CppClassEmit emits `Comp->Property = X;` in ctor. |
-| BP function `targetClass` resolution to include path | Resolver knows the class name but not its header | Build a module-rooted header index at session start; CppClassEmit's forward-decl pass uses it to emit matching `#include` lines in the .cpp. |
+| Latent actions (Delay, Timeline, Async tasks) | Post-latent exec flow has to become a separate function (callback). Can't be expressed as a single in-line statement. | Sidecar TODO with canonical `FTimerHandle` + `GetTimerManager().SetTimer(...)` hint. |
+| Stateful macros (Gate, DoOnce, DoN, FlipFlop) | Need injected member variables; current pipeline only adds vars that exist in the BP. | Sidecar TODO. Agent adds the state member + branch by hand. |
+| EnhancedInput | InputAction asset registration is a runtime concern; static transpile can't preserve the asset bindings. | Sidecar TODO. Agent registers `UInputAction*` member + binding in `SetupPlayerInputComponent`. |
+| BP function `targetClass` -> include path | Resolver knows the bare class name (via `ResolveAssetPath`) but not which header file to include. | Agent adds the `#include` manually. Could be automated by indexing `Source/<Module>/**/*.h` at session start. |
 | EnhancedInput migration | Modern UE uses InputAction assets, not legacy K2Node_InputAction | Map InputAction asset -> `UInputAction*` member + binding in `SetupPlayerInputComponent`. |
 
 ## Sentinel reference
