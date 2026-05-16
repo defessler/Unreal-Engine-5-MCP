@@ -1130,3 +1130,117 @@ TEST_CASE("EmitCppClass: BP-class component types get _C suffix stripped") {
     CHECK_FALSE(Contains(out.headerSource, "BPC_Custom_C"));
     CHECK_FALSE(Contains(out.headerSource, "TObjectPtr<UBPC_Custom_C>"));
 }
+
+// ===== SCS component default property values ==============================
+//
+// Each SCS subobject carries property overrides authored in the BP
+// Components panel (RelativeLocation, mesh asset, ScaleFactor, etc.).
+// The plugin's introspector surfaces them as
+// {name, type, value} entries in the component's `properties` array;
+// CppClassEmit emits matching `Comp->Property = X;` lines in the ctor.
+
+TEST_CASE("EmitCppClass: component scalar property -> direct assignment") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Mesh"},
+             {"class", "/Script/Engine.StaticMeshComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "CastShadow"}, {"type", "BoolProperty"}, {"value", "false"}},
+                 json{{"name", "Mobility"},   {"type", "ByteProperty"}, {"value", "EComponentMobility::Movable"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "Mesh->CastShadow = false;"));
+    CHECK(Contains(out.implSource, "Mesh->Mobility = EComponentMobility::Movable;"));
+}
+
+TEST_CASE("EmitCppClass: component FVector property -> FVector(x, y, z)") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "SpringArm"},
+             {"class", "/Script/Engine.SpringArmComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "RelativeLocation"}, {"type", "StructProperty"},
+                      {"value", "(X=0.0,Y=0.0,Z=50.0)"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "SpringArm->RelativeLocation = FVector(0.0f, 0.0f, 50.0f);"));
+}
+
+TEST_CASE("EmitCppClass: component FRotator property -> FRotator(p, y, r)") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Cam"},
+             {"class", "/Script/Engine.CameraComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "RelativeRotation"}, {"type", "StructProperty"},
+                      {"value", "(Pitch=-15.0,Yaw=0.0,Roll=0.0)"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "Cam->RelativeRotation = FRotator(-15.0f, 0.0f, 0.0f);"));
+}
+
+TEST_CASE("EmitCppClass: component float property -> float-literal") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "Spring"},
+             {"class", "/Script/Engine.SpringArmComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "TargetArmLength"}, {"type", "FloatProperty"}, {"value", "300.0"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "Spring->TargetArmLength = 300.0f;"));
+}
+
+TEST_CASE("EmitCppClass: component asset-ref property emits FObjectFinder TODO + sidecar note") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "SK"},
+             {"class", "/Script/Engine.SkeletalMeshComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "SkeletalMesh"}, {"type", "ObjectProperty"},
+                      {"value", "/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "TODO[bpr-asset-ref]"));
+    CHECK(Contains(out.implSource, "ConstructorHelpers::FObjectFinder"));
+    CHECK(Contains(out.implSource, "/Game/Mannequin/Character/Mesh/SK_Mannequin"));
+    // Sidecar entry.
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "asset_ref_objectfinder_stub" &&
+            n.value("component", "") == "SK") {
+            found = true;
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("EmitCppClass: component property of unknown type emits TODO") {
+    auto cls = MakeMinimalClass("AActor");
+    cls["components"] = json::array({
+        json{{"name", "X"},
+             {"class", "/Script/Engine.SceneComponent"},
+             {"is_root", true},
+             {"properties", json::array({
+                 json{{"name", "Weird"}, {"type", "MapProperty"}, {"value", "(a=1,b=2)"}},
+             })}},
+    });
+    auto out = EmitCppClass(cls);
+    CHECK(Contains(out.implSource, "TODO[bpr-component-default]"));
+    CHECK(Contains(out.implSource, "Weird"));
+    bool found = false;
+    for (const auto& n : out.notes) {
+        if (n.value("treatment", "") == "todo_unsupported_type") found = true;
+    }
+    CHECK(found);
+}
