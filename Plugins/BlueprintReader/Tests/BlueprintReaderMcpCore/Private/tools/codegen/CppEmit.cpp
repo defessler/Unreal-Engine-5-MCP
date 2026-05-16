@@ -4,15 +4,42 @@
 
 #include <fmt/core.h>
 
+#include <cctype>
 #include <map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace bpr::tools {
 
 namespace {
+
+// SanitizeIdentifier: collapse any sequence of non-`[A-Za-z0-9_]` chars to
+// nothing, so BP display names with spaces ("Set Resources", "AsWB Resource
+// Bar") become legal C++ identifiers ("SetResources", "AsWBResourceBar").
+// Also leading-digit-safe: prepend `_` if the result would otherwise start
+// with a digit (rare but possible from numeric BP names).
+//
+// Applied uniformly at every identifier emission point -- function decl
+// names, parameter names, locals, member access LHS, cast-as locals, var
+// expressions, delegate property names, handler names. Empty input -> empty
+// output (callers should check before emitting).
+std::string SanitizeIdentifier(std::string_view in) {
+    std::string out;
+    out.reserve(in.size());
+    for (char c : in) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '_') {
+            out.push_back(c);
+        }
+    }
+    if (!out.empty() && std::isdigit(static_cast<unsigned char>(out.front()))) {
+        out.insert(out.begin(), '_');
+    }
+    return out;
+}
 
 // ----- Type shorthand → C++ -----------------------------------------------
 // Inverse of TypeShorthand.cpp's parser. Bidirectional with a caveat:
@@ -339,6 +366,14 @@ struct Emitter {
     CppEmitOptions opts;
     nlohmann::json notes = nlohmann::json::array();
 
+    // Names of the function's outputs[]. Empty for void / single-return
+    // functions; populated with sanitized parameter names when the
+    // function declared 2+ outputs (which become reference-out params).
+    // EmitStatement's return-form uses this to lower
+    // {return: [<e1>, <e2>]} into per-output assignments + bare return,
+    // instead of std::make_tuple which isn't part of UE's allowed stdlib.
+    std::vector<std::string> outputNames;
+
     void Indent() {
         for (int i = 0; i < indentLevel * opts.indentSpaces; ++i) out << ' ';
     }
@@ -349,7 +384,7 @@ struct Emitter {
     std::string EmitExpr(const nlohmann::json& e) {
         std::string form = DetectExpressionForm(e);
         if (form == "var") {
-            return e["var"].get<std::string>();
+            return SanitizeIdentifier(e["var"].get<std::string>());
         }
         if (form == "lit") {
             return EmitLit(e["lit"]);
@@ -762,7 +797,7 @@ struct Emitter {
             return;
         }
         if (form == "set") {
-            std::string varName = s.value("set", "");
+            std::string varName = SanitizeIdentifier(s.value("set", ""));
             std::string val = EmitExpr(s["to"]);
             Line(fmt::format("{} = {};", varName, val));
             return;
@@ -792,17 +827,27 @@ struct Emitter {
             else if (r.is_array()) {
                 if (r.empty()) {
                     Line("return;");
+                } else if (r.size() == 1 && outputNames.empty()) {
+                    // Singleton array from decompile but no out-params --
+                    // treat as a by-value return.
+                    Line(fmt::format("return {};", EmitExpr(r[0])));
                 } else {
-                    // Multi-return: emit `return std::make_tuple(...)`.
-                    // The agent gets to choose whether to refactor to OUT params.
-                    std::string parts;
-                    bool first = true;
-                    for (const auto& el : r) {
-                        if (!first) parts += ", ";
-                        first = false;
-                        parts += EmitExpr(el);
+                    // Multi-output: assign each return expression to its
+                    // matching out-param (declared as `Type& <Name>` in
+                    // the signature), then bare `return;`. UE's allowed
+                    // stdlib subset doesn't include std::make_tuple, and
+                    // UE C++ convention for multi-output is by-reference
+                    // out-params anyway.
+                    for (std::size_t i = 0; i < r.size(); ++i) {
+                        std::string lhs;
+                        if (i < outputNames.size() && !outputNames[i].empty()) {
+                            lhs = outputNames[i];
+                        } else {
+                            lhs = fmt::format("Out{}", i);
+                        }
+                        Line(fmt::format("{} = {};", lhs, EmitExpr(r[i])));
                     }
-                    Line(fmt::format("return std::make_tuple({});", parts));
+                    Line("return;");
                 }
             } else {
                 Line(fmt::format("return {};", EmitExpr(r)));
@@ -812,7 +857,8 @@ struct Emitter {
         if (form == "cast") {
             std::string castVal = EmitExpr(s["cast"]);
             std::string target  = s.value("to", "");
-            std::string asName  = s.value("as", "AsCast");
+            std::string asName  = SanitizeIdentifier(s.value("as", "AsCast"));
+            if (asName.empty()) asName = "AsCast";
             Line(fmt::format("if (auto* {} = Cast<{}>({})) {{", asName, target, castVal));
             ++indentLevel;
             EmitStatementList(s["success"]);
@@ -852,7 +898,8 @@ struct Emitter {
             return;
         }
         if (form == "for_each") {
-            std::string elem = s.value("for_each", "");
+            std::string elem = SanitizeIdentifier(s.value("for_each", ""));
+            if (elem.empty()) elem = "Element";
             std::string in   = EmitExpr(s["in"]);
             Line(fmt::format("for (auto& {} : {}) {{", elem, in));
             ++indentLevel;
@@ -870,17 +917,63 @@ struct Emitter {
             return;
         }
         if (form == "sequence") {
-            // Emit each branch as its own block, in order. Comments
-            // around each branch make the structure obvious.
-            int idx = 0;
+            // K2Node_ExecutionSequence is structurally equivalent to
+            // ordered statements -- inline them. No "// sequence branch N"
+            // markers, no empty-branch comments; both were noise that
+            // grouped statements visually without adding semantic info.
             for (const auto& branch : s["sequence"]) {
-                Line(fmt::format("// sequence branch {}", idx++));
+                if (branch.is_array() && branch.empty()) continue;
                 EmitStatementList(branch);
             }
             return;
         }
         if (form == "break")    { Line("break;");    return; }
         if (form == "continue") { Line("continue;"); return; }
+        // Multicast-delegate ops. Receiver is `<target>->` if target is
+        // explicit, otherwise the delegate property is on `this` and we
+        // emit a bare member access. SanitizeIdentifier wraps every name
+        // emission to defend against BP display-name pollution.
+        if (form == "broadcast" || form == "bind_delegate" ||
+            form == "unbind_delegate" || form == "clear_delegate") {
+            std::string prop = SanitizeIdentifier(s.value(form, ""));
+            std::string receiver;
+            if (s.contains("target")) {
+                receiver = fmt::format("{}->", EmitExpr(s["target"]));
+            }
+            if (form == "broadcast") {
+                std::string parts;
+                if (s.contains("args") && s["args"].is_object()) {
+                    bool first = true;
+                    for (auto& [k, v] : s["args"].items()) {
+                        if (!first) parts += ", ";
+                        first = false;
+                        parts += EmitExpr(v);
+                    }
+                }
+                Line(fmt::format("{}{}.Broadcast({});", receiver, prop, parts));
+            } else if (form == "clear_delegate") {
+                Line(fmt::format("{}{}.Clear();", receiver, prop));
+            } else {
+                std::string handler = SanitizeIdentifier(s.value("handler", ""));
+                const char* verb =
+                    (form == "bind_delegate") ? "AddDynamic" : "RemoveDynamic";
+                if (handler.empty()) {
+                    // No handler resolved -- emit a TODO + the verb so the
+                    // shape is visible. (Without plugin-side meta this can
+                    // happen when CreateDelegate's outgoing pin can't be
+                    // traced back to a function name.)
+                    Line(fmt::format(
+                        "// TODO[bpr-delegate]: {}{}.{}(this, &ThisClass::<HandlerName>); "
+                        "(handler not resolved)",
+                        receiver, prop, verb));
+                } else {
+                    Line(fmt::format(
+                        "{}{}.{}(this, &ThisClass::{});",
+                        receiver, prop, verb, handler));
+                }
+            }
+            return;
+        }
         if (form == "unsupported") {
             const auto& u = s["unsupported"];
             std::string nodeClass = u.value("node_class", "?");
@@ -975,6 +1068,16 @@ CppEmitResult EmitCppFunctionBody(const nlohmann::json& doc, CppEmitOptions opts
     Emitter em;
     em.opts = opts;
     em.indentLevel = 1;  // body is one level deep inside the function block
+    // Stash output names when the function has 2+ outputs (each becomes
+    // a reference-out param). EmitStatement's return-form uses these to
+    // emit `<Name> = <expr>;` per output instead of std::make_tuple.
+    // Single-output functions return by value -- skip.
+    if (doc.contains("outputs") && doc["outputs"].is_array() &&
+        doc["outputs"].size() > 1) {
+        for (const auto& o : doc["outputs"]) {
+            em.outputNames.push_back(SanitizeIdentifier(o.value("name", "")));
+        }
+    }
     if (doc.contains("body")) em.EmitStatementList(doc["body"]);
     return CppEmitResult{em.out.str(), std::move(em.notes)};
 }
@@ -1004,7 +1107,8 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
             first = false;
             args += MapBpirTypeToCppArg(in.value("type", "void"));
             args += " ";
-            args += in.value("name", "Arg");
+            std::string nm = SanitizeIdentifier(in.value("name", ""));
+            args += nm.empty() ? std::string("Arg") : nm;
         }
     }
     // Multi-return → reference-out parameters.
@@ -1014,14 +1118,17 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
             if (!args.empty()) args += ", ";
             args += MapBpirTypeToCppArg(out.value("type", "void"));
             args += "& ";
-            args += out.value("name", "Out");
+            std::string nm = SanitizeIdentifier(out.value("name", ""));
+            args += nm.empty() ? std::string("Out") : nm;
         }
     }
 
     auto bodyResult = EmitCppFunctionBody(doc, opts);
 
+    std::string fnName = SanitizeIdentifier(doc.value("name", ""));
+    if (fnName.empty()) fnName = "Fn";
     std::ostringstream s;
-    s << returnType << " " << doc.value("name", "Fn") << "(" << args << ") {\n";
+    s << returnType << " " << fnName << "(" << args << ") {\n";
     s << bodyResult.source;
     s << "}\n";
     return CppEmitResult{s.str(), std::move(bodyResult.notes)};
