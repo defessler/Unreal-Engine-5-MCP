@@ -1009,3 +1009,37 @@ TEST_CASE("Codegen: member expression handles BreakStruct-shape access") {
     })));
     CHECK(Contains(out.source, "X = Loc.X;"));
 }
+
+// ===== Select sentinels (K2Node_Select lowering) ==========================
+
+TEST_CASE("Codegen: __bpr_select_ternary renders as a C++ ternary") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "R"}, {"to",
+             json{{"call", "__bpr_select_ternary"},
+                  {"args", json{
+                      {"Index", json{{"var", "bAlive"}}},
+                      {"True",  json{{"lit", 100}}},
+                      {"False", json{{"lit", 0}}},
+                  }}}}}
+    })));
+    CHECK(Contains(out.source, "R = (bAlive ? 100 : 0);"));
+}
+
+TEST_CASE("Codegen: __bpr_select_n renders chained ternaries with last as default") {
+    auto out = EmitCppFunctionBody(MakeFn(json::array({
+        json{{"set", "R"}, {"to",
+             json{{"call", "__bpr_select_n"},
+                  {"args", json{
+                      {"Index",    json{{"var", "Mode"}}},
+                      {"Option_0", json{{"lit", 1}}},
+                      {"Option_1", json{{"lit", 2}}},
+                      {"Option_2", json{{"lit", 3}}},
+                  }}}}}
+    })));
+    // First two get explicit Index == N checks; last is the fallback.
+    CHECK(Contains(out.source, "Mode == 0 ? 1"));
+    CHECK(Contains(out.source, "Mode == 1 ? 2"));
+    // Last option (Option_2) shouldn't have an Index == 2 check
+    // (it's the default).
+    CHECK_FALSE(Contains(out.source, "Mode == 2"));
+}

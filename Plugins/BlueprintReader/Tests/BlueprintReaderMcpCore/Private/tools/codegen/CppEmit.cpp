@@ -4,6 +4,7 @@
 
 #include <fmt/core.h>
 
+#include <algorithm>
 #include <cctype>
 #include <map>
 #include <set>
@@ -653,6 +654,48 @@ struct Emitter {
         }
         if (fnName == "__bpr_get_class_defaults") {
             return EmitGetClassDefaults(e);
+        }
+        if (fnName == "__bpr_select_ternary") {
+            // 2-way Select node -> C++ ternary.
+            //   (<Index> ? <True> : <False>)
+            // Decompile guarantees all three args present.
+            auto a = (e.contains("args") && e["args"].is_object())
+                         ? e["args"] : nlohmann::json::object();
+            std::string idx   = a.contains("Index") ? EmitExpr(a["Index"]) : "false";
+            std::string trueV = a.contains("True")  ? EmitExpr(a["True"])  : "0";
+            std::string falseV= a.contains("False") ? EmitExpr(a["False"]) : "0";
+            return fmt::format("({} ? {} : {})", idx, trueV, falseV);
+        }
+        if (fnName == "__bpr_select_n") {
+            // N-way Select -> chained ternaries based on Index value.
+            //   (Index == 0 ? Option_0 : (Index == 1 ? Option_1 : Option_N))
+            // The last option becomes the default fallback (no explicit
+            // index check) to minimize nesting depth.
+            auto a = (e.contains("args") && e["args"].is_object())
+                         ? e["args"] : nlohmann::json::object();
+            std::string idx = a.contains("Index") ? EmitExpr(a["Index"]) : "0";
+            // Collect option slots in numerical order.
+            std::vector<std::pair<int, std::string>> selectOpts;
+            for (auto& [k, v] : a.items()) {
+                if (k == "Index") continue;
+                // "Option_<n>"
+                if (k.size() > 7 && k.compare(0, 7, "Option_") == 0) {
+                    try {
+                        selectOpts.push_back({std::stoi(k.substr(7)), EmitExpr(v)});
+                    } catch (...) { /* skip */ }
+                }
+            }
+            std::sort(selectOpts.begin(), selectOpts.end(),
+                      [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+            if (selectOpts.empty()) return "0";
+            // Build right-associative chain. The trailing option is the
+            // default fallback.
+            std::string chain = selectOpts.back().second;
+            for (std::size_t i = selectOpts.size() - 1; i-- > 0; ) {
+                chain = fmt::format("({} == {} ? {} : {})",
+                    idx, selectOpts[i].first, selectOpts[i].second, chain);
+            }
+            return chain;
         }
         // GetDataTableRow is statement-form (carries success+fail blocks)
         // — the statement dispatcher handles it directly; we'd only see
