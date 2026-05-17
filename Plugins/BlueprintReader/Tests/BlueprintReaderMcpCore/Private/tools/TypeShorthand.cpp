@@ -157,4 +157,4 @@ BPPinType ParseTypeArg(const nlohmann::json& value) {
 	return type;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

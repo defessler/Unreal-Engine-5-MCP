@@ -242,4 +242,4 @@ public:
 // its lifetime; tests + other code can reach it via this if needed.
 FCmdletServer* GetCmdletServer();
 
-} // namespace BlueprintReader
+}    // namespace BlueprintReader

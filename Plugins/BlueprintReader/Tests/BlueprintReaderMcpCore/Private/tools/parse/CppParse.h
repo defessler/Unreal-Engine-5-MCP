@@ -75,4 +75,4 @@ nlohmann::json ParseCppFunction(std::string_view source);
 nlohmann::json ParseCppFunction(std::string_view source,
                                 const nlohmann::json& signature);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

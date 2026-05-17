@@ -114,4 +114,4 @@ private:
 	bool listChanged_ = false;
 };
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

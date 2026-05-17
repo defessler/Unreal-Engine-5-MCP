@@ -1297,4 +1297,4 @@ public:
 	}
 };
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

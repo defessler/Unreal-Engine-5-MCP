@@ -138,4 +138,4 @@ std::vector<std::string> ParseFieldsArg(const nlohmann::json& args) {
 	return out;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

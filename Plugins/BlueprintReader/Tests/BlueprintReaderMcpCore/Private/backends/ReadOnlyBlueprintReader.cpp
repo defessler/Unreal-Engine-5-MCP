@@ -477,4 +477,4 @@ MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
 	return std::make_unique<ReadOnlyBlueprintReader>(std::move(inner));
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

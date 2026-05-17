@@ -958,4 +958,4 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 	}
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

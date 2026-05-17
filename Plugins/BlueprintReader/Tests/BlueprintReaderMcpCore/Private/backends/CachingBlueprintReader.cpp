@@ -832,4 +832,4 @@ std::unique_ptr<IBlueprintReader> WrapWithCache(
 		std::move(inner), ttl, std::move(projectDir));
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

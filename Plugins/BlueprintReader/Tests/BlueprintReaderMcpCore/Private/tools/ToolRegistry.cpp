@@ -141,4 +141,4 @@ bool ToolRegistry::TakeListChangedFlag() {
 	return true;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

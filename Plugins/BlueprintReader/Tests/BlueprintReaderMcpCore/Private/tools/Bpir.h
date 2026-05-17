@@ -115,4 +115,4 @@ std::string DetectExpressionForm(const nlohmann::json& expr);
 // the migrated doc; the input is left unchanged.
 nlohmann::json MigrateToCurrent(const nlohmann::json& doc);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

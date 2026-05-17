@@ -121,4 +121,4 @@ namespace BlueprintReader
 	{
 		return GCurrentConnectionId;
 	}
-}
+}    // namespace BlueprintReader

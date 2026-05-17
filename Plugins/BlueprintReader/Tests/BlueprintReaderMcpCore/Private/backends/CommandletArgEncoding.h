@@ -121,4 +121,4 @@ inline std::wstring EncodeArg(std::wstring_view arg) {
 	return QuoteWindowsArg(arg);
 }
 
-} // namespace bpr::backends::detail
+}    // namespace bpr::backends::detail

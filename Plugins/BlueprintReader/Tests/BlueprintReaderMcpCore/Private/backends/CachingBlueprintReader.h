@@ -317,4 +317,4 @@ std::unique_ptr<IBlueprintReader> WrapWithCache(
 	std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl,
 	std::filesystem::path projectDir = {});
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

@@ -11,7 +11,7 @@ namespace BlueprintReaderRuntime
 	// listener. Default behavior is no-op (listener stays off).
 	extern void OnPostEngineInit_StartRuntimeListener();
 	extern void OnModuleShutdown_StopRuntimeListener();
-}
+}    // namespace BlueprintReaderRuntime
 
 IMPLEMENT_MODULE(FBlueprintReaderRuntimeModule, BlueprintReaderRuntime)
 

@@ -14,16 +14,16 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 	#pragma comment(lib, "Ws2_32.lib")
 	using SocketType = SOCKET;
 	static constexpr SocketType kInvalidSocket = INVALID_SOCKET;
-#else
+#else    // defined(_WIN32)
 	using SocketType = int;
 	static constexpr SocketType kInvalidSocket = -1;
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::backends {
 
@@ -46,7 +46,7 @@ WsaScope& Wsa() {
 	static WsaScope s;
 	return s;
 }
-#endif
+#endif    // defined(_WIN32)
 
 // Send all bytes or throw. Wraps the loop pattern around partial sends.
 void SendAll(SocketType s, const char* data, std::size_t len) {
@@ -113,9 +113,9 @@ inline void CloseSocketCompat(SocketType s) {
 	if (s == kInvalidSocket) return;
 #if defined(_WIN32)
 	closesocket(s);
-#else
+#else    // defined(_WIN32)
 	close(s);
-#endif
+#endif    // defined(_WIN32)
 }
 
 // RAII guard for a socket fd. On scope exit the socket is closed unless
@@ -145,7 +145,7 @@ SocketBlueprintReader::SocketBlueprintReader(Config cfg) : cfg_(std::move(cfg)) 
 	}
 #if defined(_WIN32)
 	(void)Wsa();  // first construction triggers WSAStartup
-#endif
+#endif    // defined(_WIN32)
 	// Connect lazily on first RunOp — keeps construction cheap and
 	// non-throwing when the editor isn't running yet.
 }
@@ -2127,4 +2127,4 @@ nlohmann::json SocketBlueprintReader::ShutdownDaemon() {
 	};
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

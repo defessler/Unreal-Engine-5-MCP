@@ -28,10 +28,10 @@ std::string GetEnv(const char* key) {
 		return out;
 	}
 	return {};
-#else
+#else    // !_MSC_VER
 	if (const char* v = std::getenv(key); v != nullptr && *v != '\0') return std::string(v);
 	return {};
-#endif
+#endif    // _MSC_VER
 }
 
 bool LiveBackendAvailable() {
