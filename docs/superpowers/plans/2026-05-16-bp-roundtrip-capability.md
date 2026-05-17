@@ -667,7 +667,7 @@ git commit -m "docs(research): UE5 ThirdPerson template anatomy (drives roundtri
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.cpp`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp`
 
-- [ ] **Step 1: Write the header — schema + JSON glue**
+- [x] **Step 1: Write the header — schema + JSON glue**
 
 ```cpp
 // BPSpec — a complete structural snapshot of a Blueprint, formatted as the
@@ -736,7 +736,7 @@ std::string StableNodeId(const BPNode& node, std::size_t positionRank);
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Write the implementation**
+- [x] **Step 2: Write the implementation**
 
 ```cpp
 #include "BPSpec.h"
@@ -985,7 +985,7 @@ std::string StableNodeId(const BPNode& node, std::size_t positionRank) {
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 3: Write the unit test (TDD shape — failing first if you flip Steps 1+2 to stubs)**
+- [x] **Step 3: Write the unit test (TDD shape — failing first if you flip Steps 1+2 to stubs)**
 
 ```cpp
 #include <doctest/doctest.h>
@@ -1060,7 +1060,7 @@ TEST_CASE("StableNodeId is deterministic and content-sensitive") {
 
 Expected: 2 cases pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp
@@ -1075,7 +1075,7 @@ git commit -m "feat(roundtrip): BPSpec — JSON snapshot bridging read/write too
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.h`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.cpp`
 
-- [ ] **Step 1: Write the header**
+- [x] **Step 1: Write the header**
 
 ```cpp
 // ReadToSpec — orchestrates IBlueprintReader read methods to assemble a
@@ -1098,7 +1098,7 @@ BPSpec ReadToSpec(backends::IBlueprintReader& reader, std::string_view assetPath
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Write a failing test first**
+- [x] **Step 2: Write a failing test first**
 
 Add to `test_bpspec.cpp` (already exists from Task 9):
 
@@ -1125,7 +1125,7 @@ TEST_CASE("ReadToSpec assembles a spec from the mock backend") {
 
 Expected: unresolved-external link error for `ReadToSpec`.
 
-- [ ] **Step 4: Implement `ReadToSpec.cpp`**
+- [x] **Step 4: Implement `ReadToSpec.cpp`**
 
 ```cpp
 #include "ReadToSpec.h"
@@ -1252,7 +1252,7 @@ BPSpec ReadToSpec(backends::IBlueprintReader& reader, std::string_view assetPath
 
 Expected: pass. If the BPMetadata field names (`ParentClass`, `Interfaces`, `Functions`, `Macros`) don't match what `BlueprintReaderTypes.h` defines, adjust the cpp accordingly — the compiler tells you which.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp
@@ -1267,7 +1267,7 @@ git commit -m "feat(roundtrip): ReadToSpec — assembles BPSpec from reader read
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/SpecToBP.h`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/SpecToBP.cpp`
 
-- [ ] **Step 1: Write the header**
+- [x] **Step 1: Write the header**
 
 ```cpp
 // SpecToBP — drives IBlueprintReader write methods to rebuild a BP from a
@@ -1299,7 +1299,7 @@ SpecToBPResult SpecToBP(backends::IBlueprintReader& reader,
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Write the implementation**
+- [x] **Step 2: Write the implementation**
 
 ```cpp
 #include "SpecToBP.h"
@@ -1500,7 +1500,7 @@ SpecToBPResult SpecToBP(backends::IBlueprintReader& reader,
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 3: Write unit tests against the mock backend**
+- [x] **Step 3: Write unit tests against the mock backend**
 
 Append to `test_bpspec.cpp`:
 
@@ -1528,7 +1528,7 @@ TEST_CASE("SpecToBP returns mock-backend-not-supported on the first write") {
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/SpecToBP.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/SpecToBP.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp
