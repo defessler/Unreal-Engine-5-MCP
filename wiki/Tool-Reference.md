@@ -847,7 +847,7 @@ canonical C++ idiom):
   chain naturally (continuations participate in the same auto-synth
   collector).
 - **EnhancedInput**: `K2Node_EnhancedInputAction` in event graphs →
-  per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue)`
+  per-trigger `UFUNCTION() void On<Name>_<Trigger>(FInputActionValue)`
   callback + synth `TObjectPtr<UInputAction>` UPROPERTY + auto-
   generated `virtual void SetupPlayerInputComponent(UInputComponent*)
   override` that wraps `EIC->BindAction(...)` calls in a
