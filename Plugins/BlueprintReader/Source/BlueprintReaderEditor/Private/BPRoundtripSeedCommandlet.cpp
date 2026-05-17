@@ -22,9 +22,11 @@ namespace
 {
 	FString EngineTemplateContentDir()
 	{
-		// Engine layout: <EngineDir>/Templates/TP_ThirdPersonBP/Content/
-		return FPaths::Combine(FPaths::EngineDir(), TEXT("Templates"),
-		                        TEXT("TP_ThirdPersonBP"), TEXT("Content"));
+		// Engine layout: <EngineRoot>/Templates/TP_ThirdPersonBP/Content/
+		// (Templates/ sits beside Engine/, not inside it.)
+		return FPaths::ConvertRelativePathToFull(
+			FPaths::Combine(FPaths::RootDir(), TEXT("Templates"),
+			                TEXT("TP_ThirdPersonBP"), TEXT("Content")));
 	}
 }
 
@@ -56,6 +58,38 @@ int32 UBPRoundtripSeedCommandlet::Main(const FString& Params)
 	ARModule.Get().ScanPathsSynchronous({ TemplateContentDir }, /*bForce=*/ true);
 
 	// (source mount path → destination package path)
+	//
+	// NOTE on scope: in UE 5.7, the TP_ThirdPersonBP template directory
+	// only ships these 3 Blueprints under ThirdPerson/Blueprints/. The
+	// supporting assets (ABP_Manny, IA_Move/Look/Jump, IMC_Default,
+	// SKM_Quinn_Simple, etc.) live in `Templates/TemplateResources/High/`
+	// and are merged into the project's /Game/ root only at template
+	// instantiation time (via the editor's "New Project" wizard) — they
+	// are not loadable from the TP_ThirdPersonBP/Content/ tree itself.
+	//
+	// For roundtrip-test purposes, the 3 BPs below give us:
+	//   - BP_ThirdPersonCharacter: rich complexity (Character parent,
+	//     component tree, EnhancedInput event-graph, multiple variables)
+	//   - BP_ThirdPersonGameMode + BP_ThirdPersonPlayerController:
+	//     minimal-override examples (parent class + a couple defaults)
+	//
+	// EXPECTED COMPILE WARNINGS: BP_ThirdPersonCharacter references
+	// `/Game/Input/Actions/IA_*` and `/Game/Characters/Mannequins/
+	// Anims/Unarmed/ABP_Unarmed` by soft path. Those packages are absent
+	// from the project, so the compiler emits "EnhancedInputAction None"
+	// warnings and the AnimBlueprint slot stays null. This does NOT
+	// affect the roundtrip test target — bp-reader operates on the
+	// serialized K2 graph (variables, components, nodes, pin types),
+	// which round-trip independently of asset-resolution status.
+	//
+	// TODO(roundtrip-expansion): if a future test needs a clean-compile
+	// fixture, mount `Templates/TemplateResources/High/Input/Content/`
+	// at `/TemplateInput/` and copy `IA_Move`, `IA_Look`, `IA_Jump`,
+	// `IA_MouseLook`, `IMC_Default`, plus `Touch/BPI_TouchInterface` to
+	// `/Game/Input/...`. The animation tree (ABP_Unarmed + SKM_Quinn
+	// + dozens of MM_/MF_ sequences) is intentionally NOT recommended
+	// — it would add hundreds of megabytes of skeletal-mesh / anim
+	// assets to the repo for no roundtrip-test benefit.
 	const TArray<TPair<FString, FString>> Copies = {
 		{ TEXT("/TPTemplate/ThirdPerson/Blueprints/BP_ThirdPersonCharacter"),
 		  TEXT("/Game/Imported/ThirdPerson/BP_ThirdPersonCharacter") },
@@ -63,16 +97,6 @@ int32 UBPRoundtripSeedCommandlet::Main(const FString& Params)
 		  TEXT("/Game/Imported/ThirdPerson/BP_ThirdPersonGameMode") },
 		{ TEXT("/TPTemplate/ThirdPerson/Blueprints/BP_ThirdPersonPlayerController"),
 		  TEXT("/Game/Imported/ThirdPerson/BP_ThirdPersonPlayerController") },
-		{ TEXT("/TPTemplate/Characters/Mannequins/Animations/ABP_Manny"),
-		  TEXT("/Game/Imported/ThirdPerson/ABP_Manny") },
-		{ TEXT("/TPTemplate/ThirdPerson/Input/Actions/IA_Move"),
-		  TEXT("/Game/Imported/ThirdPerson/Input/IA_Move") },
-		{ TEXT("/TPTemplate/ThirdPerson/Input/Actions/IA_Look"),
-		  TEXT("/Game/Imported/ThirdPerson/Input/IA_Look") },
-		{ TEXT("/TPTemplate/ThirdPerson/Input/Actions/IA_Jump"),
-		  TEXT("/Game/Imported/ThirdPerson/Input/IA_Jump") },
-		{ TEXT("/TPTemplate/ThirdPerson/Input/IMC_Default"),
-		  TEXT("/Game/Imported/ThirdPerson/Input/IMC_Default") },
 	};
 
 	int32 Failures = 0;
