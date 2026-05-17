@@ -972,7 +972,7 @@ namespace
 		}
 
 		UClass* ParentClass = ResolveParentClass(ParentClassSpec);
-		if (!ParentClass)
+		if (!IsValid(ParentClass))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("CreateBlueprint: parent class not found: %s"), *ParentClassSpec);
@@ -1053,7 +1053,7 @@ namespace
 			return 4;
 		}
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
-		if (!Node)
+		if (!IsValid(Node))
 		{
 			return 4;
 		}
@@ -1581,7 +1581,7 @@ namespace
 	// Pull the editor world. Tries the editor's first PIE / EditorWorldContext.
 	UWorld* GetEditorWorldOrNull()
 	{
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			if (UWorld* W = GEditor->GetEditorWorldContext().World())
 			{
@@ -1603,7 +1603,7 @@ namespace
 		// Capture log output during the call via a string output device.
 		FStringOutputDevice Capture;
 		Capture.SetAutoEmitLineTerminator(true);
-		if (GEngine)
+		if (IsValid(GEngine))
 		{
 			GEngine->Exec(GetEditorWorldOrNull(), *Cmd, Capture);
 		}
@@ -1665,7 +1665,7 @@ namespace
 		FString Mode = TEXT("selected_viewport");
 		FParse::Value(*Params, TEXT("Mode="), Mode);
 		bool bStarted = false;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			FRequestPlaySessionParams Req;
 			// Default to selected viewport — matches the "Play" button.
@@ -1715,7 +1715,7 @@ namespace
 				TEXT("Live Coding compile triggered; watch the output log for progress."));
 			// Trigger via console command — avoids the need to include the
 			// LiveCoding module header.
-			if (GEngine)
+			if (IsValid(GEngine))
 			{
 				GEngine->Exec(GetEditorWorldOrNull(), TEXT("LiveCoding.Compile"));
 			}
@@ -1732,10 +1732,10 @@ namespace
 	int32 RunGetSelectedActorsOp(const FString&, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Names;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			USelection* Selection = GEditor->GetSelectedActors();
-			if (Selection)
+			if (IsValid(Selection))
 			{
 				for (FSelectionIterator It(*Selection); It; ++It)
 				{
@@ -1789,7 +1789,7 @@ namespace
 		// audit pass; fixed here.
 		TArray<TSharedPtr<FJsonValue>> OpenAssetsJson;
 		TSharedPtr<FJsonValue> ActiveAssetJson;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
 			{
@@ -1850,10 +1850,10 @@ namespace
 
 		// ----- current level --------------------------------------------
 		TSharedPtr<FJsonObject> LevelJson;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			UWorld* World = GEditor->GetEditorWorldContext().World();
-			if (World)
+			if (IsValid(World))
 			{
 				LevelJson = MakeShared<FJsonObject>();
 				LevelJson->SetStringField(TEXT("package_path"),
@@ -1871,7 +1871,7 @@ namespace
 
 		// ----- viewport camera (read; we already have set_camera_transform) -
 		TSharedPtr<FJsonObject> CameraJson;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			// Iterate the level viewport clients; pick the active one (or
 			// the first perspective viewport if none active). Mirrors how
@@ -1921,7 +1921,7 @@ namespace
 
 		// ----- selected actors (duplicated for one-call convenience) ----
 		TArray<TSharedPtr<FJsonValue>> SelectedJson;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			if (USelection* Selection = GEditor->GetSelectedActors())
 			{
@@ -2009,7 +2009,7 @@ namespace
 			bool bActive = false;
 			explicit FPyTransactionScope(const FText& Title)
 			{
-				if (GEditor) { GEditor->BeginTransaction(Title); bActive = true; }
+				if (IsValid(GEditor)) { GEditor->BeginTransaction(Title); bActive = true; }
 			}
 			~FPyTransactionScope()
 			{
@@ -2275,10 +2275,10 @@ namespace
 		TArray<FString> NameList;
 		NamesJoined.ParseIntoArray(NameList, TEXT(","), /*bCullEmpty=*/true);
 
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			USelection* Selection = GEditor->GetSelectedActors();
-			if (Selection)
+			if (IsValid(Selection))
 			{
 				Selection->BeginBatchSelectOperation();
 				if (bReplace) GEditor->SelectNone(/*bNoteSelectionChange=*/false,
@@ -2303,7 +2303,7 @@ namespace
 
 		// Re-pull the current selection so the caller can confirm.
 		TArray<TSharedPtr<FJsonValue>> Names;
-		if (GEditor)
+		if (IsValid(GEditor))
 		{
 			if (USelection* S = GEditor->GetSelectedActors())
 			{
@@ -2350,7 +2350,7 @@ namespace
 			return 4;
 		}
 		UWorld* World = GetEditorWorldOrNull();
-		if (!World)
+		if (!IsValid(World))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("SpawnActor: no editor world"));
 			return 5;
@@ -2377,7 +2377,7 @@ namespace
 	AActor* FindActorByName(const FString& Name)
 	{
 		UWorld* World = GetEditorWorldOrNull();
-		if (!World)
+		if (!IsValid(World))
 		{
 			return nullptr;
 		}
@@ -2798,7 +2798,7 @@ namespace
 		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
 
 		bool bRemoved = false;
-		if (Node)
+		if (IsValid(Node))
 		{
 			SCS->RemoveNodeAndPromoteChildren(Node);
 			bRemoved = true;
@@ -2835,7 +2835,7 @@ namespace
 		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
 		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
-		if (!Node)
+		if (!IsValid(Node))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AttachComponent: node '%s' not found"), *Name);
@@ -4021,7 +4021,7 @@ namespace
 			}
 			if (It->GetName() == ClassName) { AssetClass = *It; break; }
 		}
-		if (!AssetClass)
+		if (!IsValid(AssetClass))
 		{
 			return 4;
 		}
@@ -4531,7 +4531,7 @@ namespace
 			{
 				if (It->GetActorLabel() == ActorName || It->GetName() == ActorName)
 				{
-					if (GEditor)
+					if (IsValid(GEditor))
 					{
 						GEditor->SelectActor(*It, /*bSelected=*/true, /*bNotify=*/true);
 						GEditor->MoveViewportCamerasToActor(**It, /*bActiveViewportOnly=*/true);
@@ -5003,7 +5003,7 @@ namespace
 		Cmd += Pattern.IsEmpty() ? TEXT("*") : Pattern;
 		bool bStarted = false;
 		FString Message;
-		if (GEngine)
+		if (IsValid(GEngine))
 		{
 			FStringOutputDevice Capture;
 			GEngine->Exec(GetEditorWorldOrNull(), *Cmd, Capture);
@@ -5295,7 +5295,7 @@ namespace
 			return 4;
 		}
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
-		if (!Node)
+		if (!IsValid(Node))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition: node %s not found in %s"), *NodeId, *GraphName);
 			return 4;
@@ -5335,7 +5335,7 @@ namespace
 			return 4;
 		}
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
-		if (!Node)
+		if (!IsValid(Node))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteNode: node %s not found in %s"), *NodeId, *GraphName);
 			return 4;
