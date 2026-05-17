@@ -1543,7 +1543,7 @@ git commit -m "feat(roundtrip): SpecToBP — rebuilds a BP from BPSpec via write
 - Create: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Public/BlueprintStructuralDiff.h`
 - Create: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintStructuralDiff.cpp`
 
-- [ ] **Step 1: Write the header**
+- [x] **Step 1: Write the header**
 
 ```cpp
 // BlueprintStructuralDiff — position-independent comparison of two
@@ -1587,7 +1587,7 @@ FResult Compare(UBlueprint* A, UBlueprint* B, const FCompareOptions& Options);
 }    // namespace BlueprintStructuralDiff
 ```
 
-- [ ] **Step 2: Write the implementation (covers variables, components, functions, event graph)**
+- [x] **Step 2: Write the implementation (covers variables, components, functions, event graph)**
 
 ```cpp
 #include "BlueprintStructuralDiff.h"
@@ -1782,7 +1782,7 @@ TSharedPtr<FJsonObject> FResult::ToJson() const {
 "D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Source/BlueprintReaderEditor/Public/BlueprintStructuralDiff.h Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintStructuralDiff.cpp
@@ -1796,11 +1796,11 @@ git commit -m "feat(plugin): BlueprintStructuralDiff — position-independent UB
 **Files:**
 - Modify: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReaderCommandlet.cpp`
 
-- [ ] **Step 1: Add the enum value**
+- [x] **Step 1: Add the enum value**
 
 Find the `EOp` enum in `BlueprintReaderCommandlet.cpp`. Add `StructuralDiff,` to the list (typically before any sentinel `Count`).
 
-- [ ] **Step 2: Add the `ParseOp` entry**
+- [x] **Step 2: Add the `ParseOp` entry**
 
 In the parser function around line 281 (look for the chain of `if (OpStr.Equals(TEXT("List")...`):
 
@@ -1808,7 +1808,7 @@ In the parser function around line 281 (look for the chain of `if (OpStr.Equals(
 if (OpStr.Equals(TEXT("StructuralDiff"), ESearchCase::IgnoreCase)) { OutOp = EOp::StructuralDiff; return true; }
 ```
 
-- [ ] **Step 3: Add the dispatch arm**
+- [x] **Step 3: Add the dispatch arm**
 
 In `RunOneOp` (search for `case EOp::List:`), add:
 
@@ -1817,7 +1817,7 @@ case EOp::StructuralDiff:
     return RunStructuralDiffOp(Params, OutputPath, bPretty);
 ```
 
-- [ ] **Step 4: Add the impl**
+- [x] **Step 4: Add the impl**
 
 Near the other `RunFooOp` impls in the same file:
 
@@ -1847,7 +1847,7 @@ static int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPat
 
 (`EmitOk` / `EmitErr` are existing helpers in the same file — find them by grep if signatures differ.)
 
-- [ ] **Step 5: Add the include at the top of the file**
+- [x] **Step 5: Add the include at the top of the file**
 
 ```cpp
 #include "BlueprintStructuralDiff.h"
@@ -1867,7 +1867,7 @@ static int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPat
 
 Expected: `{"ok": true, "differences": []}` on stdout.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReaderCommandlet.cpp
@@ -1882,7 +1882,7 @@ git commit -m "feat(plugin): EOp::StructuralDiff — commandlet op for BP struct
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/IBlueprintReader.h`
 - Modify: `MockBlueprintReader.{h,cpp}`, `CommandletBlueprintReader.{h,cpp}`, `SocketBlueprintReader.{h,cpp}`, `CachingBlueprintReader.{h,cpp}`, `ReadOnlyBlueprintReader.{h,cpp}`, `AutoBlueprintReader.{h,cpp}`
 
-- [ ] **Step 1: Add the pure-virtual method + result struct to `IBlueprintReader.h`**
+- [x] **Step 1: Add the pure-virtual method + result struct to `IBlueprintReader.h`**
 
 Place near the other diff/compare-shaped methods (anywhere in the class body works; put it near `Read` since it's a read-style op).
 
@@ -1900,7 +1900,7 @@ virtual nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 }
 ```
 
-- [ ] **Step 2: Implement on `CommandletBlueprintReader` (serializes args + runs the op)**
+- [x] **Step 2: Implement on `CommandletBlueprintReader` (serializes args + runs the op)**
 
 In `CommandletBlueprintReader.h`, declare:
 
@@ -1928,9 +1928,9 @@ nlohmann::json CommandletBlueprintReader::StructuralDiff(
 
 (`RunOp` is the existing helper; consult `Read` or `GetGraph` for the exact pattern.)
 
-- [ ] **Step 3: Implement on `SocketBlueprintReader` similarly** (sends a frame, awaits the response)
+- [x] **Step 3: Implement on `SocketBlueprintReader` similarly** (sends a frame, awaits the response)
 
-- [ ] **Step 4: Implement on `MockBlueprintReader` to throw not-supported with a friendly message**
+- [x] **Step 4: Implement on `MockBlueprintReader` to throw not-supported with a friendly message**
 
 ```cpp
 nlohmann::json MockBlueprintReader::StructuralDiff(
@@ -1941,7 +1941,7 @@ nlohmann::json MockBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 5: Forward through `CachingBlueprintReader` (no caching for diffs)**
+- [x] **Step 5: Forward through `CachingBlueprintReader` (no caching for diffs)**
 
 ```cpp
 nlohmann::json CachingBlueprintReader::StructuralDiff(
@@ -1950,7 +1950,7 @@ nlohmann::json CachingBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 6: Forward through `ReadOnlyBlueprintReader` (diff is a read op)**
+- [x] **Step 6: Forward through `ReadOnlyBlueprintReader` (diff is a read op)**
 
 ```cpp
 nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
@@ -1959,7 +1959,7 @@ nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 7: Forward through `AutoBlueprintReader`**
+- [x] **Step 7: Forward through `AutoBlueprintReader`**
 
 The auto backend probes per-call; pattern matches the other forwarders. Add:
 
@@ -1978,7 +1978,7 @@ nlohmann::json AutoBlueprintReader::StructuralDiff(
 
 Expected: all 441 cases still pass (tool count assertion will fail in Task 15 — that's expected at that point).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/IBlueprintReader.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Mock*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Commandlet*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Socket*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Caching*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/ReadOnly*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Auto*.{h,cpp}
@@ -1994,7 +1994,7 @@ git commit -m "feat(backends): StructuralDiff method across all IBlueprintReader
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp` (line 36)
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp` (line 94)
 
-- [ ] **Step 1: Register the tool — append to `RegisterBlueprintTools`**
+- [x] **Step 1: Register the tool — append to `RegisterBlueprintTools`**
 
 Find the last `{ ToolDescriptor d; d.name = "..."; ... registry.Add(...); }` block in `BlueprintTools.cpp` and add after it:
 
@@ -2036,14 +2036,14 @@ Find the last `{ ToolDescriptor d; d.name = "..."; ... registry.Add(...); }` blo
 }
 ```
 
-- [ ] **Step 2: Bump tool count in `test_tools.cpp`**
+- [x] **Step 2: Bump tool count in `test_tools.cpp`**
 
 ```cpp
 // Was: CHECK(spec.size() == 126);
 CHECK(spec.size() == 127);
 ```
 
-- [ ] **Step 3: Bump tool count in `test_mcp.cpp`**
+- [x] **Step 3: Bump tool count in `test_mcp.cpp`**
 
 ```cpp
 // Was: CHECK(list.size() == 126);
@@ -2058,7 +2058,7 @@ CHECK(list.size() == 127);
 
 Expected: all 441+ cases pass (count assertions pick up the new tool).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/BlueprintTools.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp
