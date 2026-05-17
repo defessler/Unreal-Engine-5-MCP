@@ -101,7 +101,7 @@ TEST_CASE("[live][roundtrip][bpir] BP_Enemy -> decompile -> emit cpp"
 	auto reader = MakeLiveReader();
 	REQUIRE(reader);
 
-	const std::string src    = "/Game/AI/BP_Enemy";
+	const std::string src    = "/Game/AI/BP_TestEnemy";
 	const std::string clone  = "/Game/Recreated/BPIR_BP_Enemy";
 	const std::string engine = GetEnv("BP_READER_ENGINE_DIR");
 	const std::string proj   = GetEnv("BP_READER_PROJECT");
@@ -140,8 +140,8 @@ TEST_CASE("[live][roundtrip][bpir] BP_Enemy -> decompile -> emit cpp"
 	// (UE Actor lineage gets the A-prefix). The PrefixClassName
 	// logic is exercised here.
 	CHECK(hSrc.find("class") != std::string::npos);
-	CHECK(hSrc.find("BP_Enemy") != std::string::npos);
-	CHECK(cppSrc.find("BP_Enemy") != std::string::npos);
+	CHECK(hSrc.find("BP_TestEnemy") != std::string::npos);
+	CHECK(cppSrc.find("BP_TestEnemy") != std::string::npos);
 
 	// Stages 4-5 are stubbed in BPIRRoundtrip.cpp. Assert the
 	// documented failure shape -- when parse/transpile land, these
@@ -157,8 +157,11 @@ TEST_CASE("[live][roundtrip][bpir] BP_Enemy -> decompile -> emit cpp"
 	// Cleanup the generated pair so the next run starts fresh and a
 	// regression in the emit step doesn't get masked by stale files.
 	// build.log (stage-3 artifact) is left in place for triage.
-	RemoveIfExists(hPath);
-	RemoveIfExists(cppPath);
+	// Set BP_READER_KEEP_GENERATED=1 to skip cleanup when debugging.
+	if (GetEnv("BP_READER_KEEP_GENERATED").empty()) {
+		RemoveIfExists(hPath);
+		RemoveIfExists(cppPath);
+	}
 }
 
 TEST_CASE("[live][slow][roundtrip][bpir] BP_ThirdPersonCharacter -> decompile -> emit cpp"
@@ -217,6 +220,8 @@ TEST_CASE("[live][slow][roundtrip][bpir] BP_ThirdPersonCharacter -> decompile ->
 	CHECK(res.error_message.find("ParseCppFunction") != std::string::npos);
 	CHECK(res.bpir_after.is_null());
 
-	RemoveIfExists(hPath);
-	RemoveIfExists(cppPath);
+	if (GetEnv("BP_READER_KEEP_GENERATED").empty()) {
+		RemoveIfExists(hPath);
+		RemoveIfExists(cppPath);
+	}
 }
