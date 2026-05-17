@@ -30,14 +30,14 @@ using namespace bpr::backends;
 
 TEST_CASE("structural_diff: mock backend reports not-supported") {
 	auto mock = bpr::test::MakeMockReader();
-	CHECK_THROWS_AS(mock.StructuralDiff("/Game/A", "/Game/B"),
+	CHECK_THROWS_AS(mock.StructuralDiff("/Game/A", "/Game/B", {}),
 					BlueprintReaderError);
 }
 
 TEST_CASE("structural_diff: not-supported message mentions live/commandlet") {
 	auto mock = bpr::test::MakeMockReader();
 	try {
-		mock.StructuralDiff("/Game/A", "/Game/B");
+		mock.StructuralDiff("/Game/A", "/Game/B", {});
 		FAIL("expected throw");
 	} catch (const BlueprintReaderError& e) {
 		const std::string msg = e.what();
