@@ -27,7 +27,10 @@ std::string TypeToShorthand(const BPPinType& t) {
 	auto subObj = t.SubCategoryObject.value_or("");
 
 	auto wrapContainer = [&](std::string inner) {
-		if (t.IsArray) return std::string("[]") + inner;
+		if (t.IsArray)
+		{
+			return std::string("[]") + inner;
+		}
 		if (t.IsSet)   return std::string("{}") + inner;
 		if (t.IsMap) {
 			// Map key encoded in SubCategory (matches TypeShorthand's
@@ -39,7 +42,10 @@ std::string TypeToShorthand(const BPPinType& t) {
 	};
 
 	if (t.Category == "real") {
-		if (sub == "double") return wrapContainer("double");
+		if (sub == "double")
+		{
+			return wrapContainer("double");
+		}
 		return wrapContainer("float");
 	}
 	if (t.Category == "bool" || t.Category == "int"   || t.Category == "int64" ||
@@ -71,16 +77,37 @@ nlohmann::json VariableDeclToJson(const BPVariable& v) {
 		{"name", v.Name},
 		{"type", TypeToShorthand(v.Type)},
 	};
-	if (v.DefaultValue && !v.DefaultValue->empty()) j["default"]    = *v.DefaultValue;
-	if (v.Category && !v.Category->empty())        j["category"]    = *v.Category;
-	if (v.IsReplicated)                            j["replicated"]  = true;
-	if (v.IsEditable)                              j["editable"]    = true;
+	if (v.DefaultValue && !v.DefaultValue->empty())
+	{
+		j["default"]    = *v.DefaultValue;
+	}
+	if (v.Category && !v.Category->empty())
+	{
+		j["category"]    = *v.Category;
+	}
+	if (v.IsReplicated)
+	{
+		j["replicated"]  = true;
+	}
+	if (v.IsEditable)
+	{
+		j["editable"]    = true;
+	}
 	// Batch 2 wire-format extensions — pass through so CppClassEmit
 	// can render UPROPERTY meta=(ExposeOnSpawn=true),
 	// ReplicatedUsing=OnRep_X, and DOREPLIFETIME_CONDITION specifiers.
-	if (v.RepCondition && !v.RepCondition->empty()) j["rep_condition"]   = *v.RepCondition;
-	if (v.ExposeOnSpawn)                            j["expose_on_spawn"] = true;
-	if (v.RepNotifyFunc && !v.RepNotifyFunc->empty()) j["rep_notify_func"] = *v.RepNotifyFunc;
+	if (v.RepCondition && !v.RepCondition->empty())
+	{
+		j["rep_condition"]   = *v.RepCondition;
+	}
+	if (v.ExposeOnSpawn)
+	{
+		j["expose_on_spawn"] = true;
+	}
+	if (v.RepNotifyFunc && !v.RepNotifyFunc->empty())
+	{
+		j["rep_notify_func"] = *v.RepNotifyFunc;
+	}
 	// Multicast delegate signature params: surface so CppClassEmit
 	// can choose the matching DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
 	// variant. Omit when empty.
@@ -148,7 +175,10 @@ struct Walker {
 
 	const BPPin* GetPin(const BPNode& n, std::string_view name) const {
 		for (const auto& p : n.Pins) {
-			if (p.Name == name) return &p;
+			if (p.Name == name)
+			{
+				return &p;
+			}
 		}
 		return nullptr;
 	}
@@ -165,9 +195,15 @@ struct Walker {
 	// outgoing connection (BP path terminates here).
 	const BPNode* FollowExec(const BPNode& n, std::string_view pinName) const {
 		const BPPin* out = FindExecOut(n, pinName);
-		if (!out) return nullptr;
+		if (!out)
+		{
+			return nullptr;
+		}
 		auto it = outEdges.find({n.Id, out->Id});
-		if (it == outEdges.end() || it->second.empty()) return nullptr;
+		if (it == outEdges.end() || it->second.empty())
+		{
+			return nullptr;
+		}
 		const auto& target = it->second.front();
 		return GetNode(target.node);
 	}
@@ -176,10 +212,22 @@ struct Walker {
 	// function's signature; locals from `function.Locals`; otherwise
 	// it's a member.
 	std::string ScopeForVariable(const std::string& name) const {
-		for (const auto& v : function.Inputs)  if (v.Name == name) return "input";
-		for (const auto& v : function.Outputs) if (v.Name == name) return "output";
-		for (const auto& v : function.Locals)  if (v.Name == name) return "local";
-		if (memberVarNames.count(name)) return "member";
+		for (const auto& v : function.Inputs)
+		{
+			if (v.Name == name) return "input";
+		}
+		for (const auto& v : function.Outputs)
+		{
+			if (v.Name == name) return "output";
+		}
+		for (const auto& v : function.Locals)
+		{
+			if (v.Name == name) return "local";
+		}
+		if (memberVarNames.count(name))
+		{
+			return "member";
+		}
 		return {};  // unknown — leave scope unset (consumer can guess)
 	}
 };
@@ -250,7 +298,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		}
 		nlohmann::json out = {{"var", varName}};
 		std::string scope = w.ScopeForVariable(varName);
-		if (!scope.empty()) out["scope"] = scope;
+		if (!scope.empty())
+		{
+			out["scope"] = scope;
+		}
 		return out;
 	}
 	if (producer.Class.find("K2Node_Self") != std::string::npos) {
@@ -269,7 +320,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 			if (valueName.empty()) valueName = producer.Meta.value("value", std::string{});
 		}
 		// Fallback: look at the named output pin for the value.
-		if (valueName.empty()) valueName = outputPin.Name;
+		if (valueName.empty())
+		{
+			valueName = outputPin.Name;
+		}
 		// Strip /Script/Module. path from enum type if present.
 		if (auto dot = enumType.find_last_of('.'); dot != std::string::npos) {
 			enumType = enumType.substr(dot + 1);
@@ -280,7 +334,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 			enumType = "E" + enumType;
 		}
 		std::string qualified;
-		if (!enumType.empty()) qualified = enumType + "::" + valueName;
+		if (!enumType.empty())
+		{
+			qualified = enumType + "::" + valueName;
+		}
 		else                    qualified = valueName;
 		// Emit as a literal so codegen passes it through unchanged
 		// (string with leading '/' or '*' or '/*' is preserved verbatim
@@ -383,11 +440,20 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		nlohmann::json out = {{"call", fqName}};
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
-			if (p.Name == "self") continue;  // implicit; codegen handles
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
+			if (p.Name == "self")
+			{
+				continue;  // implicit; codegen handles
+			}
 			args[p.Name] = BuildExpression(w, producer, p);
 		}
-		if (!args.empty()) out["args"] = std::move(args);
+		if (!args.empty())
+		{
+			out["args"] = std::move(args);
+		}
 		return out;
 	}
 	// GetClassDefaults → `GetDefault<T>()->Field` or
@@ -419,7 +485,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		std::string formatStr;
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input") continue;
+			if (p.Direction != "Input")
+			{
+				continue;
+			}
 			if (p.Name == "Format") {
 				// Format pin's literal string default. Build it as a lit.
 				if (p.DefaultValue && !p.DefaultValue->empty()) {
@@ -428,19 +497,31 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 				continue;
 			}
 			// Skip exec / structural pins; named-arg pins are data inputs.
-			if (p.Type.Category == "exec") continue;
+			if (p.Type.Category == "exec")
+			{
+				continue;
+			}
 			args[p.Name] = BuildExpression(w, producer, p);
 		}
 		nlohmann::json out = {{"call", "__bpr_format_text"}};
-		if (!formatStr.empty()) out["format"] = formatStr;
-		if (!args.empty()) out["args"] = std::move(args);
+		if (!formatStr.empty())
+		{
+			out["format"] = formatStr;
+		}
+		if (!args.empty())
+		{
+			out["args"] = std::move(args);
+		}
 		return out;
 	}
 
 	if (producer.Class.find("K2Node_MakeArray") != std::string::npos) {
 		nlohmann::json arr = nlohmann::json::array();
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			arr.push_back(BuildExpression(w, producer, p));
 		}
 		return nlohmann::json{{"new_array", std::move(arr)}};
@@ -452,7 +533,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		// sets but we preserve BP-pin order for stability.
 		nlohmann::json arr = nlohmann::json::array();
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			arr.push_back(BuildExpression(w, producer, p));
 		}
 		return nlohmann::json{{"new_set", std::move(arr)}};
@@ -467,22 +551,46 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		std::map<int, Pair> bySlot;
 		auto parseSlot = [](const std::string& s, const char* prefix) -> int {
 			std::size_t plen = std::strlen(prefix);
-			if (s.size() < plen) return -1;
-			if (s.compare(0, plen, prefix) != 0) return -1;
+			if (s.size() < plen)
+			{
+				return -1;
+			}
+			if (s.compare(0, plen, prefix) != 0)
+			{
+				return -1;
+			}
 			// Skip an optional separator (' ' or '_') after the prefix.
 			std::size_t i = plen;
-			if (i < s.size() && (s[i] == ' ' || s[i] == '_')) ++i;
-			if (i >= s.size()) return -1;
+			if (i < s.size() && (s[i] == ' ' || s[i] == '_'))
+			{
+				++i;
+			}
+			if (i >= s.size())
+			{
+				return -1;
+			}
 			try { return std::stoi(s.substr(i)); } catch (...) { return -1; }
 		};
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
-			if (int slot = parseSlot(p.Name, "Key");   slot >= 0) bySlot[slot].key = &p;
-			if (int slot = parseSlot(p.Name, "Value"); slot >= 0) bySlot[slot].val = &p;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
+			if (int slot = parseSlot(p.Name, "Key");   slot >= 0)
+			{
+				bySlot[slot].key = &p;
+			}
+			if (int slot = parseSlot(p.Name, "Value"); slot >= 0)
+			{
+				bySlot[slot].val = &p;
+			}
 		}
 		nlohmann::json arr = nlohmann::json::array();
 		for (const auto& [slot, pp] : bySlot) {
-			if (!pp.key || !pp.val) continue;  // skip incomplete pairs
+			if (!pp.key || !pp.val)
+			{
+				continue;  // skip incomplete pairs
+			}
 			nlohmann::json entry;
 			entry["key"]   = BuildExpression(w, producer, *pp.key);
 			entry["value"] = BuildExpression(w, producer, *pp.val);
@@ -506,7 +614,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 				break;
 			}
 		}
-		if (!inPin) return LiteralFromDefault(outputPin);
+		if (!inPin)
+		{
+			return LiteralFromDefault(outputPin);
+		}
 		nlohmann::json structExpr = BuildExpression(w, producer, *inPin);
 		return nlohmann::json{
 			{"member", std::move(structExpr)},
@@ -520,7 +631,10 @@ nlohmann::json ProducerToExpression(const Walker& w, const BPNode& producer,
 		}
 		nlohmann::json fields = nlohmann::json::object();
 		for (const auto& p : producer.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			fields[p.Name] = BuildExpression(w, producer, p);
 		}
 		return nlohmann::json{
@@ -580,11 +694,17 @@ nlohmann::json BuildExpression(const Walker& w, const BPNode& consumer,
 	// First-source wins for v1.
 	const auto& src = it->second.front();
 	const BPNode* producer = w.GetNode(src.node);
-	if (!producer) return LiteralFromDefault(consumerPin);
+	if (!producer)
+	{
+		return LiteralFromDefault(consumerPin);
+	}
 	auto pIt = w.pinNameById.find(src.pin);
 	const std::string& outPinName = pIt != w.pinNameById.end() ? pIt->second : std::string{};
 	const BPPin* outPin = w.GetPin(*producer, outPinName);
-	if (!outPin) return LiteralFromDefault(consumerPin);
+	if (!outPin)
+	{
+		return LiteralFromDefault(consumerPin);
+	}
 	return ProducerToExpression(w, *producer, *outPin);
 }
 
@@ -641,7 +761,10 @@ nlohmann::json DecompileStatementsFrom(const Walker& w,
 			!(res.statement.is_object() && res.statement.empty())) {
 			out.push_back(std::move(res.statement));
 		}
-		if (res.terminatesExec) break;
+		if (res.terminatesExec)
+		{
+			break;
+		}
 		cur = res.next;
 	}
 	return out;
@@ -663,7 +786,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	if (n.Class.find("K2Node_FunctionResult") != std::string::npos) {
 		nlohmann::json returns = nlohmann::json::array();
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			returns.push_back(BuildExpression(w, n, p));
 		}
 		if (returns.empty())      r.statement = nlohmann::json{{"return", nullptr}};
@@ -714,7 +840,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			: nlohmann::json{{"lit", nullptr}};
 		nlohmann::json stmt = {{"set", varName}, {"to", setExpr}};
 		std::string scope = w.ScopeForVariable(varName);
-		if (!scope.empty()) stmt["scope"] = scope;
+		if (!scope.empty())
+		{
+			stmt["scope"] = scope;
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -743,7 +872,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				guard.insert(cur->Id);
 				thenSeen.insert(cur->Id);
 				cur = w.FollowExec(*cur, "then");
-				if (!cur) break;
+				if (!cur)
+				{
+					break;
+				}
 			}
 			cur = elseStart;
 			guard.clear();
@@ -810,7 +942,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		nlohmann::json branches = nlohmann::json::array();
 		// Sequence pins are named "Then 0", "Then 1", ...
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Output" || p.Type.Category != "exec") continue;
+			if (p.Direction != "Output" || p.Type.Category != "exec")
+			{
+				continue;
+			}
 			const BPNode* branchStart = w.FollowExec(n, p.Name);
 			std::set<std::string> branchVisited;
 			branches.push_back(DecompileStatementsFrom(w, branchStart, stopAt, branchVisited));
@@ -829,11 +964,17 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	if (n.Class.find("K2Node_SpawnActorFromClass") != std::string::npos) {
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			args[p.Name] = BuildExpression(w, n, p);
 		}
 		nlohmann::json stmt = {{"call", "__bpr_spawn_actor_from_class"}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -847,8 +988,14 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	// renders the FindRow call + a nullness check that branches success/fail.
 	if (n.Class.find("K2Node_GetDataTableRow") != std::string::npos) {
 		nlohmann::json args = nlohmann::json::object();
-		if (const BPPin* p = w.GetPin(n, "DataTable")) args["DataTable"] = BuildExpression(w, n, *p);
-		if (const BPPin* p = w.GetPin(n, "RowName"))   args["RowName"]   = BuildExpression(w, n, *p);
+		if (const BPPin* p = w.GetPin(n, "DataTable"))
+		{
+			args["DataTable"] = BuildExpression(w, n, *p);
+		}
+		if (const BPPin* p = w.GetPin(n, "RowName"))
+		{
+			args["RowName"]   = BuildExpression(w, n, *p);
+		}
 		// Try to capture the row struct type from node meta so CppEmit can
 		// render the template arg. Different UE versions stamp this under
 		// slightly different keys; check the common ones.
@@ -859,7 +1006,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			if (rowStruct.empty()) rowStruct = n.Meta.value("structType", std::string{});
 		}
 		const BPNode* foundStart  = w.FollowExec(n, "RowFound");
-		if (!foundStart) foundStart = w.FollowExec(n, "then");
+		if (!foundStart)
+		{
+			foundStart = w.FollowExec(n, "then");
+		}
 		const BPNode* missedStart = w.FollowExec(n, "RowNotFound");
 
 		std::set<std::string> succV, failV;
@@ -869,8 +1019,14 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			: nlohmann::json::array();
 
 		nlohmann::json stmt = {{"call", "__bpr_get_data_table_row"}};
-		if (!args.empty()) stmt["args"] = std::move(args);
-		if (!rowStruct.empty()) stmt["row_struct"] = rowStruct;
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
+		if (!rowStruct.empty())
+		{
+			stmt["row_struct"] = rowStruct;
+		}
 		stmt["success"] = std::move(foundBody);
 		stmt["fail"]    = std::move(missedBody);
 		r.statement = std::move(stmt);
@@ -884,10 +1040,19 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	// The Class pin is the class to instantiate.
 	if (n.Class.find("K2Node_ConstructObjectFromClass") != std::string::npos) {
 		nlohmann::json args = nlohmann::json::object();
-		if (const BPPin* p = w.GetPin(n, "Class")) args["Class"] = BuildExpression(w, n, *p);
-		if (const BPPin* p = w.GetPin(n, "Outer")) args["Outer"] = BuildExpression(w, n, *p);
+		if (const BPPin* p = w.GetPin(n, "Class"))
+		{
+			args["Class"] = BuildExpression(w, n, *p);
+		}
+		if (const BPPin* p = w.GetPin(n, "Outer"))
+		{
+			args["Outer"] = BuildExpression(w, n, *p);
+		}
 		nlohmann::json stmt = {{"call", "__bpr_construct_object_from_class"}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -905,12 +1070,21 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		}
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
-			if (p.Name == "self") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
+			if (p.Name == "self")
+			{
+				continue;
+			}
 			args[p.Name] = BuildExpression(w, n, p);
 		}
 		nlohmann::json stmt = {{"call", "Super::" + fnName}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -922,11 +1096,17 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	// BP node's pin count is captured so the agent gets context.
 	if (n.Class.find("K2Node_MultiGate") != std::string::npos) {
 		nlohmann::json fields = nlohmann::json::object();
-		if (n.Meta.is_object()) fields = n.Meta;
+		if (n.Meta.is_object())
+		{
+			fields = n.Meta;
+		}
 		// Count the output exec pins (one per gate).
 		int gateCount = 0;
 		for (const auto& p : n.Pins) {
-			if (p.Direction == "Output" && p.Type.Category == "exec") gateCount++;
+			if (p.Direction == "Output" && p.Type.Category == "exec")
+			{
+				gateCount++;
+			}
 		}
 		fields["gate_count"] = gateCount;
 		r.statement = nlohmann::json{{"unsupported", nlohmann::json{
@@ -950,7 +1130,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	// refactor.
 	if (n.Class.find("K2Node_LoadAsset") != std::string::npos) {
 		nlohmann::json fields = nlohmann::json::object();
-		if (n.Meta.is_object()) fields = n.Meta;
+		if (n.Meta.is_object())
+		{
+			fields = n.Meta;
+		}
 		if (const BPPin* ap = w.GetPin(n, "Asset")) {
 			fields["asset_pin"] = BuildExpression(w, n, *ap);
 		}
@@ -1003,7 +1186,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			// without this lowering, every IsValid in a graph becomes a
 			// sidecar TODO entry that breaks control flow.
 			const BPPin* inputPin = w.GetPin(n, "InputObject");
-			if (!inputPin) inputPin = w.GetPin(n, "Object");  // alt name in some variants
+			if (!inputPin)
+			{
+				inputPin = w.GetPin(n, "Object");  // alt name in some variants
+			}
 			nlohmann::json inputExpr = inputPin
 				? BuildExpression(w, n, *inputPin)
 				: nlohmann::json{{"self", nullptr}};
@@ -1020,8 +1206,14 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			nlohmann::json elseBody = DecompileStatementsFrom(w, elseStart, stopAt, ve);
 
 			nlohmann::json stmt = {{"if", std::move(cond)}};
-			if (!thenBody.empty()) stmt["then"] = std::move(thenBody);
-			if (!elseBody.empty()) stmt["else"] = std::move(elseBody);
+			if (!thenBody.empty())
+			{
+				stmt["then"] = std::move(thenBody);
+			}
+			if (!elseBody.empty())
+			{
+				stmt["else"] = std::move(elseBody);
+			}
 			r.statement = std::move(stmt);
 			// Both branches are walked into terminal positions; no
 			// continuation past this node (IsValid's only exec outputs
@@ -1038,7 +1230,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				? BuildExpression(w, n, *arrayPin)
 				: nlohmann::json{{"new_array", nlohmann::json::array()}};
 			const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
-			if (!bodyStart) bodyStart = w.FollowExec(n, "then");
+			if (!bodyStart)
+			{
+				bodyStart = w.FollowExec(n, "then");
+			}
 			std::set<std::string> v;
 			// stopAt = &n: stop if we somehow recurse back to the loop
 			// node (defensive; BP forEach bodies don't normally do that).
@@ -1048,7 +1243,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				{"in",       arrayExpr},
 				{"body",     std::move(body)},
 			};
-			if (isReverseForEach) stmt["reverse"] = true;
+			if (isReverseForEach)
+			{
+				stmt["reverse"] = true;
+			}
 			r.statement = std::move(stmt);
 			// Continue past the loop on the Completed exec.
 			const BPNode* afterLoop = w.FollowExec(n, "Completed");
@@ -1062,7 +1260,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				? BuildExpression(w, n, *condPin)
 				: nlohmann::json{{"lit", true}};
 			const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
-			if (!bodyStart) bodyStart = w.FollowExec(n, "then");
+			if (!bodyStart)
+			{
+				bodyStart = w.FollowExec(n, "then");
+			}
 			std::set<std::string> v;
 			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, &n, v);
 			r.statement = {{"while", cond}, {"body", std::move(body)}};
@@ -1073,7 +1274,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// Unrecognized macro — fall through to the generic unsupported
 		// path with the macro_path captured so the sidecar is useful.
 		nlohmann::json fields = nlohmann::json::object();
-		if (n.Meta.is_object()) fields = n.Meta;
+		if (n.Meta.is_object())
+		{
+			fields = n.Meta;
+		}
 		r.statement = nlohmann::json{{"unsupported", nlohmann::json{
 			{"node_class", n.Class},
 			{"guid", n.Id},
@@ -1094,7 +1298,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			args["Target"] = BuildExpression(w, n, *tp);
 		}
 		nlohmann::json stmt = {{"call", "__bpr_destroy_actor"}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -1116,7 +1323,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// Selector input pin — by convention "Selection" or
 		// "TargetExpression" depending on subclass. Try both.
 		const BPPin* selPin = w.GetPin(n, "Selection");
-		if (!selPin) selPin = w.GetPin(n, "TargetExpression");
+		if (!selPin)
+		{
+			selPin = w.GetPin(n, "TargetExpression");
+		}
 		if (!selPin) {
 			// Walk pins for the first non-exec input as a fallback.
 			for (const auto& p : n.Pins) {
@@ -1134,7 +1344,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		nlohmann::json defaultBody;
 		bool hasDefault = false;
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Output" || p.Type.Category != "exec") continue;
+			if (p.Direction != "Output" || p.Type.Category != "exec")
+			{
+				continue;
+			}
 			if (p.Name == "Default") {
 				const BPNode* defStart = w.FollowExec(n, "Default");
 				std::set<std::string> v;
@@ -1147,7 +1360,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			}
 		}
 		nlohmann::json stmt = {{"switch", switchExpr}, {"cases", cases}};
-		if (hasDefault) stmt["default"] = defaultBody;
+		if (hasDefault)
+		{
+			stmt["default"] = defaultBody;
+		}
 		r.statement = std::move(stmt);
 		r.terminatesExec = true;
 		return r;
@@ -1159,11 +1375,17 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	if (n.Class.find("K2Node_AddComponent") != std::string::npos) {
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
 			args[p.Name] = BuildExpression(w, n, p);
 		}
 		nlohmann::json stmt = {{"call", "__bpr_add_component"}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -1194,7 +1416,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			// captured so the sidecar is still actionable.
 			if (prop.empty()) {
 				nlohmann::json fields = nlohmann::json::object();
-				if (n.Meta.is_object()) fields = n.Meta;
+				if (n.Meta.is_object())
+				{
+					fields = n.Meta;
+				}
 				r.statement = nlohmann::json{{"unsupported", nlohmann::json{
 					{"node_class", n.Class},
 					{"guid", n.Id},
@@ -1222,17 +1447,32 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			if (isCall) {
 				nlohmann::json args = nlohmann::json::object();
 				for (const auto& p : n.Pins) {
-					if (p.Direction != "Input" || p.Type.Category == "exec") continue;
-					if (p.Name == "self") continue;
+					if (p.Direction != "Input" || p.Type.Category == "exec")
+					{
+						continue;
+					}
+					if (p.Name == "self")
+					{
+						continue;
+					}
 					args[p.Name] = BuildExpression(w, n, p);
 				}
 				nlohmann::json stmt = {{"broadcast", prop}};
-				if (!target.is_null()) stmt["target"] = std::move(target);
-				if (!args.empty()) stmt["args"] = std::move(args);
+				if (!target.is_null())
+				{
+					stmt["target"] = std::move(target);
+				}
+				if (!args.empty())
+				{
+					stmt["args"] = std::move(args);
+				}
 				r.statement = std::move(stmt);
 			} else if (isClear) {
 				nlohmann::json stmt = {{"clear_delegate", prop}};
-				if (!target.is_null()) stmt["target"] = std::move(target);
+				if (!target.is_null())
+				{
+					stmt["target"] = std::move(target);
+				}
 				r.statement = std::move(stmt);
 			} else {
 				// Add or Remove. The bound function name comes from the
@@ -1252,7 +1492,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				nlohmann::json stmt = {
 					{isAdd ? "bind_delegate" : "unbind_delegate", prop},
 				};
-				if (!target.is_null()) stmt["target"] = std::move(target);
+				if (!target.is_null())
+				{
+					stmt["target"] = std::move(target);
+				}
 				stmt["handler"] = handler;  // empty -> caller surfaces a sidecar note
 				r.statement = std::move(stmt);
 			}
@@ -1307,12 +1550,21 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 
 		nlohmann::json args = nlohmann::json::object();
 		for (const auto& p : n.Pins) {
-			if (p.Direction != "Input" || p.Type.Category == "exec") continue;
-			if (p.Name == "self") continue;
+			if (p.Direction != "Input" || p.Type.Category == "exec")
+			{
+				continue;
+			}
+			if (p.Name == "self")
+			{
+				continue;
+			}
 			args[p.Name] = BuildExpression(w, n, p);
 		}
 		nlohmann::json stmt = {{"call", fqName}};
-		if (!args.empty()) stmt["args"] = std::move(args);
+		if (!args.empty())
+		{
+			stmt["args"] = std::move(args);
+		}
 		r.statement = std::move(stmt);
 		r.next = w.FollowExec(n, "then");
 		return r;
@@ -1327,7 +1579,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 
 	// Unrecognized — emit `{unsupported}` carrying the node info.
 	nlohmann::json fields = nlohmann::json::object();
-	if (n.Meta.is_object()) fields = n.Meta;
+	if (n.Meta.is_object())
+	{
+		fields = n.Meta;
+	}
 	r.statement = nlohmann::json{{"unsupported", nlohmann::json{
 		{"node_class", n.Class},
 		{"guid", n.Id},
@@ -1342,13 +1597,22 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 
 const BPNode* FindFunctionEntry(const BPGraph& g) {
 	for (const auto& n : g.Nodes) {
-		if (n.Class.find("K2Node_FunctionEntry") != std::string::npos) return &n;
-		if (n.Class.find("K2Node_Event") != std::string::npos)         return &n;
+		if (n.Class.find("K2Node_FunctionEntry") != std::string::npos)
+		{
+			return &n;
+		}
+		if (n.Class.find("K2Node_Event") != std::string::npos)
+		{
+			return &n;
+		}
 	}
 	// Fallback: first node with an outgoing exec edge.
 	for (const auto& n : g.Nodes) {
 		for (const auto& p : n.Pins) {
-			if (p.Direction == "Output" && p.Type.Category == "exec") return &n;
+			if (p.Direction == "Output" && p.Type.Category == "exec")
+			{
+				return &n;
+			}
 		}
 	}
 	return nullptr;
@@ -1363,7 +1627,10 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 	BPFunction fn   = reader.GetFunction(assetPath, functionName);
 
 	std::set<std::string> memberVarNames;
-	for (const auto& v : meta.Variables) memberVarNames.insert(v.Name);
+	for (const auto& v : meta.Variables)
+	{
+		memberVarNames.insert(v.Name);
+	}
 
 	Walker walker(fn.Graph, fn, memberVarNames);
 	const BPNode* entry = FindFunctionEntry(fn.Graph);
@@ -1403,7 +1670,10 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 	// this the generated C++ has `bool TakeDamage() {}` — non-void
 	// with no return → compile error.
 	auto endsWithReturn = [&]() {
-		if (!body.is_array() || body.empty()) return false;
+		if (!body.is_array() || body.empty())
+		{
+			return false;
+		}
 		const auto& last = body.back();
 		return last.is_object() && last.contains("return");
 	};
@@ -1453,12 +1723,18 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 	std::function<void(const nlohmann::json&)> collectUnsupported =
 		[&](const nlohmann::json& v) {
 			if (v.is_array()) {
-				for (const auto& el : v) collectUnsupported(el);
+				for (const auto& el : v)
+				{
+					collectUnsupported(el);
+				}
 			} else if (v.is_object()) {
 				if (v.contains("unsupported")) {
 					unsupportedSummary.push_back(v["unsupported"]);
 				}
-				for (auto& [k, child] : v.items()) collectUnsupported(child);
+				for (auto& [k, child] : v.items())
+				{
+					collectUnsupported(child);
+				}
 			}
 		};
 	collectUnsupported(body);
@@ -1466,14 +1742,20 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 	// Build inputs/outputs/locals from the function spec.
 	auto varListToJson = [](const std::vector<BPVariable>& vs) {
 		nlohmann::json arr = nlohmann::json::array();
-		for (const auto& v : vs) arr.push_back(VariableDeclToJson(v));
+		for (const auto& v : vs)
+		{
+			arr.push_back(VariableDeclToJson(v));
+		}
 		return arr;
 	};
 
 	nlohmann::json metadata = {
 		{"asset_path", std::string(assetPath)},
 	};
-	if (isPureFunction) metadata["pure"] = true;
+	if (isPureFunction)
+	{
+		metadata["pure"] = true;
+	}
 	nlohmann::json doc = {
 		{"version", kBpirSchemaVersion},
 		{"kind", "function"},
@@ -1500,7 +1782,10 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 	BPMetadata meta = reader.ReadBlueprint(assetPath);
 
 	nlohmann::json variables = nlohmann::json::array();
-	for (const auto& v : meta.Variables) variables.push_back(VariableDeclToJson(v));
+	for (const auto& v : meta.Variables)
+	{
+		variables.push_back(VariableDeclToJson(v));
+	}
 
 	nlohmann::json functions = nlohmann::json::array();
 	for (const auto& fnSummary : meta.Functions) {
@@ -1524,7 +1809,10 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 	}
 
 	nlohmann::json interfaces = nlohmann::json::array();
-	for (const auto& i : meta.Interfaces) interfaces.push_back(i);
+	for (const auto& i : meta.Interfaces)
+	{
+		interfaces.push_back(i);
+	}
 
 	// Components: surface SCS-tracked subobjects so CppClassEmit can
 	// generate the CreateDefaultSubobject + SetupAttachment scaffolding
@@ -1540,7 +1828,10 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 				{"class",   c.Class},
 				{"is_root", c.IsRoot},
 			};
-			if (c.Parent.has_value()) cj["parent"] = *c.Parent;
+			if (c.Parent.has_value())
+			{
+				cj["parent"] = *c.Parent;
+			}
 			// Property overrides -- per-component values authored in
 			// the BP Components panel that differ from the component
 			// class's CDO. CppClassEmit emits these as

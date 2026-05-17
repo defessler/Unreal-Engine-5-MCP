@@ -84,7 +84,10 @@ bool FBPRuntimeReadBlueprintReturnsExpectedShape::RunTest(const FString&)
 	if (!FixturePresent()) { AddInfo(TEXT("Fixture missing; skipping")); return true; }
 	TOptional<FBPRRBlueprint> BP = FBlueprintRuntimeIntrospector::Read(kFixtureAsset);
 	TestTrue(TEXT("Read returns a value"), BP.IsSet());
-	if (!BP.IsSet()) return false;
+	if (!BP.IsSet())
+	{
+		return false;
+	}
 
 	TestEqual(TEXT("AssetPath preserved"), BP->AssetPath, FString(kFixtureAsset));
 	TestEqual(TEXT("Name from class"), BP->Name, FString(TEXT("BP_TestEnemy")));
@@ -113,7 +116,10 @@ bool FBPRuntimeVariablesCarryTypeAndReplicationFlag::RunTest(const FString&)
 {
 	if (!FixturePresent()) { AddInfo(TEXT("Fixture missing; skipping")); return true; }
 	TOptional<FBPRRBlueprint> BP = FBlueprintRuntimeIntrospector::Read(kFixtureAsset);
-	if (!BP.IsSet()) return false;
+	if (!BP.IsSet())
+	{
+		return false;
+	}
 
 	bool bFoundHealth = false;
 	for (const FBPRRVariable& V : BP->Variables)
@@ -147,7 +153,10 @@ bool FBPRuntimeFunctionSignaturesArePopulated::RunTest(const FString&)
 {
 	if (!FixturePresent()) { AddInfo(TEXT("Fixture missing; skipping")); return true; }
 	TOptional<FBPRRBlueprint> BP = FBlueprintRuntimeIntrospector::Read(kFixtureAsset);
-	if (!BP.IsSet()) return false;
+	if (!BP.IsSet())
+	{
+		return false;
+	}
 
 	bool bFoundTakeDamage = false;
 	for (const FBPRRFunction& F : BP->Functions)
@@ -179,7 +188,10 @@ bool FBPRuntimeJsonShapeMatchesWireContract::RunTest(const FString&)
 {
 	if (!FixturePresent()) { AddInfo(TEXT("Fixture missing; skipping")); return true; }
 	TOptional<FBPRRBlueprint> BP = FBlueprintRuntimeIntrospector::Read(kFixtureAsset);
-	if (!BP.IsSet()) return false;
+	if (!BP.IsSet())
+	{
+		return false;
+	}
 
 	TSharedRef<FJsonObject> Json = FBlueprintReaderRuntimeJson::BlueprintToJson(*BP);
 	// Required top-level keys the MCP server's wire-format parser
@@ -218,7 +230,10 @@ bool FBPRuntimeListSurfacesTestBPs::RunTest(const FString&)
 	bool bFoundEnemy = false;
 	for (const FBPRRAssetSummary& S : Assets)
 	{
-		if (S.AssetPath == FString(kFixtureAsset)) bFoundEnemy = true;
+		if (S.AssetPath == FString(kFixtureAsset))
+		{
+			bFoundEnemy = true;
+		}
 	}
 	TestTrue(TEXT("BP_TestEnemy in list"), bFoundEnemy);
 	return true;

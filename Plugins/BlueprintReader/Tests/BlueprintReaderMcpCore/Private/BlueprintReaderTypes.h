@@ -225,12 +225,18 @@ namespace nlohmann
 	{
 		static void to_json(json& j, const std::optional<std::string>& opt)
 		{
-			if (opt.has_value()) j = *opt;
+			if (opt.has_value())
+			{
+				j = *opt;
+			}
 			else                 j = nullptr;
 		}
 		static void from_json(const json& j, std::optional<std::string>& opt)
 		{
-			if (j.is_null()) opt.reset();
+			if (j.is_null())
+			{
+				opt.reset();
+			}
 			else             opt = j.get<std::string>();
 		}
 	};
@@ -327,8 +333,14 @@ inline void to_json(nlohmann::json& j, const BPNode& v)
 	};
 	// GraphName/GraphType only appear on find_node hits — emit only when
 	// populated so get_node / graph payloads stay unchanged.
-	if (v.GraphName.has_value()) j["graph_name"] = *v.GraphName;
-	if (v.GraphType.has_value()) j["graph_type"] = *v.GraphType;
+	if (v.GraphName.has_value())
+	{
+		j["graph_name"] = *v.GraphName;
+	}
+	if (v.GraphType.has_value())
+	{
+		j["graph_type"] = *v.GraphType;
+	}
 }
 inline void from_json(const nlohmann::json& j, BPNode& v)
 {
@@ -338,7 +350,10 @@ inline void from_json(const nlohmann::json& j, BPNode& v)
 	j.at("position").get_to(v.Position);
 	j.at("comment").get_to(v.Comment);
 	j.at("pins").get_to(v.Pins);
-	if (j.contains("meta")) v.Meta = j.at("meta");
+	if (j.contains("meta"))
+	{
+		v.Meta = j.at("meta");
+	}
 	else                    v.Meta = nlohmann::json::object();
 	if (j.contains("graph_name") && j["graph_name"].is_string()) {
 		v.GraphName = j["graph_name"].get<std::string>();

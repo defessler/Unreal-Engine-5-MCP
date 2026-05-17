@@ -17,7 +17,10 @@ namespace
 		Obj->SetStringField(TEXT("category"), V.Category);
 		Obj->SetBoolField(TEXT("replicated"), V.bIsReplicated);
 		Obj->SetBoolField(TEXT("editable"), V.bIsEditable);
-		if (V.bIsExposeOnSpawn) Obj->SetBoolField(TEXT("expose_on_spawn"), true);
+		if (V.bIsExposeOnSpawn)
+		{
+			Obj->SetBoolField(TEXT("expose_on_spawn"), true);
+		}
 		if (!V.RepCondition.IsEmpty())
 		{
 			Obj->SetStringField(TEXT("rep_condition"), V.RepCondition);
@@ -62,10 +65,22 @@ namespace
 		{
 			Flags->SetBoolField(TEXT("blueprint_native_event"), true);
 		}
-		if (F.bIsNetServer)    Flags->SetBoolField(TEXT("net_server"), true);
-		if (F.bIsNetClient)    Flags->SetBoolField(TEXT("net_client"), true);
-		if (F.bIsNetMulticast) Flags->SetBoolField(TEXT("net_multicast"), true);
-		if (F.bIsNetReliable)  Flags->SetBoolField(TEXT("net_reliable"), true);
+		if (F.bIsNetServer)
+		{
+			Flags->SetBoolField(TEXT("net_server"), true);
+		}
+		if (F.bIsNetClient)
+		{
+			Flags->SetBoolField(TEXT("net_client"), true);
+		}
+		if (F.bIsNetMulticast)
+		{
+			Flags->SetBoolField(TEXT("net_multicast"), true);
+		}
+		if (F.bIsNetReliable)
+		{
+			Flags->SetBoolField(TEXT("net_reliable"), true);
+		}
 		Obj->SetObjectField(TEXT("flags"), Flags);
 
 		// graphs[] is intentionally empty — runtime can't see source

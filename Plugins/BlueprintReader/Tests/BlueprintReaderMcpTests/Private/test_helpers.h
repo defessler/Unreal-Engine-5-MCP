@@ -18,7 +18,10 @@ inline std::filesystem::path TestExecutableDir() {
 #if defined(_WIN32)
 	wchar_t buf[MAX_PATH];
 	DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-	if (n == 0 || n == MAX_PATH) return std::filesystem::current_path();
+	if (n == 0 || n == MAX_PATH)
+	{
+		return std::filesystem::current_path();
+	}
 	return std::filesystem::path(buf).parent_path();
 #else    // defined(_WIN32)
 	return std::filesystem::current_path();

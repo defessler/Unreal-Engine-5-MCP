@@ -88,10 +88,16 @@ struct TestListener {
 				if (rc > 0 && FD_ISSET(srv, &rfds)) {
 #if defined(_WIN32)
 					SOCKET c = ::accept(srv, nullptr, nullptr);
-					if (c != INVALID_SOCKET) ::closesocket(c);
+					if (c != INVALID_SOCKET)
+					{
+						::closesocket(c);
+					}
 #else    // defined(_WIN32)
 					int c = ::accept(srv, nullptr, nullptr);
-					if (c >= 0) ::close(c);
+					if (c >= 0)
+					{
+						::close(c);
+					}
 #endif    // defined(_WIN32)
 				}
 			}
@@ -100,11 +106,20 @@ struct TestListener {
 
 	~TestListener() {
 		stop.store(true);
-		if (t.joinable()) t.join();
+		if (t.joinable())
+		{
+			t.join();
+		}
 #if defined(_WIN32)
-		if (srv != INVALID_SOCKET) ::closesocket(srv);
+		if (srv != INVALID_SOCKET)
+		{
+			::closesocket(srv);
+		}
 #else    // defined(_WIN32)
-		if (srv >= 0) ::close(srv);
+		if (srv >= 0)
+		{
+			::close(srv);
+		}
 #endif    // defined(_WIN32)
 	}
 };

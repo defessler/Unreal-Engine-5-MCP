@@ -70,7 +70,10 @@ public:
 		BPMetadata m = inner_.ReadBlueprint(a);
 		auto it = extraFuncs.find(std::string(a));
 		if (it != extraFuncs.end()) {
-			for (const auto& f : it->second) m.Functions.push_back(f);
+			for (const auto& f : it->second)
+			{
+				m.Functions.push_back(f);
+			}
 		}
 		return m;
 	}
@@ -84,7 +87,10 @@ public:
 		auto v = inner_.ListVariables(a);
 		auto it = extraVars.find(std::string(a));
 		if (it != extraVars.end()) {
-			for (const auto& x : it->second) v.push_back(x);
+			for (const auto& x : it->second)
+			{
+				v.push_back(x);
+			}
 		}
 		return v;
 	}
@@ -197,7 +203,10 @@ public:
 	void BeginBatch() override { ++beginBatchCalls; }
 	nlohmann::json EndBatch(bool skipCompile = false) override {
 		++endBatchCalls;
-		if (skipCompile) ++endBatchSkipCalls;
+		if (skipCompile)
+		{
+			++endBatchSkipCalls;
+		}
 		return endBatchAck;
 	}
 	int endBatchSkipCalls = 0;
@@ -262,8 +271,14 @@ TEST_CASE("apply_ops: named slot resolves through wire_pins") {
 	// calls log.
 	int adds = 0, wires = 0;
 	for (const auto& c : r.calls) {
-		if (c.op == "AddNode")  ++adds;
-		if (c.op == "WirePins") ++wires;
+		if (c.op == "AddNode")
+		{
+			++adds;
+		}
+		if (c.op == "WirePins")
+		{
+			++wires;
+		}
 	}
 	CHECK(adds  == 2);
 	CHECK(wires == 1);
@@ -362,7 +377,10 @@ TEST_CASE("apply_ops: idempotent add_variable returns already_existed:true") {
 	CHECK(out["results"][0]["already_existed"] == true);
 	// And no AddVariable call was made — the duplicate was short-circuited.
 	int adds = 0;
-	for (const auto& c : r.calls) if (c.op == "AddVariable") ++adds;
+	for (const auto& c : r.calls)
+	{
+		if (c.op == "AddVariable") ++adds;
+	}
 	CHECK(adds == 0);
 }
 
@@ -442,7 +460,10 @@ TEST_CASE("apply_ops: create_blueprint forwards to backend with parent class") {
 	CHECK(res["asset_path"] == "/Game/AI/BP_Generated");
 	CHECK(res["parent_class"] == "Actor");
 	int creates = 0;
-	for (const auto& c : r.calls) if (c.op == "CreateBlueprint") ++creates;
+	for (const auto& c : r.calls)
+	{
+		if (c.op == "CreateBlueprint") ++creates;
+	}
 	CHECK(creates == 1);
 }
 
@@ -490,7 +511,10 @@ TEST_CASE("preview_ops: happy path doesn't touch the writable reader") {
 	// No write calls at all — preview is read-only.
 	int writeCalls = 0;
 	for (const auto& c : r.calls) {
-		if (c.op != "ListVariables" && c.op != "ReadBlueprint") ++writeCalls;
+		if (c.op != "ListVariables" && c.op != "ReadBlueprint")
+		{
+			++writeCalls;
+		}
 	}
 	CHECK(writeCalls == 0);
 	CHECK(r.beginBatchCalls == 0);
@@ -681,7 +705,10 @@ TEST_CASE("apply_ops: retype_variable forwards to backend with type shorthand") 
 	auto out = bpr::tools::RunOps(r, ops, true);
 	CHECK(out["ok"] == true);
 	int retypes = 0;
-	for (const auto& c : r.calls) if (c.op == "RetypeVariable") ++retypes;
+	for (const auto& c : r.calls)
+	{
+		if (c.op == "RetypeVariable") ++retypes;
+	}
 	CHECK(retypes == 1);
 }
 
@@ -696,7 +723,10 @@ TEST_CASE("apply_ops: set_variable_category forwards label") {
 	auto out = bpr::tools::RunOps(r, ops, true);
 	CHECK(out["ok"] == true);
 	int cats = 0;
-	for (const auto& c : r.calls) if (c.op == "SetVariableCategory") ++cats;
+	for (const auto& c : r.calls)
+	{
+		if (c.op == "SetVariableCategory") ++cats;
+	}
 	CHECK(cats == 1);
 }
 

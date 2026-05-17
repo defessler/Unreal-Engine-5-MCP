@@ -110,7 +110,10 @@ void EraseBufFor(SocketType s) {
 
 // Close a socket portably. Used by Disconnect and ScopedSocket.
 inline void CloseSocketCompat(SocketType s) {
-	if (s == kInvalidSocket) return;
+	if (s == kInvalidSocket)
+	{
+		return;
+	}
 #if defined(_WIN32)
 	closesocket(s);
 #else    // defined(_WIN32)
@@ -174,11 +177,20 @@ void SocketBlueprintReader::Disconnect() {
 // port. Returns false on "no handshake file" / "same as before" / "any
 // parse failure" — callers treat that as "nothing to retry with."
 bool SocketBlueprintReader::RefreshFromHandshakeFile() {
-	if (cfg_.handshakeFilePath.empty()) return false;
+	if (cfg_.handshakeFilePath.empty())
+	{
+		return false;
+	}
 	std::error_code ec;
-	if (!std::filesystem::exists(cfg_.handshakeFilePath, ec)) return false;
+	if (!std::filesystem::exists(cfg_.handshakeFilePath, ec))
+	{
+		return false;
+	}
 	std::ifstream f(cfg_.handshakeFilePath);
-	if (!f) return false;
+	if (!f)
+	{
+		return false;
+	}
 	std::stringstream ss;
 	ss << f.rdbuf();
 	nlohmann::json j;
@@ -187,7 +199,10 @@ bool SocketBlueprintReader::RefreshFromHandshakeFile() {
 	std::string newHost  = j.value("host",  std::string("127.0.0.1"));
 	int         newPort  = j.value("port",  0);
 	std::string newToken = j.value("token", std::string());
-	if (newPort <= 0 || newToken.empty()) return false;
+	if (newPort <= 0 || newToken.empty())
+	{
+		return false;
+	}
 	if (newHost == cfg_.host && newPort == cfg_.port && newToken == cfg_.token) {
 		return false;  // identical to current — nothing to retry with
 	}
@@ -203,7 +218,10 @@ bool SocketBlueprintReader::RefreshFromHandshakeFile() {
 namespace {
 SocketType ConnectOnce(const std::string& host, int port) {
 	ScopedSocket sock(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
-	if (!sock) return kInvalidSocket;
+	if (!sock)
+	{
+		return kInvalidSocket;
+	}
 	sockaddr_in addr{};
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(static_cast<uint16_t>(port));
@@ -281,7 +299,10 @@ SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandsha
 }
 
 void SocketBlueprintReader::EnsureConnected() {
-	if (handshakeOk_) return;
+	if (handshakeOk_)
+	{
+		return;
+	}
 
 	// Up to two attempts: first with current cfg_, second after re-
 	// reading the handshake file if the first failed in a way that
@@ -347,7 +368,10 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 			args.empty() ? "<unknown>" : args[0], code, response));
 	}
 	auto jit = j.find("json");
-	if (jit == j.end()) return nlohmann::json::object();
+	if (jit == j.end())
+	{
+		return nlohmann::json::object();
+	}
 	return *jit;
 }
 
@@ -359,7 +383,10 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListBlueprints(std::string_view path) {
 	std::vector<std::string> args = {"-Op=List"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	return RunOp(args).get<std::vector<BPAssetSummary>>();
 }
 
@@ -407,7 +434,10 @@ SocketBlueprintReader::FindNode(std::string_view assetPath, std::string_view que
 		"-Asset=" + std::string(assetPath),
 		"-Query=" + std::string(query),
 	};
-	if (!kind.empty()) args.push_back("-Kind=" + std::string(kind));
+	if (!kind.empty())
+	{
+		args.push_back("-Kind=" + std::string(kind));
+	}
 	return RunOp(args).get<std::vector<BPNode>>();
 }
 
@@ -424,15 +454,42 @@ void SocketBlueprintReader::AddVariable(std::string_view a, std::string_view n,
 		"-Name=" + std::string(n),
 		"-TypeCategory=" + t.Category,
 	};
-	if (t.SubCategory)       args.push_back("-TypeSubCategory=" + *t.SubCategory);
-	if (t.SubCategoryObject) args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
-	if (t.IsArray) args.push_back("-TypeIsArray");
-	if (t.IsSet)   args.push_back("-TypeIsSet");
-	if (t.IsMap)   args.push_back("-TypeIsMap");
-	if (!dv.empty())  args.push_back("-Default=" + std::string(dv));
-	if (!cat.empty()) args.push_back("-Category=" + std::string(cat));
-	if (repl) args.push_back("-Replicated");
-	if (edit) args.push_back("-Editable");
+	if (t.SubCategory)
+	{
+		args.push_back("-TypeSubCategory=" + *t.SubCategory);
+	}
+	if (t.SubCategoryObject)
+	{
+		args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
+	}
+	if (t.IsArray)
+	{
+		args.push_back("-TypeIsArray");
+	}
+	if (t.IsSet)
+	{
+		args.push_back("-TypeIsSet");
+	}
+	if (t.IsMap)
+	{
+		args.push_back("-TypeIsMap");
+	}
+	if (!dv.empty())
+	{
+		args.push_back("-Default=" + std::string(dv));
+	}
+	if (!cat.empty())
+	{
+		args.push_back("-Category=" + std::string(cat));
+	}
+	if (repl)
+	{
+		args.push_back("-Replicated");
+	}
+	if (edit)
+	{
+		args.push_back("-Editable");
+	}
 	(void)RunOp(args);
 }
 
@@ -530,11 +587,26 @@ void SocketBlueprintReader::AddFunctionInput(std::string_view a, std::string_vie
 		"-Param=" + std::string(p),
 		"-TypeCategory=" + t.Category,
 	};
-	if (t.SubCategory)       args.push_back("-TypeSubCategory=" + *t.SubCategory);
-	if (t.SubCategoryObject) args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
-	if (t.IsArray) args.push_back("-TypeIsArray");
-	if (t.IsSet)   args.push_back("-TypeIsSet");
-	if (t.IsMap)   args.push_back("-TypeIsMap");
+	if (t.SubCategory)
+	{
+		args.push_back("-TypeSubCategory=" + *t.SubCategory);
+	}
+	if (t.SubCategoryObject)
+	{
+		args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
+	}
+	if (t.IsArray)
+	{
+		args.push_back("-TypeIsArray");
+	}
+	if (t.IsSet)
+	{
+		args.push_back("-TypeIsSet");
+	}
+	if (t.IsMap)
+	{
+		args.push_back("-TypeIsMap");
+	}
 	(void)RunOp(args);
 }
 
@@ -547,11 +619,26 @@ void SocketBlueprintReader::AddFunctionOutput(std::string_view a, std::string_vi
 		"-Param=" + std::string(p),
 		"-TypeCategory=" + t.Category,
 	};
-	if (t.SubCategory)       args.push_back("-TypeSubCategory=" + *t.SubCategory);
-	if (t.SubCategoryObject) args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
-	if (t.IsArray) args.push_back("-TypeIsArray");
-	if (t.IsSet)   args.push_back("-TypeIsSet");
-	if (t.IsMap)   args.push_back("-TypeIsMap");
+	if (t.SubCategory)
+	{
+		args.push_back("-TypeSubCategory=" + *t.SubCategory);
+	}
+	if (t.SubCategoryObject)
+	{
+		args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
+	}
+	if (t.IsArray)
+	{
+		args.push_back("-TypeIsArray");
+	}
+	if (t.IsSet)
+	{
+		args.push_back("-TypeIsSet");
+	}
+	if (t.IsMap)
+	{
+		args.push_back("-TypeIsMap");
+	}
 	(void)RunOp(args);
 }
 
@@ -570,7 +657,10 @@ void SocketBlueprintReader::SetVariableDefault(std::string_view a, std::string_v
 		"-Asset=" + std::string(a),
 		"-Name=" + std::string(n),
 	};
-	if (!d.empty()) args.push_back("-Default=" + std::string(d));
+	if (!d.empty())
+	{
+		args.push_back("-Default=" + std::string(d));
+	}
 	(void)RunOp(args);
 }
 
@@ -608,11 +698,26 @@ void SocketBlueprintReader::RetypeVariable(std::string_view a, std::string_view 
 		"-Name=" + std::string(n),
 		"-TypeCategory=" + t.Category,
 	};
-	if (t.SubCategory)       args.push_back("-TypeSubCategory=" + *t.SubCategory);
-	if (t.SubCategoryObject) args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
-	if (t.IsArray) args.push_back("-TypeIsArray");
-	if (t.IsSet)   args.push_back("-TypeIsSet");
-	if (t.IsMap)   args.push_back("-TypeIsMap");
+	if (t.SubCategory)
+	{
+		args.push_back("-TypeSubCategory=" + *t.SubCategory);
+	}
+	if (t.SubCategoryObject)
+	{
+		args.push_back("-TypeSubCategoryObject=" + *t.SubCategoryObject);
+	}
+	if (t.IsArray)
+	{
+		args.push_back("-TypeIsArray");
+	}
+	if (t.IsSet)
+	{
+		args.push_back("-TypeIsSet");
+	}
+	if (t.IsMap)
+	{
+		args.push_back("-TypeIsMap");
+	}
 	(void)RunOp(args);
 }
 
@@ -623,7 +728,10 @@ void SocketBlueprintReader::SetVariableCategory(std::string_view a, std::string_
 		"-Asset=" + std::string(a),
 		"-Name=" + std::string(n),
 	};
-	if (!category.empty()) args.push_back("-Category=" + std::string(category));
+	if (!category.empty())
+	{
+		args.push_back("-Category=" + std::string(category));
+	}
 	(void)RunOp(args);
 }
 
@@ -650,7 +758,10 @@ SocketBlueprintReader::WriteGeneratedSource(std::string_view destPath,
 		"-Path=" + std::string(destPath),
 		"-ContentFile=" + contentTemp.string(),
 	};
-	if (createDirs) args.push_back("-CreateDirs");
+	if (createDirs)
+	{
+		args.push_back("-CreateDirs");
+	}
 	auto j = RunOp(args);
 
 	std::error_code ec;
@@ -690,7 +801,10 @@ SocketBlueprintReader::GetProjectMetadata() {
 		out.engineAssociation = j.value("engine_association", std::string{});
 		out.category          = j.value("category",           std::string{});
 		out.description       = j.value("description",        std::string{});
-		if (auto it = j.find("raw"); it != j.end()) out.raw = *it;
+		if (auto it = j.find("raw"); it != j.end())
+		{
+			out.raw = *it;
+		}
 	}
 	return out;
 }
@@ -698,14 +812,20 @@ SocketBlueprintReader::GetProjectMetadata() {
 IBlueprintReader::SaveAllResult
 SocketBlueprintReader::SaveAll(bool dirtyOnly) {
 	std::vector<std::string> args = {"-Op=SaveAll"};
-	if (!dirtyOnly) args.push_back("-IncludeClean");
+	if (!dirtyOnly)
+	{
+		args.push_back("-IncludeClean");
+	}
 	auto j = RunOp(args);
 	SaveAllResult out;
 	if (j.is_object()) {
 		out.savedCount = j.value("saved_count", 0);
 		if (auto it = j.find("failed_assets"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.failedAssets.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.failedAssets.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -735,7 +855,10 @@ SocketBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 		"-Op=DeleteAsset",
 		"-Asset=" + std::string(assetPath),
 	};
-	if (force) args.push_back("-Force");
+	if (force)
+	{
+		args.push_back("-Force");
+	}
 	auto j = RunOp(args);
 	DeleteAssetResult out;
 	out.path = std::string(assetPath);
@@ -743,7 +866,10 @@ SocketBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 		out.deleted = j.value("deleted", false);
 		if (auto it = j.find("referencing_assets"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.referencingAssets.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.referencingAssets.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -767,7 +893,10 @@ SocketBlueprintReader::CreateFolder(std::string_view folderPath) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListDataTables(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListDataTables"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -792,7 +921,10 @@ SocketBlueprintReader::ReadDataTable(std::string_view assetPath) {
 		out.rowStruct = j.value("row_struct", std::string{});
 		if (auto it = j.find("columns"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.columns.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.columns.push_back(v.get<std::string>());
+				}
 			}
 		}
 		if (auto it = j.find("rows"); it != j.end() && it->is_array()) {
@@ -823,7 +955,10 @@ SocketBlueprintReader::AddDataRow(std::string_view assetPath,
 		"-Row="   + std::string(rowName),
 		"-ValuesFile=" + valuesTemp.string(),
 	};
-	if (overwrite) args.push_back("-Overwrite");
+	if (overwrite)
+	{
+		args.push_back("-Overwrite");
+	}
 	auto j = RunOp(args);
 	std::error_code ec;
 	fs::remove(valuesTemp, ec);
@@ -875,8 +1010,14 @@ SocketBlueprintReader::AddComponent(std::string_view assetPath,
 		"-Name="  + std::string(name),
 		"-Class=" + std::string(componentClass),
 	};
-	if (!parentName.empty()) args.push_back("-Parent=" + std::string(parentName));
-	if (!socket.empty())     args.push_back("-Socket=" + std::string(socket));
+	if (!parentName.empty())
+	{
+		args.push_back("-Parent=" + std::string(parentName));
+	}
+	if (!socket.empty())
+	{
+		args.push_back("-Socket=" + std::string(socket));
+	}
 	auto j = RunOp(args);
 	AddComponentResult out;
 	out.assetPath      = std::string(assetPath);
@@ -898,7 +1039,10 @@ SocketBlueprintReader::RemoveComponent(std::string_view assetPath,
 	RemoveComponentResult out;
 	out.assetPath = std::string(assetPath);
 	out.name      = std::string(name);
-	if (j.is_object()) out.removed = j.value("removed", false);
+	if (j.is_object())
+	{
+		out.removed = j.value("removed", false);
+	}
 	return out;
 }
 
@@ -912,15 +1056,24 @@ SocketBlueprintReader::AttachComponent(std::string_view assetPath,
 		"-Asset=" + std::string(assetPath),
 		"-Name="  + std::string(name),
 	};
-	if (!newParentName.empty()) args.push_back("-NewParent=" + std::string(newParentName));
-	if (!socket.empty())        args.push_back("-Socket="    + std::string(socket));
+	if (!newParentName.empty())
+	{
+		args.push_back("-NewParent=" + std::string(newParentName));
+	}
+	if (!socket.empty())
+	{
+		args.push_back("-Socket="    + std::string(socket));
+	}
 	auto j = RunOp(args);
 	AttachComponentResult out;
 	out.assetPath     = std::string(assetPath);
 	out.name          = std::string(name);
 	out.newParentName = std::string(newParentName);
 	out.socket        = std::string(socket);
-	if (j.is_object()) out.reparented = j.value("reparented", false);
+	if (j.is_object())
+	{
+		out.reparented = j.value("reparented", false);
+	}
 	return out;
 }
 
@@ -987,7 +1140,10 @@ SocketBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
 IBlueprintReader::PieResult
 SocketBlueprintReader::PieStart(std::string_view mode) {
 	std::vector<std::string> args = {"-Op=PieStart"};
-	if (!mode.empty()) args.push_back("-Mode=" + std::string(mode));
+	if (!mode.empty())
+	{
+		args.push_back("-Mode=" + std::string(mode));
+	}
 	auto j = RunOp(args);
 	PieResult out;
 	if (j.is_object()) {
@@ -1000,7 +1156,10 @@ SocketBlueprintReader::PieStart(std::string_view mode) {
 IBlueprintReader::PieResult SocketBlueprintReader::PieStop() {
 	auto j = RunOp({"-Op=PieStop"});
 	PieResult out;
-	if (j.is_object()) out.stopped = j.value("stopped", false);
+	if (j.is_object())
+	{
+		out.stopped = j.value("stopped", false);
+	}
 	return out;
 }
 
@@ -1022,7 +1181,10 @@ SocketBlueprintReader::GetSelectedActors() {
 	if (j.is_object()) {
 		if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.actorNames.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -1031,7 +1193,10 @@ SocketBlueprintReader::GetSelectedActors() {
 
 nlohmann::json SocketBlueprintReader::GetEditorState() {
 	auto j = RunOp({"-Op=GetEditorState"});
-	if (j.is_object()) j.erase("ok");
+	if (j.is_object())
+	{
+		j.erase("ok");
+	}
 	return j;
 }
 
@@ -1042,13 +1207,21 @@ SocketBlueprintReader::RunPythonScript(std::string_view code) {
 	PythonResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("ok"); it != j.end() && it->is_boolean())
-			out.ok = it->get<bool>();
+		{
+				out.ok = it->get<bool>();
+		}
 		if (auto it = j.find("error"); it != j.end() && it->is_string())
-			out.error = it->get<std::string>();
+		{
+				out.error = it->get<std::string>();
+		}
 		if (auto it = j.find("command_result"); it != j.end() && it->is_string())
-			out.commandResult = it->get<std::string>();
+		{
+				out.commandResult = it->get<std::string>();
+		}
 		if (auto it = j.find("log"); it != j.end())
-			out.log = *it;
+		{
+				out.log = *it;
+		}
 	}
 	return out;
 }
@@ -1057,12 +1230,21 @@ SocketBlueprintReader::RunPythonScript(std::string_view code) {
 static std::vector<std::string> SocketExtractStringArray(
 	const nlohmann::json& j, const char* field) {
 	std::vector<std::string> out;
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	auto it = j.find(field);
-	if (it == j.end() || !it->is_array()) return out;
+	if (it == j.end() || !it->is_array())
+	{
+		return out;
+	}
 	out.reserve(it->size());
 	for (const auto& v : *it) {
-		if (v.is_string()) out.push_back(v.get<std::string>());
+		if (v.is_string())
+		{
+			out.push_back(v.get<std::string>());
+		}
 	}
 	return out;
 }
@@ -1094,9 +1276,13 @@ SocketBlueprintReader::ReadConfigValue(std::string_view section,
 	ConfigReadResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("exists"); it != j.end() && it->is_boolean())
-			out.exists = it->get<bool>();
+		{
+				out.exists = it->get<bool>();
+		}
 		if (auto it = j.find("value"); it != j.end() && it->is_string())
-			out.value = it->get<std::string>();
+		{
+				out.value = it->get<std::string>();
+		}
 	}
 	return out;
 }
@@ -1129,9 +1315,13 @@ SocketBlueprintReader::BuildLighting(std::string_view quality) {
 	BuildLightingResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("queued"); it != j.end() && it->is_boolean())
-			out.queued = it->get<bool>();
+		{
+				out.queued = it->get<bool>();
+		}
 		if (auto it = j.find("quality"); it != j.end() && it->is_string())
-			out.quality = it->get<std::string>();
+		{
+				out.quality = it->get<std::string>();
+		}
 	}
 	return out;
 }
@@ -1141,17 +1331,26 @@ SocketBlueprintReader::SetSelection(const std::vector<std::string>& actorNames,
 								  bool replace) {
 	std::string joined;
 	for (std::size_t i = 0; i < actorNames.size(); ++i) {
-		if (i) joined += ",";
+		if (i)
+		{
+			joined += ",";
+		}
 		joined += actorNames[i];
 	}
 	std::vector<std::string> args = {"-Op=SetSelection", "-Names=" + joined};
-	if (!replace) args.push_back("-Add");
+	if (!replace)
+	{
+		args.push_back("-Add");
+	}
 	auto j = RunOp(args);
 	SelectionResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.actorNames.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -1207,7 +1406,10 @@ IBlueprintReader::DeleteActorResult
 SocketBlueprintReader::DeleteActor(std::string_view actorName) {
 	auto j = RunOp({"-Op=DeleteActor", "-Name=" + std::string(actorName)});
 	DeleteActorResult out;
-	if (j.is_object()) out.deleted = j.value("deleted", false);
+	if (j.is_object())
+	{
+		out.deleted = j.value("deleted", false);
+	}
 	return out;
 }
 
@@ -1223,7 +1425,10 @@ SocketBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
 	if (j.is_object()) {
 		if (auto it = j.find("entries"); it != j.end() && it->is_array()) {
 			for (const auto& e : *it) {
-				if (!e.is_object()) continue;
+				if (!e.is_object())
+				{
+					continue;
+				}
 				LogEntry entry;
 				entry.severity  = e.value("severity",  std::string{});
 				entry.category  = e.value("category",  std::string{});
@@ -1239,7 +1444,10 @@ SocketBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
 IBlueprintReader::AutomationRunResult
 SocketBlueprintReader::RunAutomationTests(std::string_view pattern) {
 	std::vector<std::string> args = {"-Op=RunAutomationTests"};
-	if (!pattern.empty()) args.push_back("-Pattern=" + std::string(pattern));
+	if (!pattern.empty())
+	{
+		args.push_back("-Pattern=" + std::string(pattern));
+	}
 	auto j = RunOp(args);
 	AutomationRunResult out;
 	if (j.is_object()) {
@@ -1254,7 +1462,10 @@ SocketBlueprintReader::RunAutomationTests(std::string_view pattern) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListMaterials(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListMaterials"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1270,7 +1481,10 @@ SocketBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadMaterial", "-Asset=" + std::string(assetPath)});
 	MaterialInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("expressions"); it != j.end() && it->is_array()) {
 		for (const auto& e : *it) {
 			MaterialExpression x;
@@ -1294,7 +1508,10 @@ SocketBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	}
 	if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
 		for (const auto& v : *it) {
-			if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+			if (v.is_string())
+			{
+				out.parameterNames.push_back(v.get<std::string>());
+			}
 		}
 	}
 	return out;
@@ -1327,7 +1544,10 @@ SocketBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath,
 					"-ToPin="   + std::string(toPin)});
 	ConnectMaterialResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.connected = j.value("connected", false);
+	if (j.is_object())
+	{
+		out.connected = j.value("connected", false);
+	}
 	return out;
 }
 
@@ -1370,7 +1590,10 @@ SocketBlueprintReader::CompileMaterial(std::string_view assetPath) {
 	auto j = RunOp({"-Op=CompileMaterial", "-Asset=" + std::string(assetPath)});
 	CompileMaterialResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1404,7 +1627,10 @@ SocketBlueprintReader::AddWidget(std::string_view assetPath,
 									 "-Asset=" + std::string(assetPath),
 									 "-Name="  + std::string(name),
 									 "-Class=" + std::string(widgetClass)};
-	if (!parentName.empty()) args.push_back("-Parent=" + std::string(parentName));
+	if (!parentName.empty())
+	{
+		args.push_back("-Parent=" + std::string(parentName));
+	}
 	auto j = RunOp(args);
 	AddWidgetResult out;
 	out.assetPath   = std::string(assetPath);
@@ -1451,7 +1677,10 @@ SocketBlueprintReader::BindWidgetEvent(std::string_view assetPath,
 	out.widgetName      = std::string(widgetName);
 	out.eventName       = std::string(eventName);
 	out.handlerFunction = std::string(handlerFunction);
-	if (j.is_object()) out.bound = j.value("bound", false);
+	if (j.is_object())
+	{
+		out.bound = j.value("bound", false);
+	}
 	return out;
 }
 
@@ -1460,7 +1689,10 @@ SocketBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
 	auto j = RunOp({"-Op=CompileWidgetBlueprint", "-Asset=" + std::string(assetPath)});
 	CompileWidgetBlueprintResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1469,7 +1701,10 @@ SocketBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListBehaviorTrees(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListBehaviorTrees"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1485,7 +1720,10 @@ SocketBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadBehaviorTree", "-Asset=" + std::string(assetPath)});
 	BehaviorTreeInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.rootNodeId = j.value("root_node_id", std::string{});
 	if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
 		for (const auto& n : *it) {
@@ -1508,7 +1746,10 @@ SocketBlueprintReader::AddBTNode(std::string_view assetPath,
 									 "-Asset=" + std::string(assetPath),
 									 "-Kind="  + std::string(nodeKind),
 									 "-Class=" + std::string(nodeClass)};
-	if (!parentNodeId.empty()) args.push_back("-Parent=" + std::string(parentNodeId));
+	if (!parentNodeId.empty())
+	{
+		args.push_back("-Parent=" + std::string(parentNodeId));
+	}
 	auto j = RunOp(args);
 	AddBTNodeResult out;
 	out.assetPath = std::string(assetPath);
@@ -1543,7 +1784,10 @@ SocketBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
 	auto j = RunOp({"-Op=CompileBehaviorTree", "-Asset=" + std::string(assetPath)});
 	CompileBehaviorTreeResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1552,7 +1796,10 @@ SocketBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListDataAssets(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListDataAssets"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1570,7 +1817,10 @@ SocketBlueprintReader::ReadDataAsset(std::string_view assetPath) {
 	out.assetPath = std::string(assetPath);
 	if (j.is_object()) {
 		out.className  = j.value("class", std::string{});
-		if (auto it = j.find("properties"); it != j.end()) out.properties = *it;
+		if (auto it = j.find("properties"); it != j.end())
+		{
+			out.properties = *it;
+		}
 	}
 	return out;
 }
@@ -1613,7 +1863,10 @@ SocketBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListStateTrees(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListStateTrees"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1629,7 +1882,10 @@ SocketBlueprintReader::ReadStateTree(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadStateTree", "-Asset=" + std::string(assetPath)});
 	StateTreeInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("states"); it != j.end() && it->is_array()) {
 		for (const auto& s : *it) {
 			StateTreeState st;
@@ -1657,7 +1913,10 @@ SocketBlueprintReader::AddStateTreeState(std::string_view assetPath,
 	std::vector<std::string> args = {"-Op=AddStateTreeState",
 									 "-Asset=" + std::string(assetPath),
 									 "-Name="  + std::string(name)};
-	if (!parentStateId.empty()) args.push_back("-Parent=" + std::string(parentStateId));
+	if (!parentStateId.empty())
+	{
+		args.push_back("-Parent=" + std::string(parentStateId));
+	}
 	auto j = RunOp(args);
 	AddStateTreeStateResult out;
 	out.assetPath = std::string(assetPath);
@@ -1680,7 +1939,10 @@ SocketBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
 	out.fromStateId = std::string(fromStateId);
 	out.toStateId   = std::string(toStateId);
 	out.trigger     = std::string(trigger);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -1689,7 +1951,10 @@ SocketBlueprintReader::CompileStateTree(std::string_view assetPath) {
 	auto j = RunOp({"-Op=CompileStateTree", "-Asset=" + std::string(assetPath)});
 	CompileStateTreeResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1770,11 +2035,17 @@ IBlueprintReader::ClassInfo
 SocketBlueprintReader::IntrospectClass(std::string_view className) {
 	auto j = RunOp({"-Op=IntrospectClass", "-Class=" + std::string(className)});
 	ClassInfo out;
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.className   = j.value("class",  std::string{});
 	out.parentClass = j.value("parent", std::string{});
 	if (auto it = j.find("ancestors"); it != j.end() && it->is_array()) {
-		for (const auto& a : *it) if (a.is_string()) out.ancestors.push_back(a.get<std::string>());
+		for (const auto& a : *it)
+		{
+			if (a.is_string()) out.ancestors.push_back(a.get<std::string>());
+		}
 	}
 	if (auto it = j.find("properties"); it != j.end() && it->is_array()) {
 		for (const auto& p : *it) {
@@ -1803,7 +2074,10 @@ SocketBlueprintReader::FindClass(std::string_view query) {
 	if (j.is_object()) {
 		if (auto it = j.find("classes"); it != j.end() && it->is_array()) {
 			for (const auto& c : *it) {
-				if (c.is_string()) out.classNames.push_back(c.get<std::string>());
+				if (c.is_string())
+				{
+					out.classNames.push_back(c.get<std::string>());
+				}
 			}
 		}
 	}
@@ -1830,7 +2104,10 @@ SocketBlueprintReader::FocusActor(std::string_view actorName) {
 	auto j = RunOp({"-Op=FocusActor", "-Actor=" + std::string(actorName)});
 	FocusActorResult out;
 	out.actorName = std::string(actorName);
-	if (j.is_object()) out.focused = j.value("focused", false);
+	if (j.is_object())
+	{
+		out.focused = j.value("focused", false);
+	}
 	return out;
 }
 
@@ -1845,7 +2122,10 @@ SocketBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
 					"-RY=" + std::to_string(ry),
 					"-RR=" + std::to_string(rr)});
 	SetCameraResult out;
-	if (j.is_object()) out.moved = j.value("moved", false);
+	if (j.is_object())
+	{
+		out.moved = j.value("moved", false);
+	}
 	return out;
 }
 
@@ -1867,7 +2147,10 @@ SocketBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
 					std::string("-Enabled=") + (enabled ? "1" : "0")});
 	SetShowFlagResult out;
 	out.flagName = std::string(flagName);
-	if (j.is_object()) out.enabled = j.value("enabled", false);
+	if (j.is_object())
+	{
+		out.enabled = j.value("enabled", false);
+	}
 	return out;
 }
 
@@ -1876,7 +2159,10 @@ SocketBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListNiagaraSystems(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListNiagaraSystems"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1890,7 +2176,10 @@ SocketBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadNiagaraSystem", "-Asset=" + std::string(assetPath)});
 	NiagaraSystemInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("emitters"); it != j.end() && it->is_array()) {
 		for (const auto& e : *it) {
 			NiagaraEmitterHandleInfo h;
@@ -1901,7 +2190,10 @@ SocketBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
 		}
 	}
 	if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
-		for (const auto& v : *it) if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+		for (const auto& v : *it)
+		{
+			if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+		}
 	}
 	return out;
 }
@@ -1929,14 +2221,20 @@ SocketBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
 	out.assetPath     = std::string(assetPath);
 	out.parameterName = std::string(parameterName);
 	out.newValue      = std::string(value);
-	if (j.is_object()) out.applied = j.value("applied", false);
+	if (j.is_object())
+	{
+		out.applied = j.value("applied", false);
+	}
 	return out;
 }
 
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListLevelSequences(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListLevelSequences"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1950,7 +2248,10 @@ SocketBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadLevelSequence", "-Asset=" + std::string(assetPath)});
 	LevelSequenceInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.startSeconds = j.value("start_seconds", 0.0);
 	out.endSeconds   = j.value("end_seconds",   0.0);
 	if (auto it = j.find("tracks"); it != j.end() && it->is_array()) {
@@ -1976,7 +2277,10 @@ SocketBlueprintReader::AddSequenceTrack(std::string_view assetPath,
 	out.assetPath  = std::string(assetPath);
 	out.trackName  = std::string(trackName);
 	out.trackClass = std::string(trackClass);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -1991,19 +2295,28 @@ SocketBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
 	out.assetPath    = std::string(assetPath);
 	out.startSeconds = startSeconds;
 	out.endSeconds   = endSeconds;
-	if (j.is_object()) out.applied = j.value("applied", false);
+	if (j.is_object())
+	{
+		out.applied = j.value("applied", false);
+	}
 	return out;
 }
 
 IBlueprintReader::GameplayTagListResult
 SocketBlueprintReader::ListGameplayTags(std::string_view filter) {
 	std::vector<std::string> args = {"-Op=ListGameplayTags"};
-	if (!filter.empty()) args.push_back("-Filter=" + std::string(filter));
+	if (!filter.empty())
+	{
+		args.push_back("-Filter=" + std::string(filter));
+	}
 	auto j = RunOp(args);
 	GameplayTagListResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("tags"); it != j.end() && it->is_array()) {
-			for (const auto& v : *it) if (v.is_string()) out.tags.push_back(v.get<std::string>());
+			for (const auto& v : *it)
+			{
+				if (v.is_string()) out.tags.push_back(v.get<std::string>());
+			}
 		}
 	}
 	return out;
@@ -2014,7 +2327,10 @@ SocketBlueprintReader::AddGameplayTag(std::string_view tagName,
 	std::string_view comment) {
 	std::vector<std::string> args = {"-Op=AddGameplayTag",
 									 "-Tag=" + std::string(tagName)};
-	if (!comment.empty()) args.push_back("-Comment=" + std::string(comment));
+	if (!comment.empty())
+	{
+		args.push_back("-Comment=" + std::string(comment));
+	}
 	auto j = RunOp(args);
 	AddGameplayTagResult out;
 	out.tagName = std::string(tagName);
@@ -2030,7 +2346,10 @@ SocketBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadAbilitySet", "-Asset=" + std::string(assetPath)});
 	AbilitySetInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("abilities"); it != j.end() && it->is_array()) {
 		for (const auto& a : *it) {
 			AbilitySetEntry e;
@@ -2045,7 +2364,10 @@ SocketBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 SocketBlueprintReader::ListAnimBlueprints(std::string_view path) {
 	std::vector<std::string> args = {"-Op=ListAnimBlueprints"};
-	if (!path.empty()) args.push_back("-Path=" + std::string(path));
+	if (!path.empty())
+	{
+		args.push_back("-Path=" + std::string(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -2059,7 +2381,10 @@ SocketBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
 	auto j = RunOp({"-Op=ReadAnimBlueprint", "-Asset=" + std::string(assetPath)});
 	AnimBlueprintInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.parentClass = j.value("parent_class", std::string{});
 	if (auto it = j.find("state_machines"); it != j.end() && it->is_array()) {
 		for (const auto& sm : *it) {
@@ -2090,7 +2415,10 @@ SocketBlueprintReader::AddAnimState(std::string_view assetPath,
 	out.assetPath    = std::string(assetPath);
 	out.stateMachine = std::string(stateMachine);
 	out.stateName    = std::string(stateName);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -2099,7 +2427,10 @@ SocketBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
 	auto j = RunOp({"-Op=CompileAnimBlueprint", "-Asset=" + std::string(assetPath)});
 	CompileAnimBlueprintResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -2109,7 +2440,10 @@ void SocketBlueprintReader::BeginBatch() {
 
 nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile) {
 	std::vector<std::string> args = {"-Op=EndBatch"};
-	if (skipCompile) args.push_back("-Skip");
+	if (skipCompile)
+	{
+		args.push_back("-Skip");
+	}
 	return RunOp(args);
 }
 

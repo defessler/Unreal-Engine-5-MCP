@@ -30,7 +30,10 @@ void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
 nlohmann::json ToolRegistry::ListSpec() const {
 	nlohmann::json arr = nlohmann::json::array();
 	for (const auto& d : descriptors_) {
-		if (filterApplied_ && active_.count(d.name) == 0) continue;
+		if (filterApplied_ && active_.count(d.name) == 0)
+		{
+			continue;
+		}
 		arr.push_back({
 			{"name", d.name},
 			{"description", d.description},
@@ -41,13 +44,19 @@ nlohmann::json ToolRegistry::ListSpec() const {
 }
 
 const ToolFn* ToolRegistry::Find(const std::string& name) const {
-	if (filterApplied_ && active_.count(name) == 0) return nullptr;
+	if (filterApplied_ && active_.count(name) == 0)
+	{
+		return nullptr;
+	}
 	auto it = fns_.find(name);
 	return (it == fns_.end()) ? nullptr : &it->second;
 }
 
 size_t ToolRegistry::Size() const {
-	if (!filterApplied_) return descriptors_.size();
+	if (!filterApplied_)
+	{
+		return descriptors_.size();
+	}
 	return active_.size();
 }
 
@@ -61,9 +70,15 @@ void ExpandTokens(const std::vector<std::string>& tokens,
 				  const std::vector<ToolDescriptor>& all,
 				  std::set<std::string>& out) {
 	for (const auto& tok : tokens) {
-		if (tok.empty()) continue;
+		if (tok.empty())
+		{
+			continue;
+		}
 		if (tok == "all") {
-			for (const auto& d : all) out.insert(d.name);
+			for (const auto& d : all)
+			{
+				out.insert(d.name);
+			}
 			continue;
 		}
 		if (IsKnownCategory(tok)) {
@@ -79,19 +94,28 @@ void ExpandTokens(const std::vector<std::string>& tokens,
 
 void ToolRegistry::ApplyFilter(const std::vector<std::string>& allowSpec,
 							   const std::vector<std::string>& denySpec) {
-	if (allowSpec.empty() && denySpec.empty()) return;  // nothing to do
+	if (allowSpec.empty() && denySpec.empty())
+	{
+		return;  // nothing to do
+	}
 
 	std::set<std::string> keep;
 	if (allowSpec.empty()) {
 		// No allow-list → start from every registered tool, then subtract.
-		for (const auto& d : descriptors_) keep.insert(d.name);
+		for (const auto& d : descriptors_)
+		{
+			keep.insert(d.name);
+		}
 	} else {
 		ExpandTokens(allowSpec, descriptors_, keep);
 	}
 	if (!denySpec.empty()) {
 		std::set<std::string> deny;
 		ExpandTokens(denySpec, descriptors_, deny);
-		for (const auto& d : deny) keep.erase(d);
+		for (const auto& d : deny)
+		{
+			keep.erase(d);
+		}
 	}
 	// Drop names that don't correspond to any registered tool — keeps
 	// the active set's invariant: every entry maps to a real dispatch fn.
@@ -126,17 +150,26 @@ std::vector<std::string> ToolRegistry::ActivateToken(const std::string& token) {
 	std::vector<std::string> newlyActive;
 	for (const auto& name : requested) {
 		// Skip unknown names (silently — same as ApplyFilter).
-		if (fns_.find(name) == fns_.end()) continue;
+		if (fns_.find(name) == fns_.end())
+		{
+			continue;
+		}
 		if (active_.insert(name).second) {
 			newlyActive.push_back(name);
 		}
 	}
-	if (!newlyActive.empty()) listChanged_ = true;
+	if (!newlyActive.empty())
+	{
+		listChanged_ = true;
+	}
 	return newlyActive;
 }
 
 bool ToolRegistry::TakeListChangedFlag() {
-	if (!listChanged_) return false;
+	if (!listChanged_)
+	{
+		return false;
+	}
 	listChanged_ = false;
 	return true;
 }

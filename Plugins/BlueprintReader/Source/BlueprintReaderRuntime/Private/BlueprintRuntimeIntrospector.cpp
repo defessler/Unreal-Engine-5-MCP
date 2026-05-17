@@ -52,7 +52,10 @@ TArray<FBPRRAssetSummary> FBlueprintRuntimeIntrospector::ListBlueprints(
 		// NativeParentClass on older serialization paths.
 		FString Parent;
 		A.GetTagValue(TEXT("ParentClass"), Parent);
-		if (Parent.IsEmpty()) A.GetTagValue(TEXT("NativeParentClass"), Parent);
+		if (Parent.IsEmpty())
+		{
+			A.GetTagValue(TEXT("NativeParentClass"), Parent);
+		}
 		// Tag form is `Class'/Script/Engine.Actor'` — strip wrappers
 		// so the wire shape matches read.
 		int32 OpenQuote = INDEX_NONE, CloseQuote = INDEX_NONE;
@@ -72,7 +75,10 @@ TArray<FBPRRAssetSummary> FBlueprintRuntimeIntrospector::ListBlueprints(
 
 UClass* FBlueprintRuntimeIntrospector::ResolveClass(const FString& AssetPath)
 {
-	if (AssetPath.IsEmpty()) return nullptr;
+	if (AssetPath.IsEmpty())
+	{
+		return nullptr;
+	}
 
 	// Two resolution strategies in priority order:
 	//   1. /Game/Foo/BP_Bar.BP_Bar_C — direct UClass path. Works in both
@@ -89,14 +95,20 @@ UClass* FBlueprintRuntimeIntrospector::ResolveClass(const FString& AssetPath)
 	{
 		// FindObject is non-loading; if the class is already in memory
 		// we use that. Otherwise LoadObject pulls it in.
-		if (UClass* C = FindObject<UClass>(nullptr, *Path)) return C;
+		if (UClass* C = FindObject<UClass>(nullptr, *Path))
+		{
+			return C;
+		}
 		return LoadObject<UClass>(nullptr, *Path);
 	};
 
 	// Strategy 1: caller already passed the full class path.
 	if (AssetPath.EndsWith(TEXT("_C")))
 	{
-		if (UClass* C = TryLoad(AssetPath)) return C;
+		if (UClass* C = TryLoad(AssetPath))
+		{
+			return C;
+		}
 	}
 
 	// Strategy 2: package path. Derive the class path.
@@ -106,12 +118,18 @@ UClass* FBlueprintRuntimeIntrospector::ResolveClass(const FString& AssetPath)
 		? AssetPath.RightChop(LastSlash + 1)
 		: AssetPath;
 	const FString ClassPath = AssetPath + TEXT(".") + AssetName + TEXT("_C");
-	if (UClass* C = TryLoad(ClassPath)) return C;
+	if (UClass* C = TryLoad(ClassPath))
+	{
+		return C;
+	}
 
 	// Strategy 3: native C++ classes don't have the `_C` suffix.
 	// Try the bare object path.
 	const FString ObjectPath = AssetPath + TEXT(".") + AssetName;
-	if (UClass* C = TryLoad(ObjectPath)) return C;
+	if (UClass* C = TryLoad(ObjectPath))
+	{
+		return C;
+	}
 
 	return nullptr;
 }
@@ -132,28 +150,64 @@ static FString StripScriptPrefix(const FString& In)
 
 FString FBlueprintRuntimeIntrospector::PropertyTypeShorthand(const FProperty* P)
 {
-	if (!P) return TEXT("void");
+	if (!P)
+	{
+		return TEXT("void");
+	}
 
 	// Container types — recurse on the inner property.
 	if (const FArrayProperty* AP = CastField<FArrayProperty>(P))
-		return FString::Printf(TEXT("[]%s"), *PropertyTypeShorthand(AP->Inner));
+	{
+			return FString::Printf(TEXT("[]%s"), *PropertyTypeShorthand(AP->Inner));
+	}
 	if (const FSetProperty* SP = CastField<FSetProperty>(P))
-		return FString::Printf(TEXT("{}%s"), *PropertyTypeShorthand(SP->ElementProp));
+	{
+			return FString::Printf(TEXT("{}%s"), *PropertyTypeShorthand(SP->ElementProp));
+	}
 	if (const FMapProperty* MP = CastField<FMapProperty>(P))
-		return FString::Printf(TEXT("{%s:%s}"),
-			*PropertyTypeShorthand(MP->KeyProp),
-			*PropertyTypeShorthand(MP->ValueProp));
+	{
+			return FString::Printf(TEXT("{%s:%s}"),
+				*PropertyTypeShorthand(MP->KeyProp),
+				*PropertyTypeShorthand(MP->ValueProp));
+	}
 
 	// Primitives.
-	if (P->IsA<FBoolProperty>())   return TEXT("bool");
-	if (P->IsA<FByteProperty>())   return TEXT("byte");
-	if (P->IsA<FIntProperty>())    return TEXT("int");
-	if (P->IsA<FInt64Property>())  return TEXT("int64");
-	if (P->IsA<FFloatProperty>())  return TEXT("real:float");
-	if (P->IsA<FDoubleProperty>()) return TEXT("real:double");
-	if (P->IsA<FStrProperty>())    return TEXT("string");
-	if (P->IsA<FNameProperty>())   return TEXT("name");
-	if (P->IsA<FTextProperty>())   return TEXT("text");
+	if (P->IsA<FBoolProperty>())
+	{
+		return TEXT("bool");
+	}
+	if (P->IsA<FByteProperty>())
+	{
+		return TEXT("byte");
+	}
+	if (P->IsA<FIntProperty>())
+	{
+		return TEXT("int");
+	}
+	if (P->IsA<FInt64Property>())
+	{
+		return TEXT("int64");
+	}
+	if (P->IsA<FFloatProperty>())
+	{
+		return TEXT("real:float");
+	}
+	if (P->IsA<FDoubleProperty>())
+	{
+		return TEXT("real:double");
+	}
+	if (P->IsA<FStrProperty>())
+	{
+		return TEXT("string");
+	}
+	if (P->IsA<FNameProperty>())
+	{
+		return TEXT("name");
+	}
+	if (P->IsA<FTextProperty>())
+	{
+		return TEXT("text");
+	}
 
 	// Object / class / soft refs.
 	if (const FObjectProperty* OP = CastField<FObjectProperty>(P))
@@ -207,7 +261,10 @@ FString FBlueprintRuntimeIntrospector::PropertyTypeShorthand(const FProperty* P)
 
 static FString CDOPropertyValueAsText(const FProperty* Property, const UObject* CDO)
 {
-	if (!Property || !CDO) return FString();
+	if (!Property || !CDO)
+	{
+		return FString();
+	}
 	// PropertyAddr is the byte offset into the CDO for this property.
 	const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(CDO);
 	FString Out;
@@ -275,7 +332,10 @@ static FBPRRFunction FunctionToBPRR(UFunction* Function)
 	for (TFieldIterator<FProperty> It(Function); It; ++It)
 	{
 		FProperty* P = *It;
-		if (!P->HasAnyPropertyFlags(CPF_Parm)) continue;
+		if (!P->HasAnyPropertyFlags(CPF_Parm))
+		{
+			continue;
+		}
 
 		FBPRRVariable V;
 		V.Name = P->GetName();
@@ -302,11 +362,17 @@ static void GatherComponentsFromSCS(UClass* Class, TArray<FBPRRComponent>& Out)
 	// the SCS for any class that has one (typically only editor-time
 	// BPGCs in editor builds; in cooked builds we fall back to CDO).
 	UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(Class);
-	if (!BPGC || !BPGC->SimpleConstructionScript) return;
+	if (!BPGC || !BPGC->SimpleConstructionScript)
+	{
+		return;
+	}
 
 	for (USCS_Node* Node : BPGC->SimpleConstructionScript->GetAllNodes())
 	{
-		if (!Node || !Node->ComponentClass) continue;
+		if (!Node || !Node->ComponentClass)
+		{
+			continue;
+		}
 		FBPRRComponent C;
 		C.Name = Node->GetVariableName().ToString();
 		C.ClassPath = StripScriptPrefix(Node->ComponentClass->GetPathName());
@@ -325,7 +391,10 @@ static void GatherComponentsFromCDO(UClass* Class, TArray<FBPRRComponent>& Out)
 	// the SCS hierarchy but recovers the runtime component instances.
 	UObject* CDO = Class->GetDefaultObject();
 	AActor* CDOActor = Cast<AActor>(CDO);
-	if (!CDOActor) return;
+	if (!CDOActor)
+	{
+		return;
+	}
 
 	const USceneComponent* Root = CDOActor->GetRootComponent();
 	if (Root)
@@ -339,7 +408,10 @@ static void GatherComponentsFromCDO(UClass* Class, TArray<FBPRRComponent>& Out)
 
 	for (UActorComponent* Component : CDOActor->GetComponents())
 	{
-		if (!Component || Component == Root) continue;
+		if (!Component || Component == Root)
+		{
+			continue;
+		}
 		FBPRRComponent C;
 		C.Name = Component->GetName();
 		C.ClassPath = StripScriptPrefix(Component->GetClass()->GetPathName());
@@ -359,7 +431,10 @@ static void GatherComponentsFromCDO(UClass* Class, TArray<FBPRRComponent>& Out)
 TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& AssetPath)
 {
 	UClass* Class = ResolveClass(AssetPath);
-	if (!Class) return TOptional<FBPRRBlueprint>();
+	if (!Class)
+	{
+		return TOptional<FBPRRBlueprint>();
+	}
 
 	FBPRRBlueprint Out;
 	// Normalize asset path: caller may have passed the _C class path or
@@ -371,7 +446,10 @@ TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& Ass
 		// /Game/Foo/BP.BP_C → /Game/Foo/BP
 		int32 LastDot = INDEX_NONE;
 		PackagePath.FindLastChar(TEXT('.'), LastDot);
-		if (LastDot != INDEX_NONE) PackagePath.LeftInline(LastDot);
+		if (LastDot != INDEX_NONE)
+		{
+			PackagePath.LeftInline(LastDot);
+		}
 	}
 	int32 BareDot = INDEX_NONE;
 	if (PackagePath.FindLastChar(TEXT('.'), BareDot))
@@ -381,7 +459,10 @@ TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& Ass
 	}
 	Out.AssetPath = PackagePath;
 	Out.Name = Class->GetName();
-	if (Out.Name.EndsWith(TEXT("_C"))) Out.Name.LeftChopInline(2);
+	if (Out.Name.EndsWith(TEXT("_C")))
+	{
+		Out.Name.LeftChopInline(2);
+	}
 
 	if (UClass* Super = Class->GetSuperClass())
 	{
@@ -403,7 +484,10 @@ TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& Ass
 	for (TFieldIterator<FProperty> It(Class, EFieldIteratorFlags::ExcludeSuper); It; ++It)
 	{
 		const FProperty* P = *It;
-		if (!P) continue;
+		if (!P)
+		{
+			continue;
+		}
 		Out.Variables.Add(PropertyToVariable(P, CDO));
 	}
 
@@ -411,7 +495,10 @@ TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& Ass
 	for (TFieldIterator<UFunction> It(Class, EFieldIteratorFlags::ExcludeSuper); It; ++It)
 	{
 		UFunction* F = *It;
-		if (!F) continue;
+		if (!F)
+		{
+			continue;
+		}
 		Out.Functions.Add(FunctionToBPRR(F));
 	}
 

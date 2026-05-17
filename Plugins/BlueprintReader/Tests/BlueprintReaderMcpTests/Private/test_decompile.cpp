@@ -91,7 +91,10 @@ TEST_CASE("decompile_blueprint: variables include category + replication flags")
 			CHECK(v["type"] == "float");
 			// Health in fixture is replicated + editable — verify
 			// at least one of those is preserved.
-			if (v.contains("replicated")) CHECK(v["replicated"] == true);
+			if (v.contains("replicated"))
+			{
+				CHECK(v["replicated"] == true);
+			}
 		}
 	}
 	CHECK(sawHealth);

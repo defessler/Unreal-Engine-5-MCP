@@ -473,7 +473,10 @@ ReadOnlyBlueprintReader::CompileAnimBlueprint(std::string_view) {
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
-	if (!readOnly) return inner;
+	if (!readOnly)
+	{
+		return inner;
+	}
 	return std::make_unique<ReadOnlyBlueprintReader>(std::move(inner));
 }
 

@@ -40,7 +40,10 @@ namespace {
 #if defined(_WIN32)
 
 std::wstring Widen(std::string_view s) {
-	if (s.empty()) return L"";
+	if (s.empty())
+	{
+		return L"";
+	}
 	int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
 	std::wstring out(n, L'\0');
 	MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), n);
@@ -114,7 +117,10 @@ std::vector<std::wstring> SplitArgs(const std::string& s) {
 	std::vector<std::wstring> out;
 	std::istringstream iss(s);
 	std::string tok;
-	while (iss >> tok) out.push_back(Widen(tok));
+	while (iss >> tok)
+	{
+		out.push_back(Widen(tok));
+	}
 	return out;
 }
 
@@ -161,7 +167,10 @@ struct UniqueHandle {
 	}
 	~UniqueHandle() { Reset(); }
 	void Reset(HANDLE x = nullptr) {
-		if (h && h != INVALID_HANDLE_VALUE) CloseHandle(h);
+		if (h && h != INVALID_HANDLE_VALUE)
+		{
+			CloseHandle(h);
+		}
 		h = x;
 	}
 	HANDLE Release() { HANDLE x = h; h = nullptr; return x; }
@@ -246,12 +255,21 @@ ProcResult RunChild(const std::wstring& exe,
 	auto drain = [](HANDLE h, std::string& tail) {
 		for (;;) {
 			DWORD avail = 0;
-			if (!PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr)) return;
-			if (avail == 0) return;
+			if (!PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr))
+			{
+				return;
+			}
+			if (avail == 0)
+			{
+				return;
+			}
 			char buf[1024];
 			DWORD got = 0;
 			DWORD toRead = (avail > sizeof(buf)) ? (DWORD)sizeof(buf) : avail;
-			if (!ReadFile(h, buf, toRead, &got, nullptr) || got == 0) return;
+			if (!ReadFile(h, buf, toRead, &got, nullptr) || got == 0)
+			{
+				return;
+			}
 			AppendTail(tail, buf, got);
 		}
 	};
@@ -261,7 +279,10 @@ ProcResult RunChild(const std::wstring& exe,
 		DWORD wr = WaitForSingleObject(pi.hProcess, waitMs);
 		drain(outR, res.stdoutTail);
 		drain(errR, res.stderrTail);
-		if (wr == WAIT_OBJECT_0) break;
+		if (wr == WAIT_OBJECT_0)
+		{
+			break;
+		}
 		if (std::chrono::steady_clock::now() >= deadline) {
 			TerminateProcess(pi.hProcess, 9);
 			WaitForSingleObject(pi.hProcess, 2000);
@@ -315,19 +336,28 @@ ProcResult RunChild(const std::wstring&, const std::vector<std::wstring>&, std::
 #endif    // defined(_WIN32)
 
 std::string TrimLines(const std::string& s, std::size_t maxLines) {
-	if (s.empty()) return s;
+	if (s.empty())
+	{
+		return s;
+	}
 	std::deque<std::string> lines;
 	std::size_t start = 0;
 	for (std::size_t i = 0; i < s.size(); ++i) {
 		if (s[i] == '\n') {
 			lines.emplace_back(s.substr(start, i - start));
 			start = i + 1;
-			if (lines.size() > maxLines) lines.pop_front();
+			if (lines.size() > maxLines)
+			{
+				lines.pop_front();
+			}
 		}
 	}
 	if (start < s.size()) {
 		lines.emplace_back(s.substr(start));
-		if (lines.size() > maxLines) lines.pop_front();
+		if (lines.size() > maxLines)
+		{
+			lines.pop_front();
+		}
 	}
 	std::string out;
 	for (const auto& l : lines) {
@@ -380,7 +410,10 @@ std::string SecondsFromEnv(const char* key, std::string fallback) {
 	}
 	return fallback;
 #else    // defined(_MSC_VER)
-	if (const char* v = std::getenv(key); v != nullptr && *v != '\0') return std::string(v);
+	if (const char* v = std::getenv(key); v != nullptr && *v != '\0')
+	{
+		return std::string(v);
+	}
 	return fallback;
 #endif    // defined(_MSC_VER)
 }
@@ -446,7 +479,10 @@ bool SpawnLock::TryAcquire(std::chrono::seconds blockFor) {
 		if (err != ERROR_SHARING_VIOLATION && err != ERROR_ACCESS_DENIED) {
 			return false;  // unexpected error — don't loop on it
 		}
-		if (std::chrono::steady_clock::now() >= deadline) return false;
+		if (std::chrono::steady_clock::now() >= deadline)
+		{
+			return false;
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 #else    // defined(_WIN32)
@@ -457,7 +493,10 @@ bool SpawnLock::TryAcquire(std::chrono::seconds blockFor) {
 }
 
 void SpawnLock::Release() {
-	if (!held_) return;
+	if (!held_)
+	{
+		return;
+	}
 #if defined(_WIN32)
 	if (handle_) {
 		::CloseHandle(static_cast<HANDLE>(handle_));
@@ -541,7 +580,10 @@ namespace {
 std::vector<std::string> ToUtf8Args(const std::vector<std::wstring>& w) {
 	std::vector<std::string> out;
 	out.reserve(w.size());
-	for (const auto& s : w) out.push_back(Narrow(s));
+	for (const auto& s : w)
+	{
+		out.push_back(Narrow(s));
+	}
 	return out;
 }
 
@@ -550,16 +592,25 @@ std::vector<std::string> ToUtf8Args(const std::vector<std::wstring>& w) {
 // any failure so a missing/uncertain answer is treated as "dead."
 bool ProcessAlive(int pid) {
 #if defined(_WIN32)
-	if (pid <= 0) return false;
+	if (pid <= 0)
+	{
+		return false;
+	}
 	HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
 						   static_cast<DWORD>(pid));
-	if (!h) return false;
+	if (!h)
+	{
+		return false;
+	}
 	DWORD code = 0;
 	BOOL ok = GetExitCodeProcess(h, &code);
 	CloseHandle(h);
 	return ok && code == STILL_ACTIVE;
 #else    // defined(_WIN32)
-	if (pid <= 0) return false;
+	if (pid <= 0)
+	{
+		return false;
+	}
 	return ::kill(pid, 0) == 0;
 #endif    // defined(_WIN32)
 }
@@ -610,7 +661,10 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	args.push_back(L"-unattended");
 	args.push_back(L"-nopause");
 	args.push_back(L"-stdout");
-	for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) args.push_back(std::move(extra));
+	for (auto& extra : SplitArgs(cfg_.editorExtraArgs))
+	{
+		args.push_back(std::move(extra));
+	}
 
 	const auto t0 = std::chrono::steady_clock::now();
 	auto r = RunChild(editorCmdExe_.wstring(), args, cfg_.timeout);
@@ -671,10 +725,16 @@ std::unique_ptr<SocketBlueprintReader>
 CommandletBlueprintReader::TryAttachExistingDaemon() const {
 	auto hsPath = cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json";
 	std::error_code ec;
-	if (!std::filesystem::exists(hsPath, ec)) return nullptr;
+	if (!std::filesystem::exists(hsPath, ec))
+	{
+		return nullptr;
+	}
 
 	std::ifstream f(hsPath);
-	if (!f) return nullptr;
+	if (!f)
+	{
+		return nullptr;
+	}
 	nlohmann::json j;
 	try { f >> j; }
 	catch (...) { return nullptr; }
@@ -683,13 +743,19 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 	// pid is diagnostic-only on the editor side (lifetime lock is the
 	// source of truth) but extremely useful here as a cheap "is the
 	// daemon still alive?" probe before we sink a TCP connect.
-	if (pid > 0 && !ProcessAlive(pid)) return nullptr;
+	if (pid > 0 && !ProcessAlive(pid))
+	{
+		return nullptr;
+	}
 
 	SocketBlueprintReader::Config sc;
 	sc.host  = j.value("host",  std::string("127.0.0.1"));
 	sc.port  = j.value("port",  0);
 	sc.token = j.value("token", std::string());
-	if (sc.port <= 0 || sc.token.empty()) return nullptr;
+	if (sc.port <= 0 || sc.token.empty())
+	{
+		return nullptr;
+	}
 
 	// Wire the handshake-file path through to the socket reader so it
 	// can self-refresh on connect-refused / auth-fail (issue #9 pattern
@@ -707,10 +773,16 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 		WSADATA wsa;
 		bool wsaInited = (WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
 		auto wsaCleanup = MakeScopeGuard([wsaInited]() {
-			if (wsaInited) WSACleanup();
+			if (wsaInited)
+			{
+				WSACleanup();
+			}
 		});
 		SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (s == INVALID_SOCKET) return nullptr;
+		if (s == INVALID_SOCKET)
+		{
+			return nullptr;
+		}
 		auto closeSock = MakeScopeGuard([s]() { ::closesocket(s); });
 		u_long nb = 1; ::ioctlsocket(s, FIONBIO, &nb);
 
@@ -728,12 +800,18 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 			tv.tv_sec  = 0;
 			tv.tv_usec = 250 * 1000;
 			rc = ::select(static_cast<int>(s) + 1, nullptr, &wfds, nullptr, &tv);
-			if (rc <= 0) return nullptr;
+			if (rc <= 0)
+			{
+				return nullptr;
+			}
 			int err = 0;
 			int errLen = sizeof(err);
 			::getsockopt(s, SOL_SOCKET, SO_ERROR,
 						 reinterpret_cast<char*>(&err), &errLen);
-			if (err != 0) return nullptr;
+			if (err != 0)
+			{
+				return nullptr;
+			}
 		}
 	}
 #endif    // defined(_WIN32)
@@ -790,14 +868,20 @@ void CommandletBlueprintReader::PollForHandshake(std::chrono::seconds timeout) {
 SocketBlueprintReader&
 CommandletBlueprintReader::EnsureDaemonAttached() {
 	std::lock_guard<std::mutex> lock(daemonMutex_);
-	if (socket_) return *socket_;
+	if (socket_)
+	{
+		return *socket_;
+	}
 
 	// First: see if a daemon is already listening (could be one we
 	// spawned earlier this session, or a separately-launched editor
 	// running the daemon). The lifetime lock on the editor side makes
 	// sure we won't see two of them at once.
 	socket_ = TryAttachExistingDaemon();
-	if (socket_) return *socket_;
+	if (socket_)
+	{
+		return *socket_;
+	}
 
 	// No daemon found — race for the inter-process spawn lock to
 	// coordinate with other MCP servers that might also be trying to
@@ -875,7 +959,10 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 #if defined(_WIN32)
 
 void CommandletBlueprintReader::TerminateDaemon() {
-	if (daemonProcess_ == nullptr) return;
+	if (daemonProcess_ == nullptr)
+	{
+		return;
+	}
 	// Force termination of the child we spawned. The daemon's own
 	// TCP-shutdown path is not wired yet (Phase 4) — TerminateProcess
 	// is a hammer but reliable, and the daemon's lifetime lock cleans
@@ -887,8 +974,14 @@ void CommandletBlueprintReader::TerminateDaemon() {
 }
 
 void CommandletBlueprintReader::Prewarm() {
-	if (!cfg_.useDaemon) return;
-	if (prewarmThread_.joinable()) return;  // already prewarming
+	if (!cfg_.useDaemon)
+	{
+		return;
+	}
+	if (prewarmThread_.joinable())
+	{
+		return;  // already prewarming
+	}
 	prewarmThread_ = std::thread([this]() {
 		try {
 			// EnsureDaemonAttached holds daemonMutex_; a real call
@@ -1078,17 +1171,32 @@ void CommandletBlueprintReader::AddVariable(std::string_view assetPath,
 	if (type.SubCategoryObject.has_value() && !type.SubCategoryObject->empty()) {
 		args.push_back(L"-TypeSubCategoryObject=" + Widen(*type.SubCategoryObject));
 	}
-	if (type.IsArray) args.push_back(L"-TypeIsArray");
-	if (type.IsSet)   args.push_back(L"-TypeIsSet");
-	if (type.IsMap)   args.push_back(L"-TypeIsMap");
+	if (type.IsArray)
+	{
+		args.push_back(L"-TypeIsArray");
+	}
+	if (type.IsSet)
+	{
+		args.push_back(L"-TypeIsSet");
+	}
+	if (type.IsMap)
+	{
+		args.push_back(L"-TypeIsMap");
+	}
 	if (!defaultValue.empty()) {
 		args.push_back(L"-Default=" + Widen(defaultValue));
 	}
 	if (!category.empty()) {
 		args.push_back(L"-Category=" + Widen(category));
 	}
-	if (replicated) args.push_back(L"-Replicated");
-	if (editable)   args.push_back(L"-Editable");
+	if (replicated)
+	{
+		args.push_back(L"-Replicated");
+	}
+	if (editable)
+	{
+		args.push_back(L"-Editable");
+	}
 	(void)RunOp(args);  // ack JSON `{"ok":true}` — we don't surface it
 }
 
@@ -1130,7 +1238,10 @@ std::string CommandletBlueprintReader::AddNode(std::string_view assetPath,
 	args.push_back(L"-X=" + std::to_wstring(x));
 	args.push_back(L"-Y=" + std::to_wstring(y));
 	for (const auto& [k, v] : extras) {
-		if (v.empty()) continue;
+		if (v.empty())
+		{
+			continue;
+		}
 		args.push_back(L"-" + Widen(k) + L"=" + Widen(v));
 	}
 	auto j = RunOp(args);
@@ -1187,9 +1298,18 @@ void AppendPinTypeFlags(std::vector<std::wstring>& args, const BPPinType& type) 
 	if (type.SubCategoryObject.has_value() && !type.SubCategoryObject->empty()) {
 		args.push_back(L"-TypeSubCategoryObject=" + Widen(*type.SubCategoryObject));
 	}
-	if (type.IsArray) args.push_back(L"-TypeIsArray");
-	if (type.IsSet)   args.push_back(L"-TypeIsSet");
-	if (type.IsMap)   args.push_back(L"-TypeIsMap");
+	if (type.IsArray)
+	{
+		args.push_back(L"-TypeIsArray");
+	}
+	if (type.IsSet)
+	{
+		args.push_back(L"-TypeIsSet");
+	}
+	if (type.IsMap)
+	{
+		args.push_back(L"-TypeIsMap");
+	}
 }
 } // namespace
 
@@ -1301,11 +1421,26 @@ void CommandletBlueprintReader::RetypeVariable(std::string_view assetPath,
 	args.push_back(L"-Asset=" + Widen(assetPath));
 	args.push_back(L"-Name="  + Widen(name));
 	args.push_back(L"-TypeCategory=" + Widen(newType.Category));
-	if (newType.SubCategory)       args.push_back(L"-TypeSubCategory=" + Widen(*newType.SubCategory));
-	if (newType.SubCategoryObject) args.push_back(L"-TypeSubCategoryObject=" + Widen(*newType.SubCategoryObject));
-	if (newType.IsArray) args.push_back(L"-TypeIsArray");
-	if (newType.IsSet)   args.push_back(L"-TypeIsSet");
-	if (newType.IsMap)   args.push_back(L"-TypeIsMap");
+	if (newType.SubCategory)
+	{
+		args.push_back(L"-TypeSubCategory=" + Widen(*newType.SubCategory));
+	}
+	if (newType.SubCategoryObject)
+	{
+		args.push_back(L"-TypeSubCategoryObject=" + Widen(*newType.SubCategoryObject));
+	}
+	if (newType.IsArray)
+	{
+		args.push_back(L"-TypeIsArray");
+	}
+	if (newType.IsSet)
+	{
+		args.push_back(L"-TypeIsSet");
+	}
+	if (newType.IsMap)
+	{
+		args.push_back(L"-TypeIsMap");
+	}
 	(void)RunOp(args);
 }
 
@@ -1316,7 +1451,10 @@ void CommandletBlueprintReader::SetVariableCategory(std::string_view assetPath,
 	args.push_back(L"-Op=SetVariableCategory");
 	args.push_back(L"-Asset=" + Widen(assetPath));
 	args.push_back(L"-Name="  + Widen(name));
-	if (!category.empty()) args.push_back(L"-Category=" + Widen(category));
+	if (!category.empty())
+	{
+		args.push_back(L"-Category=" + Widen(category));
+	}
 	(void)RunOp(args);
 }
 
@@ -1342,7 +1480,10 @@ CommandletBlueprintReader::WriteGeneratedSource(std::string_view destPath,
 	args.push_back(L"-Op=WriteGeneratedSource");
 	args.push_back(L"-Path=" + Widen(destPath));
 	args.push_back(L"-ContentFile=" + contentTemp.wstring());
-	if (createDirs) args.push_back(L"-CreateDirs");
+	if (createDirs)
+	{
+		args.push_back(L"-CreateDirs");
+	}
 	auto j = RunOp(args);
 
 	// Plugin should have deleted the temp; clean up just in case.
@@ -1411,14 +1552,20 @@ IBlueprintReader::SaveAllResult
 CommandletBlueprintReader::SaveAll(bool dirtyOnly) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=SaveAll");
-	if (!dirtyOnly) args.push_back(L"-IncludeClean");
+	if (!dirtyOnly)
+	{
+		args.push_back(L"-IncludeClean");
+	}
 	auto j = RunOp(args);
 	SaveAllResult out;
 	if (j.is_object()) {
 		out.savedCount = j.value("saved_count", 0);
 		if (auto it = j.find("failed_assets"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.failedAssets.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.failedAssets.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -1447,7 +1594,10 @@ CommandletBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=DeleteAsset");
 	args.push_back(L"-Asset=" + Widen(assetPath));
-	if (force) args.push_back(L"-Force");
+	if (force)
+	{
+		args.push_back(L"-Force");
+	}
 	auto j = RunOp(args);
 	DeleteAssetResult out;
 	out.path = std::string(assetPath);
@@ -1455,7 +1605,10 @@ CommandletBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 		out.deleted = j.value("deleted", false);
 		if (auto it = j.find("referencing_assets"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.referencingAssets.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.referencingAssets.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -1480,7 +1633,10 @@ std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListDataTables(std::string_view path) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=ListDataTables");
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1505,7 +1661,10 @@ CommandletBlueprintReader::ReadDataTable(std::string_view assetPath) {
 		out.rowStruct = j.value("row_struct", std::string{});
 		if (auto it = j.find("columns"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.columns.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.columns.push_back(v.get<std::string>());
+				}
 			}
 		}
 		if (auto it = j.find("rows"); it != j.end() && it->is_array()) {
@@ -1538,7 +1697,10 @@ CommandletBlueprintReader::AddDataRow(std::string_view assetPath,
 	args.push_back(L"-Asset=" + Widen(assetPath));
 	args.push_back(L"-Row="   + Widen(rowName));
 	args.push_back(L"-ValuesFile=" + valuesTemp.wstring());
-	if (overwrite) args.push_back(L"-Overwrite");
+	if (overwrite)
+	{
+		args.push_back(L"-Overwrite");
+	}
 	auto j = RunOp(args);
 	std::error_code ec;
 	fs::remove(valuesTemp, ec);
@@ -1590,8 +1752,14 @@ CommandletBlueprintReader::AddComponent(std::string_view assetPath,
 		L"-Name="  + Widen(name),
 		L"-Class=" + Widen(componentClass),
 	};
-	if (!parentName.empty()) args.push_back(L"-Parent=" + Widen(parentName));
-	if (!socket.empty())     args.push_back(L"-Socket=" + Widen(socket));
+	if (!parentName.empty())
+	{
+		args.push_back(L"-Parent=" + Widen(parentName));
+	}
+	if (!socket.empty())
+	{
+		args.push_back(L"-Socket=" + Widen(socket));
+	}
 	auto j = RunOp(args);
 	AddComponentResult out;
 	out.assetPath      = std::string(assetPath);
@@ -1613,7 +1781,10 @@ CommandletBlueprintReader::RemoveComponent(std::string_view assetPath,
 	RemoveComponentResult out;
 	out.assetPath = std::string(assetPath);
 	out.name      = std::string(name);
-	if (j.is_object()) out.removed = j.value("removed", false);
+	if (j.is_object())
+	{
+		out.removed = j.value("removed", false);
+	}
 	return out;
 }
 
@@ -1627,15 +1798,24 @@ CommandletBlueprintReader::AttachComponent(std::string_view assetPath,
 		L"-Asset=" + Widen(assetPath),
 		L"-Name="  + Widen(name),
 	};
-	if (!newParentName.empty()) args.push_back(L"-NewParent=" + Widen(newParentName));
-	if (!socket.empty())        args.push_back(L"-Socket="    + Widen(socket));
+	if (!newParentName.empty())
+	{
+		args.push_back(L"-NewParent=" + Widen(newParentName));
+	}
+	if (!socket.empty())
+	{
+		args.push_back(L"-Socket="    + Widen(socket));
+	}
 	auto j = RunOp(args);
 	AttachComponentResult out;
 	out.assetPath     = std::string(assetPath);
 	out.name          = std::string(name);
 	out.newParentName = std::string(newParentName);
 	out.socket        = std::string(socket);
-	if (j.is_object()) out.reparented = j.value("reparented", false);
+	if (j.is_object())
+	{
+		out.reparented = j.value("reparented", false);
+	}
 	return out;
 }
 
@@ -1665,7 +1845,10 @@ CommandletBlueprintReader::SetComponentProperty(std::string_view assetPath,
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListMaterials(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListMaterials"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1681,7 +1864,10 @@ CommandletBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadMaterial", L"-Asset=" + Widen(assetPath)});
 	MaterialInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("expressions"); it != j.end() && it->is_array()) {
 		for (const auto& e : *it) {
 			MaterialExpression x;
@@ -1705,7 +1891,10 @@ CommandletBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	}
 	if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
 		for (const auto& v : *it) {
-			if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+			if (v.is_string())
+			{
+				out.parameterNames.push_back(v.get<std::string>());
+			}
 		}
 	}
 	return out;
@@ -1738,7 +1927,10 @@ CommandletBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath
 					L"-ToPin=" + Widen(toPin)});
 	ConnectMaterialResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.connected = j.value("connected", false);
+	if (j.is_object())
+	{
+		out.connected = j.value("connected", false);
+	}
 	return out;
 }
 
@@ -1781,7 +1973,10 @@ CommandletBlueprintReader::CompileMaterial(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=CompileMaterial", L"-Asset=" + Widen(assetPath)});
 	CompileMaterialResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1815,7 +2010,10 @@ CommandletBlueprintReader::AddWidget(std::string_view assetPath,
 									   L"-Asset=" + Widen(assetPath),
 									   L"-Name="  + Widen(name),
 									   L"-Class=" + Widen(widgetClass)};
-	if (!parentName.empty()) args.push_back(L"-Parent=" + Widen(parentName));
+	if (!parentName.empty())
+	{
+		args.push_back(L"-Parent=" + Widen(parentName));
+	}
 	auto j = RunOp(args);
 	AddWidgetResult out;
 	out.assetPath   = std::string(assetPath);
@@ -1862,7 +2060,10 @@ CommandletBlueprintReader::BindWidgetEvent(std::string_view assetPath,
 	out.widgetName      = std::string(widgetName);
 	out.eventName       = std::string(eventName);
 	out.handlerFunction = std::string(handlerFunction);
-	if (j.is_object()) out.bound = j.value("bound", false);
+	if (j.is_object())
+	{
+		out.bound = j.value("bound", false);
+	}
 	return out;
 }
 
@@ -1871,7 +2072,10 @@ CommandletBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=CompileWidgetBlueprint", L"-Asset=" + Widen(assetPath)});
 	CompileWidgetBlueprintResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1880,7 +2084,10 @@ CommandletBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListBehaviorTrees(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListBehaviorTrees"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1896,7 +2103,10 @@ CommandletBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadBehaviorTree", L"-Asset=" + Widen(assetPath)});
 	BehaviorTreeInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.rootNodeId = j.value("root_node_id", std::string{});
 	if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
 		for (const auto& n : *it) {
@@ -1919,7 +2129,10 @@ CommandletBlueprintReader::AddBTNode(std::string_view assetPath,
 		L"-Asset=" + Widen(assetPath),
 		L"-Kind="  + Widen(nodeKind),
 		L"-Class=" + Widen(nodeClass)};
-	if (!parentNodeId.empty()) args.push_back(L"-Parent=" + Widen(parentNodeId));
+	if (!parentNodeId.empty())
+	{
+		args.push_back(L"-Parent=" + Widen(parentNodeId));
+	}
 	auto j = RunOp(args);
 	AddBTNodeResult out;
 	out.assetPath = std::string(assetPath);
@@ -1954,7 +2167,10 @@ CommandletBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=CompileBehaviorTree", L"-Asset=" + Widen(assetPath)});
 	CompileBehaviorTreeResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -1963,7 +2179,10 @@ CommandletBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListDataAssets(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListDataAssets"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -1981,7 +2200,10 @@ CommandletBlueprintReader::ReadDataAsset(std::string_view assetPath) {
 	out.assetPath = std::string(assetPath);
 	if (j.is_object()) {
 		out.className  = j.value("class", std::string{});
-		if (auto it = j.find("properties"); it != j.end()) out.properties = *it;
+		if (auto it = j.find("properties"); it != j.end())
+		{
+			out.properties = *it;
+		}
 	}
 	return out;
 }
@@ -2024,7 +2246,10 @@ CommandletBlueprintReader::SetDataAssetProperty(std::string_view assetPath,
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListStateTrees(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListStateTrees"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -2040,7 +2265,10 @@ CommandletBlueprintReader::ReadStateTree(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadStateTree", L"-Asset=" + Widen(assetPath)});
 	StateTreeInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("states"); it != j.end() && it->is_array()) {
 		for (const auto& s : *it) {
 			StateTreeState st;
@@ -2068,7 +2296,10 @@ CommandletBlueprintReader::AddStateTreeState(std::string_view assetPath,
 	std::vector<std::wstring> args = {L"-Op=AddStateTreeState",
 									   L"-Asset=" + Widen(assetPath),
 									   L"-Name="  + Widen(name)};
-	if (!parentStateId.empty()) args.push_back(L"-Parent=" + Widen(parentStateId));
+	if (!parentStateId.empty())
+	{
+		args.push_back(L"-Parent=" + Widen(parentStateId));
+	}
 	auto j = RunOp(args);
 	AddStateTreeStateResult out;
 	out.assetPath = std::string(assetPath);
@@ -2091,7 +2322,10 @@ CommandletBlueprintReader::SetStateTreeTransition(std::string_view assetPath,
 	out.fromStateId = std::string(fromStateId);
 	out.toStateId   = std::string(toStateId);
 	out.trigger     = std::string(trigger);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -2100,7 +2334,10 @@ CommandletBlueprintReader::CompileStateTree(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=CompileStateTree", L"-Asset=" + Widen(assetPath)});
 	CompileStateTreeResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -2181,11 +2418,17 @@ IBlueprintReader::ClassInfo
 CommandletBlueprintReader::IntrospectClass(std::string_view className) {
 	auto j = RunOp({L"-Op=IntrospectClass", L"-Class=" + Widen(className)});
 	ClassInfo out;
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.className   = j.value("class",  std::string{});
 	out.parentClass = j.value("parent", std::string{});
 	if (auto it = j.find("ancestors"); it != j.end() && it->is_array()) {
-		for (const auto& a : *it) if (a.is_string()) out.ancestors.push_back(a.get<std::string>());
+		for (const auto& a : *it)
+		{
+			if (a.is_string()) out.ancestors.push_back(a.get<std::string>());
+		}
 	}
 	if (auto it = j.find("properties"); it != j.end() && it->is_array()) {
 		for (const auto& p : *it) {
@@ -2214,7 +2457,10 @@ CommandletBlueprintReader::FindClass(std::string_view query) {
 	if (j.is_object()) {
 		if (auto it = j.find("classes"); it != j.end() && it->is_array()) {
 			for (const auto& c : *it) {
-				if (c.is_string()) out.classNames.push_back(c.get<std::string>());
+				if (c.is_string())
+				{
+					out.classNames.push_back(c.get<std::string>());
+				}
 			}
 		}
 	}
@@ -2241,7 +2487,10 @@ CommandletBlueprintReader::FocusActor(std::string_view actorName) {
 	auto j = RunOp({L"-Op=FocusActor", L"-Actor=" + Widen(actorName)});
 	FocusActorResult out;
 	out.actorName = std::string(actorName);
-	if (j.is_object()) out.focused = j.value("focused", false);
+	if (j.is_object())
+	{
+		out.focused = j.value("focused", false);
+	}
 	return out;
 }
 
@@ -2256,7 +2505,10 @@ CommandletBlueprintReader::SetCameraTransform(double lx, double ly, double lz,
 					L"-RY=" + std::to_wstring(ry),
 					L"-RR=" + std::to_wstring(rr)});
 	SetCameraResult out;
-	if (j.is_object()) out.moved = j.value("moved", false);
+	if (j.is_object())
+	{
+		out.moved = j.value("moved", false);
+	}
 	return out;
 }
 
@@ -2278,7 +2530,10 @@ CommandletBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) 
 					L"-Enabled=" + std::wstring(enabled ? L"1" : L"0")});
 	SetShowFlagResult out;
 	out.flagName = std::string(flagName);
-	if (j.is_object()) out.enabled = j.value("enabled", false);
+	if (j.is_object())
+	{
+		out.enabled = j.value("enabled", false);
+	}
 	return out;
 }
 
@@ -2287,7 +2542,10 @@ CommandletBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) 
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListNiagaraSystems(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListNiagaraSystems"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -2301,7 +2559,10 @@ CommandletBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadNiagaraSystem", L"-Asset=" + Widen(assetPath)});
 	NiagaraSystemInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("emitters"); it != j.end() && it->is_array()) {
 		for (const auto& e : *it) {
 			NiagaraEmitterHandleInfo h;
@@ -2312,7 +2573,10 @@ CommandletBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
 		}
 	}
 	if (auto it = j.find("parameter_names"); it != j.end() && it->is_array()) {
-		for (const auto& v : *it) if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+		for (const auto& v : *it)
+		{
+			if (v.is_string()) out.parameterNames.push_back(v.get<std::string>());
+		}
 	}
 	return out;
 }
@@ -2340,14 +2604,20 @@ CommandletBlueprintReader::SetNiagaraParameter(std::string_view assetPath,
 	out.assetPath     = std::string(assetPath);
 	out.parameterName = std::string(parameterName);
 	out.newValue      = std::string(value);
-	if (j.is_object()) out.applied = j.value("applied", false);
+	if (j.is_object())
+	{
+		out.applied = j.value("applied", false);
+	}
 	return out;
 }
 
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListLevelSequences(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListLevelSequences"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -2361,7 +2631,10 @@ CommandletBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadLevelSequence", L"-Asset=" + Widen(assetPath)});
 	LevelSequenceInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.startSeconds = j.value("start_seconds", 0.0);
 	out.endSeconds   = j.value("end_seconds",   0.0);
 	if (auto it = j.find("tracks"); it != j.end() && it->is_array()) {
@@ -2387,7 +2660,10 @@ CommandletBlueprintReader::AddSequenceTrack(std::string_view assetPath,
 	out.assetPath  = std::string(assetPath);
 	out.trackName  = std::string(trackName);
 	out.trackClass = std::string(trackClass);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -2402,19 +2678,28 @@ CommandletBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath,
 	out.assetPath    = std::string(assetPath);
 	out.startSeconds = startSeconds;
 	out.endSeconds   = endSeconds;
-	if (j.is_object()) out.applied = j.value("applied", false);
+	if (j.is_object())
+	{
+		out.applied = j.value("applied", false);
+	}
 	return out;
 }
 
 IBlueprintReader::GameplayTagListResult
 CommandletBlueprintReader::ListGameplayTags(std::string_view filter) {
 	std::vector<std::wstring> args = {L"-Op=ListGameplayTags"};
-	if (!filter.empty()) args.push_back(L"-Filter=" + Widen(filter));
+	if (!filter.empty())
+	{
+		args.push_back(L"-Filter=" + Widen(filter));
+	}
 	auto j = RunOp(args);
 	GameplayTagListResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("tags"); it != j.end() && it->is_array()) {
-			for (const auto& v : *it) if (v.is_string()) out.tags.push_back(v.get<std::string>());
+			for (const auto& v : *it)
+			{
+				if (v.is_string()) out.tags.push_back(v.get<std::string>());
+			}
 		}
 	}
 	return out;
@@ -2425,7 +2710,10 @@ CommandletBlueprintReader::AddGameplayTag(std::string_view tagName,
 	std::string_view comment) {
 	std::vector<std::wstring> args = {L"-Op=AddGameplayTag",
 									   L"-Tag=" + Widen(tagName)};
-	if (!comment.empty()) args.push_back(L"-Comment=" + Widen(comment));
+	if (!comment.empty())
+	{
+		args.push_back(L"-Comment=" + Widen(comment));
+	}
 	auto j = RunOp(args);
 	AddGameplayTagResult out;
 	out.tagName = std::string(tagName);
@@ -2441,7 +2729,10 @@ CommandletBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadAbilitySet", L"-Asset=" + Widen(assetPath)});
 	AbilitySetInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	if (auto it = j.find("abilities"); it != j.end() && it->is_array()) {
 		for (const auto& a : *it) {
 			AbilitySetEntry e;
@@ -2456,7 +2747,10 @@ CommandletBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
 std::vector<BPAssetSummary>
 CommandletBlueprintReader::ListAnimBlueprints(std::string_view path) {
 	std::vector<std::wstring> args = {L"-Op=ListAnimBlueprints"};
-	if (!path.empty()) args.push_back(L"-Path=" + Widen(path));
+	if (!path.empty())
+	{
+		args.push_back(L"-Path=" + Widen(path));
+	}
 	auto j = RunOp(args);
 	std::vector<BPAssetSummary> out;
 	if (j.is_array()) {
@@ -2470,7 +2764,10 @@ CommandletBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=ReadAnimBlueprint", L"-Asset=" + Widen(assetPath)});
 	AnimBlueprintInfo out;
 	out.assetPath = std::string(assetPath);
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	out.parentClass = j.value("parent_class", std::string{});
 	if (auto it = j.find("state_machines"); it != j.end() && it->is_array()) {
 		for (const auto& sm : *it) {
@@ -2501,7 +2798,10 @@ CommandletBlueprintReader::AddAnimState(std::string_view assetPath,
 	out.assetPath    = std::string(assetPath);
 	out.stateMachine = std::string(stateMachine);
 	out.stateName    = std::string(stateName);
-	if (j.is_object()) out.added = j.value("added", false);
+	if (j.is_object())
+	{
+		out.added = j.value("added", false);
+	}
 	return out;
 }
 
@@ -2510,7 +2810,10 @@ CommandletBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=CompileAnimBlueprint", L"-Asset=" + Widen(assetPath)});
 	CompileAnimBlueprintResult out;
 	out.assetPath = std::string(assetPath);
-	if (j.is_object()) out.compiled = j.value("compiled", false);
+	if (j.is_object())
+	{
+		out.compiled = j.value("compiled", false);
+	}
 	return out;
 }
 
@@ -2556,7 +2859,10 @@ CommandletBlueprintReader::SetCVar(std::string_view name, std::string_view value
 IBlueprintReader::PieResult
 CommandletBlueprintReader::PieStart(std::string_view mode) {
 	std::vector<std::wstring> args = {L"-Op=PieStart"};
-	if (!mode.empty()) args.push_back(L"-Mode=" + Widen(mode));
+	if (!mode.empty())
+	{
+		args.push_back(L"-Mode=" + Widen(mode));
+	}
 	auto j = RunOp(args);
 	PieResult out;
 	if (j.is_object()) {
@@ -2569,7 +2875,10 @@ CommandletBlueprintReader::PieStart(std::string_view mode) {
 IBlueprintReader::PieResult CommandletBlueprintReader::PieStop() {
 	auto j = RunOp({L"-Op=PieStop"});
 	PieResult out;
-	if (j.is_object()) out.stopped = j.value("stopped", false);
+	if (j.is_object())
+	{
+		out.stopped = j.value("stopped", false);
+	}
 	return out;
 }
 
@@ -2591,7 +2900,10 @@ CommandletBlueprintReader::GetSelectedActors() {
 	if (j.is_object()) {
 		if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.actorNames.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -2639,12 +2951,21 @@ CommandletBlueprintReader::RunPythonScript(std::string_view code) {
 static std::vector<std::string> ExtractStringArray(
 	const nlohmann::json& j, const char* field) {
 	std::vector<std::string> out;
-	if (!j.is_object()) return out;
+	if (!j.is_object())
+	{
+		return out;
+	}
 	auto it = j.find(field);
-	if (it == j.end() || !it->is_array()) return out;
+	if (it == j.end() || !it->is_array())
+	{
+		return out;
+	}
 	out.reserve(it->size());
 	for (const auto& v : *it) {
-		if (v.is_string()) out.push_back(v.get<std::string>());
+		if (v.is_string())
+		{
+			out.push_back(v.get<std::string>());
+		}
 	}
 	return out;
 }
@@ -2681,9 +3002,13 @@ CommandletBlueprintReader::ReadConfigValue(std::string_view section,
 	ConfigReadResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("exists"); it != j.end() && it->is_boolean())
-			out.exists = it->get<bool>();
+		{
+				out.exists = it->get<bool>();
+		}
 		if (auto it = j.find("value"); it != j.end() && it->is_string())
-			out.value = it->get<std::string>();
+		{
+				out.value = it->get<std::string>();
+		}
 	}
 	return out;
 }
@@ -2721,9 +3046,13 @@ CommandletBlueprintReader::BuildLighting(std::string_view quality) {
 	BuildLightingResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("queued"); it != j.end() && it->is_boolean())
-			out.queued = it->get<bool>();
+		{
+				out.queued = it->get<bool>();
+		}
 		if (auto it = j.find("quality"); it != j.end() && it->is_string())
-			out.quality = it->get<std::string>();
+		{
+				out.quality = it->get<std::string>();
+		}
 	}
 	return out;
 }
@@ -2735,18 +3064,27 @@ CommandletBlueprintReader::SetSelection(const std::vector<std::string>& actorNam
 	// contain commas (UE actor names can't), so this is safe.
 	std::wstring joined;
 	for (std::size_t i = 0; i < actorNames.size(); ++i) {
-		if (i) joined += L",";
+		if (i)
+		{
+			joined += L",";
+		}
 		joined += Widen(actorNames[i]);
 	}
 	std::vector<std::wstring> args = {L"-Op=SetSelection",
 									   L"-Names=" + joined};
-	if (!replace) args.push_back(L"-Add");
+	if (!replace)
+	{
+		args.push_back(L"-Add");
+	}
 	auto j = RunOp(args);
 	SelectionResult out;
 	if (j.is_object()) {
 		if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
 			for (const auto& v : *it) {
-				if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+				if (v.is_string())
+				{
+					out.actorNames.push_back(v.get<std::string>());
+				}
 			}
 		}
 	}
@@ -2802,7 +3140,10 @@ IBlueprintReader::DeleteActorResult
 CommandletBlueprintReader::DeleteActor(std::string_view actorName) {
 	auto j = RunOp({L"-Op=DeleteActor", L"-Name=" + Widen(actorName)});
 	DeleteActorResult out;
-	if (j.is_object()) out.deleted = j.value("deleted", false);
+	if (j.is_object())
+	{
+		out.deleted = j.value("deleted", false);
+	}
 	return out;
 }
 
@@ -2818,7 +3159,10 @@ CommandletBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity
 	if (j.is_object()) {
 		if (auto it = j.find("entries"); it != j.end() && it->is_array()) {
 			for (const auto& e : *it) {
-				if (!e.is_object()) continue;
+				if (!e.is_object())
+				{
+					continue;
+				}
 				LogEntry entry;
 				entry.severity  = e.value("severity",  std::string{});
 				entry.category  = e.value("category",  std::string{});
@@ -2834,7 +3178,10 @@ CommandletBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity
 IBlueprintReader::AutomationRunResult
 CommandletBlueprintReader::RunAutomationTests(std::string_view pattern) {
 	std::vector<std::wstring> args = {L"-Op=RunAutomationTests"};
-	if (!pattern.empty()) args.push_back(L"-Pattern=" + Widen(pattern));
+	if (!pattern.empty())
+	{
+		args.push_back(L"-Pattern=" + Widen(pattern));
+	}
 	auto j = RunOp(args);
 	AutomationRunResult out;
 	if (j.is_object()) {

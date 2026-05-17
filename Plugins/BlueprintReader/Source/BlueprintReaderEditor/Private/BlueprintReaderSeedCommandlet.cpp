@@ -74,7 +74,10 @@ namespace
 	{
 		FBlueprintEditorUtils::AddMemberVariable(BP, Name, Type, DefaultValue);
 		const int32 Index = FBlueprintEditorUtils::FindNewVariableIndex(BP, Name);
-		if (Index == INDEX_NONE) return;
+		if (Index == INDEX_NONE)
+		{
+			return;
+		}
 
 		FBPVariableDescription& Var = BP->NewVariables[Index];
 		if (!Category.IsNone())
@@ -158,7 +161,10 @@ namespace
 	void BuildEventGraph(UBlueprint* BP)
 	{
 		UEdGraph* Graph = FBlueprintEditorUtils::FindEventGraph(BP);
-		if (!Graph) return;
+		if (!Graph)
+		{
+			return;
+		}
 
 		// BeginPlay event (existing or new).
 		UK2Node_Event* BeginPlay = nullptr;
@@ -225,9 +231,18 @@ namespace
 		UEdGraphPin* BranchThen    = Branch->GetThenPin();
 		UEdGraphPin* PrintExecIn   = PrintNode->GetExecPin();
 
-		if (PlayThen    && BranchExec)  PlayThen->MakeLinkTo(BranchExec);
-		if (IsAliveOut  && BranchCond)  IsAliveOut->MakeLinkTo(BranchCond);
-		if (BranchThen  && PrintExecIn) BranchThen->MakeLinkTo(PrintExecIn);
+		if (PlayThen    && BranchExec)
+		{
+			PlayThen->MakeLinkTo(BranchExec);
+		}
+		if (IsAliveOut  && BranchCond)
+		{
+			IsAliveOut->MakeLinkTo(BranchCond);
+		}
+		if (BranchThen  && PrintExecIn)
+		{
+			BranchThen->MakeLinkTo(PrintExecIn);
+		}
 	}
 
 	bool SavePackageToDisk(UPackage* Package, UBlueprint* Asset, const FString& PackageName)
@@ -258,7 +273,10 @@ namespace
 		const FString AssetName = TEXT("BP_TestEnemy");
 
 		FNewBlueprint NB;
-		if (!CreateBlueprint(PackageName, AssetName, AActor::StaticClass(), NB)) return false;
+		if (!CreateBlueprint(PackageName, AssetName, AActor::StaticClass(), NB))
+		{
+			return false;
+		}
 		UBlueprint* BP = NB.Blueprint;
 
 		// Variables: replicated Health (float), MaxHealth (float, editable), AggroTarget (object Actor, replicated).
@@ -305,7 +323,10 @@ namespace
 		const FString AssetName = TEXT("BP_TestPickup");
 
 		FNewBlueprint NB;
-		if (!CreateBlueprint(PackageName, AssetName, AActor::StaticClass(), NB)) return false;
+		if (!CreateBlueprint(PackageName, AssetName, AActor::StaticClass(), NB))
+		{
+			return false;
+		}
 		UBlueprint* BP = NB.Blueprint;
 
 		FEdGraphPinType IntType;

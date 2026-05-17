@@ -55,12 +55,18 @@ namespace BlueprintReader
 	int32 FBatchRegistry::AcquireWriteOwnership(uint64 ConnectionId, UBlueprint* BP, uint64& OutHeldByConnectionId)
 	{
 		OutHeldByConnectionId = 0;
-		if (ConnectionId == 0 || !BP) return 0;
+		if (ConnectionId == 0 || !BP)
+		{
+			return 0;
+		}
 		FScopeLock Lock(&Mu);
 		TWeakObjectPtr<UBlueprint> Key(BP);
 		if (uint64* Holder = WriteOwners.Find(Key))
 		{
-			if (*Holder == ConnectionId) return 0;  // already mine
+			if (*Holder == ConnectionId)
+			{
+				return 0;  // already mine
+			}
 			OutHeldByConnectionId = *Holder;
 			return 1;  // locked by other
 		}
@@ -70,7 +76,10 @@ namespace BlueprintReader
 
 	void FBatchRegistry::ReleaseAllWriteOwnership(uint64 ConnectionId)
 	{
-		if (ConnectionId == 0) return;
+		if (ConnectionId == 0)
+		{
+			return;
+		}
 		FScopeLock Lock(&Mu);
 		for (auto It = WriteOwners.CreateIterator(); It; ++It)
 		{
@@ -84,7 +93,10 @@ namespace BlueprintReader
 	TArray<TWeakObjectPtr<UBlueprint>> FBatchRegistry::Discard(uint64 ConnectionId)
 	{
 		TArray<TWeakObjectPtr<UBlueprint>> OutPending;
-		if (ConnectionId == 0) return OutPending;
+		if (ConnectionId == 0)
+		{
+			return OutPending;
+		}
 		FScopeLock Lock(&Mu);
 		if (TUniquePtr<FBatchContext>* P = Contexts.Find(ConnectionId))
 		{

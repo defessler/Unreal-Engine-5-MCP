@@ -70,7 +70,10 @@ public:
 		if (Socket)
 		{
 			ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
-			if (SocketSubsystem) SocketSubsystem->DestroySocket(Socket);
+			if (SocketSubsystem)
+			{
+				SocketSubsystem->DestroySocket(Socket);
+			}
 			Socket = nullptr;
 		}
 	}
@@ -90,7 +93,10 @@ public:
 		} FlushGuard{ConnectionId};
 
 		// 1. Send hello.
-		if (!SendFrame(MakeHello())) return 0;
+		if (!SendFrame(MakeHello()))
+		{
+			return 0;
+		}
 
 		// 2. Read auth frame.
 		FString AuthRaw;
@@ -116,7 +122,10 @@ public:
 		while (!bStopRequested)
 		{
 			FString FrameRaw;
-			if (!ReadFrame(FrameRaw)) break;  // EOF / error
+			if (!ReadFrame(FrameRaw))
+			{
+				break;  // EOF / error
+			}
 			TSharedPtr<FJsonObject> Msg = ParseJson(FrameRaw);
 			if (!Msg.IsValid())
 			{
@@ -149,7 +158,10 @@ public:
 			{
 				if (V.IsValid() && V->Type == EJson::String)
 				{
-					if (!Params.IsEmpty()) Params.AppendChar(TEXT(' '));
+					if (!Params.IsEmpty())
+					{
+						Params.AppendChar(TEXT(' '));
+					}
 					Params.Append(V->AsString());
 				}
 			}
@@ -224,7 +236,10 @@ private:
 	{
 		TSharedPtr<FJsonObject> Out;
 		TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Raw);
-		if (!FJsonSerializer::Deserialize(Reader, Out)) return nullptr;
+		if (!FJsonSerializer::Deserialize(Reader, Out))
+		{
+			return nullptr;
+		}
 		return Out;
 	}
 
@@ -234,7 +249,10 @@ private:
 	}
 	bool SendRaw(const FString& Text)
 	{
-		if (!Socket) return false;
+		if (!Socket)
+		{
+			return false;
+		}
 		FTCHARToUTF8 Conv(*Text);
 		const uint8* Bytes = (const uint8*)Conv.Get();
 		int32 Total = Conv.Length();
@@ -242,7 +260,10 @@ private:
 		while (Sent < Total)
 		{
 			int32 Wrote = 0;
-			if (!Socket->Send(Bytes + Sent, Total - Sent, Wrote) || Wrote == 0) return false;
+			if (!Socket->Send(Bytes + Sent, Total - Sent, Wrote) || Wrote == 0)
+			{
+				return false;
+			}
 			Sent += Wrote;
 		}
 		return true;
@@ -510,11 +531,17 @@ void FLiveServer::Stop()
 		FScopeLock Lock(&GState->Mu);
 		for (auto& Conn : GState->Connections)
 		{
-			if (Conn->Runnable) Conn->Runnable->Stop();
+			if (Conn->Runnable)
+			{
+				Conn->Runnable->Stop();
+			}
 		}
 		for (auto& Conn : GState->Connections)
 		{
-			if (Conn->Thread) Conn->Thread->WaitForCompletion();
+			if (Conn->Thread)
+			{
+				Conn->Thread->WaitForCompletion();
+			}
 		}
 		GState->Connections.Empty();
 		GState.Reset();
@@ -576,16 +603,25 @@ FString FLiveServer::PortCacheFilePath()
 int32 FLiveServer::ReadCachedPort()
 {
 	const FString Path = PortCacheFilePath();
-	if (!IFileManager::Get().FileExists(*Path)) return 0;
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		return 0;
+	}
 	FString Body;
-	if (!FFileHelper::LoadFileToString(Body, *Path)) return 0;
+	if (!FFileHelper::LoadFileToString(Body, *Path))
+	{
+		return 0;
+	}
 
 	// Minimal one-key JSON, parsed by the same JsonReader pattern the
 	// rest of the plugin uses. Tolerant of pretty-printed or compact
 	// forms; any malformed payload returns 0 (treat as cache miss).
 	TSharedPtr<FJsonObject> Obj;
 	TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Body);
-	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) return 0;
+	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid())
+	{
+		return 0;
+	}
 	int32 Port = 0;
 	Obj->TryGetNumberField(TEXT("port"), Port);
 
@@ -593,7 +629,10 @@ int32 FLiveServer::ReadCachedPort()
 	// zero (means "ephemeral", not a real cache), and privileged
 	// ports (<1024) which we should never have bound to in the first
 	// place but defend against corrupted caches.
-	if (Port < 1024 || Port > 65535) return 0;
+	if (Port < 1024 || Port > 65535)
+	{
+		return 0;
+	}
 	return Port;
 }
 
@@ -623,7 +662,10 @@ void FLiveServer::WriteCachedPort(int32 Port)
 void FLiveServer::DeleteHandshakeFile()
 {
 	const FString Path = HandshakeFilePath();
-	if (!IFileManager::Get().FileExists(*Path)) return;
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		return;
+	}
 	if (!IFileManager::Get().Delete(*Path, /*RequireExists=*/false,
 									/*EvenReadOnly=*/true,
 									/*Quiet=*/true))
@@ -673,7 +715,10 @@ bool FLiveServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& End
 
 FLiveServer* GetLiveServer()
 {
-	if (!GLiveServer.IsValid()) GLiveServer = MakeUnique<FLiveServer>();
+	if (!GLiveServer.IsValid())
+	{
+		GLiveServer = MakeUnique<FLiveServer>();
+	}
 	return GLiveServer.Get();
 }
 

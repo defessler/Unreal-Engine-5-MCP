@@ -85,18 +85,36 @@ namespace
 	// matching _NParams DECLARE variant.
 	void PopulateDelegateParams(FBPVariableInfo& V, UClass* GeneratedClass)
 	{
-		if (!GeneratedClass) return;
+		if (!GeneratedClass)
+		{
+			return;
+		}
 		FProperty* Prop = GeneratedClass->FindPropertyByName(*V.Name);
-		if (!Prop) return;
+		if (!Prop)
+		{
+			return;
+		}
 		FMulticastDelegateProperty* DelProp = CastField<FMulticastDelegateProperty>(Prop);
-		if (!DelProp || !DelProp->SignatureFunction) return;
+		if (!DelProp || !DelProp->SignatureFunction)
+		{
+			return;
+		}
 		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-		if (!K2Schema) return;
+		if (!K2Schema)
+		{
+			return;
+		}
 		for (TFieldIterator<FProperty> It(DelProp->SignatureFunction); It; ++It)
 		{
 			FProperty* Param = *It;
-			if (!Param || !Param->HasAnyPropertyFlags(CPF_Parm)) continue;
-			if (Param->HasAnyPropertyFlags(CPF_ReturnParm))      continue;
+			if (!Param || !Param->HasAnyPropertyFlags(CPF_Parm))
+			{
+				continue;
+			}
+			if (Param->HasAnyPropertyFlags(CPF_ReturnParm))
+			{
+				continue;
+			}
 			FEdGraphPinType PinType;
 			if (!K2Schema->ConvertPropertyToPinType(Param, PinType))
 			{
@@ -114,7 +132,10 @@ namespace
 	// Codegen uses this to fill in `T` in `ConstructorHelpers::FObjectFinder<T>`.
 	FString GetAssetRefPropertyClassName(FProperty* Prop)
 	{
-		if (!Prop) return FString();
+		if (!Prop)
+		{
+			return FString();
+		}
 		UClass* AssetClass = nullptr;
 		if (FObjectProperty* OP = CastField<FObjectProperty>(Prop))
 		{
@@ -132,7 +153,10 @@ namespace
 		{
 			AssetClass = SCP->MetaClass;
 		}
-		if (!AssetClass) return FString();
+		if (!AssetClass)
+		{
+			return FString();
+		}
 		// AssetClass->GetName() returns the bare name without prefix
 		// (e.g. "SkeletalMesh"). UE convention: U-prefix unless the
 		// class is Actor-derived (then A-prefix). UClass::IsChildOf
@@ -522,7 +546,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 
 	{
 		UClass* GenClass = Blueprint->GeneratedClass;
-		if (!GenClass) GenClass = Blueprint->SkeletonGeneratedClass;
+		if (!GenClass)
+		{
+			GenClass = Blueprint->SkeletonGeneratedClass;
+		}
 		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
 		{
 			FBPVariableInfo V = VariableDescToInfo(Var);
@@ -539,7 +566,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		const TArray<USCS_Node*>& RootSet = SCS->GetRootNodes();
 		for (USCS_Node* Node : SCS->GetAllNodes())
 		{
-			if (!Node) continue;
+			if (!Node)
+			{
+				continue;
+			}
 			FBPComponentInfo C;
 			C.Name = Node->GetVariableName().ToString();
 			C.ClassPath = Node->ComponentClass ? Node->ComponentClass->GetPathName() : FString();
@@ -564,7 +594,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 					for (TFieldIterator<FProperty> It(Template->GetClass()); It; ++It)
 					{
 						FProperty* Prop = *It;
-						if (!Prop) continue;
+						if (!Prop)
+						{
+							continue;
+						}
 						// Skip non-authored properties (transient,
 						// internal-only, computed-at-runtime).
 						if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient |
@@ -601,7 +634,10 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 
 	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
-		if (!Graph) continue;
+		if (!Graph)
+		{
+			continue;
+		}
 		FBPGraphInfo G = ReadGraph(Graph);
 		const bool bIsConstruction =
 			G.Name.Equals(TEXT("ConstructionScript"), ESearchCase::IgnoreCase) ||
@@ -611,21 +647,30 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 	}
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
 	{
-		if (!Graph) continue;
+		if (!Graph)
+		{
+			continue;
+		}
 		FBPGraphInfo G = ReadGraph(Graph);
 		G.WireType = TEXT("EventGraph");
 		Info.EventGraphs.Add(MoveTemp(G));
 	}
 	for (UEdGraph* Graph : Blueprint->MacroGraphs)
 	{
-		if (!Graph) continue;
+		if (!Graph)
+		{
+			continue;
+		}
 		FBPGraphInfo G = ReadGraph(Graph);
 		G.WireType = TEXT("Macro");
 		Info.MacroGraphs.Add(MoveTemp(G));
 	}
 	for (UEdGraph* Graph : Blueprint->DelegateSignatureGraphs)
 	{
-		if (!Graph) continue;
+		if (!Graph)
+		{
+			continue;
+		}
 		FBPGraphInfo G = ReadGraph(Graph);
 		G.WireType = TEXT("DelegateSignature");
 		Info.DelegateSignatureGraphs.Add(MoveTemp(G));
@@ -642,7 +687,10 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (!Node) continue;
+		if (!Node)
+		{
+			continue;
+		}
 
 		FBPNodeInfo N;
 		N.Guid = Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
@@ -657,7 +705,10 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 
 		for (UEdGraphPin* Pin : Node->Pins)
 		{
-			if (!Pin) continue;
+			if (!Pin)
+			{
+				continue;
+			}
 
 			FBPPinInfo P;
 			P.Name = Pin->GetFName().ToString();
@@ -674,7 +725,10 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 
 			for (UEdGraphPin* Linked : Pin->LinkedTo)
 			{
-				if (!Linked) continue;
+				if (!Linked)
+				{
+					continue;
+				}
 				if (UEdGraphNode* OwningNode = Linked->GetOwningNodeUnchecked())
 				{
 					FBPPinLinkInfo L;

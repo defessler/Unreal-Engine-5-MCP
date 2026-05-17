@@ -20,11 +20,17 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path);
 }
 
 void RequireObject(const nlohmann::json& v, std::string_view path) {
-	if (!v.is_object()) Bad(path, "expected object");
+	if (!v.is_object())
+	{
+		Bad(path, "expected object");
+	}
 }
 
 void RequireArray(const nlohmann::json& v, std::string_view path) {
-	if (!v.is_array()) Bad(path, "expected array");
+	if (!v.is_array())
+	{
+		Bad(path, "expected array");
+	}
 }
 
 void RequireString(const nlohmann::json& parent, std::string_view key,
@@ -66,7 +72,10 @@ std::string FirstMatchingKey(const nlohmann::json& obj,
 							 const std::vector<std::string>& candidates) {
 	if (!obj.is_object()) return {};
 	for (const auto& k : candidates) {
-		if (obj.contains(k)) return k;
+		if (obj.contains(k))
+		{
+			return k;
+		}
 	}
 	return {};
 }
@@ -83,9 +92,15 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path) {
 	}
 	if (form == "var") {
 		// {var: "name", [scope: ...]}
-		if (!expr["var"].is_string()) Bad(path, R"(field "var" must be a string)");
+		if (!expr["var"].is_string())
+		{
+			Bad(path, R"(field "var" must be a string)");
+		}
 		if (auto sIt = expr.find("scope"); sIt != expr.end()) {
-			if (!sIt->is_string()) Bad(path, R"(field "scope" must be a string)");
+			if (!sIt->is_string())
+			{
+				Bad(path, R"(field "scope" must be a string)");
+			}
 			const auto& s = sIt->get_ref<const std::string&>();
 			if (s != "local" && s != "member" && s != "input" && s != "output") {
 				Bad(path, fmt::format(
@@ -102,9 +117,15 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path) {
 		}
 	} else if (form == "call") {
 		// {call: "fn", [args: {...}]}
-		if (!expr["call"].is_string()) Bad(path, R"(field "call" must be a string)");
+		if (!expr["call"].is_string())
+		{
+			Bad(path, R"(field "call" must be a string)");
+		}
 		if (auto aIt = expr.find("args"); aIt != expr.end()) {
-			if (!aIt->is_object()) Bad(path, R"(field "args" must be an object)");
+			if (!aIt->is_object())
+			{
+				Bad(path, R"(field "args" must be an object)");
+			}
 			for (auto& [pinName, valExpr] : aIt->items()) {
 				ValidateExpression(valExpr,
 					fmt::format("{}.args.{}", path, pinName));
@@ -121,7 +142,10 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path) {
 	} else if (form == "index") {
 		// {index: <arr>, idx: <expr>}
 		ValidateExpression(expr["index"], fmt::format("{}.index", path));
-		if (!expr.contains("idx")) Bad(path, R"(missing "idx" expression)");
+		if (!expr.contains("idx"))
+		{
+			Bad(path, R"(missing "idx" expression)");
+		}
 		ValidateExpression(expr["idx"], fmt::format("{}.idx", path));
 	} else if (form == "self") {
 		// {self: null} — value is conventional, ignored.
@@ -161,7 +185,10 @@ void ValidateExpression(const nlohmann::json& expr, std::string_view path) {
 			Bad(path, R"(field "new_struct" must be a string (the struct type))");
 		}
 		if (auto fIt = expr.find("fields"); fIt != expr.end()) {
-			if (!fIt->is_object()) Bad(path, R"(field "fields" must be an object)");
+			if (!fIt->is_object())
+			{
+				Bad(path, R"(field "fields" must be an object)");
+			}
 			for (auto& [fieldName, valExpr] : fIt->items()) {
 				ValidateExpression(valExpr,
 					fmt::format("{}.fields.{}", path, fieldName));
@@ -197,20 +224,35 @@ void ValidateStatement(const nlohmann::json& stmt, std::string_view path) {
 			ValidateStatementList(*e, fmt::format("{}.else", path));
 		}
 	} else if (form == "set") {
-		if (!stmt["set"].is_string()) Bad(path, R"(field "set" must be a string (var name))");
-		if (!stmt.contains("to")) Bad(path, R"(missing "to" expression)");
+		if (!stmt["set"].is_string())
+		{
+			Bad(path, R"(field "set" must be a string (var name))");
+		}
+		if (!stmt.contains("to"))
+		{
+			Bad(path, R"(missing "to" expression)");
+		}
 		ValidateExpression(stmt["to"], fmt::format("{}.to", path));
 	} else if (form == "call") {
-		if (!stmt["call"].is_string()) Bad(path, R"(field "call" must be a string)");
+		if (!stmt["call"].is_string())
+		{
+			Bad(path, R"(field "call" must be a string)");
+		}
 		if (auto aIt = stmt.find("args"); aIt != stmt.end()) {
-			if (!aIt->is_object()) Bad(path, R"(field "args" must be an object)");
+			if (!aIt->is_object())
+			{
+				Bad(path, R"(field "args" must be an object)");
+			}
 			for (auto& [pinName, valExpr] : aIt->items()) {
 				ValidateExpression(valExpr,
 					fmt::format("{}.args.{}", path, pinName));
 			}
 		}
 	} else if (form == "comment") {
-		if (!stmt["comment"].is_string()) Bad(path, R"(field "comment" must be a string)");
+		if (!stmt["comment"].is_string())
+		{
+			Bad(path, R"(field "comment" must be a string)");
+		}
 	} else if (form == "return") {
 		const auto& r = stmt["return"];
 		if (r.is_null()) {
@@ -252,13 +294,22 @@ void ValidateStatement(const nlohmann::json& stmt, std::string_view path) {
 		if (!stmt["for_each"].is_string()) {
 			Bad(path, R"(field "for_each" must be a string (the loop-element variable name))");
 		}
-		if (!stmt.contains("in")) Bad(path, R"(missing "in" expression (the collection))");
+		if (!stmt.contains("in"))
+		{
+			Bad(path, R"(missing "in" expression (the collection))");
+		}
 		ValidateExpression(stmt["in"], fmt::format("{}.in", path));
-		if (!stmt.contains("body")) Bad(path, R"(missing "body" statement list)");
+		if (!stmt.contains("body"))
+		{
+			Bad(path, R"(missing "body" statement list)");
+		}
 		ValidateStatementList(stmt["body"], fmt::format("{}.body", path));
 	} else if (form == "while") {
 		ValidateExpression(stmt["while"], fmt::format("{}.while", path));
-		if (!stmt.contains("body")) Bad(path, R"(missing "body" statement list)");
+		if (!stmt.contains("body"))
+		{
+			Bad(path, R"(missing "body" statement list)");
+		}
 		ValidateStatementList(stmt["body"], fmt::format("{}.body", path));
 	} else if (form == "sequence") {
 		RequireArray(stmt["sequence"], fmt::format("{}.sequence", path));
@@ -283,7 +334,10 @@ void ValidateStatement(const nlohmann::json& stmt, std::string_view path) {
 		}
 		if (form == "broadcast") {
 			if (auto aIt = stmt.find("args"); aIt != stmt.end()) {
-				if (!aIt->is_object()) Bad(path, R"(field "args" must be an object)");
+				if (!aIt->is_object())
+				{
+					Bad(path, R"(field "args" must be an object)");
+				}
 				for (auto& [pinName, valExpr] : aIt->items()) {
 					ValidateExpression(valExpr,
 						fmt::format("{}.args.{}", path, pinName));
@@ -337,7 +391,10 @@ void ValidateFunctionDoc(const nlohmann::json& doc, std::string_view path) {
 	}
 	auto checkVarList = [&](const char* key) {
 		auto it = doc.find(key);
-		if (it == doc.end()) return;
+		if (it == doc.end())
+		{
+			return;
+		}
 		RequireArray(*it, fmt::format("{}.{}", path, key));
 		std::size_t i = 0;
 		for (const auto& v : *it) {
@@ -347,7 +404,10 @@ void ValidateFunctionDoc(const nlohmann::json& doc, std::string_view path) {
 	checkVarList("inputs");
 	checkVarList("outputs");
 	checkVarList("locals");
-	if (!doc.contains("body")) Bad(path, R"(function doc requires a "body" array)");
+	if (!doc.contains("body"))
+	{
+		Bad(path, R"(function doc requires a "body" array)");
+	}
 	ValidateStatementList(doc["body"], fmt::format("{}.body", path));
 }
 
@@ -357,7 +417,10 @@ void ValidateClassDoc(const nlohmann::json& doc, std::string_view path) {
 	if (auto it = doc.find("interfaces"); it != doc.end()) {
 		RequireArray(*it, fmt::format("{}.interfaces", path));
 		for (const auto& s : *it) {
-			if (!s.is_string()) Bad(path, R"(interfaces[] entries must be strings)");
+			if (!s.is_string())
+			{
+				Bad(path, R"(interfaces[] entries must be strings)");
+			}
 		}
 	}
 	if (auto it = doc.find("variables"); it != doc.end()) {
@@ -410,7 +473,10 @@ void ValidateBpir(const nlohmann::json& doc) {
 		Bad("", R"(BPIR doc requires string "kind" field ("function" or "class"))");
 	}
 	const auto& kind = doc["kind"].get_ref<const std::string&>();
-	if (kind == "function") ValidateFunctionDoc(doc, "");
+	if (kind == "function")
+	{
+		ValidateFunctionDoc(doc, "");
+	}
 	else if (kind == "class") ValidateClassDoc(doc, "");
 	else Bad("", fmt::format(R"("kind" = "{}", expected "function" or "class")", kind));
 }

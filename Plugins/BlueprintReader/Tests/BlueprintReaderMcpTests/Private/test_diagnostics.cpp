@@ -106,8 +106,14 @@ TEST_CASE("diagnostics: clean setup produces only OKs (with one warning if "
 	// Must include both "uproject found" and "DLL found" OKs.
 	bool sawUprojectOk = false, sawDllOk = false;
 	for (const auto& fnd : report.findings) {
-		if (fnd.label.find(".uproject file found") != std::string::npos) sawUprojectOk = true;
-		if (fnd.label.find("DLL found") != std::string::npos) sawDllOk = true;
+		if (fnd.label.find(".uproject file found") != std::string::npos)
+		{
+			sawUprojectOk = true;
+		}
+		if (fnd.label.find("DLL found") != std::string::npos)
+		{
+			sawDllOk = true;
+		}
 	}
 	CHECK(sawUprojectOk);
 	CHECK(sawDllOk);
