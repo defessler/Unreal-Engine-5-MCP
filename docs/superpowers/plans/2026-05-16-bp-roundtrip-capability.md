@@ -1522,7 +1522,7 @@ git commit -m "feat(roundtrip): SpecToBP — rebuilds a BP from BPSpec via write
 - Create: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Public/BlueprintStructuralDiff.h`
 - Create: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintStructuralDiff.cpp`
 
-- [ ] **Step 1: Write the header**
+- [x] **Step 1: Write the header**
 
 ```cpp
 // BlueprintStructuralDiff — position-independent comparison of two
@@ -1566,7 +1566,7 @@ FResult Compare(UBlueprint* A, UBlueprint* B, const FCompareOptions& Options);
 }    // namespace BlueprintStructuralDiff
 ```
 
-- [ ] **Step 2: Write the implementation (covers variables, components, functions, event graph)**
+- [x] **Step 2: Write the implementation (covers variables, components, functions, event graph)**
 
 ```cpp
 #include "BlueprintStructuralDiff.h"
@@ -1761,7 +1761,7 @@ TSharedPtr<FJsonObject> FResult::ToJson() const {
 "D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Source/BlueprintReaderEditor/Public/BlueprintStructuralDiff.h Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintStructuralDiff.cpp
