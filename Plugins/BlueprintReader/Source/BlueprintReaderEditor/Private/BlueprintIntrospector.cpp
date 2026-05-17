@@ -100,7 +100,7 @@ namespace
 			return;
 		}
 		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-		if (!K2Schema)
+		if (!IsValid(K2Schema))
 		{
 			return;
 		}
@@ -153,7 +153,7 @@ namespace
 		{
 			AssetClass = SCP->MetaClass;
 		}
-		if (!AssetClass)
+		if (!IsValid(AssetClass))
 		{
 			return FString();
 		}
@@ -446,7 +446,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(const FString& AssetPath)
 	// failure path; the default LogLinker warning would just duplicate it.
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(
 		nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
-	if (!Blueprint)
+	if (!IsValid(Blueprint))
 	{
 		// `read_blueprint` is the most common entry point for issues #3
 		// (uncompiled parent class) and #4 (non-Blueprint asset
@@ -502,7 +502,7 @@ void FBlueprintIntrospector::DiagnoseFailedBlueprintLoad(const FString& AssetPat
 	const FSoftObjectPath ParentRef(ParentClassTag);
 	UClass* ParentClass =
 		LoadObject<UClass>(nullptr, *ParentRef.ToString(), nullptr, LOAD_Quiet);
-	if (!ParentClass)
+	if (!IsValid(ParentClass))
 	{
 		UE_LOG(LogBlueprintReader, Error,
 			TEXT("LoadBlueprint: %s — parent class %s could not be resolved. "
@@ -521,7 +521,7 @@ void FBlueprintIntrospector::DiagnoseFailedBlueprintLoad(const FString& AssetPat
 
 TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 {
-	if (!Blueprint)
+	if (!IsValid(Blueprint))
 	{
 		return TOptional<FBlueprintInfo>();
 	}
@@ -546,7 +546,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 
 	{
 		UClass* GenClass = Blueprint->GeneratedClass;
-		if (!GenClass)
+		if (!IsValid(GenClass))
 		{
 			GenClass = Blueprint->SkeletonGeneratedClass;
 		}
@@ -566,7 +566,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		const TArray<USCS_Node*>& RootSet = SCS->GetRootNodes();
 		for (USCS_Node* Node : SCS->GetAllNodes())
 		{
-			if (!Node)
+			if (!IsValid(Node))
 			{
 				continue;
 			}
@@ -589,7 +589,7 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 			if (Template && Template->GetClass())
 			{
 				UObject* CDO = Template->GetClass()->GetDefaultObject();
-				if (CDO)
+				if (IsValid(CDO))
 				{
 					for (TFieldIterator<FProperty> It(Template->GetClass()); It; ++It)
 					{
@@ -687,7 +687,7 @@ FBPGraphInfo FBlueprintIntrospector::ReadGraph(UEdGraph* Graph)
 
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (!Node)
+		if (!IsValid(Node))
 		{
 			continue;
 		}
