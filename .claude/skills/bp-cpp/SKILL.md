@@ -153,7 +153,7 @@ for the full status legend.
 | Loops: `ForEachLoop`, `ForEachLoopWithBreak`, `ReverseForEachLoop`, `WhileLoop`, `IsValid` | `for (auto& X : Arr)`, `while (...)`, `if (IsValid(X))` |
 | Stateful macros: `DoOnce`, `FlipFlop`, `DoN` | Synth `bool`/`int32` member + guarded `if` block. Per-instance flag/counter derived from node GUID. |
 | Latent: `Delay`, `RetriggerableDelay`, `DelayUntilNextTick` | `GetWorld()->GetTimerManager().SetTimer(...)` + synth `FTimerHandle` member + generated `UFUNCTION()` continuation method carrying the post-delay body. Nested delays chain naturally. |
-| EnhancedInput: `K2Node_EnhancedInputAction` | Per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue)` callback + synth `TObjectPtr<UInputAction>` UPROPERTY + auto-generated `SetupPlayerInputComponent` override wrapping `EIC->BindAction(...)` in a `Cast<UEnhancedInputComponent>` guard. |
+| EnhancedInput: `K2Node_EnhancedInputAction` | Per-trigger `UFUNCTION() void On<Name>_<Trigger>(FInputActionValue)` callback + synth `TObjectPtr<UInputAction>` UPROPERTY + auto-generated `SetupPlayerInputComponent` override wrapping `EIC->BindAction(...)` in a `Cast<UEnhancedInputComponent>` guard. |
 | ConstructionScript / UserConstructionScript | `virtual void OnConstruction(const FTransform&) override` |
 
 ## Unsupported nodes — TODO + sidecar

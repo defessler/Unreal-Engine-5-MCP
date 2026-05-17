@@ -70,9 +70,9 @@ PR numbers refer to the merge that added the support.
 | `IsValid` | ✅ | `if (IsValid(X)) { ... } else { ... }` | (#103) |
 | `IsValidClass` | ❌ | -- | Falls through to unsupported. Add as a near-zero-cost follow-up. |
 | `Gate` | ❌ | -- | Stateful (multi-input macro); deferred — walker needs entry-pin awareness to differentiate Enter / Open / Close / Toggle. |
-| `DoOnce` | ✅ | `if (!b__BprDoOnce_<tag>_HasFired) { b...HasFired = true; <body> }` | Synth `bool` member auto-hoisted into class. `StartClosed` default honored. Reset-pin upstream wiring surfaces as inline `unsupported` sidecar. |
-| `DoN` | ✅ | `if (i__BprDoN_<tag>_Counter < <N>) { i...Counter = i...Counter + 1; <body> }` | Synth `int32` member; `N` read from pin (literal or expression). Reset-pin upstream → sidecar. |
-| `FlipFlop` | ✅ | `if (b__BprFlipFlop_<tag>_IsA) { b...IsA = false; <A> } else { b...IsA = true; <B> }` | Synth `bool` member initialized to `true` so first call routes to A (matches BP semantics). |
+| `DoOnce` | ✅ | `if (!bBPRDoOnce_<tag>_HasFired) { b...HasFired = true; <body> }` | Synth `bool` member auto-hoisted into class. `StartClosed` default honored. Reset-pin upstream wiring surfaces as inline `unsupported` sidecar. |
+| `DoN` | ✅ | `if (BPRDoN_<tag>_Counter < <N>) { i...Counter = i...Counter + 1; <body> }` | Synth `int32` member; `N` read from pin (literal or expression). Reset-pin upstream → sidecar. |
+| `FlipFlop` | ✅ | `if (bBPRFlipFlop_<tag>_IsA) { b...IsA = false; <A> } else { b...IsA = true; <B> }` | Synth `bool` member initialized to `true` so first call routes to A (matches BP semantics). |
 | `ForEachElementInEnum` | ❌ | -- | Could lower to a for-loop over `EnumType::Type::MAX`; not done. |
 
 ## Casting / type checks
@@ -125,7 +125,7 @@ PR numbers refer to the merge that added the support.
 | `K2Node_ComponentBoundEvent` | ⚠️ | Same as ActorBoundEvent | |
 | `K2Node_InputAction` / `_InputKey` / `_InputAxis` / `_InputTouch` / `_InputVectorAxisEvent` | ❌ | -- | Legacy input system. EnhancedInput migration recommended; manual port for now. |
 | `K2Node_InputActionEvent` and event-shaped variants | ❌ | -- | Same as above. |
-| `K2Node_EnhancedInputAction` | ✅ | Per-trigger `UFUNCTION() void OnIA_<Name>_<Trigger>(FInputActionValue Value);` callback + synth `UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input") TObjectPtr<UInputAction> IA_<Name>;` member + auto-generated `virtual void SetupPlayerInputComponent(UInputComponent*) override` that wraps `EIC->BindAction(...)` calls in a `Cast<UEnhancedInputComponent>` guard. | Event-graph scan in DecompileBlueprint produces this from the K2Node_EnhancedInputAction nodes scattered across event graphs. Unwired output pins produce no callback. Agent must add `#include "InputAction.h"`, `#include "EnhancedInputComponent.h"`, `#include "InputActionValue.h"` in the .cpp. |
+| `K2Node_EnhancedInputAction` | ✅ | Per-trigger `UFUNCTION() void On<Name>_<Trigger>(FInputActionValue Value);` callback + synth `UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input") TObjectPtr<UInputAction> IA_<Name>;` member + auto-generated `virtual void SetupPlayerInputComponent(UInputComponent*) override` that wraps `EIC->BindAction(...)` calls in a `Cast<UEnhancedInputComponent>` guard. | Event-graph scan in DecompileBlueprint produces this from the K2Node_EnhancedInputAction nodes scattered across event graphs. Unwired output pins produce no callback. Agent must add `#include "InputAction.h"`, `#include "EnhancedInputComponent.h"`, `#include "InputActionValue.h"` in the .cpp. |
 
 ## Delegates
 
