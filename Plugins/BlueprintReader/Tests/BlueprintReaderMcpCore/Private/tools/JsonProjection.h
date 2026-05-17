@@ -37,4 +37,4 @@ void ApplyProjection(nlohmann::json& body, const std::vector<std::string>& paths
 // absent / null. Throws on non-array, non-string-element values.
 std::vector<std::string> ParseFieldsArg(const nlohmann::json& args);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

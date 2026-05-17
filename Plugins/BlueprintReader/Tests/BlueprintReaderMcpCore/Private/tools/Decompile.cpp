@@ -1584,4 +1584,4 @@ nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
 	return doc;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

@@ -20,11 +20,11 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 	#pragma comment(lib, "Ws2_32.lib")
-#endif
+#endif    // defined(_WIN32)
 
 using namespace bpr::backends;
 using namespace std::chrono_literals;
@@ -37,7 +37,7 @@ struct WsaInit {
 	~WsaInit() { WSACleanup(); }
 };
 WsaInit& Wsa() { static WsaInit s; return s; }
-#endif
+#endif    // defined(_WIN32)
 
 // Mock TCP listener used by the live-backend handshake/protocol tests.
 // Accepts one connection by default; pass a vector of scripts to handle

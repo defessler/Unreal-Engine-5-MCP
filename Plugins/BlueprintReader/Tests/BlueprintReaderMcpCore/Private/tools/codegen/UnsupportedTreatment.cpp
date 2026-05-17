@@ -127,9 +127,9 @@ std::string IsoTimestamp() {
 	std::tm tm{};
 #if defined(_WIN32)
 	gmtime_s(&tm, &t);
-#else
+#else    // defined(_WIN32)
 	gmtime_r(&t, &tm);
-#endif
+#endif    // defined(_WIN32)
 	char buf[32];
 	std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
 	return buf;
@@ -216,4 +216,4 @@ nlohmann::json BuildSidecar(std::string_view sourceBp,
 	};
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

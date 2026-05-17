@@ -366,4 +366,4 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
 	}
 }
 
-} // namespace bpr::jsonrpc
+}    // namespace bpr::jsonrpc

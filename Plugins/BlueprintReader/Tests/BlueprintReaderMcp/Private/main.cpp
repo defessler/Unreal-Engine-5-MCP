@@ -38,7 +38,7 @@
 	#include <io.h>
 	#include <fcntl.h>
 	#include <windows.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace {
 
@@ -50,9 +50,9 @@ std::filesystem::path ExecutableDir() {
 		return std::filesystem::current_path();
 	}
 	return std::filesystem::path(buf).parent_path();
-#else
+#else    // defined(_WIN32)
 	return std::filesystem::current_path();
-#endif
+#endif    // defined(_WIN32)
 }
 
 std::filesystem::path ExecutablePath() {
@@ -61,9 +61,9 @@ std::filesystem::path ExecutablePath() {
 	DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
 	if (n == 0 || n == MAX_PATH) return {};
 	return std::filesystem::path(buf);
-#else
+#else    // defined(_WIN32)
 	return {};
-#endif
+#endif    // defined(_WIN32)
 }
 
 void EnsureBinaryStdio() {
@@ -72,7 +72,7 @@ void EnsureBinaryStdio() {
 	// (CRLF translation, Ctrl-Z = EOF). Force binary.
 	_setmode(_fileno(stdin),  _O_BINARY);
 	_setmode(_fileno(stdout), _O_BINARY);
-#endif
+#endif    // defined(_WIN32)
 	// Two layers of buffering on Windows: iostream's filebuf and the C
 	// runtime's stdout buffer. `unitbuf` makes the iostream layer flush on
 	// every <<, but the bytes can still sit in the CRT block buffer until it

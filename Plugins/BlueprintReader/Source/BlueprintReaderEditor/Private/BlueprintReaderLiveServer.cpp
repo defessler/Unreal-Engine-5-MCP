@@ -677,4 +677,4 @@ FLiveServer* GetLiveServer()
 	return GLiveServer.Get();
 }
 
-} // namespace BlueprintReader
+}    // namespace BlueprintReader

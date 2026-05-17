@@ -13,7 +13,7 @@
 #if defined(_WIN32)
 	#define WIN32_LEAN_AND_MEAN
 	#include <windows.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::env {
 
@@ -28,12 +28,12 @@ std::optional<std::string> Get(const char* key) {
 		return out;
 	}
 	return std::nullopt;
-#else
+#else    // !_MSC_VER
 	if (const char* v = std::getenv(key); v != nullptr && *v != '\0') {
 		return std::string(v);
 	}
 	return std::nullopt;
-#endif
+#endif    // _MSC_VER
 }
 
 std::string GetOrDefault(const char* key, std::string fallback) {
@@ -142,10 +142,10 @@ ResolveEngineFromRegistry(const std::string& engineAssociation) {
 	std::error_code ec;
 	if (!std::filesystem::is_directory(p, ec)) return std::nullopt;
 	return p;
-#else
+#else    // defined(_WIN32)
 	(void)engineAssociation;
 	return std::nullopt;
-#endif
+#endif    // defined(_WIN32)
 }
 
 std::optional<std::string>
@@ -174,4 +174,4 @@ DetectEditorConfig(const std::filesystem::path& pluginDir) {
 	return std::nullopt;
 }
 
-} // namespace bpr::env
+}    // namespace bpr::env

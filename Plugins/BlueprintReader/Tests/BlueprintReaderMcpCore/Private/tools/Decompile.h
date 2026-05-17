@@ -60,4 +60,4 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 nlohmann::json DecompileBlueprint(backends::IBlueprintReader& reader,
                                   std::string_view assetPath);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

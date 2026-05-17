@@ -58,4 +58,4 @@ namespace bpr::tools {
 void RegisterCompileFunction(ToolRegistry& registry,
                              backends::IBlueprintReader& reader);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

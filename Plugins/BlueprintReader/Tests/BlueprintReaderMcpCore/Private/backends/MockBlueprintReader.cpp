@@ -332,4 +332,4 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 	return out;
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

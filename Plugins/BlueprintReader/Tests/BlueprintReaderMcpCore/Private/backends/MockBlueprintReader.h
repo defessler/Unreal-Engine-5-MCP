@@ -86,4 +86,4 @@ private:
 	std::map<std::string, FixtureEntry, std::less<>> assets_;
 };
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

@@ -135,4 +135,4 @@ private:
 nlohmann::json MakeResultEnvelope(const nlohmann::json& id, nlohmann::json result);
 nlohmann::json MakeErrorEnvelope(const nlohmann::json& id, const Error& err);
 
-} // namespace bpr::jsonrpc
+}    // namespace bpr::jsonrpc

@@ -11,17 +11,17 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 	#pragma comment(lib, "Ws2_32.lib")
-#else
+#else    // defined(_WIN32)
 	#include <arpa/inet.h>
 	#include <netinet/in.h>
 	#include <sys/socket.h>
 	#include <unistd.h>
 	#include <fcntl.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::backends {
 
@@ -75,31 +75,31 @@ bool TcpProbe(const std::string& host, int port,
 	WSADATA wsa;
 	bool wsaInited = WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
 	auto cleanup = [wsaInited]() { if (wsaInited) WSACleanup(); };
-#else
+#else    // defined(_WIN32)
 	auto cleanup = []() {};
-#endif
+#endif    // defined(_WIN32)
 
 #if defined(_WIN32)
 	SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s == INVALID_SOCKET) { cleanup(); return false; }
 	auto closeSock = [&]() { ::closesocket(s); cleanup(); };
 	u_long nb = 1; ::ioctlsocket(s, FIONBIO, &nb);
-#else
+#else    // defined(_WIN32)
 	int s = ::socket(AF_INET, SOCK_STREAM, 0);
 	if (s < 0) { cleanup(); return false; }
 	auto closeSock = [&]() { ::close(s); cleanup(); };
 	int flags = ::fcntl(s, F_GETFL, 0);
 	::fcntl(s, F_SETFL, flags | O_NONBLOCK);
-#endif
+#endif    // defined(_WIN32)
 
 	sockaddr_in addr{};
 	addr.sin_family = AF_INET;
 	addr.sin_port   = htons(static_cast<uint16_t>(port));
 #if defined(_WIN32)
 	inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
-#else
+#else    // defined(_WIN32)
 	inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
-#endif
+#endif    // defined(_WIN32)
 
 	int rc = ::connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 	if (rc == 0) { closeSock(); return true; }
@@ -119,10 +119,10 @@ bool TcpProbe(const std::string& host, int port,
 #if defined(_WIN32)
 	int errLen = sizeof(err);
 	::getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &errLen);
-#else
+#else    // defined(_WIN32)
 	socklen_t errLen = sizeof(err);
 	::getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &errLen);
-#endif
+#endif    // defined(_WIN32)
 	closeSock();
 	return err == 0;
 }
@@ -432,4 +432,4 @@ nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	return commandlet_->ShutdownDaemon();
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

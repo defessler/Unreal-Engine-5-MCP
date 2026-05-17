@@ -1031,4 +1031,4 @@ nlohmann::json ParseCppFunction(std::string_view source,
 	return ParseInternal(source, &signature);
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

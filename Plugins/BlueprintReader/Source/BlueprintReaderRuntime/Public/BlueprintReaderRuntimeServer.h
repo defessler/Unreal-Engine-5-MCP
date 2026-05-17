@@ -94,4 +94,4 @@ private:
 // and constructs+starts when opt-in is set.
 FRuntimeServer* GetRuntimeServer();
 
-} // namespace BlueprintReaderRuntime
+}    // namespace BlueprintReaderRuntime

@@ -704,4 +704,4 @@ void OnModuleShutdown_StopRuntimeListener()
 	GRuntimeServer.Reset();
 }
 
-} // namespace BlueprintReaderRuntime
+}    // namespace BlueprintReaderRuntime

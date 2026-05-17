@@ -56,4 +56,4 @@ BPPinType ParseTypeArg(const nlohmann::json& value);
 // Just the string-parsing path, exposed for tests + reuse.
 BPPinType ParseTypeShorthand(std::string_view shorthand);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

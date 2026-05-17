@@ -502,4 +502,4 @@ void RegisterCompileFunction(ToolRegistry& registry,
 	});
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

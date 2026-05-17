@@ -19,16 +19,16 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 	#pragma comment(lib, "Ws2_32.lib")
-#else
+#else    // defined(_WIN32)
 	#include <arpa/inet.h>
 	#include <netinet/in.h>
 	#include <sys/socket.h>
 	#include <unistd.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace fs = std::filesystem;
 
@@ -39,7 +39,7 @@ struct WsaInit {
 #if defined(_WIN32)
 	WsaInit()  { WSADATA d; WSAStartup(MAKEWORD(2, 2), &d); }
 	~WsaInit() { WSACleanup(); }
-#endif
+#endif    // defined(_WIN32)
 };
 WsaInit& GlobalWsa() { static WsaInit s; return s; }
 
@@ -52,17 +52,17 @@ struct TestListener {
 	int port = 0;
 #if defined(_WIN32)
 	SOCKET srv = INVALID_SOCKET;
-#else
+#else    // defined(_WIN32)
 	int srv = -1;
-#endif
+#endif    // defined(_WIN32)
 
 	explicit TestListener() {
 		GlobalWsa();
 #if defined(_WIN32)
 		srv = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-#else
+#else    // defined(_WIN32)
 		srv = ::socket(AF_INET, SOCK_STREAM, 0);
-#endif
+#endif    // defined(_WIN32)
 		REQUIRE(srv >= 0);
 		sockaddr_in addr{};
 		addr.sin_family = AF_INET;
@@ -73,9 +73,9 @@ struct TestListener {
 		sockaddr_in bound{};
 #if defined(_WIN32)
 		int blen = sizeof(bound);
-#else
+#else    // defined(_WIN32)
 		socklen_t blen = sizeof(bound);
-#endif
+#endif    // defined(_WIN32)
 		::getsockname(srv, reinterpret_cast<sockaddr*>(&bound), &blen);
 		port = ntohs(bound.sin_port);
 		t = std::thread([this]() {
@@ -89,10 +89,10 @@ struct TestListener {
 #if defined(_WIN32)
 					SOCKET c = ::accept(srv, nullptr, nullptr);
 					if (c != INVALID_SOCKET) ::closesocket(c);
-#else
+#else    // defined(_WIN32)
 					int c = ::accept(srv, nullptr, nullptr);
 					if (c >= 0) ::close(c);
-#endif
+#endif    // defined(_WIN32)
 				}
 			}
 		});
@@ -103,9 +103,9 @@ struct TestListener {
 		if (t.joinable()) t.join();
 #if defined(_WIN32)
 		if (srv != INVALID_SOCKET) ::closesocket(srv);
-#else
+#else    // defined(_WIN32)
 		if (srv >= 0) ::close(srv);
-#endif
+#endif    // defined(_WIN32)
 	}
 };
 

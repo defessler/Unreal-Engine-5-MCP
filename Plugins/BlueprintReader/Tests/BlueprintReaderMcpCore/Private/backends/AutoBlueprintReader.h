@@ -192,4 +192,4 @@ private:
 	Route route_ = Route::Commandlet;
 };
 
-} // namespace bpr::backends
+}    // namespace bpr::backends
