@@ -209,21 +209,16 @@ TEST_CASE("[live][slow][roundtrip][bpir] BP_ThirdPersonCharacter -> decompile ->
 	CHECK(hSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
 	CHECK(cppSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
 
-	// Stage 4 (passthrough) + Stage 5 (skeleton-build) wire end-to-end.
-	// BP_TestEnemy roundtrips cleanly with ok=true; TPC is more complex —
-	// some functions (e.g. ones with name collisions against the parent
-	// class or with unusual return-types) fail AddFunction with exit=1.
-	// Accept either full success OR a documented AddFunction-stage failure
-	// as evidence the pipeline runs; tighten when Stage 5 handles the
-	// edge cases.
+	// Stage 4 (passthrough) + Stage 5 (skeleton-build with duplicate-name
+	// dedup) now succeed for TPC too — the full BP -> C++ -> compile -> BP
+	// pipeline runs end-to-end without copying anything. The duplicate
+	// OnUnknownTriggered functions (synthesized by decompile from
+	// unresolved EnhancedInputAction nodes) are skipped after the first
+	// with a soft-recorded body_compile_failures entry.
 	CHECK_FALSE(res.bpir_after.is_null());
 	CHECK(res.bpir_after.is_object());
-	const bool stage5OkOrAddFunctionGap =
-		res.ok ||
-		(res.failing_stage == "transpile" &&
-		 res.error_message.find("AddFunction:") != std::string::npos);
-	INFO("Stage 5 result must be ok=true OR AddFunction:* failure");
-	CHECK(stage5OkOrAddFunctionGap);
+	CHECK(res.ok);
+	CHECK(res.failing_stage.empty());
 
 	if (GetEnv("BP_READER_KEEP_GENERATED").empty()) {
 		RemoveIfExists(hPath);
