@@ -17,7 +17,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace backend_factory_detail {
 
 // Look for `<projectDir>/Saved/bp-reader-live.json`, the file the
 // editor's BlueprintReaderLiveServer drops on StartupModule. Returns
@@ -74,7 +74,8 @@ std::optional<HandshakeFile> ReadHandshakeFile(
 	return hf;
 }
 
-} // namespace
+}    // namespace backend_factory_detail
+using namespace backend_factory_detail;
 
 BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 							std::ostream& log) {

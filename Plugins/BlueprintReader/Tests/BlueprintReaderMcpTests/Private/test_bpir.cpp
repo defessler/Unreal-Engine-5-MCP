@@ -12,7 +12,7 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_bpir_detail {
 
 // Minimal valid function doc — used as a baseline that other tests
 // mutate to exercise specific validation paths.
@@ -25,7 +25,8 @@ json MakeMinimalFunction() {
 	};
 }
 
-} // namespace
+}    // namespace test_bpir_detail
+using namespace test_bpir_detail;
 
 // ===== Top-level shape =====================================================
 

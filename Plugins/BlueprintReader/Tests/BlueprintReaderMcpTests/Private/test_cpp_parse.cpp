@@ -14,7 +14,7 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_cpp_parse_detail {
 
 // Bare-body parser shorthand: parse a snippet with no surrounding
 // signature so the body shape is what we assert against.
@@ -22,7 +22,8 @@ json ParseBody(std::string_view src) {
 	return ParseCppFunction(src);
 }
 
-} // namespace
+}    // namespace test_cpp_parse_detail
+using namespace test_cpp_parse_detail;
 
 // ===== Statement forms ====================================================
 

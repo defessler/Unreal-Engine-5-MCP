@@ -21,7 +21,7 @@ using namespace bpr;
 using namespace bpr::backends;
 using namespace std::chrono_literals;
 
-namespace {
+namespace test_caching_reader_detail {
 
 // Decorator counting forwarded calls. Wraps a real MockBlueprintReader so
 // the data shape is canonical.
@@ -143,7 +143,8 @@ struct Fixture {
 	}
 };
 
-} // namespace
+}    // namespace test_caching_reader_detail
+using namespace test_caching_reader_detail;
 
 TEST_CASE("Cache: second read of same blueprint hits the cache") {
 	Fixture f;

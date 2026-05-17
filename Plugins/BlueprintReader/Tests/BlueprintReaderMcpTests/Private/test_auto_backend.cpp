@@ -32,7 +32,7 @@
 
 namespace fs = std::filesystem;
 
-namespace {
+namespace test_auto_backend_detail {
 
 // One-time WSAStartup for the test process.
 struct WsaInit {
@@ -170,7 +170,8 @@ bpr::backends::AutoBlueprintReader::Config MakeAutoCfg(const TempProject& tp) {
 	return cfg;
 }
 
-} // namespace
+}    // namespace test_auto_backend_detail
+using namespace test_auto_backend_detail;
 
 TEST_CASE("Auto: no handshake file → falls through to commandlet") {
 	TempProject tp;

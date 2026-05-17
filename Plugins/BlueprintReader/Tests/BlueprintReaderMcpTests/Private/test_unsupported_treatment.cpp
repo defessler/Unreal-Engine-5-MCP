@@ -10,11 +10,12 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_unsupported_treatment_detail {
 bool Contains(const std::string& s, const std::string& sub) {
 	return s.find(sub) != std::string::npos;
 }
-} // namespace
+}    // namespace test_unsupported_treatment_detail
+using namespace test_unsupported_treatment_detail;
 
 // ===== Classification ======================================================
 

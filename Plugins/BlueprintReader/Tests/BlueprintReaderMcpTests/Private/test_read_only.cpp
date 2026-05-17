@@ -13,14 +13,15 @@
 using namespace bpr;
 using namespace bpr::backends;
 
-namespace {
+namespace test_read_only_detail {
 
 std::unique_ptr<IBlueprintReader> MakeReadOnly() {
 	auto inner = test::MakeMockReaderUnique();
 	return std::make_unique<ReadOnlyBlueprintReader>(std::move(inner));
 }
 
-} // namespace
+}    // namespace test_read_only_detail
+using namespace test_read_only_detail;
 
 TEST_CASE("ReadOnly: read tools pass through unchanged") {
 	auto r = MakeReadOnly();

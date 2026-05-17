@@ -9,7 +9,7 @@
 
 using namespace bpr::tools;
 
-namespace {
+namespace test_cpp_lex_detail {
 
 // Pull just the kinds out of a token list — most tests only assert
 // shape, not text. EOF is included at the tail so every test can verify
@@ -24,7 +24,8 @@ std::vector<CppTokenKind> Kinds(const std::vector<CppToken>& toks) {
 	return out;
 }
 
-} // namespace
+}    // namespace test_cpp_lex_detail
+using namespace test_cpp_lex_detail;
 
 TEST_CASE("Lex: identifiers and keywords") {
 	auto toks = LexCpp("if for while return MyVar");

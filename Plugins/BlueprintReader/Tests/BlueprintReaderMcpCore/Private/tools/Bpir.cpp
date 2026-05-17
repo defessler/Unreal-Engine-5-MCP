@@ -6,7 +6,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace bpir_detail {
 
 // Forward decls so statement / expression validators can recurse into
 // each other (a `cast` statement contains a `<expr>` value).
@@ -439,7 +439,8 @@ void ValidateClassDoc(const nlohmann::json& doc, std::string_view path) {
 	}
 }
 
-} // anonymous namespace
+}    // namespace bpir_detail
+using namespace bpir_detail;
 
 const std::vector<std::string>& StatementForms()  { return StatementFormsImpl(); }
 const std::vector<std::string>& ExpressionForms() { return ExpressionFormsImpl(); }

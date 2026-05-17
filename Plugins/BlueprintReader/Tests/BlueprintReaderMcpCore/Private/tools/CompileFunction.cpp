@@ -9,7 +9,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace compile_function_detail {
 
 // ----- Op-list builder ---------------------------------------------------
 // CompileFunction doesn't talk to the reader directly — it produces a
@@ -382,7 +382,8 @@ ExecTails CompileStatements(Compiler& c, ExecTails tails,
 	return tails;
 }
 
-} // namespace
+}    // namespace compile_function_detail
+using namespace compile_function_detail;
 
 void RegisterCompileFunction(ToolRegistry& registry,
 							 backends::IBlueprintReader& reader) {

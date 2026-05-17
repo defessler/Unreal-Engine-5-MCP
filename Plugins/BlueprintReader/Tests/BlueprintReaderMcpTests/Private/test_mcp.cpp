@@ -18,7 +18,7 @@
 using namespace bpr;
 using nlohmann::json;
 
-namespace {
+namespace test_mcp_detail {
 
 std::string Frame(const json& body) {
 	std::ostringstream os;
@@ -39,7 +39,8 @@ std::vector<json> ReadAllFrames(std::istream& in) {
 	return out;
 }
 
-} // namespace
+}    // namespace test_mcp_detail
+using namespace test_mcp_detail;
 
 TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	auto reader = test::MakeMockReader();

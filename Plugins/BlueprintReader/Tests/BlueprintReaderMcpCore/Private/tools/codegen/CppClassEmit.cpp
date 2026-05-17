@@ -14,7 +14,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace cpp_class_emit_detail {
 
 // ----- Parent class → header path table ---------------------------------
 // UE doesn't ship a programmatic "give me the header for this UClass"
@@ -273,7 +273,8 @@ std::string StripBpSuffix(std::string_view bpName) {
 	return std::string(bpName);
 }
 
-} // namespace
+}    // namespace cpp_class_emit_detail
+using namespace cpp_class_emit_detail;
 
 std::string ParentClassToHeader(std::string_view parentClassName) {
 	if (parentClassName.empty())
@@ -446,7 +447,7 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
 	return out;
 }
 
-namespace {
+namespace cpp_class_emit_detail2 {
 
 // Trim trailing zeros from a BP-serialized float string. UE serializes
 // "100.0" as "100.000000" — we render that as "100.0f" rather than
@@ -988,7 +989,8 @@ std::string RenderUFunctionImpl(const std::string& className,
 		returnType, className, fnName, args, constSuffix, bodyResult.source);
 }
 
-} // namespace
+}    // namespace cpp_class_emit_detail2
+using namespace cpp_class_emit_detail2;
 
 CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 								CppClassEmitOptions opts) {

@@ -13,7 +13,7 @@ using nlohmann::json;
 using bpr::tools::ApplyProjection;
 using bpr::tools::ParseFieldsArg;
 
-namespace {
+namespace test_json_projection_detail {
 
 json SampleBlueprint() {
 	return json{
@@ -32,7 +32,8 @@ json SampleBlueprint() {
 	};
 }
 
-} // namespace
+}    // namespace test_json_projection_detail
+using namespace test_json_projection_detail;
 
 TEST_CASE("ApplyProjection: empty paths is a no-op") {
 	json doc = SampleBlueprint();

@@ -15,7 +15,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace cpp_parse_detail {
 
 // ---- Forward operator alias map -------------------------------------------
 // Mirror of CompileFunction.cpp's AliasMap and CppEmit.cpp's reverse map.
@@ -1122,7 +1122,8 @@ nlohmann::json ParseInternal(std::string_view source,
 	return doc;
 }
 
-} // namespace
+}    // namespace cpp_parse_detail
+using namespace cpp_parse_detail;
 
 nlohmann::json ParseCppFunction(std::string_view source) {
 	return ParseInternal(source, nullptr);

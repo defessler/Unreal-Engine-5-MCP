@@ -25,7 +25,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace auto_blueprint_reader_detail {
 
 // Re-read a handshake file (same shape as BackendFactory.cpp's
 // ReadHandshakeFile, but Auto re-reads on every probe so a
@@ -139,7 +139,8 @@ bool TcpProbe(const std::string& host, int port,
 	return err == 0;
 }
 
-} // namespace
+}    // namespace auto_blueprint_reader_detail
+using namespace auto_blueprint_reader_detail;
 
 AutoBlueprintReader::AutoBlueprintReader(Config cfg) : cfg_(std::move(cfg)) {
 	// Both backends are constructed lazily. Commandlet validation is

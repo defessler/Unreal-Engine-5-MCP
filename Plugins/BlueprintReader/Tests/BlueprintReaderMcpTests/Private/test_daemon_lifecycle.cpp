@@ -45,7 +45,7 @@
 using namespace bpr::backends;
 using namespace std::chrono_literals;
 
-namespace {
+namespace test_daemon_lifecycle_detail {
 
 #if defined(_WIN32)
 
@@ -108,7 +108,8 @@ private:
 
 #endif    // _WIN32
 
-}  // namespace
+}    // namespace test_daemon_lifecycle_detail
+using namespace test_daemon_lifecycle_detail;
 
 #if defined(_WIN32)
 

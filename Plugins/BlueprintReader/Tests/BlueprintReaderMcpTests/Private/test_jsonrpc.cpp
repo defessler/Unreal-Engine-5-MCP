@@ -9,7 +9,7 @@
 using namespace bpr::jsonrpc;
 using nlohmann::json;
 
-namespace {
+namespace test_jsonrpc_detail {
 
 std::string FrameNL(const json& body) {
 	std::ostringstream os;
@@ -22,7 +22,8 @@ std::string FrameCL(const json& body) {
 	return os.str();
 }
 
-} // namespace
+}    // namespace test_jsonrpc_detail
+using namespace test_jsonrpc_detail;
 
 TEST_CASE("WriteFrame newline-delimited emits one line + LF") {
 	json body = {{"hello", "world"}};
