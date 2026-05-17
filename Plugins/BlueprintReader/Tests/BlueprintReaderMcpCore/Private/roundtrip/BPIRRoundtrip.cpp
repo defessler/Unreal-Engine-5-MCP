@@ -29,6 +29,7 @@
 #include <sstream>
 #include <vector>
 
+#include "tools/CompileFunction.h"
 #include "tools/Decompile.h"
 #include "tools/TypeShorthand.h"
 #include "tools/codegen/CppClassEmit.h"
@@ -307,6 +308,30 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 				};
 				if (!pushParams("inputs", /*isOutput=*/false)) return res;
 				if (!pushParams("outputs", /*isOutput=*/true))  return res;
+
+				// Body materialization: compile_function translates the BPIR
+				// statement DSL (if/set/call/comment) into add_node + wire_pins
+				// ops. Statements outside the supported subset (return, cast,
+				// switch, loops, etc.) raise — we count those as soft failures
+				// so a single-statement edge case doesn't lose the otherwise-
+				// complete skeleton. Counts surface in body_compile_failures
+				// for callers to surface; res.ok stays true.
+				const auto& bodyJ = fn.value("body", nlohmann::json::array());
+				if (bodyJ.is_array() && !bodyJ.empty()) {
+					nlohmann::json compileArgs = {
+						{"asset_path",    outPath},
+						{"function_name", fname},
+						{"body",          bodyJ},
+						{"atomic",        false},
+					};
+					try {
+						(void)tools::CompileFunctionFromBody(reader, compileArgs);
+					}
+					catch (const std::exception& e) {
+						res.body_compile_failures.push_back(
+							fname + ": " + e.what());
+					}
+				}
 			}
 		}
 
