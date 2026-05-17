@@ -1054,7 +1054,7 @@ git commit -m "feat(roundtrip): BPSpec — JSON snapshot bridging read/write too
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.h`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.cpp`
 
-- [ ] **Step 1: Write the header**
+- [x] **Step 1: Write the header**
 
 ```cpp
 // ReadToSpec — orchestrates IBlueprintReader read methods to assemble a
@@ -1077,7 +1077,7 @@ BPSpec ReadToSpec(backends::IBlueprintReader& reader, std::string_view assetPath
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Write a failing test first**
+- [x] **Step 2: Write a failing test first**
 
 Add to `test_bpspec.cpp` (already exists from Task 9):
 
@@ -1104,7 +1104,7 @@ TEST_CASE("ReadToSpec assembles a spec from the mock backend") {
 
 Expected: unresolved-external link error for `ReadToSpec`.
 
-- [ ] **Step 4: Implement `ReadToSpec.cpp`**
+- [x] **Step 4: Implement `ReadToSpec.cpp`**
 
 ```cpp
 #include "ReadToSpec.h"
@@ -1231,7 +1231,7 @@ BPSpec ReadToSpec(backends::IBlueprintReader& reader, std::string_view assetPath
 
 Expected: pass. If the BPMetadata field names (`ParentClass`, `Interfaces`, `Functions`, `Macros`) don't match what `BlueprintReaderTypes.h` defines, adjust the cpp accordingly — the compiler tells you which.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/ReadToSpec.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp

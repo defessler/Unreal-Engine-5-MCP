@@ -6,6 +6,10 @@
 #include <nlohmann/json.hpp>
 
 #include "roundtrip/BPSpec.h"
+#include "roundtrip/ReadToSpec.h"
+
+#include "backends/MockBlueprintReader.h"
+#include "test_helpers.h"
 
 using namespace bpr::roundtrip;
 
@@ -63,4 +67,16 @@ TEST_CASE("StableNodeId is deterministic and content-sensitive") {
 	BPNode c = a;
 	c.Title = "Get Mana";
 	CHECK(StableNodeId(a, 0) != StableNodeId(c, 0));
+}
+
+TEST_CASE("ReadToSpec assembles a spec from the mock backend") {
+	// Fixture: BP_Enemy is the closest analogue of the spec's BP_TestEnemy
+	// reference — same role (AI pawn), 3 variables + 2 functions + event graph.
+	auto mock = bpr::test::MakeMockReader();
+	auto spec = bpr::roundtrip::ReadToSpec(mock, "/Game/AI/BP_Enemy");
+	CHECK(!spec.incomplete);
+	CHECK(spec.parent_class == "ACharacter");
+	CHECK(spec.variables.size() == 3);
+	CHECK(spec.functions.size() == 2);
+	CHECK_FALSE(spec.event_graph.nodes.empty());
 }
