@@ -2076,7 +2076,7 @@ git commit -m "feat(tools): bp_structural_diff MCP tool + bump tool counts to 12
 - Modify: `Plugins/BlueprintReader/BlueprintReader.uplugin` (add `BPRoundtripModule` entry)
 - Modify: `.gitignore` (exclude `BPRoundtripModule/Private/*.cpp`/`*.h` except `BPRoundtripModule.cpp` and `.gitkeep`)
 
-- [ ] **Step 1: Build.cs**
+- [x] **Step 1: Build.cs**
 
 ```csharp
 using UnrealBuildTool;
@@ -2091,7 +2091,7 @@ public class BPRoundtripModule : ModuleRules {
 }
 ```
 
-- [ ] **Step 2: Module entry .cpp**
+- [x] **Step 2: Module entry .cpp**
 
 ```cpp
 #include "Modules/ModuleManager.h"
@@ -2099,13 +2099,13 @@ public class BPRoundtripModule : ModuleRules {
 IMPLEMENT_MODULE(FDefaultModuleImpl, BPRoundtripModule);
 ```
 
-- [ ] **Step 3: Placeholder + .gitkeep**
+- [x] **Step 3: Placeholder + .gitkeep**
 
 ```bash
 touch Plugins/BlueprintReader/Source/BPRoundtripModule/Private/.gitkeep
 ```
 
-- [ ] **Step 4: Register in .uplugin**
+- [x] **Step 4: Register in .uplugin**
 
 Read the current `.uplugin`, add inside the `Modules` array:
 
@@ -2117,7 +2117,7 @@ Read the current `.uplugin`, add inside the `Modules` array:
 }
 ```
 
-- [ ] **Step 5: Update .gitignore so emitted files don't leak**
+- [x] **Step 5: Update .gitignore so emitted files don't leak**
 
 Add to root `.gitignore`:
 
@@ -2134,7 +2134,7 @@ Plugins/BlueprintReader/Source/BPRoundtripModule/Private/Generated/
 
 Expected: clean build; UBT picks up the new module.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Source/BPRoundtripModule/ Plugins/BlueprintReader/BlueprintReader.uplugin .gitignore
@@ -2149,7 +2149,7 @@ git commit -m "build: BPRoundtripModule — UBT target for BPIR-roundtrip genera
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.h`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.cpp`
 
-- [ ] **Step 1: Header**
+- [x] **Step 1: Header**
 
 ```cpp
 // BPIRRoundtrip — drives the full BP → BPIR → C++ → UBT → BPIR' → BP
@@ -2191,7 +2191,7 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Implementation**
+- [x] **Step 2: Implementation**
 
 ```cpp
 #include "BPIRRoundtrip.h"
@@ -2337,7 +2337,7 @@ If the right composite isn't there, lift the registry-tool lambdas from `Bluepri
 "D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.cpp
