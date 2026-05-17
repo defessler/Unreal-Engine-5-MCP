@@ -37,4 +37,4 @@ void RegisterHandlers(jsonrpc::Server& server,
                       tools::ToolRegistry& registry,
                       const ServerInfo& info);
 
-} // namespace bpr::mcp
+}    // namespace bpr::mcp

@@ -35,12 +35,12 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 	#include <windows.h>
 	#pragma comment(lib, "Ws2_32.lib")
-#endif
+#endif    // defined(_WIN32)
 
 using namespace bpr::backends;
 using namespace std::chrono_literals;
@@ -100,7 +100,7 @@ private:
 	std::thread thread_;
 };
 
-#endif  // _WIN32
+#endif    // _WIN32
 
 }  // namespace
 
@@ -253,4 +253,4 @@ TEST_CASE("CommandletBackend: stale handshake (dead pid) triggers fresh spawn") 
 	std::filesystem::remove_all(tempProjectDir, ec);
 }
 
-#endif  // _WIN32
+#endif    // _WIN32

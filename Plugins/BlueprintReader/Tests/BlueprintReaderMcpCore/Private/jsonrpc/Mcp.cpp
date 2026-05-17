@@ -173,4 +173,4 @@ void RegisterHandlers(jr::Server& server,
 	});
 }
 
-} // namespace bpr::mcp
+}    // namespace bpr::mcp

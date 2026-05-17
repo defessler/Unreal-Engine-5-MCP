@@ -1441,4 +1441,4 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
 	return CppEmitResult{s.str(), std::move(bodyResult.notes)};
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

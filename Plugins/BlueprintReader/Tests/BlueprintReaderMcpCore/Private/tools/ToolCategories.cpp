@@ -316,4 +316,4 @@ bool IsKnownCategory(const std::string& name) {
 	return CategoryTable().count(name) > 0;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

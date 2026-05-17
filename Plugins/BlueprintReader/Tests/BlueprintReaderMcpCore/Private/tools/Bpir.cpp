@@ -421,4 +421,4 @@ nlohmann::json MigrateToCurrent(const nlohmann::json& doc) {
 	return doc;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

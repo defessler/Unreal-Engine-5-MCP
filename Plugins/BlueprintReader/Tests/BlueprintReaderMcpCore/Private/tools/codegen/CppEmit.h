@@ -86,4 +86,4 @@ std::string MapBpirTypeToCppMember(std::string_view bpirType);
 // signature.
 std::string MapBpirTypeToCppArg(std::string_view bpirType);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

@@ -28,7 +28,7 @@
 	#include "Windows/AllowWindowsPlatformTypes.h"
 	#include <windows.h>
 	#include "Windows/HideWindowsPlatformTypes.h"
-#endif
+#endif    // PLATFORM_WINDOWS
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReaderCmdlet, Log, All);
 
@@ -810,7 +810,7 @@ bool FCmdletServer::AcquireLifetimeLock()
 		FlushFileBuffers(H);
 	}
 	return true;
-#else
+#else    // PLATFORM_WINDOWS
 	// **Non-Windows fallback is currently a no-op lock**: it succeeds
 	// even when another daemon is already running, because
 	// `IFileManager::CreateFileWriter` opens with
@@ -830,7 +830,7 @@ bool FCmdletServer::AcquireLifetimeLock()
 	}
 	LifetimeLockHandle = static_cast<void*>(Handle);
 	return true;
-#endif
+#endif    // PLATFORM_WINDOWS
 }
 
 void FCmdletServer::ReleaseLifetimeLock()
@@ -839,11 +839,11 @@ void FCmdletServer::ReleaseLifetimeLock()
 #if PLATFORM_WINDOWS
 	HANDLE H = static_cast<HANDLE>(LifetimeLockHandle);
 	CloseHandle(H);
-#else
+#else    // PLATFORM_WINDOWS
 	// The non-Windows fallback above stores an IFileHandle* — delete it.
 	IFileHandle* Handle = static_cast<IFileHandle*>(LifetimeLockHandle);
 	delete Handle;
-#endif
+#endif    // PLATFORM_WINDOWS
 	LifetimeLockHandle = nullptr;
 
 	// Best-effort: delete the lock file so the next launch sees a
@@ -939,4 +939,4 @@ FCmdletServer* GetCmdletServer()
 	return GCmdletServer.Get();
 }
 
-} // namespace BlueprintReader
+}    // namespace BlueprintReader

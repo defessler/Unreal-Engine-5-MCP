@@ -1604,4 +1604,4 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	return out;
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

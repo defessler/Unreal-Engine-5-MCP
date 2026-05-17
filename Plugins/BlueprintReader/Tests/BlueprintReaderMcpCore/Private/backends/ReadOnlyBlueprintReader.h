@@ -235,4 +235,4 @@ private:
 std::unique_ptr<IBlueprintReader> MaybeWrapReadOnly(
 	std::unique_ptr<IBlueprintReader> inner, bool readOnly);
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

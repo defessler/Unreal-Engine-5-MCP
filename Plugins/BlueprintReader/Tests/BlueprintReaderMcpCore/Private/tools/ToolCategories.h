@@ -25,4 +25,4 @@ std::vector<std::string> ExpandCategory(const std::string& name);
 // Whether the given token is a recognized category name.
 bool IsKnownCategory(const std::string& name);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

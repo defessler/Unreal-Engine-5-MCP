@@ -117,4 +117,4 @@ void StopLogSink()
 	GLogSink.Reset();
 }
 
-}  // namespace BlueprintReader
+}    // namespace BlueprintReader

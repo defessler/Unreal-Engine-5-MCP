@@ -308,4 +308,4 @@ std::vector<CppToken> LexCpp(std::string_view source) {
 	return Lexer(source).Run();
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

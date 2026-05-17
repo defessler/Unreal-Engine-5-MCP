@@ -121,4 +121,4 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc);
 // prefixed names pass through unchanged.
 std::string PrefixClassName(std::string_view bpName, std::string_view parentClass);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

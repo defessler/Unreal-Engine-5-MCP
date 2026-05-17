@@ -57,4 +57,4 @@ ResolveEngineFromRegistry(const std::string& engineAssociation);
 std::optional<std::string>
 DetectEditorConfig(const std::filesystem::path& pluginDir);
 
-} // namespace bpr::env
+}    // namespace bpr::env

@@ -20,7 +20,7 @@
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
-	#endif
+	#endif    // WIN32_LEAN_AND_MEAN
 	// winsock2.h must come before windows.h; otherwise it tries to pull
 	// in winsock.h via windows.h and the symbols clash. Daemon-attach
 	// path does an inline TCP probe before constructing the
@@ -29,9 +29,9 @@
 	#include <ws2tcpip.h>
 	#include <windows.h>
 	#pragma comment(lib, "Ws2_32.lib")
-#else
+#else    // defined(_WIN32)
 	#include <signal.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::backends {
 
@@ -292,7 +292,7 @@ ProcResult RunChild(const std::wstring& exe,
 	return res;
 }
 
-#else // !_WIN32
+#else    // !_WIN32
 
 std::wstring Widen(std::string_view) { return L""; }
 std::string Narrow(const std::wstring&) { return ""; }
@@ -312,7 +312,7 @@ ProcResult RunChild(const std::wstring&, const std::vector<std::wstring>&, std::
 	return r;
 }
 
-#endif
+#endif    // defined(_WIN32)
 
 std::string TrimLines(const std::string& s, std::size_t maxLines) {
 	if (s.empty()) return s;
@@ -355,9 +355,9 @@ std::filesystem::path TempJsonPath(std::string_view projectTag) {
 	DWORD n = GetTempPathW(MAX_PATH, buf);
 	std::filesystem::path tmp = (n == 0) ? std::filesystem::path(L"C:\\Windows\\Temp")
 										 : std::filesystem::path(std::wstring(buf, n));
-#else
+#else    // defined(_WIN32)
 	std::filesystem::path tmp = std::filesystem::temp_directory_path();
-#endif
+#endif    // defined(_WIN32)
 	char prefix[32];
 	std::snprintf(prefix, sizeof(prefix), "%016llx",
 		static_cast<unsigned long long>(FnvHash64(projectTag)));
@@ -379,10 +379,10 @@ std::string SecondsFromEnv(const char* key, std::string fallback) {
 		return out.empty() ? fallback : out;
 	}
 	return fallback;
-#else
+#else    // defined(_MSC_VER)
 	if (const char* v = std::getenv(key); v != nullptr && *v != '\0') return std::string(v);
 	return fallback;
-#endif
+#endif    // defined(_MSC_VER)
 }
 
 // RAII exclusive file lock used to coordinate daemon spawn attempts
@@ -416,7 +416,7 @@ private:
 	bool held_ = false;
 #if defined(_WIN32)
 	void* handle_ = nullptr;  // HANDLE, opaque-typed to avoid leaking windows.h
-#endif
+#endif    // defined(_WIN32)
 };
 
 bool SpawnLock::TryAcquire(std::chrono::seconds blockFor) {
@@ -449,11 +449,11 @@ bool SpawnLock::TryAcquire(std::chrono::seconds blockFor) {
 		if (std::chrono::steady_clock::now() >= deadline) return false;
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
-#else
+#else    // defined(_WIN32)
 	// POSIX stub — flock-based version is a follow-up.
 	(void)blockFor;
 	return true;  // pretend acquired
-#endif
+#endif    // defined(_WIN32)
 }
 
 void SpawnLock::Release() {
@@ -463,7 +463,7 @@ void SpawnLock::Release() {
 		::CloseHandle(static_cast<HANDLE>(handle_));
 		handle_ = nullptr;
 	}
-#endif
+#endif    // defined(_WIN32)
 	held_ = false;
 }
 
@@ -527,7 +527,7 @@ CommandletBlueprintReader::~CommandletBlueprintReader() {
 	socket_.reset();
 #if defined(_WIN32)
 	TerminateDaemon();
-#endif
+#endif    // defined(_WIN32)
 }
 
 namespace {
@@ -558,10 +558,10 @@ bool ProcessAlive(int pid) {
 	BOOL ok = GetExitCodeProcess(h, &code);
 	CloseHandle(h);
 	return ok && code == STILL_ACTIVE;
-#else
+#else    // defined(_WIN32)
 	if (pid <= 0) return false;
 	return ::kill(pid, 0) == 0;
-#endif
+#endif    // defined(_WIN32)
 }
 
 } // namespace
@@ -586,7 +586,7 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
 			}
 #if defined(_WIN32)
 			TerminateDaemon();
-#endif
+#endif    // defined(_WIN32)
 			return RunOpOneShot(opArgs);
 		}
 	}
@@ -736,7 +736,7 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 			if (err != 0) return nullptr;
 		}
 	}
-#endif
+#endif    // defined(_WIN32)
 
 	try {
 		return std::make_unique<SocketBlueprintReader>(std::move(sc));
@@ -780,7 +780,7 @@ void CommandletBlueprintReader::PollForHandshake(std::chrono::seconds timeout) {
 				(std::filesystem::temp_directory_path() /
 				 "bp-reader-mcp-daemon-failure.log").string()));
 		}
-#endif
+#endif    // defined(_WIN32)
 		std::this_thread::sleep_for(std::chrono::milliseconds(250));
 	}
 	// Caller's TryAttachExistingDaemon will return nullptr and
@@ -859,7 +859,7 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 		// without an orphaned editor process.
 #if defined(_WIN32)
 		TerminateDaemon();
-#endif
+#endif    // defined(_WIN32)
 		throw BlueprintReaderError(fmt::format(
 			"commandlet daemon: spawn-lock {}, handshake never appeared "
 			"within {}s (bump BP_READER_STARTUP_TIMEOUT_SECONDS for "
@@ -973,7 +973,7 @@ void CommandletBlueprintReader::SpawnDaemon() {
 		static_cast<long long>(cfg_.startupTimeout.count()));
 }
 
-#else // !_WIN32
+#else    // !_WIN32
 
 void CommandletBlueprintReader::TerminateDaemon() {}
 
@@ -985,7 +985,7 @@ void CommandletBlueprintReader::SpawnDaemon() {
 	throw BlueprintReaderError("daemon mode is Windows-only");
 }
 
-#endif
+#endif    // defined(_WIN32)
 
 std::vector<BPAssetSummary> CommandletBlueprintReader::ListBlueprints(std::string_view path) {
 	std::vector<std::wstring> args;
@@ -2881,14 +2881,14 @@ nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
 		{"was_running", wasRunning},
 		{"hint", "Next read tool call will auto-respawn (or re-attach to) the daemon."},
 	};
-#else
+#else    // defined(_WIN32)
 	(void)hadSocket;
 	return nlohmann::json{
 		{"ok", true},
 		{"was_running", false},
 		{"hint", "Daemon mode is Windows-only; no-op on this platform."},
 	};
-#endif
+#endif    // defined(_WIN32)
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

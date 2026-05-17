@@ -124,4 +124,4 @@ namespace BlueprintReader
 	 * client wants no half-applied state.
 	 */
 	void FlushBatchForConnection(uint64 ConnectionId);
-}
+}    // namespace BlueprintReader

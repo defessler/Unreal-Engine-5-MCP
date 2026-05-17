@@ -235,7 +235,7 @@ static FBPRRVariable PropertyToVariable(const FProperty* Property, const UObject
 #if WITH_EDITORONLY_DATA
 	V.Category = Property->GetMetaData(TEXT("Category"));
 	V.bIsExposeOnSpawn = Property->GetBoolMetaData(TEXT("ExposeOnSpawn"));
-#endif
+#endif    // WITH_EDITORONLY_DATA
 
 	// RepNotify: UE stores the callback function name in the property's
 	// RepNotifyFunc field. Always present (replication needs it at runtime).

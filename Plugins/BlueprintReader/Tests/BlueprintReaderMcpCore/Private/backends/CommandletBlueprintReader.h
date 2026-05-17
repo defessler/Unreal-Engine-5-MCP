@@ -39,7 +39,7 @@
 #if defined(_WIN32)
 	#define WIN32_LEAN_AND_MEAN
 	#include <windows.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::backends {
 
@@ -322,10 +322,10 @@ private:
 	void TerminateDaemon(); // terminates the child we spawned (if any)
 
 	HANDLE daemonProcess_ = nullptr;
-#else
+#else    // defined(_WIN32)
 	void SpawnDaemon();   // throws on non-Windows
 	void TerminateDaemon();
-#endif
+#endif    // defined(_WIN32)
 
 	std::mutex daemonMutex_;  // serializes EnsureDaemonAttached + spawn/respawn
 	std::thread prewarmThread_;  // joined in destructor
@@ -338,4 +338,4 @@ private:
 	std::unique_ptr<SocketBlueprintReader> socket_;
 };
 
-} // namespace bpr::backends
+}    // namespace bpr::backends
