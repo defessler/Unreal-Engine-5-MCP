@@ -631,7 +631,7 @@ git commit -m "chore(content): import UE5 ThirdPerson template under /Game/Impor
 - Use the bp-reader MCP tools (via daemon mode) — `read_blueprint`, `get_components`, `list_variables`, `get_function_graph` for each function, `get_event_graph` for the event graph.
 - The introspection data this gathers also seeds the `BP_TPC_spec.json` fixture used in Task 20.
 
-- [ ] **Step 1: Build & launch the bp-reader server**
+- [x] **Step 1: Build & launch the bp-reader server**
 
 Already built in Task 6. Verify:
 
@@ -639,15 +639,17 @@ Already built in Task 6. Verify:
 ls Binaries/Win64/BlueprintReaderMcp.exe 2>&1
 ```
 
-- [ ] **Step 2: Drive the tools to dump TPC + supporting BPs**
+- [x] **Step 2: Drive the tools to dump TPC + supporting BPs**
 
 Easiest path: use the running `bp-reader` MCP tools via Claude Code itself (the calling agent). Otherwise: stream JSON-RPC frames against `BlueprintReaderMcp.exe` stdin (see `docs/tutorial/06-first-write.md` for the JSON-RPC envelope shape).
 
 For each of the four BPs, capture: `read_blueprint`, `get_components`, `list_variables`, `get_event_graph`. For each function listed, capture `get_function_graph`.
 
-- [ ] **Step 3: Write the doc, embedding the captured data as JSON code-blocks**
+Actual capture: three BPs (per Task 7's import scope — `ABP_Manny` and the IA/IMC assets were intentionally not imported), via `read_blueprint`, `summarize_blueprint`, `list_variables`, `get_components`, `get_graph(EventGraph + UserConstructionScript)`, `get_function`. Driven against the daemon-mode commandlet backend (one-shot blew up on the TPC's PostLoad compile errors — see doc §6.7).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 3: Write the doc, embedding the captured data as JSON code-blocks**
+
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/research/tpc-anatomy.md
