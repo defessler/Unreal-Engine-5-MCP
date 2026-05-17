@@ -18,8 +18,8 @@ namespace bpr::roundtrip {
 
 struct SpecFunction {
 	std::string name;
-	std::vector<BPPin> inputs;
-	std::vector<BPPin> outputs;
+	std::vector<BPVariable> inputs;
+	std::vector<BPVariable> outputs;
 	std::vector<BPVariable> locals;
 	std::vector<BPNode> nodes;
 	std::vector<BPConnection> connections;
