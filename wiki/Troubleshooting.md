@@ -384,7 +384,7 @@ double slash) and rejects it.
 ```bash
 MSYS_NO_PATHCONV=1 "D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
   "D:/Projects/UE5_MCP/UE5_MCP.uproject" \
-  -run=BlueprintReader -Op=Read -Asset=/Game/AI/BP_TestEnemy -Out=D:/temp/out.json \
+  -run=BPR -Op=Read -Asset=/Game/AI/BP_TestEnemy -Out=D:/temp/out.json \
   -nullrhi -nosplash -unattended -nopause
 ```
 
