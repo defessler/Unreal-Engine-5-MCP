@@ -34,7 +34,7 @@ struct FResult
 	bool bEqual = false;
 	TArray<FDifference> Differences;
 
-	TSharedPtr<FJsonObject> ToJson() const;
+	TSharedRef<FJsonObject> ToJson() const;
 };
 
 FResult Compare(UBlueprint* A, UBlueprint* B, const FCompareOptions& Options);
