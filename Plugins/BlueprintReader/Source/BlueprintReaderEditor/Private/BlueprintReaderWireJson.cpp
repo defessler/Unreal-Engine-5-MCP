@@ -623,19 +623,19 @@ bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& J
 		// Try to resolve the path as a UClass first (most common for object/class pins).
 		// Fall back to UScriptStruct / UEnum for struct/enum pins.
 		UObject* Resolved = StaticLoadObject(UClass::StaticClass(), nullptr, *SubObjectPath);
-		if (!Resolved)
+		if (!IsValid(Resolved))
 		{
 			Resolved = StaticLoadObject(UScriptStruct::StaticClass(), nullptr, *SubObjectPath);
 		}
-		if (!Resolved)
+		if (!IsValid(Resolved))
 		{
 			Resolved = StaticLoadObject(UEnum::StaticClass(), nullptr, *SubObjectPath);
 		}
-		if (!Resolved)
+		if (!IsValid(Resolved))
 		{
 			Resolved = StaticLoadObject(UObject::StaticClass(), nullptr, *SubObjectPath);
 		}
-		if (Resolved)
+		if (IsValid(Resolved))
 		{
 			OutType.PinSubCategoryObject = Resolved;
 		}
