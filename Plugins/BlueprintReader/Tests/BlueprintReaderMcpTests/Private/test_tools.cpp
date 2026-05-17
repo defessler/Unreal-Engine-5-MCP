@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 126 tools (121 prior + 5 quick-win additions from issue #83: get_referencers, get_dependencies, read_config_value, set_config_value, build_lighting) with input schemas") {
+TEST_CASE("ToolRegistry exposes 127 tools (126 prior + bp_structural_diff for the BP roundtrip pipeline) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 126);
+	CHECK(spec.size() == 127);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
