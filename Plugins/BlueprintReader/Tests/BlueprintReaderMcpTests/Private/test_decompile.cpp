@@ -295,7 +295,7 @@ TEST_CASE("decompile: DoOnce macro lowers to if-guard + synthetic flag") {
     CHECK(flag["type"] == "bool");
     CHECK(flag["default"] == "false");  // StartClosed=false on the fixture
     const std::string flagName = flag["name"];
-    CHECK(flagName.rfind("b__BprDoOnce_", 0) == 0);
+    CHECK(flagName.rfind("bBPRDoOnce_", 0) == 0);
     CHECK(flagName.find("_HasFired") != std::string::npos);
 
     // Body should be a single {if: ...} statement whose `then` block
@@ -325,7 +325,7 @@ TEST_CASE("decompile: FlipFlop macro lowers to if/else + synth flag") {
     CHECK(flag["type"] == "bool");
     CHECK(flag["default"] == "true");  // first call routes to A
     const std::string flagName = flag["name"];
-    CHECK(flagName.rfind("b__BprFlipFlop_", 0) == 0);
+    CHECK(flagName.rfind("bBPRFlipFlop_", 0) == 0);
     CHECK(flagName.find("_IsA") != std::string::npos);
 
     REQUIRE(bpir["body"].size() == 1);
@@ -351,7 +351,7 @@ TEST_CASE("decompile: DoN macro lowers to if/<counter < N> + synth counter") {
     CHECK(counter["type"] == "int");
     CHECK(counter["default"] == "0");
     const std::string counterName = counter["name"];
-    CHECK(counterName.rfind("i__BprDoN_", 0) == 0);
+    CHECK(counterName.rfind("BPRDoN_", 0) == 0);
     CHECK(counterName.find("_Counter") != std::string::npos);
 
     REQUIRE(bpir["body"].size() == 1);
@@ -377,9 +377,9 @@ TEST_CASE("decompile_blueprint: hoists stateful-macro synth vars into class vari
     std::size_t doOnceCount = 0, flipFlopCount = 0, doNCount = 0;
     for (const auto& v : bpir["variables"]) {
         const std::string name = v.value("name", "");
-        if (name.rfind("b__BprDoOnce_",   0) == 0) ++doOnceCount;
-        if (name.rfind("b__BprFlipFlop_", 0) == 0) ++flipFlopCount;
-        if (name.rfind("i__BprDoN_",      0) == 0) ++doNCount;
+        if (name.rfind("bBPRDoOnce_",   0) == 0) ++doOnceCount;
+        if (name.rfind("bBPRFlipFlop_", 0) == 0) ++flipFlopCount;
+        if (name.rfind("BPRDoN_",      0) == 0) ++doNCount;
     }
     CHECK(doOnceCount == 1);
     CHECK(flipFlopCount == 1);
@@ -398,12 +398,12 @@ TEST_CASE("E2E stateful macros: codegen emits UPROPERTY + flag-guarded C++") {
     auto out  = EmitCppClass(bpir);
 
     // Each synth var renders as a UPROPERTY in the header.
-    CHECK(ContainsStr(out.headerSource, "b__BprDoOnce_"));
-    CHECK(ContainsStr(out.headerSource, "b__BprFlipFlop_"));
-    CHECK(ContainsStr(out.headerSource, "i__BprDoN_"));
+    CHECK(ContainsStr(out.headerSource, "bBPRDoOnce_"));
+    CHECK(ContainsStr(out.headerSource, "bBPRFlipFlop_"));
+    CHECK(ContainsStr(out.headerSource, "BPRDoN_"));
 
     // Function bodies emit the guarded code. The DoOnce body should
-    // contain `if (!b__BprDoOnce_..._HasFired)` and the assignment
+    // contain `if (!bBPRDoOnce_..._HasFired)` and the assignment
     // inside it.
     CHECK(ContainsStr(out.implSource, "_HasFired"));
     CHECK(ContainsStr(out.implSource, "_IsA"));
@@ -558,14 +558,14 @@ TEST_CASE("decompile_blueprint: EnhancedInput synthesizes IA member + callbacks 
     // functions[]. The fixture wires Started + Triggered (not Completed)
     // so we expect exactly 2 callbacks plus the setup fn. Names use
     // the bare action name (IA_ prefix stripped) so we get
-    // OnIA_Jump_Started, not OnIA_IA_Jump_Started.
+    // OnJumpStarted, not OnIA_Jump_Started.
     bool sawStartedCb = false, sawTriggeredCb = false;
     bool sawCompletedCb = false, sawSetup = false;
     for (const auto& fn : bpir["functions"]) {
         const std::string name = fn.value("name", "");
-        if (name == "OnIA_Jump_Started")   sawStartedCb = true;
-        if (name == "OnIA_Jump_Triggered") sawTriggeredCb = true;
-        if (name == "OnIA_Jump_Completed") sawCompletedCb = true;
+        if (name == "OnJumpStarted")   sawStartedCb = true;
+        if (name == "OnJumpTriggered") sawTriggeredCb = true;
+        if (name == "OnJumpCompleted") sawCompletedCb = true;
         if (name == "SetupPlayerInputComponent") sawSetup = true;
     }
     CHECK(sawStartedCb);
@@ -589,12 +589,12 @@ TEST_CASE("E2E EnhancedInput: codegen emits override + Cast guard + BindAction l
         "if (auto* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))"));
     // BindAction lines for the wired triggers.
     CHECK(ContainsStr(out.implSource,
-        "EIC->BindAction(IA_Jump, ETriggerEvent::Started, this, &ThisClass::OnIA_Jump_Started);"));
+        "EIC->BindAction(IA_Jump, ETriggerEvent::Started, this, &ThisClass::OnJumpStarted);"));
     CHECK(ContainsStr(out.implSource,
-        "EIC->BindAction(IA_Jump, ETriggerEvent::Triggered, this, &ThisClass::OnIA_Jump_Triggered);"));
+        "EIC->BindAction(IA_Jump, ETriggerEvent::Triggered, this, &ThisClass::OnJumpTriggered);"));
     // UInputAction* UPROPERTY on the class header.
     CHECK(ContainsStr(out.headerSource, "TObjectPtr<UInputAction>"));
     CHECK(ContainsStr(out.headerSource, "IA_Jump"));
     // Callback functions render as bare UFUNCTION() (no BlueprintCallable).
-    CHECK(ContainsStr(out.headerSource, "OnIA_Jump_Started"));
+    CHECK(ContainsStr(out.headerSource, "OnJumpStarted"));
 }
