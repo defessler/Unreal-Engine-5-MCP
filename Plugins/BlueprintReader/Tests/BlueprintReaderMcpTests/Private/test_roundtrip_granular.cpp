@@ -146,7 +146,8 @@ TEST_CASE("[live][roundtrip][granular] BP_TestEnemy -> BPSpec -> SpecToBP "
 	const bool diffOk = diff.value("ok", false);
 	if (diffOk) {
 		// Perfect roundtrip — best case.
-		SUCCEED("BP_TestEnemy roundtripped with zero structural drift");
+		MESSAGE("BP_TestEnemy roundtripped with zero structural drift");
+		CHECK(true);
 	} else {
 		// Verify every remaining difference falls under the known
 		// auto-spawn-id exemption. Anything else fails the test.
