@@ -21,8 +21,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
-#include "SocketSubsystem.h"
 #include "Sockets.h"
+#include "SocketSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReaderRuntime, Log, All);
 

@@ -25,8 +25,8 @@
 // `CreateFileW(dwShareMode=0)` directly. Mirrors the pattern in
 // mcp-server/src/util/SingleInstanceLock.cpp.
 #if PLATFORM_WINDOWS
-	#include "Windows/AllowWindowsPlatformTypes.h"
 	#include <windows.h>
+	#include "Windows/AllowWindowsPlatformTypes.h"
 	#include "Windows/HideWindowsPlatformTypes.h"
 #endif    // PLATFORM_WINDOWS
 

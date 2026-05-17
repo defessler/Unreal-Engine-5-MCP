@@ -1,14 +1,14 @@
 #include "tools/BlueprintTools.h"
 #include "tools/ApplyOps.h"
 #include "tools/Bpir.h"
-#include "tools/CompileFunction.h"
-#include "tools/Decompile.h"
-#include "tools/JsonProjection.h"
-#include "tools/TypeShorthand.h"
 #include "tools/codegen/CppClassEmit.h"
 #include "tools/codegen/CppEmit.h"
 #include "tools/codegen/UnsupportedTreatment.h"
+#include "tools/CompileFunction.h"
+#include "tools/Decompile.h"
+#include "tools/JsonProjection.h"
 #include "tools/parse/CppParse.h"
+#include "tools/TypeShorthand.h"
 
 #include "backends/IBlueprintReader.h"
 

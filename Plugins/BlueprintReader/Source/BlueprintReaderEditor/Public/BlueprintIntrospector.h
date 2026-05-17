@@ -1,12 +1,12 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "BlueprintReaderTypes.h"
+#include "CoreMinimal.h"
 #include "Logging/LogMacros.h"
 
+struct FEdGraphPinType;
 class UBlueprint;
 class UEdGraph;
-struct FEdGraphPinType;
 
 // Shared log category for the editor-side module. Declared here so both
 // the commandlet and the introspector can UE_LOG into it (the

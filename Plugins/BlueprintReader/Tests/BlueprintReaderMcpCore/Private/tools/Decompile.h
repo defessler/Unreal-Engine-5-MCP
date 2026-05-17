@@ -33,8 +33,8 @@
 
 #pragma once
 
-#include "BlueprintReaderTypes.h"
 #include "backends/IBlueprintReader.h"
+#include "BlueprintReaderTypes.h"
 
 #include <nlohmann/json.hpp>
 

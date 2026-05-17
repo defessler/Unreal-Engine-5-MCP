@@ -35,8 +35,8 @@
 #include <fmt/core.h>
 
 #if defined(_WIN32)
-	#include <io.h>
 	#include <fcntl.h>
+	#include <io.h>
 	#include <windows.h>
 #endif    // defined(_WIN32)
 

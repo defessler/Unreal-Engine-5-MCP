@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "BlueprintReaderTypes.h"
+#include "CoreMinimal.h"
 
 class FJsonObject;
 

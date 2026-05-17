@@ -8,8 +8,8 @@
 
 #include <doctest/doctest.h>
 
-#include "tools/parse/CppParse.h"
 #include "tools/Bpir.h"
+#include "tools/parse/CppParse.h"
 
 using namespace bpr::tools;
 using nlohmann::json;
