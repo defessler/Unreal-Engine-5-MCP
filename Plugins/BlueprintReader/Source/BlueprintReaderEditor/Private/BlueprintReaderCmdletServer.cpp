@@ -24,9 +24,18 @@
 // OS-level exclusive lock, which is the whole reason this file uses
 // `CreateFileW(dwShareMode=0)` directly. Mirrors the pattern in
 // mcp-server/src/util/SingleInstanceLock.cpp.
+//
+// NOMINMAX before <windows.h> stops the Windows `min`/`max` macros from
+// clobbering `std::numeric_limits<T>::max()` etc. in engine headers
+// (MovieScene, RelativePtr, ...) that get pulled in transitively.
+// AllowWindowsPlatformTypes wraps the raw include so UE's type-system
+// macros (DWORD / HANDLE / etc.) round-trip cleanly.
 #if PLATFORM_WINDOWS
-	#include <windows.h>
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif    // NOMINMAX
 	#include "Windows/AllowWindowsPlatformTypes.h"
+	#include <windows.h>
 	#include "Windows/HideWindowsPlatformTypes.h"
 #endif    // PLATFORM_WINDOWS
 
