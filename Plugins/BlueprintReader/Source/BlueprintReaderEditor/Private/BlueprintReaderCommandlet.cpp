@@ -507,7 +507,7 @@ namespace
 		// no extra logging either way.
 		UBlueprint* BP = LoadObject<UBlueprint>(
 			nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			// Diagnostic lives in BlueprintIntrospector — see header. We
 			// call the same routine from FBlueprintIntrospector::Read so
@@ -690,7 +690,7 @@ namespace
 		}
 
 		UPackage* Package = BP->GetOutermost();
-		if (!Package)
+		if (!IsValid(Package))
 		{
 			return false;
 		}
@@ -854,7 +854,7 @@ namespace
 		for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
 		{
 			UBlueprint* BP = Weak.Get();
-			if (!BP)
+			if (!IsValid(BP))
 			{
 				continue;  // GC'd between batch ops — nothing to save
 			}
@@ -991,7 +991,7 @@ namespace
 		const FString AssetName   = FPackageName::GetShortName(AssetPath);
 
 		UPackage* Package = CreatePackage(*PackageName);
-		if (!Package)
+		if (!IsValid(Package))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("CreatePackage failed: %s"), *PackageName);
 			return 5;
@@ -1004,7 +1004,7 @@ namespace
 		UBlueprint* BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
 			UBlueprint::StaticClass(), Package, *AssetName,
 			RF_Public | RF_Standalone, nullptr, GWarn));
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("FactoryCreateNew failed: %s"), *PackageName);
 			return 5;
@@ -1049,12 +1049,12 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 2;
 		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			return 4;
 		}
@@ -1102,7 +1102,7 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -1139,7 +1139,7 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -1266,7 +1266,7 @@ namespace
 		int32 SavedCount = 0;
 		for (UPackage* Pkg : DirtyBefore)
 		{
-			if (!Pkg)
+			if (!IsValid(Pkg))
 			{
 				continue;
 			}
@@ -1322,7 +1322,7 @@ namespace
 			return 4;
 		}
 		UObject* SourceObj = SourceData.GetAsset();
-		if (!SourceObj)
+		if (!IsValid(SourceObj))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("MoveAsset: failed to load source: %s"), *SourceAsset);
@@ -1424,7 +1424,7 @@ namespace
 		if (Referencers.Num() == 0 || bForce)
 		{
 			UObject* Obj = AssetData.GetAsset();
-			if (Obj)
+			if (IsValid(Obj))
 			{
 				TArray<UObject*> ToDelete = { Obj };
 				const int32 NumDeleted = ObjectTools::ForceDeleteObjects(
@@ -1531,7 +1531,7 @@ namespace
 		}
 
 		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
-		if (!DT)
+		if (!IsValid(DT))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("ReadDataTable: failed to load: %s"), *AssetPath);
@@ -1541,7 +1541,7 @@ namespace
 		const UScriptStruct* RowStruct = DT->GetRowStruct();
 		FString RowStructPath;
 		TArray<TSharedPtr<FJsonValue>> Columns;
-		if (RowStruct)
+		if (IsValid(RowStruct))
 		{
 			RowStructPath = RowStruct->GetPathName();
 			for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
@@ -2349,7 +2349,7 @@ namespace
 			return 1;
 		}
 		UClass* SpawnClass = LoadObject<UClass>(nullptr, *ClassPath);
-		if (!SpawnClass)
+		if (!IsValid(SpawnClass))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("SpawnActor: could not load class '%s'"), *ClassPath);
@@ -2367,7 +2367,7 @@ namespace
 		SpawnParams.SpawnCollisionHandlingOverride =
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		AActor* Spawned = World->SpawnActor<AActor>(SpawnClass, T, SpawnParams);
-		if (!Spawned)
+		if (!IsValid(Spawned))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("SpawnActor: SpawnActor failed"));
 			return 5;
@@ -2402,7 +2402,7 @@ namespace
 		FString Name;
 		FParse::Value(*Params, TEXT("Name="), Name);
 		AActor* Actor = FindActorByName(Name);
-		if (!Actor)
+		if (!IsValid(Actor))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("SetActorTransform: actor '%s' not found"), *Name);
@@ -2473,14 +2473,14 @@ namespace
 		}
 
 		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
-		if (!DT)
+		if (!IsValid(DT))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddDataRow: failed to load DataTable: %s"), *AssetPath);
 			return 4;
 		}
 		const UScriptStruct* RowStruct = DT->GetRowStruct();
-		if (!RowStruct)
+		if (!IsValid(RowStruct))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddDataRow: DataTable %s has no row struct"), *AssetPath);
@@ -2590,7 +2590,7 @@ namespace
 		}
 
 		UDataTable* DT = LoadObject<UDataTable>(nullptr, *AssetPath);
-		if (!DT)
+		if (!IsValid(DT))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("SetDataRowValue: cannot load DataTable: %s"), *AssetPath);
@@ -2679,7 +2679,7 @@ namespace
 			while (Stack.Num() > 0)
 			{
 				USCS_Node* Cur = Stack.Pop();
-				if (!Cur)
+				if (!IsValid(Cur))
 				{
 					continue;
 				}
@@ -2712,12 +2712,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
-		if (!SCS)
+		if (!IsValid(SCS))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddComponent: BP %s has no SimpleConstructionScript"), *AssetPath);
@@ -2747,7 +2747,7 @@ namespace
 		}
 
 		USCS_Node* NewNode = SCS->CreateNode(CompClass, NodeName);
-		if (!NewNode)
+		if (!IsValid(NewNode))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddComponent: SCS->CreateNode returned null"));
@@ -2757,7 +2757,7 @@ namespace
 		// Parent attachment: child of a named node, or root.
 		USCS_Node* Parent = ParentName.IsEmpty() ? nullptr :
 			SCS->FindSCSNode(FName(*ParentName));
-		if (Parent)
+		if (IsValid(Parent))
 		{
 			Parent->AddChildNode(NewNode);
 			if (!Socket.IsEmpty())
@@ -2796,7 +2796,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -2835,7 +2835,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -2850,7 +2850,7 @@ namespace
 
 		// Detach from current parent (could be root or a child).
 		USCS_Node* OldParent = FindParentOfNode(SCS, Node);
-		if (OldParent)
+		if (IsValid(OldParent))
 		{
 			OldParent->RemoveChildNode(Node, /*bRemoveInstanceData=*/false);
 		}
@@ -2863,7 +2863,7 @@ namespace
 		USCS_Node* NewParentNode = NewParent.IsEmpty() ? nullptr :
 			SCS->FindSCSNode(FName(*NewParent));
 		bool bReparented = false;
-		if (NewParentNode)
+		if (IsValid(NewParentNode))
 		{
 			NewParentNode->AddChildNode(Node);
 			if (!Socket.IsEmpty())
@@ -2906,7 +2906,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -3024,7 +3024,7 @@ namespace
 		}
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat)
+		if (!IsValid(Mat))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("ReadMaterial: failed to load: %s"), *AssetPath);
@@ -3137,7 +3137,7 @@ namespace
 		}
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat)
+		if (!IsValid(Mat))
 		{
 			return 4;
 		}
@@ -3154,7 +3154,7 @@ namespace
 			}
 			if (It->GetName() == ClassName) { ExprClass = *It; break; }
 		}
-		if (!ExprClass)
+		if (!IsValid(ExprClass))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddMaterialExpression: class '%s' not found"), *ClassName);
@@ -3163,7 +3163,7 @@ namespace
 
 		UMaterialExpression* Expr =
 			UMaterialEditingLibrary::CreateMaterialExpression(Mat, ExprClass, X, Y);
-		if (!Expr)
+		if (!IsValid(Expr))
 		{
 			return 4;
 		}
@@ -3188,7 +3188,7 @@ namespace
 		FParse::Value(*Params, TEXT("ToPin="),   ToPin);
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat)
+		if (!IsValid(Mat))
 		{
 			return 4;
 		}
@@ -3205,7 +3205,7 @@ namespace
 			return nullptr;
 		};
 		UMaterialExpression* From = FindExpr(FromName);
-		if (!From) { UE_LOG(LogBlueprintReader, Error, TEXT("From expression not found")); return 4; }
+		if (!IsValid(From)) { UE_LOG(LogBlueprintReader, Error, TEXT("From expression not found")); return 4; }
 
 		bool bConnected = false;
 		if (ToName.IsEmpty())
@@ -3220,7 +3220,7 @@ namespace
 		else
 		{
 			UMaterialExpression* To = FindExpr(ToName);
-			if (!To) { UE_LOG(LogBlueprintReader, Error, TEXT("To expression not found")); return 4; }
+			if (!IsValid(To)) { UE_LOG(LogBlueprintReader, Error, TEXT("To expression not found")); return 4; }
 			bConnected = UMaterialEditingLibrary::ConnectMaterialExpressions(
 				From, FromPin, To, ToPin);
 		}
@@ -3242,7 +3242,7 @@ namespace
 		FParse::Value(*Params, TEXT("Value="), Value);
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat)
+		if (!IsValid(Mat))
 		{
 			return 4;
 		}
@@ -3304,7 +3304,7 @@ namespace
 
 		UMaterialInstanceConstant* MIC =
 			LoadObject<UMaterialInstanceConstant>(nullptr, *AssetPath);
-		if (!MIC)
+		if (!IsValid(MIC))
 		{
 			return 4;
 		}
@@ -3355,7 +3355,7 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat)
+		if (!IsValid(Mat))
 		{
 			return 4;
 		}
@@ -3470,7 +3470,7 @@ namespace
 			}
 			if (It->GetName() == ClassName) { WidgetClass = *It; break; }
 		}
-		if (!WidgetClass)
+		if (!IsValid(WidgetClass))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddWidget: class '%s' not found"), *ClassName);
@@ -3479,7 +3479,7 @@ namespace
 
 		UWidget* NewWidget = WBP->WidgetTree->ConstructWidget<UWidget>(
 			WidgetClass, FName(*Name));
-		if (!NewWidget)
+		if (!IsValid(NewWidget))
 		{
 			return 4;
 		}
@@ -3536,7 +3536,7 @@ namespace
 			return 4;
 		}
 		UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName));
-		if (!W)
+		if (!IsValid(W))
 		{
 			return 4;
 		}
@@ -3601,7 +3601,7 @@ namespace
 			{
 				// Create or reuse a function on the BP with the handler name.
 				UEdGraph* EventGraph = FBlueprintEditorUtils::FindEventGraph(WBP);
-				if (EventGraph)
+				if (IsValid(EventGraph))
 				{
 					// Best-effort scaffolding — actual delegate binding at
 					// runtime requires either pre-construct binding or
@@ -3638,7 +3638,7 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
-		if (!WBP)
+		if (!IsValid(WBP))
 		{
 			return 4;
 		}
@@ -3707,7 +3707,7 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT)
+		if (!IsValid(BT))
 		{
 			return 4;
 		}
@@ -3787,7 +3787,7 @@ namespace
 		FParse::Value(*Params, TEXT("Class="),  ClassName);
 
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT)
+		if (!IsValid(BT))
 		{
 			return 4;
 		}
@@ -3802,7 +3802,7 @@ namespace
 			}
 			if (It->GetName() == ClassName) { NodeClass = *It; break; }
 		}
-		if (!NodeClass)
+		if (!IsValid(NodeClass))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("AddBTNode: class '%s' not found"), *ClassName);
@@ -3810,7 +3810,7 @@ namespace
 		}
 
 		UBTNode* NewNode = NewObject<UBTNode>(BT, NodeClass);
-		if (!NewNode)
+		if (!IsValid(NewNode))
 		{
 			return 4;
 		}
@@ -3859,7 +3859,7 @@ namespace
 		FParse::Value(*Params, TEXT("Value="),    Value);
 
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT)
+		if (!IsValid(BT))
 		{
 			return 4;
 		}
@@ -3868,7 +3868,7 @@ namespace
 		UBTNode* Target = nullptr;
 		ForEachObjectWithOuter(BT, [&](UObject* O)
 		{
-			if (Target)
+			if (IsValid(Target))
 			{
 				return;
 			}
@@ -3880,7 +3880,7 @@ namespace
 				}
 			}
 		});
-		if (!Target)
+		if (!IsValid(Target))
 		{
 			return 4;
 		}
@@ -3917,7 +3917,7 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT)
+		if (!IsValid(BT))
 		{
 			return 4;
 		}
@@ -3977,7 +3977,7 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
-		if (!DA)
+		if (!IsValid(DA))
 		{
 			return 4;
 		}
@@ -4036,13 +4036,13 @@ namespace
 		FString PackageName = AssetPath;
 		FString AssetName = FPackageName::GetShortName(PackageName);
 		UPackage* Pkg = CreatePackage(*PackageName);
-		if (!Pkg)
+		if (!IsValid(Pkg))
 		{
 			return 4;
 		}
 		UDataAsset* NewDA = NewObject<UDataAsset>(Pkg, AssetClass,
 			FName(*AssetName), RF_Public | RF_Standalone | RF_Transactional);
-		if (!NewDA)
+		if (!IsValid(NewDA))
 		{
 			return 4;
 		}
@@ -4066,7 +4066,7 @@ namespace
 		FParse::Value(*Params, TEXT("Value="),    Value);
 
 		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
-		if (!DA)
+		if (!IsValid(DA))
 		{
 			return 4;
 		}
@@ -4378,11 +4378,11 @@ namespace
 		{
 			if (It->GetName() == ClassName) { Cls = *It; break; }
 		}
-		if (!Cls)
+		if (!IsValid(Cls))
 		{
 			Cls = FindObject<UClass>(nullptr, *ClassName);
 		}
-		if (!Cls)
+		if (!IsValid(Cls))
 		{
 			auto Err = MakeShared<FJsonObject>();
 			Err->SetBoolField(TEXT("ok"), false);
@@ -4483,11 +4483,11 @@ namespace
 		{
 			if (It->GetName() == ClassName) { Cls = *It; break; }
 		}
-		if (!Cls)
+		if (!IsValid(Cls))
 		{
 			Cls = FindObject<UClass>(nullptr, *ClassName);
 		}
-		if (!Cls)
+		if (!IsValid(Cls))
 		{
 			TArray<TSharedPtr<FJsonValue>> Empty;
 			return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Empty, bPretty), OutputPath);
@@ -4865,7 +4865,7 @@ namespace
 		// AbilitySet schemas vary across projects. We scan for any array
 		// property containing a "class" + "level" pair via the property
 		// system. Best-effort.
-		if (DA)
+		if (IsValid(DA))
 		{
 			for (TFieldIterator<FArrayProperty> It(DA->GetClass()); It; ++It)
 			{
@@ -4935,7 +4935,7 @@ namespace
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 
 		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
-		if (!ABP)
+		if (!IsValid(ABP))
 		{
 			return 4;
 		}
@@ -4979,7 +4979,7 @@ namespace
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 
 		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
-		if (!ABP)
+		if (!IsValid(ABP))
 		{
 			return 4;
 		}
@@ -5121,7 +5121,7 @@ namespace
 		}
 
 		UBlueprint* SourceBP = LoadMutableBlueprint(SourceAsset);
-		if (!SourceBP)
+		if (!IsValid(SourceBP))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("DuplicateBlueprint: source asset not found: %s"), *SourceAsset);
@@ -5149,7 +5149,7 @@ namespace
 			FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
 		IAssetTools& AssetTools = AssetToolsModule.Get();
 		UObject* NewObj = AssetTools.DuplicateAsset(DestName, DestPackagePath, SourceBP);
-		if (!NewObj)
+		if (!IsValid(NewObj))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("DuplicateBlueprint: DuplicateAsset failed for %s -> %s"),
@@ -5158,7 +5158,7 @@ namespace
 		}
 
 		UBlueprint* NewBP = Cast<UBlueprint>(NewObj);
-		if (!NewBP)
+		if (!IsValid(NewBP))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("DuplicateBlueprint: duplicate isn't a UBlueprint (was %s)"),
@@ -5234,7 +5234,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddVariable: failed to load %s"), *AssetPath);
 			return 4;
@@ -5289,13 +5289,13 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition: graph %s not found"), *GraphName);
 			return 4;
@@ -5331,12 +5331,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			return 4;
 		}
@@ -5409,12 +5409,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddNode: graph %s not found"), *GraphName);
 			return 4;
@@ -5480,13 +5480,13 @@ namespace
 				return 1;
 			}
 			UClass* OwnerClass = ResolveClass(FunctionOwner);
-			if (!OwnerClass)
+			if (!IsValid(OwnerClass))
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode CallFunction: class %s not found"), *FunctionOwner);
 				return 1;
 			}
 			UFunction* Fn = OwnerClass->FindFunctionByName(*FunctionName);
-			if (!Fn)
+			if (!IsValid(Fn))
 			{
 				UE_LOG(LogBlueprintReader, Error,
 					TEXT("AddNode CallFunction: function %s not found on %s"),
@@ -5532,7 +5532,7 @@ namespace
 				return 1;
 			}
 			UClass* Tgt = ResolveClass(TargetClass);
-			if (!Tgt)
+			if (!IsValid(Tgt))
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode Cast: class %s not found"), *TargetClass);
 				return 1;
@@ -5565,7 +5565,7 @@ namespace
 				return 1;
 			}
 			UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *StructPath);
-			if (!Struct)
+			if (!IsValid(Struct))
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode MakeStruct: struct %s not found"), *StructPath);
 				return 1;
@@ -5682,12 +5682,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			return 4;
 		}
@@ -5722,7 +5722,7 @@ namespace
 		//      wire_pins and the BP fails to compile (issue #11:
 		//      "The type of Target Array is undetermined").
 		const UEdGraphSchema* Schema = Graph->GetSchema();
-		if (!Schema)
+		if (!IsValid(Schema))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: graph has no schema"));
 			return 1;
@@ -5764,7 +5764,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -5868,7 +5868,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -5918,18 +5918,18 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionInput: function %s not found"), *FunctionName);
 			return 4;
 		}
 		UK2Node_FunctionEntry* Entry = FindFunctionEntry(Graph);
-		if (!Entry)
+		if (!IsValid(Entry))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionInput: no FunctionEntry node"));
 			return 5;
@@ -5960,12 +5960,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionOutput: function %s not found"), *FunctionName);
 			return 4;
@@ -5994,12 +5994,12 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteFunction: %s not found"), *FunctionName);
 			return 4;
@@ -6029,7 +6029,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
@@ -6064,7 +6064,7 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			return 4;
 		}
