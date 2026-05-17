@@ -1217,6 +1217,15 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			bare = bare.substr(pos + 1);
 		}
 
+		// Gate — multi-input stateful macro (Enter / Open / Close /
+		// Toggle inputs, Exit output). The auto-lowering pattern needs
+		// the walker to know WHICH input pin the exec arrived at, but
+		// the walker currently visits a node from a predecessor without
+		// tracking the destination pin. Until the walker is refactored
+		// to thread entry-pin info, Gate emits a structured sidecar
+		// with the manual recipe instead of falling through to the
+		// generic "unrecognized macro" path.
+		auto isGate = (bare == "Gate");
 		auto isForEach = (bare == "ForEachLoop" || bare == "ForEachLoopWithBreak");
 		auto isReverseForEach = (bare == "ReverseForEachLoop");
 		auto isWhile = (bare == "WhileLoop");
@@ -1625,6 +1634,90 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				}
 			}
 			r.terminatesExec = true;
+			return r;
+		}
+
+		// Gate — structured sidecar with the manual recipe. We can't
+		// auto-lower today because the walker doesn't track which
+		// input pin (Enter / Open / Close / Toggle) the exec arrived
+		// at. But the sidecar gives the agent everything they need to
+		// hand-translate at the upstream call site:
+		//   * Synth `bool` member to declare.
+		//   * The 4 patterns: Enter (if-then), Open (set true),
+		//     Close (set false), Toggle (negate).
+		// When walker entry-pin tracking lands (separate refactor),
+		// this handler can be replaced with the auto-lowering version.
+		if (isGate) {
+			std::string tag;
+			tag.reserve(8);
+			for (char c : n.Id) {
+				if (tag.size() == 8) {
+					break;
+				}
+				if ((c >= '0' && c <= '9') ||
+					(c >= 'a' && c <= 'f') ||
+					(c >= 'A' && c <= 'F')) {
+					tag.push_back(c);
+				}
+			}
+			while (tag.size() < 8) {
+				tag.push_back('0');
+			}
+			const std::string flagName = fmt::format("bBPRGate_{}_IsOpen", tag);
+
+			// Honor bStartClosed when present (true → init flag false).
+			bool startClosed = false;
+			if (const BPPin* sc = w.GetPin(n, "bStartClosed")) {
+				if (sc->DefaultValue && *sc->DefaultValue == "true") {
+					startClosed = true;
+				}
+			}
+			const std::string initVal = startClosed ? "false" : "true";
+
+			// Identify which input pins are actually wired, so the
+			// sidecar only describes patterns the agent needs.
+			std::vector<std::string> wiredInputs;
+			for (const char* pinName : {"Enter", "Open", "Close", "Toggle"}) {
+				if (const BPPin* p = w.GetPin(n, pinName)) {
+					auto it = w.inEdges.find({n.Id, p->Id});
+					if (it != w.inEdges.end() && !it->second.empty()) {
+						wiredInputs.emplace_back(pinName);
+					}
+				}
+			}
+
+			nlohmann::json fields = nlohmann::json::object();
+			if (n.Meta.is_object()) {
+				fields = n.Meta;
+			}
+			fields["synth_member"] = fmt::format("bool {} = {};", flagName, initVal);
+			fields["wired_inputs"] = wiredInputs;
+			fields["pattern_enter"]  = fmt::format("if ({}) {{ <Exit body> }}", flagName);
+			fields["pattern_open"]   = fmt::format("{} = true;", flagName);
+			fields["pattern_close"]  = fmt::format("{} = false;", flagName);
+			fields["pattern_toggle"] = fmt::format("{} = !{};", flagName, flagName);
+
+			r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+				{"node_class", n.Class},
+				{"guid", n.Id},
+				{"reason",
+				 "Gate macro: multi-input stateful (Enter / Open / Close / "
+				 "Toggle pins). Walker doesn't track which input pin "
+				 "received the exec, so auto-lowering can't dispatch "
+				 "correctly. The synth `bool` member and per-pin "
+				 "C++ patterns are in the sidecar — apply them at the "
+				 "upstream call site that connects to each Gate input. "
+				 "(Tracked: walker entry-pin refactor unlocks the full "
+				 "auto-lowering.)"},
+				{"macro_path", macroPath},
+				{"fields", std::move(fields)},
+			}}};
+			// Continue past the Gate's `Exit` output if anything is
+			// wired there — typical placement is upstream-of-Gate.Enter
+			// feeds Gate, downstream-of-Gate.Exit is the conditional
+			// payload. Walking Exit means the agent's manual code
+			// (the `if (flag) { ... }`) wraps that payload.
+			r.next = w.FollowExec(n, "Exit");
 			return r;
 		}
 
