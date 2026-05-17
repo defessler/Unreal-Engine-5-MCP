@@ -18,7 +18,7 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_transpile_roundtrip_detail {
 
 json MakeFn(const json& body, std::vector<json> inputs = {},
 			std::vector<json> outputs = {}) {
@@ -54,7 +54,8 @@ json Roundtrip(const json& bpir) {
 	return parsed["body"];
 }
 
-} // namespace
+}    // namespace test_transpile_roundtrip_detail
+using namespace test_transpile_roundtrip_detail;
 
 TEST_CASE("Roundtrip: simple set with int literal") {
 	json original = MakeFn(json::array({

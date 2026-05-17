@@ -12,7 +12,7 @@
 using namespace bpr;
 using nlohmann::json;
 
-namespace {
+namespace test_tools_detail {
 
 struct Fixture {
 	backends::MockBlueprintReader reader;
@@ -27,7 +27,8 @@ struct Fixture {
 	}
 };
 
-} // namespace
+}    // namespace test_tools_detail
+using namespace test_tools_detail;
 
 TEST_CASE("ToolRegistry exposes 126 tools (121 prior + 5 quick-win additions from issue #83: get_referencers, get_dependencies, read_config_value, set_config_value, build_lighting) with input schemas") {
 	Fixture f;

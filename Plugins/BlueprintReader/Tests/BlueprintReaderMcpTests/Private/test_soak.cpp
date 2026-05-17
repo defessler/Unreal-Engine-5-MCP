@@ -33,7 +33,7 @@ using namespace bpr;
 using namespace bpr::jsonrpc;
 using nlohmann::json;
 
-namespace {
+namespace test_soak_detail {
 
 struct DrainResult {
 	std::vector<json> frames;
@@ -127,7 +127,8 @@ json InitReq(int id = 0) {
 			{"clientInfo", json{{"name", "soak"}, {"version", "0"}}}}}};
 }
 
-} // namespace
+}    // namespace test_soak_detail
+using namespace test_soak_detail;
 
 TEST_CASE("soak: 5000 mixed read tool calls, all return correct shape"
 		  * doctest::test_suite("soak")) {

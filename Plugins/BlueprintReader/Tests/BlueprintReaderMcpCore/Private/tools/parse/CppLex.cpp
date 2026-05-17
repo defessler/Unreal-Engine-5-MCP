@@ -66,7 +66,7 @@ std::string TokenKindName(CppTokenKind k) {
 	return "<unknown>";
 }
 
-namespace {
+namespace cpp_lex_detail {
 
 // Map keywords to their token kinds. Identifiers that aren't keywords
 // stay as Identifier.
@@ -329,7 +329,8 @@ private:
 	int startCol_  = 1;
 };
 
-} // namespace
+}    // namespace cpp_lex_detail
+using namespace cpp_lex_detail;
 
 std::vector<CppToken> LexCpp(std::string_view source) {
 	return Lexer(source).Run();

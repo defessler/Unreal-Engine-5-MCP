@@ -24,7 +24,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace blueprint_tools_detail {
 
 // Returns by value (copy) instead of const-ref into the json. The ref form
 // was safe today — the caller's lambda holds the json alive for the
@@ -144,7 +144,8 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 	ApplyProjection(body, ctl.fields);
 }
 
-} // namespace
+}    // namespace blueprint_tools_detail
+using namespace blueprint_tools_detail;
 
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- list_blueprints -------------------------------------------------

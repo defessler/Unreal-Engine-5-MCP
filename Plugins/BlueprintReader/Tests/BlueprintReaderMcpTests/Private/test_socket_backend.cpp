@@ -29,7 +29,7 @@
 using namespace bpr::backends;
 using namespace std::chrono_literals;
 
-namespace {
+namespace test_socket_backend_detail {
 
 #if defined(_WIN32)
 struct WsaInit {
@@ -114,7 +114,8 @@ void SendLine(SOCKET s, const std::string& line) {
 	::send(s, framed.data(), (int)framed.size(), 0);
 }
 
-} // namespace
+}    // namespace test_socket_backend_detail
+using namespace test_socket_backend_detail;
 
 TEST_CASE("LiveBackend: handshake hello/auth/auth_ok works") {
 	MockServer mock([](SOCKET s) {

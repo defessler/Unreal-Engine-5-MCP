@@ -10,7 +10,7 @@
 
 namespace bpr::jsonrpc {
 
-namespace {
+namespace server_detail {
 
 std::string TrimAscii(std::string s) {
 	auto notSpace = [](unsigned char c) { return !std::isspace(c); };
@@ -41,9 +41,10 @@ bool ReadHeaderLine(std::istream& in, std::string& out) {
 	}
 }
 
-} // namespace
+}    // namespace server_detail
+using namespace server_detail;
 
-namespace {
+namespace server_detail2 {
 
 // Read a single newline-delimited JSON message: everything up to the next \n
 // (which we consume but don't include in the body). Tolerates \r\n. Returns
@@ -118,7 +119,8 @@ std::optional<std::string> ReadContentLengthFrame(std::istream& in) {
 	return body;
 }
 
-} // namespace
+}    // namespace server_detail2
+using namespace server_detail2;
 
 std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat) {
 	// Skip leading whitespace (newlines, CRs, spaces). Some clients pad with

@@ -5,7 +5,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace caching_blueprint_reader_detail {
 
 // Build a stable, collision-free cache key from operation + args.
 // Format: "<op>|<asset>|<extra1>|<extra2>". The pipe is fine — UE asset
@@ -22,7 +22,8 @@ std::string MakeKey(std::string_view op, std::string_view asset,
 	return out;
 }
 
-} // namespace
+}    // namespace caching_blueprint_reader_detail
+using namespace caching_blueprint_reader_detail;
 
 CachingBlueprintReader::CachingBlueprintReader(
 	std::unique_ptr<IBlueprintReader> inner,
@@ -30,7 +31,7 @@ CachingBlueprintReader::CachingBlueprintReader(
 	std::filesystem::path projectDir)
 	: inner_(std::move(inner)), ttl_(ttl), projectDir_(std::move(projectDir)) {}
 
-namespace {
+namespace caching_blueprint_reader_detail2 {
 // Resolve a UE asset path under /Game/ to its on-disk .uasset file
 // inside `<project>/Content/`. Returns empty path if the asset is outside
 // /Game/ (plugin content, /Engine/...) or if projectDir is empty.
@@ -69,7 +70,8 @@ SafeMtime(const std::filesystem::path& p) {
 	}
 	return t;
 }
-} // namespace
+}    // namespace caching_blueprint_reader_detail2
+using namespace caching_blueprint_reader_detail2;
 
 std::shared_ptr<const void> CachingBlueprintReader::LookupOrCompute(
 	const std::string& key, std::string_view assetPath,

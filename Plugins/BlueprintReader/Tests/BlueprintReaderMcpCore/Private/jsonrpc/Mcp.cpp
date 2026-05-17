@@ -10,7 +10,7 @@ namespace bpr::mcp {
 
 namespace jr = bpr::jsonrpc;
 
-namespace {
+namespace mcp_detail {
 
 nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
 								   nlohmann::json meta = nlohmann::json::object()) {
@@ -32,7 +32,8 @@ nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
 	return env;
 }
 
-} // namespace
+}    // namespace mcp_detail
+using namespace mcp_detail;
 
 void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,

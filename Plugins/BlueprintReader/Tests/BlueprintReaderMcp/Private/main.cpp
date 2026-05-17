@@ -40,7 +40,7 @@
 	#include <windows.h>
 #endif    // defined(_WIN32)
 
-namespace {
+namespace main_detail {
 
 std::filesystem::path ExecutableDir() {
 #if defined(_WIN32)
@@ -222,7 +222,8 @@ R"(      "env": {
 R"(      "env": {{
 		"BP_READER_PREWARM":       "1",
 		"BP_READER_EDITOR_ARGS":   "-EnableAllPlugins"{cfgLine}
-	  }})",
+}    // namespace main_detail
+using namespace main_detail;
 			fmt::arg("cfgLine", (cfgName.empty() || cfgName == "Development")
 									? ""
 									: fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));

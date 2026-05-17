@@ -9,7 +9,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace type_shorthand_detail {
 
 // Map a leading <name> to canonical (Category, SubCategory). UE5.7 uses
 // "real" as the float category; we accept the human-friendly "float" /
@@ -56,7 +56,8 @@ std::optional<Resolved> ResolveName(std::string_view name) {
 		input, why));
 }
 
-} // namespace
+}    // namespace type_shorthand_detail
+using namespace type_shorthand_detail;
 
 BPPinType ParseTypeShorthand(std::string_view input) {
 	if (input.empty())

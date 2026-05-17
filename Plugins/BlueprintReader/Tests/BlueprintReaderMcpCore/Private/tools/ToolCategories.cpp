@@ -3,7 +3,7 @@
 #include <map>
 
 namespace bpr::tools {
-namespace {
+namespace tool_categories_detail {
 
 // Each category maps to the tool names it contains. Tool registration
 // in BlueprintTools.cpp is the source of truth for which names exist;
@@ -303,7 +303,8 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 	return kTable;
 }
 
-} // namespace
+}    // namespace tool_categories_detail
+using namespace tool_categories_detail;
 
 std::vector<std::string> ExpandCategory(const std::string& name) {
 	const auto& table = CategoryTable();

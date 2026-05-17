@@ -4,7 +4,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace read_only_blueprint_reader_detail {
 
 // One canonical message — keeps every write op's error identical so the
 // agent can pattern-match it once. Calls out the exact env var so the
@@ -19,7 +19,8 @@ namespace {
 		"directly, or unset BP_READER_READ_ONLY and restart the MCP server.");
 }
 
-} // namespace
+}    // namespace read_only_blueprint_reader_detail
+using namespace read_only_blueprint_reader_detail;
 
 ReadOnlyBlueprintReader::ReadOnlyBlueprintReader(std::unique_ptr<IBlueprintReader> inner)
 	: inner_(std::move(inner)) {}
