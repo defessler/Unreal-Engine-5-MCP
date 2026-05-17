@@ -27,7 +27,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace socket_blueprint_reader_detail {
 
 // On Windows, WSAStartup is required before any socket call. We refcount
 // across SocketBlueprintReader instances so the startup/cleanup pair is
@@ -134,7 +134,8 @@ struct ScopedSocket {
 	explicit operator bool() const { return s != kInvalidSocket; }
 };
 
-} // namespace
+}    // namespace socket_blueprint_reader_detail
+using namespace socket_blueprint_reader_detail;
 
 SocketBlueprintReader::SocketBlueprintReader(Config cfg) : cfg_(std::move(cfg)) {
 	if (cfg_.port <= 0) {
@@ -215,7 +216,7 @@ bool SocketBlueprintReader::RefreshFromHandshakeFile() {
 // Open a TCP connection to host:port. Returns kInvalidSocket on failure.
 // CloseSocketCompat + ScopedSocket helpers live in the anonymous
 // namespace above so Disconnect (declared earlier) can reach them.
-namespace {
+namespace socket_blueprint_reader_detail2 {
 SocketType ConnectOnce(const std::string& host, int port) {
 	ScopedSocket sock(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
 	if (!sock)
@@ -231,7 +232,8 @@ SocketType ConnectOnce(const std::string& host, int port) {
 	}
 	return sock.release();
 }
-} // namespace
+}    // namespace socket_blueprint_reader_detail2
+using namespace socket_blueprint_reader_detail2;
 
 // One connect + handshake pass. Leaves socket_ + handshakeOk_
 // untouched on failure (caller decides whether to retry). The

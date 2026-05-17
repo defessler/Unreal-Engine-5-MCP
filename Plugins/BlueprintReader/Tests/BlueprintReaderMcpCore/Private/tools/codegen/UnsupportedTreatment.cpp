@@ -10,7 +10,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace unsupported_treatment_detail {
 
 // Treatment table — each entry maps a K2 node class to a recipe.
 // `match` is a substring (so K2Node_AnimNode_Foo, K2Node_AnimNode_Bar
@@ -138,7 +138,8 @@ std::string IsoTimestamp() {
 	return buf;
 }
 
-} // namespace
+}    // namespace unsupported_treatment_detail
+using namespace unsupported_treatment_detail;
 
 UnsupportedClassification ClassifyUnsupported(const nlohmann::json& u) {
 	UnsupportedClassification out;

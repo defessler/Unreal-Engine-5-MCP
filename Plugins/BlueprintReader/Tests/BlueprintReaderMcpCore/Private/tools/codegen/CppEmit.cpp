@@ -15,7 +15,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace cpp_emit_detail {
 
 // SanitizeIdentifier lives at file scope (defined below, outside the
 // anon namespace) so CppClassEmit.cpp -- a separate translation unit --
@@ -1430,7 +1430,8 @@ struct Emitter {
 	}
 };
 
-} // namespace
+}    // namespace cpp_emit_detail
+using namespace cpp_emit_detail;
 
 std::string SanitizeIdentifier(std::string_view in) {
 	// Public-API wrapper around the anon-namespace helper so CppClassEmit

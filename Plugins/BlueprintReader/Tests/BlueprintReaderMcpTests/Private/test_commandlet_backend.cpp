@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace test_commandlet_backend_detail {
 
 std::string GetEnv(const char* key) {
 #ifdef _MSC_VER
@@ -51,7 +51,8 @@ std::unique_ptr<bpr::backends::CommandletBlueprintReader> MakeLiveReader(bool us
 	return std::make_unique<bpr::backends::CommandletBlueprintReader>(std::move(cfg));
 }
 
-} // namespace
+}    // namespace test_commandlet_backend_detail
+using namespace test_commandlet_backend_detail;
 
 TEST_CASE("CommandletBlueprintReader: List under /Game/AI returns seeded blueprints"
 		  * doctest::skip(!LiveBackendAvailable())) {

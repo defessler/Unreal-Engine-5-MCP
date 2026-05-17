@@ -18,7 +18,7 @@
 using namespace bpr;
 using nlohmann::json;
 
-namespace {
+namespace test_diagnostics_detail {
 
 // Build a temp directory with a fake plugin layout under it; return the
 // "ProjectRoot" path. Caller is responsible for letting the fs go away
@@ -90,7 +90,8 @@ backends::BackendConfig MockCfgFromFake(const FakeProject& f, std::string editor
 	return cfg;
 }
 
-} // namespace
+}    // namespace test_diagnostics_detail
+using namespace test_diagnostics_detail;
 
 // ---------------------------------------------------------------------------
 // Diagnostics: each historical failure mode produces a clear finding.

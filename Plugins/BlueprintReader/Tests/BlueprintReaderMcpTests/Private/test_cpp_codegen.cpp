@@ -12,7 +12,7 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_cpp_codegen_detail {
 
 // Wrap a body of statements as a minimal BPIR function doc.
 json MakeFn(const json& body, std::vector<json> inputs = {},
@@ -38,7 +38,8 @@ bool Contains(const std::string& s, const std::string& sub) {
 	return s.find(sub) != std::string::npos;
 }
 
-} // namespace
+}    // namespace test_cpp_codegen_detail
+using namespace test_cpp_codegen_detail;
 
 // ===== Type mapping ========================================================
 

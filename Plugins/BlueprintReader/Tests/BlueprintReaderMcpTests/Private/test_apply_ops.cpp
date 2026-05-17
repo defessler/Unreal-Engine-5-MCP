@@ -24,7 +24,7 @@ using namespace bpr;
 using namespace bpr::backends;
 using nlohmann::json;
 
-namespace {
+namespace test_apply_ops_detail {
 
 // Mutable backend: reads delegate to a real MockBlueprintReader, writes
 // just record-and-succeed (or record-and-throw if `failOnWrite`).
@@ -216,7 +216,8 @@ private:
 	MockBlueprintReader inner_;
 };
 
-} // namespace
+}    // namespace test_apply_ops_detail
+using namespace test_apply_ops_detail;
 
 TEST_CASE("apply_ops: empty ops list runs cleanly") {
 	FakeWritableReader r;

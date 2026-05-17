@@ -21,7 +21,7 @@ using namespace bpr;
 using namespace bpr::jsonrpc;
 using nlohmann::json;
 
-namespace {
+namespace test_protocol_negotiation_detail {
 
 json DriveInitialize(const json& clientProtocolVersion) {
 	auto reader = test::MakeMockReader();
@@ -51,7 +51,8 @@ json DriveInitialize(const json& clientProtocolVersion) {
 	return json::parse(raw.substr(0, nl));
 }
 
-} // namespace
+}    // namespace test_protocol_negotiation_detail
+using namespace test_protocol_negotiation_detail;
 
 TEST_CASE("initialize: echoes the client's protocolVersion when known") {
 	auto resp = DriveInitialize("2025-03-26");

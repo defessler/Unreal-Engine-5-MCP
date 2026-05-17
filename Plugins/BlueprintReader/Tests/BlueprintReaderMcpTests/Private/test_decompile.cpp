@@ -21,12 +21,13 @@ using namespace bpr;
 using namespace bpr::tools;
 using namespace bpr::backends;
 
-namespace {
+namespace test_decompile_detail {
 struct Fixture {
 	MockBlueprintReader reader;
 	Fixture() : reader(test::FixturesDir()) {}
 };
-} // namespace
+}    // namespace test_decompile_detail
+using namespace test_decompile_detail;
 
 TEST_CASE("decompile: produces a BPIR function doc that validates") {
 	Fixture f;
@@ -123,11 +124,12 @@ TEST_CASE("decompile: round-trip BPIR through ValidateBpir works for empty funct
 
 #include "tools/codegen/CppClassEmit.h"
 
-namespace {
+namespace test_decompile_detail2 {
 bool ContainsStr(const std::string& s, const std::string& sub) {
 	return s.find(sub) != std::string::npos;
 }
-} // namespace
+}    // namespace test_decompile_detail2
+using namespace test_decompile_detail2;
 
 TEST_CASE("E2E: BP_Enemy → BPIR → UCLASS C++ produces compile-shaped header") {
 	Fixture f;
