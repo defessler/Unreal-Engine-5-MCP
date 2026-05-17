@@ -111,6 +111,11 @@ public:
 	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view destPath,
 													std::string_view content,
 													bool createDirs) override;
+	// Structural diff is a comparison across two assets — caching the
+	// result by a single asset key is awkward and gains little (diff is
+	// not a hot loop in practice). Pass through.
+	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
+								   const StructuralDiffOptions& opts) override;
 
 	// ----- Project + Content Browser ops (pass-through) -----------------
 	// These are project-level rather than per-Blueprint; caching them
