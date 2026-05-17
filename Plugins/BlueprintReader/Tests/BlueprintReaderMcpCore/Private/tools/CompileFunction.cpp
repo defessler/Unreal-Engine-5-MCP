@@ -432,96 +432,83 @@ void RegisterCompileFunction(ToolRegistry& registry,
 		{"required", nlohmann::json::array({"asset_path","function_name","body"})},
 	};
 	registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-		std::string asset = args.at("asset_path").get<std::string>();
-		std::string fname = args.at("function_name").get<std::string>();
-		if (!args.contains("body") || !args["body"].is_array()) {
-			throw std::invalid_argument(R"(compile_function requires "body" to be an array)");
-		}
-
-		Compiler c;
-		c.asset = asset;
-		c.graph = fname;
-
-		// Step 1: ensure function exists. Idempotent. Tag the op with a
-		// slot id so apply_ops's OpAddFunction binds the FunctionEntry's
-		// GUID to it — we can then wire the entry's `then` exec into the
-		// first body statement automatically (no manual wire_pins call
-		// needed by the caller).
-		const std::string kEntrySlot = "__entry";
-		c.ops.push_back({
-			{"op", "add_function"},
-			{"id", kEntrySlot},
-			{"asset_path", asset},
-			{"name", fname},
-		});
-
-		// Step 2: declare inputs.
-		if (auto inIt = args.find("inputs"); inIt != args.end() && inIt->is_array()) {
-			for (auto& p : *inIt) {
-				if (!p.is_object() || !p.contains("name") || !p.contains("type")) {
-					throw std::invalid_argument(
-						R"(each "inputs" entry must be {name, type})");
-				}
-				// Pre-validate type so the user gets the parser error here,
-				// not deep inside apply_ops.
-				(void)ParseTypeArg(p["type"]);
-				c.ops.push_back({
-					{"op", "add_function_input"},
-					{"asset_path", asset},
-					{"function_name", fname},
-					{"param_name", p["name"]},
-					{"type", p["type"]},
-				});
-			}
-		}
-		if (auto outIt = args.find("outputs"); outIt != args.end() && outIt->is_array()) {
-			for (auto& p : *outIt) {
-				if (!p.is_object() || !p.contains("name") || !p.contains("type")) {
-					throw std::invalid_argument(
-						R"(each "outputs" entry must be {name, type})");
-				}
-				(void)ParseTypeArg(p["type"]);
-				c.ops.push_back({
-					{"op", "add_function_output"},
-					{"asset_path", asset},
-					{"function_name", fname},
-					{"param_name", p["name"]},
-					{"type", p["type"]},
-				});
-			}
-		}
-
-		// Step 3: compile the body. The body's inbound tails start at
-		// the FunctionEntry node's `then` exec (slot `__entry` bound by
-		// OpAddFunction). The first statement's WireTailsTo call wires
-		// FunctionEntry's `then` straight into its execute pin —
-		// matching what UE does when you build a function in the editor.
-		ExecTails tails = {{kEntrySlot, "then"}};
-		CompileStatements(c, tails, args["body"]);
-
-		// Step 4: dry-run mode short-circuits to just returning the ops
-		// (useful for the agent to inspect what we'd do before committing).
-		bool dryRun = args.value("dry_run", false);
-		if (dryRun) {
-			return nlohmann::json{
-				{"ok",            true},
-				{"dry_run",       true},
-				{"asset_path",    asset},
-				{"function_name", fname},
-				{"ops",           std::move(c.ops)},
-			};
-		}
-
-		// Step 5: execute via the shared RunOps helper — same semantics as
-		// apply_ops (slots, pin enrichment, idempotency, atomic on/off).
-		bool atomic = args.value("atomic", true);
-		nlohmann::json runResult = RunOps(reader, c.ops, atomic);
-		// Stitch in the surrounding context so callers see the function
-		// they targeted plus the per-op trace.
-		runResult["asset_path"]    = asset;
-		runResult["function_name"] = fname;
-		return runResult;
+		return CompileFunctionFromBody(reader, args);
 	});
+}
+
+nlohmann::json CompileFunctionFromBody(backends::IBlueprintReader& reader,
+                                       const nlohmann::json& args) {
+	using namespace compile_function_detail;
+	std::string asset = args.at("asset_path").get<std::string>();
+	std::string fname = args.at("function_name").get<std::string>();
+	if (!args.contains("body") || !args["body"].is_array()) {
+		throw std::invalid_argument(R"(compile_function requires "body" to be an array)");
+	}
+
+	Compiler c;
+	c.asset = asset;
+	c.graph = fname;
+
+	const std::string kEntrySlot = "__entry";
+	c.ops.push_back({
+		{"op", "add_function"},
+		{"id", kEntrySlot},
+		{"asset_path", asset},
+		{"name", fname},
+	});
+
+	if (auto inIt = args.find("inputs"); inIt != args.end() && inIt->is_array()) {
+		for (auto& p : *inIt) {
+			if (!p.is_object() || !p.contains("name") || !p.contains("type")) {
+				throw std::invalid_argument(
+					R"(each "inputs" entry must be {name, type})");
+			}
+			(void)ParseTypeArg(p["type"]);
+			c.ops.push_back({
+				{"op", "add_function_input"},
+				{"asset_path", asset},
+				{"function_name", fname},
+				{"param_name", p["name"]},
+				{"type", p["type"]},
+			});
+		}
+	}
+	if (auto outIt = args.find("outputs"); outIt != args.end() && outIt->is_array()) {
+		for (auto& p : *outIt) {
+			if (!p.is_object() || !p.contains("name") || !p.contains("type")) {
+				throw std::invalid_argument(
+					R"(each "outputs" entry must be {name, type})");
+			}
+			(void)ParseTypeArg(p["type"]);
+			c.ops.push_back({
+				{"op", "add_function_output"},
+				{"asset_path", asset},
+				{"function_name", fname},
+				{"param_name", p["name"]},
+				{"type", p["type"]},
+			});
+		}
+	}
+
+	ExecTails tails = {{kEntrySlot, "then"}};
+	CompileStatements(c, tails, args["body"]);
+
+	bool dryRun = args.value("dry_run", false);
+	if (dryRun) {
+		return nlohmann::json{
+			{"ok",            true},
+			{"dry_run",       true},
+			{"asset_path",    asset},
+			{"function_name", fname},
+			{"ops",           std::move(c.ops)},
+		};
+	}
+
+	bool atomic = args.value("atomic", true);
+	nlohmann::json runResult = RunOps(reader, c.ops, atomic);
+	runResult["asset_path"]    = asset;
+	runResult["function_name"] = fname;
+	return runResult;
 }
 
 }    // namespace bpr::tools

@@ -28,6 +28,7 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -42,10 +43,16 @@ struct BPIRRoundtripResult {
 	std::string emitted_cpp_path;
 	std::string emitted_h_path;
 	std::string failing_stage;     // "decompile", "emit", "compile", "parse", "transpile"
+	std::string failing_op;        // populated alongside failing_stage on transpile stage
 	std::string error_message;
 	std::string build_log_path;    // populated on compile failures
 	nlohmann::json bpir_before;    // BPIR captured pre-compile (for diffing)
 	nlohmann::json bpir_after;     // BPIR captured post-parse
+	// Per-function body-compile failures. Non-fatal — Stage 5 still
+	// returns ok=true even when some BPIR functions have body statement
+	// forms beyond compile_function's supported subset (return, cast,
+	// switch, loops, etc.). Each entry is "<function_name>: <reason>".
+	std::vector<std::string> body_compile_failures;
 };
 
 // Runs the full pipeline. `engineDir` / `projectFile` point at the
