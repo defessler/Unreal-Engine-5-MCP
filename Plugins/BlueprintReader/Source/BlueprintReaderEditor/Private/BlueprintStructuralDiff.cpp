@@ -327,9 +327,9 @@ FResult Compare(UBlueprint* A, UBlueprint* B, const FCompareOptions& Options)
 	return R;
 }
 
-TSharedPtr<FJsonObject> FResult::ToJson() const
+TSharedRef<FJsonObject> FResult::ToJson() const
 {
-	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	TSharedRef<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetBoolField(TEXT("ok"), bEqual);
 	TArray<TSharedPtr<FJsonValue>> Arr;
 	for (const FDifference& D : Differences)

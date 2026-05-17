@@ -5234,7 +5234,7 @@ namespace
 
 		BlueprintStructuralDiff::FResult Result =
 			BlueprintStructuralDiff::Compare(A, B, Opt);
-		TSharedPtr<FJsonObject> Obj = Result.ToJson();
+		TSharedRef<FJsonObject> Obj = Result.ToJson();
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
