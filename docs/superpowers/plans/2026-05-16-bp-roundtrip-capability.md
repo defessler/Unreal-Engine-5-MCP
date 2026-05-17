@@ -555,7 +555,7 @@ git commit -m "feat(plugin): BPRoundtripSeed commandlet — imports TP_ThirdPers
 - Create: `Content/Imported/ThirdPerson/*.uasset` (committed)
 - Create: `Content/Recreated/.gitkeep`, `Content/Recreated/.gitignore`
 
-- [ ] **Step 1: Run the seed commandlet**
+- [x] **Step 1: Run the seed commandlet**
 
 ```bash
 "D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BPRoundtripSeed -nullrhi -nosplash -unattended -nopause
@@ -563,7 +563,23 @@ git commit -m "feat(plugin): BPRoundtripSeed commandlet — imports TP_ThirdPers
 
 Expected: log lines `Copied /TPTemplate/Blueprints/BP_ThirdPersonCharacter -> /Game/Imported/ThirdPerson/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter`, etc. Exit code 0.
 
-- [ ] **Step 2: Verify the assets exist**
+Actual (2026-05-16): Exit code 0. Copied: 3, Skipped: 0, Failures: 0. The
+seed bugfix (`FPaths::EngineDir()` → `FPaths::RootDir()` for the template
+mount) ships in the same commit. The Copies list was narrowed to the 3
+BPs that actually exist under `Templates/TP_ThirdPersonBP/Content/`;
+`ABP_Manny`, `IA_*`, and `IMC_Default` live in
+`Templates/TemplateResources/High/` and are only merged into a project's
+`/Game/` at template-instantiation time (not loadable from the
+TP_ThirdPersonBP template tree). The 3 BPs emit expected
+"EnhancedInputAction None" compile warnings because the soft refs to
+`/Game/Input/Actions/IA_*` don't resolve in this project — see the
+`TODO(roundtrip-expansion)` block in `BPRoundtripSeedCommandlet.cpp`
+for how to add them later if a clean-compile fixture is needed. These
+warnings do NOT affect roundtrip testing: bp-reader operates on the
+serialized K2 graph (variables, components, nodes, pin types), which
+round-trip independently of asset-resolution status.
+
+- [x] **Step 2: Verify the assets exist**
 
 ```bash
 ls Content/Imported/ThirdPerson/ 2>&1
@@ -571,7 +587,12 @@ ls Content/Imported/ThirdPerson/ 2>&1
 
 Expected: at least `BP_ThirdPersonCharacter.uasset`, `BP_ThirdPersonGameMode.uasset`, `BP_ThirdPersonPlayerController.uasset`, `ABP_Manny.uasset`, plus `Input/` subdir.
 
-- [ ] **Step 3: Set up `Content/Recreated/` as gitignored**
+Actual: `BP_ThirdPersonCharacter.uasset` (123 KB), `BP_ThirdPersonGameMode.uasset`
+(14 KB), `BP_ThirdPersonPlayerController.uasset` (77 KB). `ABP_Manny.uasset`
+and `Input/` subdir intentionally skipped — see Step 1 note above. The
+character BP is the test target for roundtrip complexity coverage.
+
+- [x] **Step 3: Set up `Content/Recreated/` as gitignored**
 
 ```bash
 mkdir -p Content/Recreated
@@ -582,7 +603,7 @@ echo "!.gitkeep" >> Content/Recreated/.gitignore
 touch Content/Recreated/.gitkeep
 ```
 
-- [ ] **Step 4: Commit the imported assets and the recreated-dir placeholder**
+- [x] **Step 4: Commit the imported assets and the recreated-dir placeholder**
 
 ```bash
 git add Content/Imported/ThirdPerson/ Content/Recreated/.gitkeep Content/Recreated/.gitignore
