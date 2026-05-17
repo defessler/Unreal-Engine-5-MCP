@@ -65,6 +65,11 @@ public:
 													std::string_view content,
 													bool createDirs) override;
 
+	// Structural diff isn't supported by the mock backend — the fixture
+	// JSON doesn't carry the UBlueprint reflection needed to compute it.
+	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
+								   const StructuralDiffOptions& opts) override;
+
 	// Number of loaded fixtures — for diagnostics + tests.
 	std::size_t FixtureCount() const { return assets_.size(); }
 

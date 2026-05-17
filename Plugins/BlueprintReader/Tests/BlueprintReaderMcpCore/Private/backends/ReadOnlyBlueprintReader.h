@@ -71,6 +71,9 @@ public:
 	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view,
 													std::string_view,
 													bool) override;
+	// Structural diff is a read op (no .uasset mutation) — pass through.
+	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
+								   const StructuralDiffOptions& opts) override;
 
 	// ----- Project + Content Browser ops --------------------------------
 	// Reads pass through; writes (save/move/delete/create) throw the

@@ -790,6 +790,24 @@ SocketBlueprintReader::DuplicateBlueprint(std::string_view source, std::string_v
 	return out;
 }
 
+nlohmann::json SocketBlueprintReader::StructuralDiff(
+	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
+	std::vector<std::string> args = {
+		"-Op=StructuralDiff",
+		"-A=" + std::string(a),
+		"-B=" + std::string(b),
+	};
+	// Mirror CommandletBlueprintReader::StructuralDiff: only emit the
+	// flag when the caller wants to opt out of the plugin default.
+	if (!opts.ignoreNodePositions) {
+		args.push_back("-IgnoreNodePositions=0");
+	}
+	if (opts.ignoreCommentNodes) {
+		args.push_back("-IgnoreCommentNodes");
+	}
+	return RunOp(args);
+}
+
 // ----- batch sentinels ---------------------------------------------------
 // ----- Project + Content Browser ops ---------------------------------
 

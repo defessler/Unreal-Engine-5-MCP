@@ -1861,7 +1861,7 @@ git commit -m "feat(plugin): EOp::StructuralDiff — commandlet op for BP struct
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/IBlueprintReader.h`
 - Modify: `MockBlueprintReader.{h,cpp}`, `CommandletBlueprintReader.{h,cpp}`, `SocketBlueprintReader.{h,cpp}`, `CachingBlueprintReader.{h,cpp}`, `ReadOnlyBlueprintReader.{h,cpp}`, `AutoBlueprintReader.{h,cpp}`
 
-- [ ] **Step 1: Add the pure-virtual method + result struct to `IBlueprintReader.h`**
+- [x] **Step 1: Add the pure-virtual method + result struct to `IBlueprintReader.h`**
 
 Place near the other diff/compare-shaped methods (anywhere in the class body works; put it near `Read` since it's a read-style op).
 
@@ -1879,7 +1879,7 @@ virtual nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 }
 ```
 
-- [ ] **Step 2: Implement on `CommandletBlueprintReader` (serializes args + runs the op)**
+- [x] **Step 2: Implement on `CommandletBlueprintReader` (serializes args + runs the op)**
 
 In `CommandletBlueprintReader.h`, declare:
 
@@ -1907,9 +1907,9 @@ nlohmann::json CommandletBlueprintReader::StructuralDiff(
 
 (`RunOp` is the existing helper; consult `Read` or `GetGraph` for the exact pattern.)
 
-- [ ] **Step 3: Implement on `SocketBlueprintReader` similarly** (sends a frame, awaits the response)
+- [x] **Step 3: Implement on `SocketBlueprintReader` similarly** (sends a frame, awaits the response)
 
-- [ ] **Step 4: Implement on `MockBlueprintReader` to throw not-supported with a friendly message**
+- [x] **Step 4: Implement on `MockBlueprintReader` to throw not-supported with a friendly message**
 
 ```cpp
 nlohmann::json MockBlueprintReader::StructuralDiff(
@@ -1920,7 +1920,7 @@ nlohmann::json MockBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 5: Forward through `CachingBlueprintReader` (no caching for diffs)**
+- [x] **Step 5: Forward through `CachingBlueprintReader` (no caching for diffs)**
 
 ```cpp
 nlohmann::json CachingBlueprintReader::StructuralDiff(
@@ -1929,7 +1929,7 @@ nlohmann::json CachingBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 6: Forward through `ReadOnlyBlueprintReader` (diff is a read op)**
+- [x] **Step 6: Forward through `ReadOnlyBlueprintReader` (diff is a read op)**
 
 ```cpp
 nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
@@ -1938,7 +1938,7 @@ nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
 }
 ```
 
-- [ ] **Step 7: Forward through `AutoBlueprintReader`**
+- [x] **Step 7: Forward through `AutoBlueprintReader`**
 
 The auto backend probes per-call; pattern matches the other forwarders. Add:
 
@@ -1957,7 +1957,7 @@ nlohmann::json AutoBlueprintReader::StructuralDiff(
 
 Expected: all 441 cases still pass (tool count assertion will fail in Task 15 — that's expected at that point).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/IBlueprintReader.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Mock*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Commandlet*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Socket*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Caching*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/ReadOnly*.{h,cpp} Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/Auto*.{h,cpp}
