@@ -11,9 +11,9 @@
 
 #include <doctest/doctest.h>
 
-#include "tools/Decompile.h"
-#include "tools/Bpir.h"
 #include "backends/MockBlueprintReader.h"
+#include "tools/Bpir.h"
+#include "tools/Decompile.h"
 
 #include "test_helpers.h"
 

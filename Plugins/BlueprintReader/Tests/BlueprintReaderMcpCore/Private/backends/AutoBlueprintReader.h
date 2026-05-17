@@ -47,8 +47,8 @@
 
 #pragma once
 
-#include "backends/IBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
+#include "backends/IBlueprintReader.h"
 #include "backends/SocketBlueprintReader.h"
 
 #include <chrono>

@@ -4,9 +4,9 @@
 
 #include <doctest/doctest.h>
 
+#include "backends/BackendFactory.h"
 #include "Diagnostics.h"
 #include "Env.h"
-#include "backends/BackendFactory.h"
 
 #include <filesystem>
 #include <fstream>

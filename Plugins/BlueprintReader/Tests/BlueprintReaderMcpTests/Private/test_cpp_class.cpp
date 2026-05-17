@@ -5,8 +5,8 @@
 
 #include <doctest/doctest.h>
 
-#include "tools/codegen/CppClassEmit.h"
 #include "tools/Bpir.h"
+#include "tools/codegen/CppClassEmit.h"
 
 using namespace bpr::tools;
 using nlohmann::json;

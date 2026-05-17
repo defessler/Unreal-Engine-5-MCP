@@ -22,8 +22,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/OutputDevice.h"
 #include "HAL/CriticalSection.h"
+#include "Misc/OutputDevice.h"
 
 namespace BlueprintReader
 {

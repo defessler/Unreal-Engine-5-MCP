@@ -25,9 +25,9 @@
 	// in winsock.h via windows.h and the symbols clash. Daemon-attach
 	// path does an inline TCP probe before constructing the
 	// SocketBlueprintReader.
+	#include <windows.h>
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
-	#include <windows.h>
 	#pragma comment(lib, "Ws2_32.lib")
 #else    // defined(_WIN32)
 	#include <signal.h>

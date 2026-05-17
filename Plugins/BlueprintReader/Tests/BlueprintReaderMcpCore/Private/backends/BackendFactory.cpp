@@ -2,9 +2,9 @@
 #include "backends/AutoBlueprintReader.h"
 #include "backends/CachingBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"
-#include "backends/SocketBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "backends/ReadOnlyBlueprintReader.h"
+#include "backends/SocketBlueprintReader.h"
 #include "Env.h"
 
 #include <fstream>
