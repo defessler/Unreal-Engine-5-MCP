@@ -95,7 +95,11 @@ public class BlueprintReaderEditor : ModuleRules
 			// gated). Mirrors Epic AIAssistant's
 			// Engine/Plugins/Experimental/AIAssistant which depends on the
 			// same plugin for its ExecPythonCommandEx path.
-			"PythonScriptPlugin"
+			"PythonScriptPlugin",
+			// UEditorAssetLibrary (Duplicate/Save/DoesAssetExist) — used by
+			// the BPRoundtripSeed commandlet to import the engine's
+			// ThirdPerson template into /Game/Imported/ThirdPerson/.
+			"EditorScriptingUtilities"
 		});
 	}
 }
