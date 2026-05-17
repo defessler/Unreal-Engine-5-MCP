@@ -391,13 +391,13 @@ static void GatherComponentsFromCDO(UClass* Class, TArray<FBPRRComponent>& Out)
 	// the SCS hierarchy but recovers the runtime component instances.
 	UObject* CDO = Class->GetDefaultObject();
 	AActor* CDOActor = Cast<AActor>(CDO);
-	if (!CDOActor)
+	if (!IsValid(CDOActor))
 	{
 		return;
 	}
 
 	const USceneComponent* Root = CDOActor->GetRootComponent();
-	if (Root)
+	if (IsValid(Root))
 	{
 		FBPRRComponent RootC;
 		RootC.Name = Root->GetName();
@@ -431,7 +431,7 @@ static void GatherComponentsFromCDO(UClass* Class, TArray<FBPRRComponent>& Out)
 TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& AssetPath)
 {
 	UClass* Class = ResolveClass(AssetPath);
-	if (!Class)
+	if (!IsValid(Class))
 	{
 		return TOptional<FBPRRBlueprint>();
 	}
@@ -495,7 +495,7 @@ TOptional<FBPRRBlueprint> FBlueprintRuntimeIntrospector::Read(const FString& Ass
 	for (TFieldIterator<UFunction> It(Class, EFieldIteratorFlags::ExcludeSuper); It; ++It)
 	{
 		UFunction* F = *It;
-		if (!F)
+		if (!IsValid(F))
 		{
 			continue;
 		}
