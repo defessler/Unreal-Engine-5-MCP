@@ -171,11 +171,20 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 	}
 
 	// Stage 3: compile via UBT.
+	// BPRoundtripModule is a plain Runtime module (no .Target.cs), so we
+	// drive UBT against UE5_MCPEditor — that target's intermediates already
+	// include BPRoundtripModule; the just-edited generated .cpp/.h triggers
+	// an incremental BPRoundtripModule recompile only.
+	// BP_READER_SKIP_PREBUILD=1 stops the editor target from re-invoking
+	// the plugin's MCP-server PreBuildStep (which would otherwise rebuild
+	// BlueprintReaderMcp.exe on every stage-3 invocation — slow and
+	// recursive when run from inside the test harness).
 	{
 		const std::string buildBat =
 			std::string(engineDir) + "/Engine/Build/BatchFiles/Build.bat";
 		const std::string cmd =
-			"\"" + buildBat + "\" BPRoundtripModule Win64 Development "
+			"set BP_READER_SKIP_PREBUILD=1 && \"" + buildBat +
+			"\" UE5_MCPEditor Win64 Development "
 			"-project=\"" + std::string(projectFile) + "\" "
 			"-NoUba -MaxParallelActions=4 -waitmutex";
 		const std::string logPath = genDir + "/build.log";
