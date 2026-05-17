@@ -129,6 +129,25 @@ nlohmann::json VariableDeclToJson(const BPVariable& v) {
 // the BPGraph for fast lookup, plus the function's variable scope so
 // VariableGet/Set can be tagged with "local"/"member"/"input"/"output".
 
+// Result of following an exec edge: the destination node AND the
+// destination pin name. The pin name is what unblocks multi-input
+// stateful constructs like Gate (where the walker needs to know
+// whether the exec arrived at Enter / Open / Close / Toggle).
+//
+// Implicit ctor from `const BPNode*` and explicit operator bool keep
+// existing call sites that just want "does this exec edge go anywhere"
+// compiling unchanged.
+struct ExecTarget {
+	const BPNode* node = nullptr;
+	std::string pinName;
+
+	ExecTarget() = default;
+	ExecTarget(const BPNode* n) : node(n) {}
+	ExecTarget(const BPNode* n, std::string p) : node(n), pinName(std::move(p)) {}
+
+	explicit operator bool() const { return node != nullptr; }
+};
+
 struct Walker {
 	const BPGraph& graph;
 	const BPFunction& function;
@@ -219,21 +238,31 @@ struct Walker {
 				p->Type.Category == "exec") ? p : nullptr;
 	}
 
-	// Where does this node's `pin` exec-out lead? Returns null if no
-	// outgoing connection (BP path terminates here).
-	const BPNode* FollowExec(const BPNode& n, std::string_view pinName) const {
+	// Where does this node's `pin` exec-out lead? Returns the
+	// destination node + the destination pin name. Returns an empty
+	// ExecTarget (operator bool false) if no outgoing connection.
+	//
+	// The destination pin name is critical for multi-input stateful
+	// nodes like Gate — Enter / Open / Close / Toggle each have
+	// different semantics, and the walker needs to know which input
+	// pin received the exec call to dispatch correctly.
+	ExecTarget FollowExec(const BPNode& n, std::string_view pinName) const {
 		const BPPin* out = FindExecOut(n, pinName);
 		if (!out)
 		{
-			return nullptr;
+			return {};
 		}
 		auto it = outEdges.find({n.Id, out->Id});
 		if (it == outEdges.end() || it->second.empty())
 		{
-			return nullptr;
+			return {};
 		}
 		const auto& target = it->second.front();
-		return GetNode(target.node);
+		const BPNode* dstNode = GetNode(target.node);
+		// Resolve dest pin ID → name.
+		auto pIt = pinNameById.find(target.pin);
+		std::string dstPinName = (pIt != pinNameById.end()) ? pIt->second : std::string{};
+		return {dstNode, std::move(dstPinName)};
 	}
 
 	// Tag a variable name with its scope. Inputs/outputs come from the
@@ -756,7 +785,12 @@ struct DecompileResult {
 	// unsupported notes inline at the macro's call site, where they're
 	// most discoverable, rather than as a top-level summary.
 	nlohmann::json preStatements = nlohmann::json::array();
-	const BPNode* next = nullptr;
+	// `next` carries the destination node AND the destination input
+	// pin name. Multi-input stateful nodes (Gate especially) need the
+	// pin name to dispatch correctly. Most handlers don't care and just
+	// assign `r.next = w.FollowExec(n, "then")` — the dest pin name
+	// flows through automatically.
+	ExecTarget next;
 	bool terminatesExec = false;  // return / break / continue / dangling
 };
 
@@ -767,28 +801,34 @@ struct DecompileResult {
 // multiple branches, so sharing one visited set would produce false-
 // positive "exec-cycle" reports. The DecompileStatementsFrom caller's
 // visited set is the one that owns cycle detection at this level.
+//
+// `entryPin` is the input pin name this node was entered through.
+// Default empty for the function-entry call. Threaded forward via
+// `res.next.pinName` so multi-input stateful nodes (Gate) can dispatch
+// on it.
 DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 								   const BPNode* stopAt,
-								   [[maybe_unused]] std::set<std::string>& visited);
+								   [[maybe_unused]] std::set<std::string>& visited,
+								   std::string_view entryPin = {});
 
 nlohmann::json DecompileStatementsFrom(const Walker& w,
 									   const BPNode* start,
 									   const BPNode* stopAt,
 									   std::set<std::string>& visited) {
 	nlohmann::json out = nlohmann::json::array();
-	const BPNode* cur = start;
-	while (cur && cur != stopAt) {
-		if (visited.count(cur->Id)) {
+	ExecTarget cur{start, ""};
+	while (cur.node && cur.node != stopAt) {
+		if (visited.count(cur.node->Id)) {
 			// Cycle without a recognized loop pattern. Emit unsupported.
 			out.push_back(nlohmann::json{{"unsupported", nlohmann::json{
-				{"node_class", cur->Class},
-				{"guid", cur->Id},
+				{"node_class", cur.node->Class},
+				{"guid", cur.node->Id},
 				{"reason", "exec-cycle (loop pattern not recognized)"},
 			}}});
 			break;
 		}
-		visited.insert(cur->Id);
-		DecompileResult res = DecompileStatement(w, *cur, stopAt, visited);
+		visited.insert(cur.node->Id);
+		DecompileResult res = DecompileStatement(w, *cur.node, stopAt, visited, cur.pinName);
 		// Flush any sidecar statements emitted ahead of the main
 		// statement (e.g. stateful-macro "Reset pin unhandled" notes
 		// surface inline so the agent sees them at the relevant call
@@ -816,7 +856,8 @@ nlohmann::json DecompileStatementsFrom(const Walker& w,
 
 DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 								   const BPNode* stopAt,
-								   [[maybe_unused]] std::set<std::string>& visited) {
+								   [[maybe_unused]] std::set<std::string>& visited,
+								   std::string_view entryPin) {
 	DecompileResult r;
 
 	// FunctionEntry: structural — skip and follow `then`.
@@ -901,8 +942,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			? BuildExpression(w, n, *condPin)
 			: nlohmann::json{{"lit", true}};
 
-		const BPNode* thenStart = w.FollowExec(n, "then");
-		const BPNode* elseStart = w.FollowExec(n, "else");
+		const BPNode* thenStart = w.FollowExec(n, "then").node;
+		const BPNode* elseStart = w.FollowExec(n, "else").node;
 
 		// Find the convergence point — the first node both branches
 		// reach. v1 heuristic: walk both branches, recording the
@@ -915,7 +956,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			while (cur && !guard.count(cur->Id)) {
 				guard.insert(cur->Id);
 				thenSeen.insert(cur->Id);
-				cur = w.FollowExec(*cur, "then");
+				cur = w.FollowExec(*cur, "then").node;
 				if (!cur)
 				{
 					break;
@@ -929,7 +970,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 					merge = cur;
 					break;
 				}
-				cur = w.FollowExec(*cur, "then");
+				cur = w.FollowExec(*cur, "then").node;
 			}
 		}
 
@@ -949,8 +990,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			: nlohmann::json{{"self", nullptr}};
 		std::string targetClass;
 		if (n.Meta.is_object()) targetClass = n.Meta.value("targetClass", std::string{});
-		const BPNode* successStart = w.FollowExec(n, "then");
-		const BPNode* failStart    = w.FollowExec(n, "CastFailed");
+		const BPNode* successStart = w.FollowExec(n, "then").node;
+		const BPNode* failStart    = w.FollowExec(n, "CastFailed").node;
 
 		// Conservative: don't try to merge here — just walk until exec
 		// terminates. The downstream caller's stopAt still applies.
@@ -990,7 +1031,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			{
 				continue;
 			}
-			const BPNode* branchStart = w.FollowExec(n, p.Name);
+			const BPNode* branchStart = w.FollowExec(n, p.Name).node;
 			std::set<std::string> branchVisited;
 			branches.push_back(DecompileStatementsFrom(w, branchStart, stopAt, branchVisited));
 		}
@@ -1049,12 +1090,12 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			if (rowStruct.empty()) rowStruct = n.Meta.value("rowStruct", std::string{});
 			if (rowStruct.empty()) rowStruct = n.Meta.value("structType", std::string{});
 		}
-		const BPNode* foundStart  = w.FollowExec(n, "RowFound");
+		const BPNode* foundStart  = w.FollowExec(n, "RowFound").node;
 		if (!foundStart)
 		{
-			foundStart = w.FollowExec(n, "then");
+			foundStart = w.FollowExec(n, "then").node;
 		}
-		const BPNode* missedStart = w.FollowExec(n, "RowNotFound");
+		const BPNode* missedStart = w.FollowExec(n, "RowNotFound").node;
 
 		std::set<std::string> succV, failV;
 		nlohmann::json foundBody  = DecompileStatementsFrom(w, foundStart,  stopAt, succV);
@@ -1407,8 +1448,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				{"args", nlohmann::json{{"Object", inputExpr}}},
 			};
 
-			const BPNode* thenStart = w.FollowExec(n, "IsValid");
-			const BPNode* elseStart = w.FollowExec(n, "IsNotValid");
+			const BPNode* thenStart = w.FollowExec(n, "IsValid").node;
+			const BPNode* elseStart = w.FollowExec(n, "IsNotValid").node;
 			std::set<std::string> vt, ve;
 			nlohmann::json thenBody = DecompileStatementsFrom(w, thenStart, stopAt, vt);
 			nlohmann::json elseBody = DecompileStatementsFrom(w, elseStart, stopAt, ve);
@@ -1437,10 +1478,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			nlohmann::json arrayExpr = arrayPin
 				? BuildExpression(w, n, *arrayPin)
 				: nlohmann::json{{"new_array", nlohmann::json::array()}};
-			const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
+			const BPNode* bodyStart = w.FollowExec(n, "LoopBody").node;
 			if (!bodyStart)
 			{
-				bodyStart = w.FollowExec(n, "then");
+				bodyStart = w.FollowExec(n, "then").node;
 			}
 			std::set<std::string> v;
 			// stopAt = &n: stop if we somehow recurse back to the loop
@@ -1457,7 +1498,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			}
 			r.statement = std::move(stmt);
 			// Continue past the loop on the Completed exec.
-			const BPNode* afterLoop = w.FollowExec(n, "Completed");
+			const BPNode* afterLoop = w.FollowExec(n, "Completed").node;
 			r.next = afterLoop;
 			return r;
 		}
@@ -1467,10 +1508,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			nlohmann::json cond = condPin
 				? BuildExpression(w, n, *condPin)
 				: nlohmann::json{{"lit", true}};
-			const BPNode* bodyStart = w.FollowExec(n, "LoopBody");
+			const BPNode* bodyStart = w.FollowExec(n, "LoopBody").node;
 			if (!bodyStart)
 			{
-				bodyStart = w.FollowExec(n, "then");
+				bodyStart = w.FollowExec(n, "then").node;
 			}
 			std::set<std::string> v;
 			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, &n, v);
@@ -1561,7 +1602,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			}
 			registerSynthVar(flagName, "bool", startClosed ? "true" : "false");
 
-			const BPNode* bodyStart = w.FollowExec(n, "Completed");
+			const BPNode* bodyStart = w.FollowExec(n, "Completed").node;
 			std::set<std::string> v;
 			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, stopAt, v);
 
@@ -1640,8 +1681,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			const std::string flagName = fmt::format("bBPRFlipFlop_{}_IsA", tag);
 			registerSynthVar(flagName, "bool", "true");
 
-			const BPNode* aStart = w.FollowExec(n, "A");
-			const BPNode* bStart = w.FollowExec(n, "B");
+			const BPNode* aStart = w.FollowExec(n, "A").node;
+			const BPNode* bStart = w.FollowExec(n, "B").node;
 			std::set<std::string> va, vb;
 			nlohmann::json aBody = DecompileStatementsFrom(w, aStart, stopAt, va);
 			nlohmann::json bBody = DecompileStatementsFrom(w, bStart, stopAt, vb);
@@ -1709,7 +1750,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				nExpr = nlohmann::json{{"lit", 0}};
 			}
 
-			const BPNode* bodyStart = w.FollowExec(n, "Exit");
+			const BPNode* bodyStart = w.FollowExec(n, "Exit").node;
 			std::set<std::string> v;
 			nlohmann::json body = DecompileStatementsFrom(w, bodyStart, stopAt, v);
 
@@ -1776,16 +1817,20 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			return r;
 		}
 
-		// Gate — structured sidecar with the manual recipe. We can't
-		// auto-lower today because the walker doesn't track which
-		// input pin (Enter / Open / Close / Toggle) the exec arrived
-		// at. But the sidecar gives the agent everything they need to
-		// hand-translate at the upstream call site:
-		//   * Synth `bool` member to declare.
-		//   * The 4 patterns: Enter (if-then), Open (set true),
-		//     Close (set false), Toggle (negate).
-		// When walker entry-pin tracking lands (separate refactor),
-		// this handler can be replaced with the auto-lowering version.
+		// Gate — full auto-lowering, dispatching on entryPin. The
+		// walker's entry-pin info tells us which of the 4 input pins
+		// received this exec call (Enter / Open / Close / Toggle), so
+		// we can emit the right C++ idiom directly:
+		//
+		//   Enter   → if (flag) { <Exit body> }     (gated propagation)
+		//   Open    → flag = true;                  (no propagation)
+		//   Close   → flag = false;                 (no propagation)
+		//   Toggle  → flag = !flag;                 (no propagation)
+		//
+		// The flag is a synth class member named bBPRGate_<tag>_IsOpen,
+		// init derived from bStartClosed (true→false, false/unset→true).
+		// Multiple Gate instances in the same class get distinct flags
+		// via the per-node-GUID tag.
 		if (isGate) {
 			std::string tag;
 			tag.reserve(8);
@@ -1811,51 +1856,90 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 					startClosed = true;
 				}
 			}
-			const std::string initVal = startClosed ? "false" : "true";
-
-			// Identify which input pins are actually wired, so the
-			// sidecar only describes patterns the agent needs.
-			std::vector<std::string> wiredInputs;
-			for (const char* pinName : {"Enter", "Open", "Close", "Toggle"}) {
-				if (const BPPin* p = w.GetPin(n, pinName)) {
-					auto it = w.inEdges.find({n.Id, p->Id});
-					if (it != w.inEdges.end() && !it->second.empty()) {
-						wiredInputs.emplace_back(pinName);
-					}
-				}
+			// Register the flag (idempotent — multiple visits to the
+			// same Gate from different entry pins share one decl).
+			if (!w.autoSynthVars.count(flagName)) {
+				nlohmann::json decl = {
+					{"name", flagName},
+					{"type", "bool"},
+					{"category", "BPR|AutoSynth"},
+					{"default", startClosed ? "false" : "true"},
+				};
+				w.autoSynthVars[flagName] = std::move(decl);
 			}
 
+			// Dispatch on the input pin the walker arrived through.
+			// Enter: conditional propagation through Exit.
+			// Open/Close/Toggle: side-effect only, no propagation.
+			if (entryPin == "Enter") {
+				const BPNode* exitStart = w.FollowExec(n, "Exit").node;
+				std::set<std::string> v;
+				nlohmann::json body = DecompileStatementsFrom(w, exitStart, stopAt, v);
+				nlohmann::json cond = {
+					{"var", flagName},
+					{"scope", "member"},
+				};
+				r.statement = {
+					{"if",   std::move(cond)},
+					{"then", std::move(body)},
+				};
+				r.terminatesExec = true;
+				return r;
+			}
+			if (entryPin == "Open" || entryPin == "Close") {
+				const bool toValue = (entryPin == "Open");
+				r.statement = {
+					{"set", flagName},
+					{"scope", "member"},
+					{"to",    nlohmann::json{{"lit", toValue}}},
+				};
+				r.terminatesExec = true;
+				return r;
+			}
+			if (entryPin == "Toggle") {
+				// flag = !flag — via KismetMathLibrary::Not_PreBool so
+				// CppEmit's operator-alias path renders it as `!flag`.
+				r.statement = {
+					{"set", flagName},
+					{"scope", "member"},
+					{"to", nlohmann::json{
+						{"call", "KismetMathLibrary::Not_PreBool"},
+						{"args", nlohmann::json{
+							{"A", nlohmann::json{
+								{"var", flagName},
+								{"scope", "member"},
+							}},
+						}},
+					}},
+				};
+				r.terminatesExec = true;
+				return r;
+			}
+			// Unknown / empty entry pin (walker wasn't able to determine
+			// the input pin — should be rare in well-formed BP graphs).
+			// Fall through to a structured sidecar with the manual
+			// recipe — same content the pre-refactor Gate handler shipped.
 			nlohmann::json fields = nlohmann::json::object();
 			if (n.Meta.is_object()) {
 				fields = n.Meta;
 			}
-			fields["synth_member"] = fmt::format("bool {} = {};", flagName, initVal);
-			fields["wired_inputs"] = wiredInputs;
+			fields["synth_member"]   = fmt::format("bool {} = {};", flagName,
+												   startClosed ? "false" : "true");
 			fields["pattern_enter"]  = fmt::format("if ({}) {{ <Exit body> }}", flagName);
 			fields["pattern_open"]   = fmt::format("{} = true;", flagName);
 			fields["pattern_close"]  = fmt::format("{} = false;", flagName);
 			fields["pattern_toggle"] = fmt::format("{} = !{};", flagName, flagName);
-
+			fields["observed_entry_pin"] = std::string(entryPin);
 			r.statement = nlohmann::json{{"unsupported", nlohmann::json{
 				{"node_class", n.Class},
 				{"guid", n.Id},
 				{"reason",
-				 "Gate macro: multi-input stateful (Enter / Open / Close / "
-				 "Toggle pins). Walker doesn't track which input pin "
-				 "received the exec, so auto-lowering can't dispatch "
-				 "correctly. The synth `bool` member and per-pin "
-				 "C++ patterns are in the sidecar — apply them at the "
-				 "upstream call site that connects to each Gate input. "
-				 "(Tracked: walker entry-pin refactor unlocks the full "
-				 "auto-lowering.)"},
+				 "Gate macro: walker entry-pin is empty or unrecognized — "
+				 "can't dispatch automatically. Apply the appropriate "
+				 "per-pin pattern from `fields` at the upstream call site."},
 				{"macro_path", macroPath},
 				{"fields", std::move(fields)},
 			}}};
-			// Continue past the Gate's `Exit` output if anything is
-			// wired there — typical placement is upstream-of-Gate.Enter
-			// feeds Gate, downstream-of-Gate.Exit is the conditional
-			// payload. Walking Exit means the agent's manual code
-			// (the `if (flag) { ... }`) wraps that payload.
 			r.next = w.FollowExec(n, "Exit");
 			return r;
 		}
@@ -1938,12 +2022,12 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 				continue;
 			}
 			if (p.Name == "Default") {
-				const BPNode* defStart = w.FollowExec(n, "Default");
+				const BPNode* defStart = w.FollowExec(n, "Default").node;
 				std::set<std::string> v;
 				defaultBody = DecompileStatementsFrom(w, defStart, stopAt, v);
 				hasDefault = true;
 			} else {
-				const BPNode* caseStart = w.FollowExec(n, p.Name);
+				const BPNode* caseStart = w.FollowExec(n, p.Name).node;
 				std::set<std::string> v;
 				cases[p.Name] = DecompileStatementsFrom(w, caseStart, stopAt, v);
 			}
@@ -2167,10 +2251,10 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			//    exec. Delay's exec output is named "Completed" on
 			//    latent UFUNCTIONs (UE convention); fall back to "then"
 			//    just in case the introspector serializes it differently.
-			const BPNode* contStart = w.FollowExec(n, "Completed");
+			const BPNode* contStart = w.FollowExec(n, "Completed").node;
 			if (!contStart)
 			{
-				contStart = w.FollowExec(n, "then");
+				contStart = w.FollowExec(n, "then").node;
 			}
 			std::set<std::string> contVisited;
 			nlohmann::json contBody = DecompileStatementsFrom(
@@ -2651,7 +2735,7 @@ nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 		body = nlohmann::json::array();
 	} else {
 		std::set<std::string> visited;
-		const BPNode* startsAt = walker.FollowExec(*entry, "then");
+		const BPNode* startsAt = walker.FollowExec(*entry, "then").node;
 		body = DecompileStatementsFrom(walker, startsAt, nullptr, visited);
 	}
 
