@@ -39,7 +39,7 @@ deep-dives are in [03-plugin-internals.md](03-plugin-internals.md)
                           v                            v
               +----------------------+    +-----------------------+
               |  UnrealEditor-Cmd    |    |  UnrealEditor.exe     |
-              |  -run=BlueprintReader|    |  (editor open)        |
+              |  -run=BPR|    |  (editor open)        |
               |  -Daemon             |    |  BlueprintReaderLive  |
               |  newline arg lines   |    |  Server FTcpListener  |
               |  RunOneOp dispatch   |    |  game-thread RunOneOp |
@@ -63,7 +63,7 @@ In production there are typically two processes:
    `BP_READER_ALLOW_MULTI=1`.
 
 2. **Backend process** depends on the backend:
-   - `commandlet`: a child `UnrealEditor-Cmd.exe -run=BlueprintReader
+   - `commandlet`: a child `UnrealEditor-Cmd.exe -run=BPR
      -Daemon` process spawned via `CreateProcessW`, fed
      newline-delimited arg strings on its stdin. Long-lived, reused
      across many tool calls.
@@ -141,7 +141,7 @@ keyed by a fresh `FGuid` per call —
   hold a TCP connection (live), but the MCP server's I/O thread
   waits synchronously for the backend's response.
 
-### Commandlet daemon side (`UnrealEditor-Cmd.exe -run=BlueprintReader -Daemon`)
+### Commandlet daemon side (`UnrealEditor-Cmd.exe -run=BPR -Daemon`)
 
 - Runs entirely on the main thread (the commandlet thread, which UE
   treats as the game thread). UE's normal task graph and asset

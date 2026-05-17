@@ -214,7 +214,7 @@ Same command as Task 1.1 Step 6. Expected: clean compile.
 Close the editor first if it's running. Then:
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BlueprintReader -Daemon -nullrhi -nosplash -unattended -nopause
+"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BPR -Daemon -nullrhi -nosplash -unattended -nopause
 ```
 
 In another shell, watch for the handshake file:

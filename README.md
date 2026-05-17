@@ -15,7 +15,7 @@ bundled `BlueprintReader` UE plugin.
 Two backends:
 - **`mock`** — fixture-backed; no UE required. Used for unit tests and
   bring-up. Three handcrafted JSON fixtures under `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`.
-- **`commandlet`** — drives a real `UnrealEditor-Cmd.exe -run=BlueprintReader`
+- **`commandlet`** — drives a real `UnrealEditor-Cmd.exe -run=BPR`
   to read live `.uasset` files from a UE project. Defaults to **daemon mode**
   (one editor process reused across calls) so per-call cost is ~30 ms after
   the initial ~5 s editor cold start.
@@ -285,8 +285,8 @@ UE5_MCP\
 │   │   ├── BlueprintIntrospector         FBlueprintInfo from FBlueprintGeneratedClass
 │   │   ├── BlueprintReaderJson           legacy/rich plugin shape (camelCase, K2 extras)
 │   │   ├── BlueprintReaderWireJson       canonical MCP wire shape (snake_case)
-│   │   ├── BlueprintReaderCommandlet     -run=BlueprintReader; -Op + -Daemon dispatch
-│   │   └── BlueprintReaderSeedCmdlet     -run=BlueprintReaderSeed; synthesize test BPs
+│   │   ├── BlueprintReaderCommandlet     -run=BPR; -Op + -Daemon dispatch
+│   │   └── BlueprintReaderSeedCmdlet     -run=BPRSeed; synthesize test BPs
 │   ├── Source\BlueprintReaderRuntime\    runtime-safe BP introspection
 │   └── Tests\                             UE Program targets (UBT-built)
 │       ├── BlueprintReaderMcp\           main exe → BlueprintReaderMcp.exe
@@ -375,7 +375,7 @@ ground (and more); for an interactive smoke run, build with
 
 ```pwsh
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
-    UE5_MCP.uproject -run=BlueprintReaderSeed `
+    UE5_MCP.uproject -run=BPRSeed `
     -nullrhi -nosplash -unattended -nopause
 ```
 

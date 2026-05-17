@@ -5,12 +5,12 @@
 #include "BlueprintReaderCommandlet.generated.h"
 
 UCLASS()
-class UBlueprintReaderCommandlet : public UCommandlet
+class UBPRCommandlet : public UCommandlet
 {
 	GENERATED_BODY()
 
 public:
-	UBlueprintReaderCommandlet();
+	UBPRCommandlet();
 
 	virtual int32 Main(const FString& Params) override;
 };

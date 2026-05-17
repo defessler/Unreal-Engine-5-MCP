@@ -21,7 +21,7 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReaderSeed, Log, All);
 
-UBlueprintReaderSeedCommandlet::UBlueprintReaderSeedCommandlet()
+UBPRSeedCommandlet::UBPRSeedCommandlet()
 {
 	IsClient = false;
 	IsServer = false;
@@ -348,7 +348,7 @@ namespace
 	}
 }
 
-int32 UBlueprintReaderSeedCommandlet::Main(const FString& /*Params*/)
+int32 UBPRSeedCommandlet::Main(const FString& /*Params*/)
 {
 	UE_LOG(LogBlueprintReaderSeed, Display, TEXT("Seeding test blueprints under /Game/AI..."));
 
