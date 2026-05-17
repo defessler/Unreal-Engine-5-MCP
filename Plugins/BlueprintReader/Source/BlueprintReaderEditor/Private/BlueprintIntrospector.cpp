@@ -16,6 +16,7 @@
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectGlobals.h"
 
+#include "K2Node_BaseAsyncTask.h"
 #include "K2Node_BaseMCDelegate.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
@@ -127,6 +128,114 @@ namespace
 		}
 	}
 
+	// For K2Node_BaseAsyncTask nodes, walk the proxy class's multicast
+	// delegate UPROPERTYs and surface each delegate's parameter list as
+	// a JSON-encoded string under the node's "delegate_params" extra.
+	// This unblocks the MCP-side async-task auto-lowering — without per-
+	// delegate-signature param info, generated UFUNCTION() callbacks
+	// can't carry the matching `(const FXxxPayload&)` signature.
+	//
+	// Wire format: a JSON object keyed by delegate name (which matches
+	// the node's output exec pin name), each value being an array of
+	// `{name, type}` objects where `type` is in the BPIR-shorthand form.
+	//
+	// Encoded as a string field on `Extras` because `Extras` is a
+	// `TMap<FString,FString>` — nested-shape data must be JSON-stringified.
+	// The MCP-side decompile parses it back.
+	void ExtractAsyncTaskDelegateParams(UK2Node_BaseAsyncTask* AsyncNode,
+										TMap<FString, FString>& Extras)
+	{
+		if (!IsValid(AsyncNode))
+		{
+			return;
+		}
+		// ProxyClass is a protected member of UK2Node_BaseAsyncTask, so
+		// derive it from the factory function's return type instead.
+		// Factories conventionally return `<ProxyClass>*`.
+		UFunction* Factory = AsyncNode->GetFactoryFunction();
+		if (!Factory)
+		{
+			return;
+		}
+		FProperty* RetProp = Factory->GetReturnProperty();
+		FObjectProperty* ObjRetProp = CastField<FObjectProperty>(RetProp);
+		if (!ObjRetProp)
+		{
+			return;
+		}
+		UClass* ProxyClass = ObjRetProp->PropertyClass;
+		if (!IsValid(ProxyClass))
+		{
+			return;
+		}
+		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
+		if (!IsValid(K2Schema))
+		{
+			return;
+		}
+
+		// Build the nested structure manually as a JSON-stringified
+		// payload. Format: {"OnSuccess":[{"name":"Result","type":"object:Pawn"},...]}.
+		FString Json = TEXT("{");
+		bool bAnyDelegate = false;
+		for (TFieldIterator<FMulticastDelegateProperty> PropIt(ProxyClass); PropIt; ++PropIt)
+		{
+			FMulticastDelegateProperty* DelProp = *PropIt;
+			if (!DelProp || !DelProp->SignatureFunction)
+			{
+				continue;
+			}
+			// Pin name == delegate name on the BaseAsyncTask node.
+			const FString PinName = DelProp->GetName();
+
+			FString ParamsArr = TEXT("[");
+			bool bAnyParam = false;
+			for (TFieldIterator<FProperty> ParamIt(DelProp->SignatureFunction); ParamIt; ++ParamIt)
+			{
+				FProperty* Param = *ParamIt;
+				if (!Param || !Param->HasAnyPropertyFlags(CPF_Parm))
+				{
+					continue;
+				}
+				if (Param->HasAnyPropertyFlags(CPF_ReturnParm))
+				{
+					continue;
+				}
+				FEdGraphPinType PinType;
+				if (!K2Schema->ConvertPropertyToPinType(Param, PinType))
+				{
+					continue;
+				}
+				if (bAnyParam)
+				{
+					ParamsArr += TEXT(",");
+				}
+				bAnyParam = true;
+				// Escape param name in case it contains special chars (rare
+				// for delegate signature params).
+				FString EscapedName = Param->GetName().Replace(TEXT("\""), TEXT("\\\""));
+				FString TypeStr = FBlueprintIntrospector::FormatPinType(PinType);
+				FString EscapedType = TypeStr.Replace(TEXT("\""), TEXT("\\\""));
+				ParamsArr += FString::Printf(TEXT("{\"name\":\"%s\",\"type\":\"%s\"}"),
+											 *EscapedName, *EscapedType);
+			}
+			ParamsArr += TEXT("]");
+
+			if (bAnyDelegate)
+			{
+				Json += TEXT(",");
+			}
+			bAnyDelegate = true;
+			FString EscapedPin = PinName.Replace(TEXT("\""), TEXT("\\\""));
+			Json += FString::Printf(TEXT("\"%s\":%s"), *EscapedPin, *ParamsArr);
+		}
+		Json += TEXT("}");
+		if (bAnyDelegate)
+		{
+			Extras.Add(TEXT("delegate_params"), Json);
+		}
+	}
+
 	// Return the bare C++ class name for an asset-ref property, with
 	// the correct U/A prefix. Empty for non-asset-ref properties.
 	// Codegen uses this to fill in `T` in `ConstructorHelpers::FObjectFinder<T>`.
@@ -191,6 +300,15 @@ namespace
 				Extras.Add(TEXT("targetClass"), C->GetPathName());
 			}
 			Extras.Add(TEXT("isSelfContext"), BoolToString(Call->FunctionReference.IsSelfContext()));
+			// UK2Node_BaseAsyncTask is a UK2Node_CallFunction subclass.
+			// Augment the extras with per-delegate parameter lists so the
+			// MCP-side async-task auto-lowering can generate UFUNCTION
+			// callbacks with matching `(const FXxxPayload&)` signatures
+			// instead of parameter-less stubs.
+			if (UK2Node_BaseAsyncTask* AsyncNode = Cast<UK2Node_BaseAsyncTask>(Node))
+			{
+				ExtractAsyncTaskDelegateParams(AsyncNode, Extras);
+			}
 			return;
 		}
 		if (UK2Node_VariableSet* VarSet = Cast<UK2Node_VariableSet>(Node))
