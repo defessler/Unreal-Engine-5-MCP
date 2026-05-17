@@ -26,6 +26,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -271,10 +272,25 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 
 		if (res.bpir_after.is_object() && res.bpir_after.contains("functions")
 		    && res.bpir_after["functions"].is_array()) {
+			// Decompile can emit duplicate function names when the source
+			// has multiple unresolved EnhancedInputAction nodes (one
+			// synthetic OnUnknownTriggered per node — IA_* asset resolution
+			// is lossy). AddFunction is not idempotent at the plugin layer
+			// (variable-already-exists style check returns exit=1), so
+			// dedupe by name and keep only the first body for each name.
+			std::set<std::string> seenFunctionNames;
 			for (const auto& fn : res.bpir_after["functions"]) {
 				if (!fn.is_object()) continue;
 				const std::string fname = fn.value("name", std::string{});
 				if (fname.empty()) continue;
+				if (!seenFunctionNames.insert(fname).second) {
+					// Duplicate name from decompile-synthesized handlers —
+					// soft-record so the test reflects what was skipped,
+					// then continue (don't halt the whole stage).
+					res.body_compile_failures.push_back(
+						fname + ": duplicate decompile-synthesized function name, kept first");
+					continue;
+				}
 				if (!runOp("AddFunction:" + fname, [&]{
 					(void)reader.AddFunction(outPath, fname);
 				})) return res;
