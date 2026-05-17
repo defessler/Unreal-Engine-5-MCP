@@ -2128,7 +2128,7 @@ git commit -m "build: BPRoundtripModule — UBT target for BPIR-roundtrip genera
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.h`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.cpp`
 
-- [ ] **Step 1: Header**
+- [x] **Step 1: Header**
 
 ```cpp
 // BPIRRoundtrip — drives the full BP → BPIR → C++ → UBT → BPIR' → BP
@@ -2170,7 +2170,7 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Implementation**
+- [x] **Step 2: Implementation**
 
 ```cpp
 #include "BPIRRoundtrip.h"
@@ -2316,7 +2316,7 @@ If the right composite isn't there, lift the registry-tool lambdas from `Bluepri
 "D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPIRRoundtrip.cpp
