@@ -2626,13 +2626,13 @@ git commit -m "test(roundtrip): BPIR smoke — BP_Enemy stages 1-3"
 
 ---
 
-### Task 22: BPIR roundtrip — TPC full
+### Task 22: BPIR roundtrip — TPC full (stages 1-3 only)
 
 **Files:**
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_roundtrip_bpir.cpp` (add TPC case)
-- Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_TPC_bpir.json` (generated)
+- ~~Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_TPC_bpir.json` (generated)~~ — **SKIPPED**: same reason as Task 21 — stages 4-5 are stubbed, no `bpir_after` to compare.
 
-- [ ] **Step 1: Append the TPC case (slow tag)**
+- [x] **Step 1: Append the TPC case** — tagged `[live][slow][roundtrip][bpir]` via test-name prefix.
 
 ```cpp
 TEST_CASE("roundtrip_bpir: TPC"
@@ -2669,19 +2669,20 @@ TEST_CASE("roundtrip_bpir: TPC"
 }
 ```
 
-- [ ] **Step 2: Build & run**
+<!-- Step 2 (build & run) deferred to main thread — this worktree does not build. -->
+- [ ] **Step 2: Build & run** — deferred: main thread integrates and runs after merge.
 
 ```bash
-Binaries/Win64/BlueprintReaderMcpTests.exe -ts="slow" -tc="roundtrip_bpir: TPC"
+Binaries/Win64/BlueprintReaderMcpTests.exe -tc="*BP_ThirdPersonCharacter*"
 ```
 
-Expected: pass (very slow — BPIR compile of TPC-sized graph).
+Expected: pass on stages 1-3 (decompile + emit + write). Stages 4-5 stubbed; same `failing_stage == "parse"` assertion as Task 21.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** (message updated to reflect stages-1-3 scope)
 
 ```bash
-git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_roundtrip_bpir.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/BP_TPC_bpir.json
-git commit -m "test: BPIR roundtrip full — TPC"
+git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_roundtrip_bpir.cpp
+git commit -m "test(roundtrip): BPIR full — TPC stages 1-3"
 ```
 
 ---

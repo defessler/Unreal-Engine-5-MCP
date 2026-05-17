@@ -160,3 +160,63 @@ TEST_CASE("[live][roundtrip][bpir] BP_Enemy -> decompile -> emit cpp"
 	RemoveIfExists(hPath);
 	RemoveIfExists(cppPath);
 }
+
+TEST_CASE("[live][slow][roundtrip][bpir] BP_ThirdPersonCharacter -> decompile -> emit cpp"
+		  " (stages 1-3 complete, 4-5 deferred)"
+		  * doctest::skip(!LiveBackendAvailable())) {
+	auto reader = MakeLiveReader();
+	REQUIRE(reader);
+
+	const std::string src    = "/Game/Imported/ThirdPerson/BP_ThirdPersonCharacter";
+	const std::string clone  = "/Game/Recreated/BPIR_BP_ThirdPersonCharacter";
+	const std::string engine = GetEnv("BP_READER_ENGINE_DIR");
+	const std::string proj   = GetEnv("BP_READER_PROJECT");
+	REQUIRE_FALSE(engine.empty());
+	REQUIRE_FALSE(proj.empty());
+
+	auto res = bpr::roundtrip::RunBPIRRoundtrip(*reader, src, clone, engine, proj);
+	CAPTURE(res.failing_stage);
+	CAPTURE(res.error_message);
+	CAPTURE(res.emitted_h_path);
+	CAPTURE(res.emitted_cpp_path);
+
+	// Stage 1: decompile populated bpir_before.
+	CHECK(res.source_package_path == src);
+	CHECK(res.output_package_path == clone);
+	CHECK_FALSE(res.bpir_before.is_null());
+	CHECK(res.bpir_before.is_object());
+	if (res.bpir_before.is_object() && res.bpir_before.contains("kind")) {
+		CHECK(res.bpir_before["kind"] == "class");
+	}
+
+	// Stage 2/3: .h/.cpp files exist on disk with non-empty content
+	// mentioning the BP name. TPC is a Character subclass so
+	// PrefixClassName produces the A-prefix (-> "ABP_ThirdPersonCharacter"
+	// with classNameSuffix="").
+	REQUIRE_FALSE(res.emitted_h_path.empty());
+	REQUIRE_FALSE(res.emitted_cpp_path.empty());
+	const std::filesystem::path hPath{res.emitted_h_path};
+	const std::filesystem::path cppPath{res.emitted_cpp_path};
+	CHECK(std::filesystem::exists(hPath));
+	CHECK(std::filesystem::exists(cppPath));
+
+	const std::string hSrc   = SlurpFile(hPath);
+	const std::string cppSrc = SlurpFile(cppPath);
+	CHECK_FALSE(hSrc.empty());
+	CHECK_FALSE(cppSrc.empty());
+	CHECK(hSrc.find("class") != std::string::npos);
+	CHECK(hSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
+	CHECK(cppSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
+
+	// Stages 4-5: same deferred-stub assertions as the BP_Enemy case.
+	// Tighten when whole-class parse/transpile lands.
+	CHECK_FALSE(res.ok);
+	CHECK(res.failing_stage == "parse");
+	CHECK(res.error_message.find("parse stage not yet implemented")
+		  != std::string::npos);
+	CHECK(res.error_message.find("ParseCppFunction") != std::string::npos);
+	CHECK(res.bpir_after.is_null());
+
+	RemoveIfExists(hPath);
+	RemoveIfExists(cppPath);
+}
