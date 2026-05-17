@@ -1172,6 +1172,145 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 	// Like Delay, the exec continues in a callback — not single-
 	// statement-able. Emit a structured TODO with the canonical
 	// refactor.
+	// K2Node_BaseAsyncTask / K2Node_AsyncAction / K2Node_LatentAbilityCall /
+	// K2Node_LatentGameplayTaskCall — UBlueprintAsyncActionBase pattern.
+	//
+	// BP shape: one async-task node with named exec output pins (typically
+	// `OnSuccess` / `OnFailed` / `OnUpdate` per the task's delegate
+	// signatures) plus typed data pins for each delegate's payload.
+	//
+	// C++ shape:
+	//   auto* Action = U<TaskClass>::<Factory>(WorldContext, args...);
+	//   Action->OnSuccess.AddDynamic(this, &ThisClass::On<X>Success);
+	//   Action->OnFailed.AddDynamic(this, &ThisClass::On<X>Failed);
+	//   Action->Activate();
+	//   UFUNCTION() void On<X>Success(<PayloadT> Payload) { ... }
+	//   UFUNCTION() void On<X>Failed() { ... }
+	//
+	// Full auto-lowering requires three things this decompile pass
+	// doesn't yet have:
+	//   1. Walker entry-pin tracking — to know which output exec pin
+	//      maps to which downstream chain (same blocker as Gate, same
+	//      planned refactor).
+	//   2. Per-delegate-signature param introspection — to know that
+	//      OnSuccess's payload pin is of type FPayloadStruct and goes
+	//      to the callback's first parameter.
+	//   3. A walker-side rewriter that synthesizes the callback functions
+	//      with the right signatures + injects AddDynamic bindings into
+	//      the pre-Activate sequence.
+	//
+	// Until those land, emit a rich structured sidecar that captures
+	// every input arg, every wired output exec, and every output data
+	// pin — enough for the agent to hand-translate at the call site.
+	if (n.Class.find("K2Node_BaseAsyncTask")        != std::string::npos ||
+		n.Class.find("K2Node_AsyncAction")           != std::string::npos ||
+		n.Class.find("K2Node_LatentAbilityCall")     != std::string::npos ||
+		n.Class.find("K2Node_LatentGameplayTaskCall") != std::string::npos) {
+		nlohmann::json fields = nlohmann::json::object();
+		if (n.Meta.is_object()) {
+			fields = n.Meta;
+		}
+		// Factory function hint — pulled from meta if introspector
+		// surfaced it; falls back to the conventional `Create`.
+		std::string factory = n.Meta.is_object()
+			? n.Meta.value("targetFunction", n.Meta.value("function_name", std::string{}))
+			: std::string{};
+		if (factory.empty()) {
+			factory = "Create";
+		}
+		std::string targetClass = n.Meta.is_object()
+			? n.Meta.value("targetClass", n.Meta.value("function_owner", std::string{}))
+			: std::string{};
+
+		// Input args: every non-exec, non-self input pin → its expression.
+		nlohmann::json factoryArgs = nlohmann::json::object();
+		for (const auto& p : n.Pins) {
+			if (p.Direction != "Input" || p.Type.Category == "exec") {
+				continue;
+			}
+			if (p.Name == "self") {
+				continue;
+			}
+			factoryArgs[p.Name] = BuildExpression(w, n, p);
+		}
+
+		// Wired output exec pins → each becomes a UFUNCTION callback.
+		// Suggested name pattern: `On<NodeTitle><PinName>`. Strip
+		// spaces / non-ident chars from NodeTitle.
+		std::string titleStem = n.Title;
+		std::string sanitizedTitle;
+		for (char c : titleStem) {
+			if ((c >= '0' && c <= '9') ||
+				(c >= 'a' && c <= 'z') ||
+				(c >= 'A' && c <= 'Z')) {
+				sanitizedTitle.push_back(c);
+			}
+		}
+		if (sanitizedTitle.empty()) {
+			sanitizedTitle = "AsyncTask";
+		}
+
+		nlohmann::json wiredCallbacks = nlohmann::json::array();
+		nlohmann::json outputDataPins = nlohmann::json::array();
+		for (const auto& p : n.Pins) {
+			if (p.Direction != "Output") {
+				continue;
+			}
+			if (p.Type.Category == "exec") {
+				auto it = w.outEdges.find({n.Id, p.Id});
+				const bool wired = (it != w.outEdges.end() && !it->second.empty());
+				if (!wired) {
+					continue;
+				}
+				nlohmann::json cb = {
+					{"exec_pin",        p.Name},
+					{"suggested_name",  fmt::format("On{}{}", sanitizedTitle, p.Name)},
+				};
+				wiredCallbacks.push_back(std::move(cb));
+			} else {
+				// Output data pin — likely a delegate-payload value
+				// surfaced for downstream consumption. Capture name +
+				// type so the agent can wire it into the matching
+				// callback's signature.
+				outputDataPins.push_back(nlohmann::json{
+					{"name", p.Name},
+					{"type", p.Type.Category},
+				});
+			}
+		}
+
+		fields["factory_function"] = factory;
+		if (!targetClass.empty()) {
+			fields["factory_class"] = targetClass;
+		}
+		if (!factoryArgs.empty()) {
+			fields["factory_args"] = std::move(factoryArgs);
+		}
+		fields["wired_callbacks"]  = std::move(wiredCallbacks);
+		fields["output_data_pins"] = std::move(outputDataPins);
+		fields["cpp_recipe"] = nlohmann::json::array({
+			"auto* Action = <FactoryClass>::<Factory>(<args>);",
+			"Action-><Delegate>.AddDynamic(this, &ThisClass::<Callback>);",
+			"Action->Activate();",
+			"UFUNCTION() void <Callback>(<PayloadT> Payload) { ... }",
+		});
+
+		r.statement = nlohmann::json{{"unsupported", nlohmann::json{
+			{"node_class", n.Class},
+			{"guid", n.Id},
+			{"reason",
+			 "Async action (UBlueprintAsyncActionBase-style): each wired "
+			 "exec output becomes a UFUNCTION callback bound via "
+			 "AddDynamic, then Action->Activate(). See `fields` for "
+			 "factory + per-output bindings + the canonical C++ recipe. "
+			 "Full auto-lowering blocked on walker entry-pin tracking + "
+			 "per-delegate param introspection."},
+			{"fields", std::move(fields)},
+		}}};
+		r.terminatesExec = true;
+		return r;
+	}
+
 	if (n.Class.find("K2Node_LoadAsset") != std::string::npos) {
 		nlohmann::json fields = nlohmann::json::object();
 		if (n.Meta.is_object())
