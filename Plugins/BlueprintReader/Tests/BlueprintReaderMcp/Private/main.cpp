@@ -222,8 +222,7 @@ R"(      "env": {
 R"(      "env": {{
 		"BP_READER_PREWARM":       "1",
 		"BP_READER_EDITOR_ARGS":   "-EnableAllPlugins"{cfgLine}
-}    // namespace main_detail
-using namespace main_detail;
+	  }})",
 			fmt::arg("cfgLine", (cfgName.empty() || cfgName == "Development")
 									? ""
 									: fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));
@@ -422,7 +421,8 @@ int RunServerLoop() {
 	return 0;
 }
 
-} // namespace
+}    // namespace main_detail
+using namespace main_detail;
 
 int main(int argc, char** argv) {
 	std::vector<std::string> args;
