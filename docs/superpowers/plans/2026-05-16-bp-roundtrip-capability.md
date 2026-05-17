@@ -1973,7 +1973,7 @@ git commit -m "feat(backends): StructuralDiff method across all IBlueprintReader
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp` (line 36)
 - Modify: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp` (line 94)
 
-- [ ] **Step 1: Register the tool — append to `RegisterBlueprintTools`**
+- [x] **Step 1: Register the tool — append to `RegisterBlueprintTools`**
 
 Find the last `{ ToolDescriptor d; d.name = "..."; ... registry.Add(...); }` block in `BlueprintTools.cpp` and add after it:
 
@@ -2015,14 +2015,14 @@ Find the last `{ ToolDescriptor d; d.name = "..."; ... registry.Add(...); }` blo
 }
 ```
 
-- [ ] **Step 2: Bump tool count in `test_tools.cpp`**
+- [x] **Step 2: Bump tool count in `test_tools.cpp`**
 
 ```cpp
 // Was: CHECK(spec.size() == 126);
 CHECK(spec.size() == 127);
 ```
 
-- [ ] **Step 3: Bump tool count in `test_mcp.cpp`**
+- [x] **Step 3: Bump tool count in `test_mcp.cpp`**
 
 ```cpp
 // Was: CHECK(list.size() == 126);
@@ -2037,7 +2037,7 @@ CHECK(list.size() == 127);
 
 Expected: all 441+ cases pass (count assertions pick up the new tool).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/BlueprintTools.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp
