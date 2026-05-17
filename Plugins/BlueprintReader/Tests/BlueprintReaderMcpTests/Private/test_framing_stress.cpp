@@ -23,7 +23,7 @@ using namespace bpr;
 using namespace bpr::jsonrpc;
 using nlohmann::json;
 
-namespace {
+namespace test_framing_stress_detail {
 
 // Frame a body using the requested format.
 std::string Frame(const json& body, FrameFormat fmt) {
@@ -138,7 +138,8 @@ json ToolsCallReq(int id, const std::string& tool, json args = json::object()) {
 	};
 }
 
-} // namespace
+}    // namespace test_framing_stress_detail
+using namespace test_framing_stress_detail;
 
 // ---------------------------------------------------------------------------
 // Format auto-detection and mirroring

@@ -14,7 +14,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace decompile_detail {
 
 // ----- Type→shorthand reverse mapper -------------------------------------
 // Convert a BPPinType back to the shorthand grammar BPIR / TypeShorthand
@@ -1618,7 +1618,8 @@ const BPNode* FindFunctionEntry(const BPGraph& g) {
 	return nullptr;
 }
 
-} // namespace
+}    // namespace decompile_detail
+using namespace decompile_detail;
 
 nlohmann::json DecompileFunction(backends::IBlueprintReader& reader,
 								 std::string_view assetPath,

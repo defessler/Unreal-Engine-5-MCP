@@ -35,7 +35,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace commandlet_blueprint_reader_detail {
 
 #if defined(_WIN32)
 
@@ -506,7 +506,8 @@ void SpawnLock::Release() {
 	held_ = false;
 }
 
-} // namespace
+}    // namespace commandlet_blueprint_reader_detail
+using namespace commandlet_blueprint_reader_detail;
 
 CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
 	: cfg_(std::move(cfg)) {
@@ -569,7 +570,7 @@ CommandletBlueprintReader::~CommandletBlueprintReader() {
 #endif    // defined(_WIN32)
 }
 
-namespace {
+namespace commandlet_blueprint_reader_detail2 {
 
 // Convert an op-args vector of wstrings (the existing internal format
 // used by every typed method on this class) into UTF-8 strings the
@@ -615,7 +616,8 @@ bool ProcessAlive(int pid) {
 #endif    // defined(_WIN32)
 }
 
-} // namespace
+}    // namespace commandlet_blueprint_reader_detail2
+using namespace commandlet_blueprint_reader_detail2;
 
 nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>& opArgs) {
 	if (cfg_.useDaemon) {
@@ -1288,7 +1290,7 @@ void CommandletBlueprintReader::RenameVariable(std::string_view assetPath,
 	(void)RunOp(args);
 }
 
-namespace {
+namespace commandlet_blueprint_reader_detail3 {
 // Append pin-type flags (-TypeCategory, -TypeSubCategory, etc.) for a BPPinType.
 void AppendPinTypeFlags(std::vector<std::wstring>& args, const BPPinType& type) {
 	args.push_back(L"-TypeCategory=" + Widen(type.Category));
@@ -1311,7 +1313,8 @@ void AppendPinTypeFlags(std::vector<std::wstring>& args, const BPPinType& type) 
 		args.push_back(L"-TypeIsMap");
 	}
 }
-} // namespace
+}    // namespace commandlet_blueprint_reader_detail3
+using namespace commandlet_blueprint_reader_detail3;
 
 IBlueprintReader::AddFunctionResult
 CommandletBlueprintReader::AddFunction(std::string_view assetPath,

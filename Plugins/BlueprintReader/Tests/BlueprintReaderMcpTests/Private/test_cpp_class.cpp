@@ -11,7 +11,7 @@
 using namespace bpr::tools;
 using nlohmann::json;
 
-namespace {
+namespace test_cpp_class_detail {
 
 bool Contains(const std::string& s, const std::string& sub) {
 	return s.find(sub) != std::string::npos;
@@ -26,7 +26,8 @@ json MakeMinimalClass(const std::string& parent = "ACharacter") {
 	};
 }
 
-} // namespace
+}    // namespace test_cpp_class_detail
+using namespace test_cpp_class_detail;
 
 // ===== Name + prefix logic ================================================
 

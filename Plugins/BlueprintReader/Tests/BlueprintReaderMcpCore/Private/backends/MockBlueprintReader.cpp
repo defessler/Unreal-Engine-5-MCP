@@ -10,7 +10,7 @@
 
 namespace bpr::backends {
 
-namespace {
+namespace mock_blueprint_reader_detail {
 
 std::string LowerAscii(std::string_view s) {
 	std::string out;
@@ -54,7 +54,8 @@ bool PathMatches(std::string_view filter, std::string_view assetPath) {
 	return next == '/';
 }
 
-} // namespace
+}    // namespace mock_blueprint_reader_detail
+using namespace mock_blueprint_reader_detail;
 
 MockBlueprintReader::MockBlueprintReader(const std::filesystem::path& fixturesDir) {
 	if (!std::filesystem::exists(fixturesDir)) {

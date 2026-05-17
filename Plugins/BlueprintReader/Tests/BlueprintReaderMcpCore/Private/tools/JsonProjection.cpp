@@ -8,7 +8,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace json_projection_detail {
 
 // Split a dotted path into segments. A segment is either an object key,
 // or the literal "[]" meaning "iterate this array".
@@ -110,7 +110,8 @@ void Apply(nlohmann::json& body, const Node& filter) {
 	}
 }
 
-} // namespace
+}    // namespace json_projection_detail
+using namespace json_projection_detail;
 
 void ApplyProjection(nlohmann::json& body,
 					 const std::vector<std::string>& paths) {

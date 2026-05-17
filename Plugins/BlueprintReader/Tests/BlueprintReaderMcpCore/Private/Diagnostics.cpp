@@ -11,7 +11,7 @@
 
 namespace bpr::diag {
 
-namespace {
+namespace diagnostics_detail {
 
 Finding Ok(std::string label, std::string detail = {}) {
 	return {Severity::Ok, std::move(label), std::move(detail), {}};
@@ -76,7 +76,8 @@ bool UProjectListsBlueprintReader(const std::filesystem::path& uproject) {
 	return false;
 }
 
-} // namespace
+}    // namespace diagnostics_detail
+using namespace diagnostics_detail;
 
 bool Report::HasError() const {
 	for (const auto& f : findings)

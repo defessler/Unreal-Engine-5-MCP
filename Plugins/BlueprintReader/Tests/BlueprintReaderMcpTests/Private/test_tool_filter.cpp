@@ -11,7 +11,7 @@
 
 using namespace bpr::tools;
 
-namespace {
+namespace test_tool_filter_detail {
 // Minimal stub handler — these tests don't dispatch, only check
 // registration / filtering.
 ToolFn StubFn() {
@@ -34,7 +34,8 @@ ToolRegistry MakeWith(std::initializer_list<const char*> names) {
 size_t CountSpec(const ToolRegistry& r) {
 	return r.ListSpec().size();
 }
-}  // namespace
+}    // namespace test_tool_filter_detail
+using namespace test_tool_filter_detail;
 
 TEST_CASE("ApplyFilter: empty allow + empty deny is a no-op") {
 	auto r = MakeWith({"read_blueprint", "add_node", "wire_pins"});

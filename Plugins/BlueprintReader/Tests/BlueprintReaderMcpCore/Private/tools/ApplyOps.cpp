@@ -13,7 +13,7 @@
 
 namespace bpr::tools {
 
-namespace {
+namespace apply_ops_detail {
 
 // ----- Slot resolution ---------------------------------------------------
 // id -> minted GUID. Populated as add_node ops complete; consumed by
@@ -683,7 +683,8 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		"unknown op '{}' (preview_ops uses the same op set as apply_ops)", kind));
 }
 
-} // namespace
+}    // namespace apply_ops_detail
+using namespace apply_ops_detail;
 
 nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
 						   const nlohmann::json& ops) {

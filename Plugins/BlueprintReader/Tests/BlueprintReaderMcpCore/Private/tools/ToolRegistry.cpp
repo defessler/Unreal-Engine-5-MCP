@@ -60,7 +60,7 @@ size_t ToolRegistry::Size() const {
 	return active_.size();
 }
 
-namespace {
+namespace tool_registry_detail {
 // Expand a list of tokens (tool names + category names + "all") into a
 // set of concrete tool names. Categories are looked up via
 // ToolCategories.cpp; anything else is treated as a literal tool name
@@ -90,7 +90,8 @@ void ExpandTokens(const std::vector<std::string>& tokens,
 		out.insert(tok);
 	}
 }
-} // namespace
+}    // namespace tool_registry_detail
+using namespace tool_registry_detail;
 
 void ToolRegistry::ApplyFilter(const std::vector<std::string>& allowSpec,
 							   const std::vector<std::string>& denySpec) {
