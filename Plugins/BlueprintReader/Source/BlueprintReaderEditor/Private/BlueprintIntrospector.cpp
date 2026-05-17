@@ -153,7 +153,7 @@ namespace
 		// derive it from the factory function's return type instead.
 		// Factories conventionally return `<ProxyClass>*`.
 		UFunction* Factory = AsyncNode->GetFactoryFunction();
-		if (!Factory)
+		if (!IsValid(Factory))
 		{
 			return;
 		}

@@ -43,7 +43,7 @@ namespace
 	                     UClass* ParentClass, FNewBlueprint& Out)
 	{
 		UPackage* Package = CreatePackage(*PackageName);
-		if (!Package)
+		if (!IsValid(Package))
 		{
 			UE_LOG(LogBlueprintReaderSeed, Error, TEXT("CreatePackage failed: %s"), *PackageName);
 			return false;
@@ -56,7 +56,7 @@ namespace
 		UBlueprint* BP = CastChecked<UBlueprint>(Factory->FactoryCreateNew(
 			UBlueprint::StaticClass(), Package, *AssetName, RF_Public | RF_Standalone, nullptr,
 			GWarn));
-		if (!BP)
+		if (!IsValid(BP))
 		{
 			UE_LOG(LogBlueprintReaderSeed, Error, TEXT("FactoryCreateNew failed: %s"), *PackageName);
 			return false;
@@ -127,7 +127,7 @@ namespace
 				break;
 			}
 		}
-		if (!Result)
+		if (!IsValid(Result))
 		{
 			// No Result node yet — spawn one. Functions without outputs don't
 			// auto-spawn a Result node, so we have to create it manually.
@@ -161,7 +161,7 @@ namespace
 	void BuildEventGraph(UBlueprint* BP)
 	{
 		UEdGraph* Graph = FBlueprintEditorUtils::FindEventGraph(BP);
-		if (!Graph)
+		if (!IsValid(Graph))
 		{
 			return;
 		}
@@ -179,7 +179,7 @@ namespace
 				}
 			}
 		}
-		if (!BeginPlay)
+		if (!IsValid(BeginPlay))
 		{
 			BeginPlay = NewObject<UK2Node_Event>(Graph);
 			BeginPlay->EventReference.SetExternalMember(TEXT("ReceiveBeginPlay"), AActor::StaticClass());
