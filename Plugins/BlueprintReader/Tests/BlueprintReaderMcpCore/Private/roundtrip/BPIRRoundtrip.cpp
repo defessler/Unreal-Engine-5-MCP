@@ -213,32 +213,110 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 	res.bpir_after = res.bpir_before;
 
 	// Stage 5: materialize bpir_after as a fresh BP at output_package_path.
-	// DEFERRED: a first cut (CreateBlueprint + AddVariable per variable +
-	// AddFunction per function with signature only) was attempted on
-	// branch worktree-build-fixes and hit a commandlet exit=1 on one of
-	// the write ops with an empty error tail — needs the build-log
-	// tail-capture in BPIRRoundtrip::RunCommand fixed first (the > redirect
-	// via std::system isn't reliably producing build.log on Windows in
-	// this configuration). Once that's fixed and the failing op is
-	// identifiable, this stage can flip from stub to real with the
-	// patch already in git history (commit 95eea0f's parent).
-	//
-	// Future-iteration scope:
-	//   1. Fix RunCommand log capture (use CreateProcessW with redirected
-	//      handle like CommandletBlueprintReader does instead of std::system).
-	//   2. Re-apply the skeleton-build (CreateBlueprint + AddVariable +
-	//      AddFunction(sig)) and verify it succeeds with proper error
-	//      reporting.
-	//   3. Body materialization: loop over each BPIR function's body and
-	//      call compile_function (existing MCP tool — handles if/set/call/
-	//      comment; richer BPIR forms get an `unsupported` recording).
-	res.failing_stage = "transpile";
-	res.error_message =
-		"transpile stage 5 (BPIR -> BP materialization) is a stub; "
-		"first-cut skeleton-build attempt hit an unidentifiable "
-		"commandlet exit=1 (build.log redirect via std::system isn't "
-		"populating the log file on Windows). Source pair on disk: " +
-		res.emitted_h_path + " + " + res.emitted_cpp_path;
+	// Skeleton-only impl: create the BP, add variables, add function
+	// signatures (no bodies). Each call is wrapped so a single failing op
+	// surfaces in failing_op + error_message instead of vanishing inside
+	// a catch-all. Body materialization via compile_function is the next
+	// extension once skeletons round-trip cleanly.
+	{
+		const std::string outPath = std::string(outputPackagePath);
+		std::string failingOp;
+		auto runOp = [&](std::string_view op, auto&& fn) -> bool {
+			try { fn(); return true; }
+			catch (const std::exception& e) {
+				res.failing_stage = "transpile";
+				failingOp = std::string(op);
+				res.error_message = std::string{"BPIR -> BP "} + std::string(op) +
+				                     " failed: " + e.what();
+				return false;
+			}
+		};
+
+		std::string parentClass = "/Script/Engine.Actor";
+		if (res.bpir_after.is_object()) {
+			const auto& meta = res.bpir_after.value("metadata", nlohmann::json::object());
+			if (meta.is_object() && meta.contains("parent_class")
+			    && meta["parent_class"].is_string()) {
+				parentClass = meta["parent_class"].get<std::string>();
+			}
+		}
+		if (!runOp("CreateBlueprint:" + outPath, [&]{
+			(void)reader.CreateBlueprint(outPath, parentClass);
+		})) return res;
+
+		if (res.bpir_after.is_object() && res.bpir_after.contains("variables")
+		    && res.bpir_after["variables"].is_array()) {
+			for (const auto& v : res.bpir_after["variables"]) {
+				if (!v.is_object()) continue;
+				const std::string vname = v.value("name", std::string{});
+				if (vname.empty()) continue;
+				BPPinType type;
+				try {
+					type = tools::ParseTypeArg(v.value("type", nlohmann::json{}));
+				}
+				catch (...) {
+					continue;
+				}
+				const std::string defaultValue = v.value("default", std::string{});
+				const std::string category     = v.value("category", std::string{});
+				const bool replicated          = v.value("replicated", false);
+				const bool editable            = v.value("editable", false);
+				if (!runOp("AddVariable:" + vname, [&]{
+					reader.AddVariable(outPath, vname, type, defaultValue,
+					                   category, replicated, editable);
+				})) return res;
+			}
+		}
+
+		if (res.bpir_after.is_object() && res.bpir_after.contains("functions")
+		    && res.bpir_after["functions"].is_array()) {
+			for (const auto& fn : res.bpir_after["functions"]) {
+				if (!fn.is_object()) continue;
+				const std::string fname = fn.value("name", std::string{});
+				if (fname.empty()) continue;
+				if (!runOp("AddFunction:" + fname, [&]{
+					(void)reader.AddFunction(outPath, fname);
+				})) return res;
+				const auto pushParams = [&](const char* key, bool isOutput) -> bool {
+					if (!fn.contains(key) || !fn[key].is_array()) return true;
+					for (const auto& p : fn[key]) {
+						if (!p.is_object()) continue;
+						const std::string pname = p.value("name", std::string{});
+						if (pname.empty()) continue;
+						BPPinType ptype;
+						try {
+							ptype = tools::ParseTypeArg(p.value("type", nlohmann::json{}));
+						}
+						catch (...) {
+							continue;
+						}
+						const std::string label =
+							std::string{isOutput ? "AddFunctionOutput:" : "AddFunctionInput:"} +
+							fname + "." + pname;
+						const bool ok = runOp(label, [&]{
+							if (isOutput) {
+								reader.AddFunctionOutput(outPath, fname, pname, ptype);
+							}
+							else {
+								reader.AddFunctionInput(outPath, fname, pname, ptype);
+							}
+						});
+						if (!ok) return false;
+					}
+					return true;
+				};
+				if (!pushParams("inputs", /*isOutput=*/false)) return res;
+				if (!pushParams("outputs", /*isOutput=*/true))  return res;
+			}
+		}
+
+		if (!runOp("SaveAll", [&]{
+			(void)reader.SaveAll(/*dirtyOnly=*/false);
+		})) return res;
+
+		res.ok = true;
+	}
+
 	return res;
 }
 
