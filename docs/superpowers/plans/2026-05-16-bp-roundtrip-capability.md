@@ -2351,7 +2351,7 @@ git commit -m "feat(roundtrip): BPIRRoundtrip — full BP -> BPIR -> C++ -> UBT 
 **Files:**
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_structural_diff.cpp`
 
-- [ ] **Step 1: Write doctest cases covering each diff category**
+- [x] **Step 1: Write doctest cases covering each diff category**
 
 ```cpp
 // Synthetic structural-diff tests — exercise the diff library against
@@ -2380,7 +2380,7 @@ TEST_CASE("structural_diff: mock backend reports not-supported") {
 "D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="structural_diff*"
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_structural_diff.cpp
