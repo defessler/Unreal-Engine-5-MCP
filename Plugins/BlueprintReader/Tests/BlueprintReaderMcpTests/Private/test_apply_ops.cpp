@@ -9,9 +9,9 @@
 
 #include <doctest/doctest.h>
 
-#include "tools/ApplyOps.h"
 #include "backends/IBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
+#include "tools/ApplyOps.h"
 
 #include "test_helpers.h"
 

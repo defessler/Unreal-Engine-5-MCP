@@ -17,8 +17,8 @@
 // real nested JSON object — never a string-of-JSON.
 #pragma once
 
-#include "CoreMinimal.h"
 #include "BlueprintReaderTypes.h"
+#include "CoreMinimal.h"
 
 class FJsonObject;
 class FJsonValue;

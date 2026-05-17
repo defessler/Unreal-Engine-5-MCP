@@ -10,11 +10,11 @@
 // editor-side live tests. Tests skip silently if the fixture asset
 // isn't present in the running project (CI without the test BPs).
 
-#include "BlueprintRuntimeIntrospector.h"
 #include "BlueprintReaderRuntimeJson.h"
+#include "BlueprintRuntimeIntrospector.h"
 
-#include "Misc/AutomationTest.h"
 #include "Dom/JsonObject.h"
+#include "Misc/AutomationTest.h"
 #include "UObject/Class.h"
 
 #if WITH_DEV_AUTOMATION_TESTS

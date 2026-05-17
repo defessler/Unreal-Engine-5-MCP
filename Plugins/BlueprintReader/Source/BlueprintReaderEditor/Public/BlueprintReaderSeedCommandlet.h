@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Commandlets/Commandlet.h"
+#include "CoreMinimal.h"
 #include "BlueprintReaderSeedCommandlet.generated.h"
 
 // Seeds a small fixed set of test blueprints under /Game/AI for end-to-end

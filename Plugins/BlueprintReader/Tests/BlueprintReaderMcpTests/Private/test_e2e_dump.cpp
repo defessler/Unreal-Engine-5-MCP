@@ -5,9 +5,9 @@
 
 #include <doctest/doctest.h>
 
-#include "tools/Decompile.h"
-#include "tools/codegen/CppClassEmit.h"
 #include "backends/MockBlueprintReader.h"
+#include "tools/codegen/CppClassEmit.h"
+#include "tools/Decompile.h"
 
 #include "test_helpers.h"
 

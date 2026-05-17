@@ -18,10 +18,10 @@
 #pragma once
 
 	#include <cstdint>
+	#include <nlohmann/json.hpp>
 	#include <optional>
 	#include <string>
 	#include <vector>
-	#include <nlohmann/json.hpp>
 
 	using BPRString = std::string;
 	template <class T> using BPRArray = std::vector<T>;

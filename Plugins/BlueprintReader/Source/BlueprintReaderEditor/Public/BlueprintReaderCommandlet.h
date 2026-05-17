@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Commandlets/Commandlet.h"
+#include "CoreMinimal.h"
 #include "BlueprintReaderCommandlet.generated.h"
 
 UCLASS()

@@ -3,8 +3,8 @@
 
 #include <doctest/doctest.h>
 
-#include "backends/ReadOnlyBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
+#include "backends/ReadOnlyBlueprintReader.h"
 
 #include "test_helpers.h"
 
