@@ -155,9 +155,9 @@ namespace {
 		nlohmann::json j;
 		j["name"] = f.name;
 		j["inputs"]  = nlohmann::json::array();
-		for (const auto& p : f.inputs)  j["inputs"].push_back(PinJson(p));
+		for (const auto& v : f.inputs)  j["inputs"].push_back(VarJson(v));
 		j["outputs"] = nlohmann::json::array();
-		for (const auto& p : f.outputs) j["outputs"].push_back(PinJson(p));
+		for (const auto& v : f.outputs) j["outputs"].push_back(VarJson(v));
 		j["locals"]  = nlohmann::json::array();
 		for (const auto& v : f.locals)  j["locals"].push_back(VarJson(v));
 		j["nodes"]   = nlohmann::json::array();
@@ -169,8 +169,8 @@ namespace {
 	SpecFunction FnFromJson(const nlohmann::json& j) {
 		SpecFunction f;
 		f.name = j.value("name", "");
-		if (j.contains("inputs"))  for (const auto& p : j["inputs"])  f.inputs.push_back(PinFromJson(p));
-		if (j.contains("outputs")) for (const auto& p : j["outputs"]) f.outputs.push_back(PinFromJson(p));
+		if (j.contains("inputs"))  for (const auto& v : j["inputs"])  f.inputs.push_back(VarFromJson(v));
+		if (j.contains("outputs")) for (const auto& v : j["outputs"]) f.outputs.push_back(VarFromJson(v));
 		if (j.contains("locals"))  for (const auto& v : j["locals"])  f.locals.push_back(VarFromJson(v));
 		if (j.contains("nodes"))   for (const auto& n : j["nodes"])   f.nodes.push_back(NodeFromJson(n));
 		if (j.contains("connections")) for (const auto& c : j["connections"]) f.connections.push_back(ConnFromJson(c));
