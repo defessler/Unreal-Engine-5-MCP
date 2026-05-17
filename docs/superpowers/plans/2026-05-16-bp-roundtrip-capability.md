@@ -646,7 +646,7 @@ git commit -m "docs(research): UE5 ThirdPerson template anatomy (drives roundtri
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.cpp`
 - Create: `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp`
 
-- [ ] **Step 1: Write the header — schema + JSON glue**
+- [x] **Step 1: Write the header — schema + JSON glue**
 
 ```cpp
 // BPSpec — a complete structural snapshot of a Blueprint, formatted as the
@@ -715,7 +715,7 @@ std::string StableNodeId(const BPNode& node, std::size_t positionRank);
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 2: Write the implementation**
+- [x] **Step 2: Write the implementation**
 
 ```cpp
 #include "BPSpec.h"
@@ -964,7 +964,7 @@ std::string StableNodeId(const BPNode& node, std::size_t positionRank) {
 }    // namespace bpr::roundtrip
 ```
 
-- [ ] **Step 3: Write the unit test (TDD shape — failing first if you flip Steps 1+2 to stubs)**
+- [x] **Step 3: Write the unit test (TDD shape — failing first if you flip Steps 1+2 to stubs)**
 
 ```cpp
 #include <doctest/doctest.h>
@@ -1039,7 +1039,7 @@ TEST_CASE("StableNodeId is deterministic and content-sensitive") {
 
 Expected: 2 cases pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.h Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/roundtrip/BPSpec.cpp Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_bpspec.cpp
