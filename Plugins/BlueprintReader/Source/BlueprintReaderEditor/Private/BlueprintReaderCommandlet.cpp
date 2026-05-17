@@ -6,6 +6,7 @@
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderLogSink.h"
 #include "BlueprintReaderWireJson.h"
+#include "BlueprintStructuralDiff.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 
@@ -268,6 +269,9 @@ namespace
 		ReadAnimBlueprint,
 		AddAnimState,
 		CompileAnimBlueprint,
+		// Structural diff between two BPs (BP roundtrip-capability,
+		// Task 13). Read-only — no compile/save side effects.
+		StructuralDiff,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -398,6 +402,7 @@ namespace
 		if (OpStr.Equals(TEXT("ReadAnimBlueprint"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadAnimBlueprint; return true; }
 		if (OpStr.Equals(TEXT("AddAnimState"), ESearchCase::IgnoreCase))            { OutOp = EOp::AddAnimState; return true; }
 		if (OpStr.Equals(TEXT("CompileAnimBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CompileAnimBlueprint; return true; }
+		if (OpStr.Equals(TEXT("StructuralDiff"), ESearchCase::IgnoreCase))          { OutOp = EOp::StructuralDiff; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5181,6 +5186,58 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ----- StructuralDiff (BP roundtrip Task 13) ------------------------
+	// Read-only comparison of two UBlueprints. Output:
+	//   { ok: bool, differences: [{path, kind, a, b}, ...] }
+	// `ok` is true iff differences is empty (i.e. the two BPs match).
+	int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString APath;
+		FString BPath;
+		FParse::Value(*Params, TEXT("A="), APath);
+		FParse::Value(*Params, TEXT("B="), BPath);
+		if (APath.IsEmpty() || BPath.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("StructuralDiff requires -A=/Game/X -B=/Game/Y"));
+			return 1;
+		}
+
+		UBlueprint* A = LoadObject<UBlueprint>(nullptr, *APath);
+		if (!IsValid(A))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("StructuralDiff: asset_not_found: %s"), *APath);
+			return 5;
+		}
+		UBlueprint* B = LoadObject<UBlueprint>(nullptr, *BPath);
+		if (!IsValid(B))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("StructuralDiff: asset_not_found: %s"), *BPath);
+			return 5;
+		}
+
+		BlueprintStructuralDiff::FCompareOptions Opt;
+		// Default: ignore node positions (caller can override via flag).
+		// `-IgnoreNodePositions=0` disables the default; the flag-form
+		// `-IgnoreCommentNodes` enables comment-node skipping.
+		Opt.bIgnoreNodePositions = true;
+		{
+			FString PosVal;
+			if (FParse::Value(*Params, TEXT("IgnoreNodePositions="), PosVal))
+			{
+				Opt.bIgnoreNodePositions = !PosVal.Equals(TEXT("0"));
+			}
+		}
+		Opt.bIgnoreCommentNodes = FParse::Param(*Params, TEXT("IgnoreCommentNodes"));
+
+		BlueprintStructuralDiff::FResult Result =
+			BlueprintStructuralDiff::Compare(A, B, Opt);
+		TSharedPtr<FJsonObject> Obj = Result.ToJson();
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -6350,6 +6407,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ReadAnimBlueprint,          &RunReadAnimBlueprintOp },
 		{ EOp::AddAnimState,               &RunAddAnimStateOp },
 		{ EOp::CompileAnimBlueprint,       &RunCompileAnimBlueprintOp },
+		{ EOp::StructuralDiff,             &RunStructuralDiffOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
