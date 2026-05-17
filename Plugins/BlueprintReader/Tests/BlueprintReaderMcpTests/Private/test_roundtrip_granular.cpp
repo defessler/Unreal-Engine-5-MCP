@@ -170,3 +170,74 @@ TEST_CASE("[live][roundtrip][granular] BP_TestEnemy -> BPSpec -> SpecToBP "
 	// 5. Cleanup so reruns and subsequent tests start fresh.
 	try { reader->DeleteAsset(clone, /*force=*/true); } catch (...) {}
 }
+
+
+TEST_CASE("[live][slow][roundtrip][granular] BP_ThirdPersonCharacter -> "
+		  "BPSpec -> SpecToBP produces clone"
+		  * doctest::skip(!LiveBackendAvailable())) {
+	auto reader = MakeLiveReader();
+
+	const std::string source = "/Game/Imported/ThirdPerson/BP_ThirdPersonCharacter";
+	const std::string clone  = "/Game/Recreated/BP_TPC_Granular";
+
+	// Tear down any prior clone.
+	try { reader->DeleteAsset(clone, /*force=*/true); } catch (...) {}
+
+	// 1. Read source -> BPSpec
+	auto spec = bpr::roundtrip::ReadToSpec(*reader, source);
+	CAPTURE(spec.incomplete);
+	if (!spec.errors.empty()) {
+		// Surface the first error so a diff hunt isn't a guessing game.
+		INFO("ReadToSpec error[0]: " << spec.errors.front());
+	}
+	// TPC is large — ReadToSpec must still complete a non-empty spec
+	// even if some reads were partial. We assert package shape, not
+	// incompleteness (TPC's macros and lambda-call nodes often surface
+	// minor read warnings on BlueprintGeneratedClass parent_class
+	// resolution).
+	CHECK(spec.package_path == source);
+	CHECK_FALSE(spec.parent_class.empty());
+
+	// 2. Materialize the clone. TPC is much larger than BP_TestEnemy,
+	// so SpecToBP can hit the "node class not in AddNode dispatch"
+	// path on K2 nodes we haven't taught it yet (e.g. K2Node_InputAction,
+	// K2Node_DynamicCast, etc. depending on which UE 5.7 template was
+	// imported). This test's contract is "the pipeline runs without
+	// catastrophe" — no exceptions, all stages reachable, and the
+	// failing-op breadcrumb names the exact unsupported node class so
+	// the next iteration of SpecToBP can extend the dispatch table.
+	auto res = bpr::roundtrip::SpecToBP(*reader, spec, clone);
+	CAPTURE(res.failing_stage);
+	CAPTURE(res.failing_op);
+	CAPTURE(res.error_message);
+
+	if (!res.ok) {
+		// Non-fatal expected outcome on first run for TPC: an
+		// unsupported node class halts the rebuild. The test still
+		// passes as long as failure is reported in a structured way
+		// (not via an exception escaping SpecToBP).
+		INFO("TPC roundtrip stopped at stage='" << res.failing_stage
+			 << "', op='" << res.failing_op << "'");
+		CHECK_FALSE(res.failing_stage.empty());
+		CHECK_FALSE(res.failing_op.empty());
+		// Save whatever state we got so the diff below has something
+		// to compare against.
+		try { reader->SaveAll(/*dirtyOnly=*/true); } catch (...) {}
+	} else {
+		// Full clone succeeded; save + diff.
+		reader->SaveAll(/*dirtyOnly=*/true);
+		nlohmann::json diff;
+		try { diff = reader->StructuralDiff(source, clone, {}); }
+		catch (const std::exception& e) {
+			INFO("StructuralDiff threw: " << e.what());
+			diff = nlohmann::json::object();
+		}
+		INFO("diff JSON: " << diff.dump(2));
+		// For TPC we don't (yet) assert ok=true. Just confirm the
+		// diff call shape stayed sane.
+		CHECK(diff.contains("ok"));
+	}
+
+	// 3. Cleanup so reruns and subsequent tests start fresh.
+	try { reader->DeleteAsset(clone, /*force=*/true); } catch (...) {}
+}
