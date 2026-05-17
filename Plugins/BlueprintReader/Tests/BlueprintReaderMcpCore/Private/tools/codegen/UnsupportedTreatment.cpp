@@ -100,7 +100,10 @@ const std::vector<Treatment>& Table() {
 
 const Treatment* FindTreatment(std::string_view nodeClass) {
 	for (const auto& t : Table()) {
-		if (nodeClass.find(t.match) != std::string_view::npos) return &t;
+		if (nodeClass.find(t.match) != std::string_view::npos)
+		{
+			return &t;
+		}
 	}
 	return nullptr;
 }
@@ -139,7 +142,10 @@ std::string IsoTimestamp() {
 
 UnsupportedClassification ClassifyUnsupported(const nlohmann::json& u) {
 	UnsupportedClassification out;
-	if (!u.is_object()) return out;
+	if (!u.is_object())
+	{
+		return out;
+	}
 	std::string nodeClass = u.value("node_class", "");
 	std::string guid      = u.value("guid", "");
 
@@ -185,7 +191,10 @@ nlohmann::json BuildSidecar(std::string_view sourceBp,
 
 	if (notes.is_array()) {
 		for (const auto& n : notes) {
-			if (!n.is_object()) continue;
+			if (!n.is_object())
+			{
+				continue;
+			}
 			std::string nodeClass = n.value("node_class", "");
 			auto cls = ClassifyUnsupported(n);
 			nlohmann::json entry = n;
@@ -204,7 +213,10 @@ nlohmann::json BuildSidecar(std::string_view sourceBp,
 	}
 
 	nlohmann::json fileNames = nlohmann::json::array();
-	for (const auto& f : generatedFiles) fileNames.push_back(f);
+	for (const auto& f : generatedFiles)
+	{
+		fileNames.push_back(f);
+	}
 
 	return nlohmann::json{
 		{"version",            1},

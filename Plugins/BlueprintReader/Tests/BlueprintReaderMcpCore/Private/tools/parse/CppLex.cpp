@@ -101,7 +101,10 @@ public:
 		std::vector<CppToken> out;
 		while (pos_ < src_.size()) {
 			SkipWhitespaceAndComments();
-			if (pos_ >= src_.size()) break;
+			if (pos_ >= src_.size())
+			{
+				break;
+			}
 			CppToken t = LexOne();
 			out.push_back(std::move(t));
 		}
@@ -126,7 +129,10 @@ private:
 	}
 
 	bool Match(char c) {
-		if (Peek() != c) return false;
+		if (Peek() != c)
+		{
+			return false;
+		}
 		Advance();
 		return true;
 	}
@@ -136,7 +142,10 @@ private:
 			char c = Peek();
 			if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { Advance(); }
 			else if (c == '/' && Peek(1) == '/') {
-				while (pos_ < src_.size() && Peek() != '\n') Advance();
+				while (pos_ < src_.size() && Peek() != '\n')
+				{
+					Advance();
+				}
 			}
 			else if (c == '/' && Peek(1) == '*') {
 				Advance(); Advance();
@@ -215,8 +224,14 @@ private:
 			// Optional exponent.
 			if (Peek() == 'e' || Peek() == 'E') {
 				num.push_back(Advance());
-				if (Peek() == '+' || Peek() == '-') num.push_back(Advance());
-				while (std::isdigit(static_cast<unsigned char>(Peek()))) num.push_back(Advance());
+				if (Peek() == '+' || Peek() == '-')
+				{
+					num.push_back(Advance());
+				}
+				while (std::isdigit(static_cast<unsigned char>(Peek())))
+				{
+					num.push_back(Advance());
+				}
 			}
 			// Optional f / F / l / L / u / U suffix — consume but don't store.
 			while (Peek() == 'f' || Peek() == 'F' || Peek() == 'l' ||
@@ -248,7 +263,10 @@ private:
 					s.push_back(Advance());
 				}
 			}
-			if (Peek() != '"') Bad("unterminated string literal");
+			if (Peek() != '"')
+			{
+				Bad("unterminated string literal");
+			}
 			Advance();
 			return MakeTok(CppTokenKind::StringLiteral, std::move(s));
 		}
@@ -259,8 +277,14 @@ private:
 			case '+': return Match('=') ? MakeTok(CppTokenKind::PlusEq, "+=")
 										: MakeTok(CppTokenKind::Plus, "+");
 			case '-':
-				if (Match('=')) return MakeTok(CppTokenKind::MinusEq, "-=");
-				if (Match('>')) return MakeTok(CppTokenKind::Arrow, "->");
+				if (Match('='))
+				{
+					return MakeTok(CppTokenKind::MinusEq, "-=");
+				}
+				if (Match('>'))
+				{
+					return MakeTok(CppTokenKind::Arrow, "->");
+				}
 				return MakeTok(CppTokenKind::Minus, "-");
 			case '*': return Match('=') ? MakeTok(CppTokenKind::StarEq, "*=")
 										: MakeTok(CppTokenKind::Star, "*");
@@ -278,7 +302,10 @@ private:
 			case '&': return Match('&') ? MakeTok(CppTokenKind::AmpAmp, "&&")
 										: MakeTok(CppTokenKind::Ampersand, "&");
 			case '|':
-				if (Match('|')) return MakeTok(CppTokenKind::PipePipe, "||");
+				if (Match('|'))
+				{
+					return MakeTok(CppTokenKind::PipePipe, "||");
+				}
 				Bad("unexpected '|' (only '||' is recognized)");
 			case '.':  return MakeTok(CppTokenKind::Dot, ".");
 			case ',':  return MakeTok(CppTokenKind::Comma, ",");

@@ -55,7 +55,10 @@ struct Compiler {
 			{"x", x}, {"y", y},
 		};
 		if (extras.is_object()) {
-			for (auto& [k, v] : extras.items()) op[k] = v;
+			for (auto& [k, v] : extras.items())
+			{
+				op[k] = v;
+			}
 		}
 		ops.push_back(std::move(op));
 		return slot;
@@ -195,7 +198,10 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
 		// type at compile-time, surfacing useful errors via wire_pins's
 		// enriched error path.
 		std::string s;
-		if (it->is_string())            s = it->get<std::string>();
+		if (it->is_string())
+		{
+			s = it->get<std::string>();
+		}
 		else if (it->is_number())       s = it->dump();
 		else if (it->is_boolean())      s = *it ? "true" : "false";
 		else if (it->is_null())         s = "";
@@ -222,7 +228,10 @@ std::string CompileExpr(Compiler& c, const nlohmann::json& expr) {
 			}
 		}
 		nlohmann::json extras = {{"function", fn}};
-		if (!owner.empty()) extras["function_owner"] = owner;
+		if (!owner.empty())
+		{
+			extras["function_owner"] = owner;
+		}
 		std::string slot = c.AddNode("CallFunction", "call", extras);
 		// Wire args by pin-name match (or set defaults for literals).
 		if (auto argsIt = expr.find("args");
@@ -258,7 +267,10 @@ using ExecTails = std::vector<ExecTail>;
 void WireTailsTo(Compiler& c, const ExecTails& prevs,
 				 const std::string& toSlot, const std::string& toPin) {
 	for (const auto& t : prevs) {
-		if (t.slot.empty()) continue;
+		if (t.slot.empty())
+		{
+			continue;
+		}
 		c.WireExec(t.slot, t.pin, toSlot, toPin);
 	}
 }
@@ -295,8 +307,14 @@ ExecTails CompileStatement(Compiler& c, ExecTails prevs,
 		// input gets wired from each (B1: replaces v1's "else tail dangles").
 		ExecTails out;
 		out.reserve(thenTails.size() + elseTails.size());
-		for (auto& t : thenTails) out.push_back(std::move(t));
-		for (auto& t : elseTails) out.push_back(std::move(t));
+		for (auto& t : thenTails)
+		{
+			out.push_back(std::move(t));
+		}
+		for (auto& t : elseTails)
+		{
+			out.push_back(std::move(t));
+		}
 		return out;
 	}
 	if (stmt.contains("set")) {
@@ -333,7 +351,10 @@ ExecTails CompileStatement(Compiler& c, ExecTails prevs,
 			}
 		}
 		nlohmann::json extras = {{"function", fn}};
-		if (!owner.empty()) extras["function_owner"] = owner;
+		if (!owner.empty())
+		{
+			extras["function_owner"] = owner;
+		}
 		std::string slot = c.AddNode("CallFunction", "callstmt", extras);
 		if (auto argsIt = stmt.find("args");
 			argsIt != stmt.end() && argsIt->is_object()) {

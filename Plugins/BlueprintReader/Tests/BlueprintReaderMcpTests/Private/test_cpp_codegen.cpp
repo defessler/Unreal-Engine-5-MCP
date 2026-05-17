@@ -23,8 +23,14 @@ json MakeFn(const json& body, std::vector<json> inputs = {},
 		{"name", "TestFn"},
 		{"body", body},
 	};
-	if (!inputs.empty())  doc["inputs"]  = inputs;
-	if (!outputs.empty()) doc["outputs"] = outputs;
+	if (!inputs.empty())
+	{
+		doc["inputs"]  = inputs;
+	}
+	if (!outputs.empty())
+	{
+		doc["outputs"] = outputs;
+	}
 	return doc;
 }
 

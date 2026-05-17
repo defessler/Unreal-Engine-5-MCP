@@ -82,7 +82,10 @@ public:
 		thread_ = std::thread([this] {
 			while (!stop_.load()) {
 				SOCKET c = ::accept(listenSock_, nullptr, nullptr);
-				if (c == INVALID_SOCKET) return;
+				if (c == INVALID_SOCKET)
+				{
+					return;
+				}
 				::closesocket(c);
 			}
 		});
@@ -90,7 +93,10 @@ public:
 	~StubListener() {
 		stop_.store(true);
 		::closesocket(listenSock_);
-		if (thread_.joinable()) thread_.join();
+		if (thread_.joinable())
+		{
+			thread_.join();
+		}
 	}
 	int port() const { return port_; }
 private:

@@ -53,7 +53,10 @@ inline std::wstring EncodeArgForFParse(std::wstring_view arg) {
 	out.push_back(L'=');
 	out.push_back(L'"');
 	for (wchar_t c : value) {
-		if (c == L'"') continue;  // FParse has no escape; strip defensively
+		if (c == L'"')
+		{
+			continue;  // FParse has no escape; strip defensively
+		}
 		out.push_back(c);
 	}
 	out.push_back(L'"');

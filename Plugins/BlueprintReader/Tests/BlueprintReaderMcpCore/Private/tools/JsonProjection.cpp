@@ -57,7 +57,10 @@ struct Node {
 // Build a Node tree from a flat list of paths.
 void Insert(Node& root, const std::vector<std::string>& segments,
 			std::size_t i = 0) {
-	if (i >= segments.size()) return;
+	if (i >= segments.size())
+	{
+		return;
+	}
 	if (segments[i] == "[]") {
 		// Mark "this is an array — descend per element with the rest of
 		// the path applied at the same conceptual level."
@@ -76,10 +79,16 @@ void Insert(Node& root, const std::vector<std::string>& segments,
 
 void Apply(nlohmann::json& body, const Node& filter) {
 	if (filter.descendArray && body.is_array()) {
-		for (auto& el : body) Apply(el, filter);
+		for (auto& el : body)
+		{
+			Apply(el, filter);
+		}
 		return;
 	}
-	if (!body.is_object()) return;
+	if (!body.is_object())
+	{
+		return;
+	}
 
 	// Drop unwanted keys.
 	for (auto it = body.begin(); it != body.end();) {
@@ -93,7 +102,10 @@ void Apply(nlohmann::json& body, const Node& filter) {
 	// Recurse into kept keys that have child filters.
 	for (auto& [key, subFilter] : filter.children) {
 		auto it = body.find(key);
-		if (it == body.end()) continue;
+		if (it == body.end())
+		{
+			continue;
+		}
 		Apply(*it, subFilter);
 	}
 }
@@ -102,7 +114,10 @@ void Apply(nlohmann::json& body, const Node& filter) {
 
 void ApplyProjection(nlohmann::json& body,
 					 const std::vector<std::string>& paths) {
-	if (paths.empty()) return;
+	if (paths.empty())
+	{
+		return;
+	}
 	Node root;
 	for (const auto& path : paths) {
 		auto segments = SplitPath(path);
@@ -115,7 +130,10 @@ void ApplyProjection(nlohmann::json& body,
 	// already set and Apply handles it the same way — this branch is only
 	// for the bare-keys case.
 	if (body.is_array() && !root.descendArray) {
-		for (auto& el : body) Apply(el, root);
+		for (auto& el : body)
+		{
+			Apply(el, root);
+		}
 		return;
 	}
 	Apply(body, root);

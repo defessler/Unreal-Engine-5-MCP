@@ -34,11 +34,17 @@ struct HandshakeFile {
 };
 std::optional<HandshakeFile> ReadHandshakeFile(
 	const std::filesystem::path& uproject, std::ostream& log) {
-	if (uproject.empty()) return std::nullopt;
+	if (uproject.empty())
+	{
+		return std::nullopt;
+	}
 	std::filesystem::path path =
 		uproject.parent_path() / "Saved" / "bp-reader-live.json";
 	std::error_code ec;
-	if (!std::filesystem::exists(path, ec)) return std::nullopt;
+	if (!std::filesystem::exists(path, ec))
+	{
+		return std::nullopt;
+	}
 	std::ifstream f(path);
 	if (!f) {
 		log << "[bp-reader-mcp] live handshake file exists but is unreadable: "
@@ -85,10 +91,16 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	}
 
 	auto engineDir = env::GetOrDefault("BP_READER_ENGINE_DIR", "");
-	if (!engineDir.empty()) cfg.engineDir = std::filesystem::path(engineDir);
+	if (!engineDir.empty())
+	{
+		cfg.engineDir = std::filesystem::path(engineDir);
+	}
 
 	auto uproj = env::GetOrDefault("BP_READER_PROJECT", "");
-	if (!uproj.empty()) cfg.uproject = std::filesystem::path(uproj);
+	if (!uproj.empty())
+	{
+		cfg.uproject = std::filesystem::path(uproj);
+	}
 
 	cfg.timeoutSeconds        = env::IntOrDefault("BP_READER_TIMEOUT_SECONDS", 120);
 	cfg.startupTimeoutSeconds = env::IntOrDefault("BP_READER_STARTUP_TIMEOUT_SECONDS", 600);
@@ -122,7 +134,10 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	std::filesystem::path pluginDir;
 	{
 		auto p = executableDir;  // ...\Release
-		for (int i = 0; i < 3 && !p.empty(); ++i) p = p.parent_path();
+		for (int i = 0; i < 3 && !p.empty(); ++i)
+		{
+			p = p.parent_path();
+		}
 		pluginDir = p;
 	}
 
@@ -175,8 +190,14 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 		if (cfg.liveHost.empty() || cfg.liveHost == "127.0.0.1") {
 			cfg.liveHost = hf->host;
 		}
-		if (cfg.liveProcPort == 0) cfg.liveProcPort = hf->port;
-		if (cfg.liveToken.empty()) cfg.liveToken = hf->token;
+		if (cfg.liveProcPort == 0)
+		{
+			cfg.liveProcPort = hf->port;
+		}
+		if (cfg.liveToken.empty())
+		{
+			cfg.liveToken = hf->token;
+		}
 		log << "[bp-reader-mcp] discovered live editor on "
 			<< cfg.liveHost << ":" << cfg.liveProcPort
 			<< " (pid=" << hf->pid << ")\n";

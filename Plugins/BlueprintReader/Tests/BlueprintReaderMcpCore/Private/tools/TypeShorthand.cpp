@@ -59,7 +59,10 @@ std::optional<Resolved> ResolveName(std::string_view name) {
 } // namespace
 
 BPPinType ParseTypeShorthand(std::string_view input) {
-	if (input.empty()) Bad(input, "empty string");
+	if (input.empty())
+	{
+		Bad(input, "empty string");
+	}
 
 	BPPinType out;
 
@@ -97,7 +100,10 @@ BPPinType ParseTypeShorthand(std::string_view input) {
 		body.remove_prefix(2);
 	}
 
-	if (body.empty()) Bad(input, "missing element type after container prefix");
+	if (body.empty())
+	{
+		Bad(input, "missing element type after container prefix");
+	}
 
 	// Element: <name> or <name>:<subref>
 	auto colon = body.find(':');

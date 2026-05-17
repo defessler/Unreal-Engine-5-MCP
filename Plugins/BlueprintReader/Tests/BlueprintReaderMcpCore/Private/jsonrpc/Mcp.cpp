@@ -166,7 +166,10 @@ void RegisterHandlers(jr::Server& server,
 			// failure, the "what did I pass" context is exactly what
 			// they need. No filtering: MCP tool args don't carry
 			// credentials in this server.
-			if (!arguments.empty()) meta["args"] = arguments;
+			if (!arguments.empty())
+			{
+				meta["args"] = arguments;
+			}
 			return jr::Response::Ok(MakeToolTextContent(
 				fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
 		}

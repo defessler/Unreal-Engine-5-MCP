@@ -86,7 +86,10 @@ bool FBlueprintReaderJsonRoundTripTest::RunTest(const FString& /*Parameters*/)
 	TSharedPtr<FJsonObject> Parsed;
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
 	TestTrue(TEXT("JSON parses"), FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid());
-	if (!Parsed.IsValid()) return false;
+	if (!Parsed.IsValid())
+	{
+		return false;
+	}
 
 	TestEqual(TEXT("path"), Parsed->GetStringField(TEXT("path")), Fixture.Path);
 	TestEqual(TEXT("name"), Parsed->GetStringField(TEXT("name")), Fixture.Name);
@@ -145,7 +148,10 @@ bool FBlueprintReaderJsonEmptyInfoTest::RunTest(const FString& /*Parameters*/)
 	TSharedPtr<FJsonObject> Parsed;
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
 	TestTrue(TEXT("JSON parses"), FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid());
-	if (!Parsed.IsValid()) return false;
+	if (!Parsed.IsValid())
+	{
+		return false;
+	}
 
 	for (const TCHAR* Field : { TEXT("interfaces"), TEXT("variables"), TEXT("components"),
 		TEXT("functionGraphs"), TEXT("eventGraphs"), TEXT("macroGraphs"), TEXT("delegateSignatureGraphs") })

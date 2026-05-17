@@ -40,12 +40,21 @@ struct AutoHandshake {
 };
 std::optional<AutoHandshake> ReadHandshakeFile(const std::filesystem::path& uproject,
 											   const char* filename) {
-	if (uproject.empty()) return std::nullopt;
+	if (uproject.empty())
+	{
+		return std::nullopt;
+	}
 	auto path = uproject.parent_path() / "Saved" / filename;
 	std::error_code ec;
-	if (!std::filesystem::exists(path, ec)) return std::nullopt;
+	if (!std::filesystem::exists(path, ec))
+	{
+		return std::nullopt;
+	}
 	std::ifstream f(path);
-	if (!f) return std::nullopt;
+	if (!f)
+	{
+		return std::nullopt;
+	}
 	std::stringstream ss;
 	ss << f.rdbuf();
 	nlohmann::json j;
@@ -56,7 +65,10 @@ std::optional<AutoHandshake> ReadHandshakeFile(const std::filesystem::path& upro
 	hs.host  = j.value("host",  std::string("127.0.0.1"));
 	hs.port  = j.value("port",  0);
 	hs.token = j.value("token", std::string());
-	if (hs.port <= 0 || hs.token.empty()) return std::nullopt;
+	if (hs.port <= 0 || hs.token.empty())
+	{
+		return std::nullopt;
+	}
 	return hs;
 }
 
@@ -166,12 +178,24 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildLive() {
 	// up without restarting the MCP server.
 	if (lc.port == 0 || lc.token.empty()) {
 		if (auto hs = ReadHandshake(cfg_.uproject)) {
-			if (lc.port == 0)        lc.port  = hs->port;
-			if (lc.token.empty())    lc.token = hs->token;
-			if (lc.host == "127.0.0.1" && !hs->host.empty()) lc.host = hs->host;
+			if (lc.port == 0)
+			{
+				lc.port  = hs->port;
+			}
+			if (lc.token.empty())
+			{
+				lc.token = hs->token;
+			}
+			if (lc.host == "127.0.0.1" && !hs->host.empty())
+			{
+				lc.host = hs->host;
+			}
 		}
 	}
-	if (lc.port == 0 || lc.token.empty()) return nullptr;
+	if (lc.port == 0 || lc.token.empty())
+	{
+		return nullptr;
+	}
 	// Same self-refresh wiring as the static `live` backend (issue #9
 	// recovery). Auto's per-call probe also handles editor-restart
 	// recovery at the outer layer, but inner-layer refresh keeps a
@@ -191,7 +215,10 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildCmdlet() {
 	// BP_READER_CMDLET_PORT/TOKEN knob. The handshake file is the only
 	// source of truth.
 	auto hs = ReadHandshakeFile(cfg_.uproject, "bp-reader-cmdlet.json");
-	if (!hs) return nullptr;
+	if (!hs)
+	{
+		return nullptr;
+	}
 
 	SocketBlueprintReader::Config sc;
 	sc.host  = hs->host.empty() ? "127.0.0.1" : hs->host;
@@ -204,7 +231,10 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildCmdlet() {
 		sc.handshakeFilePath =
 			(cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json").string();
 	}
-	if (sc.port <= 0 || sc.token.empty()) return nullptr;
+	if (sc.port <= 0 || sc.token.empty())
+	{
+		return nullptr;
+	}
 	return std::make_unique<SocketBlueprintReader>(std::move(sc));
 }
 
@@ -233,7 +263,10 @@ void AutoBlueprintReader::Probe() {
 			// may be hot. SocketBlueprintReader doesn't expose its
 			// config publicly, so we rebuild on every probe transition.
 			// Cost: one TCP handshake per editor open/close, not per call.
-			if (!live_) live_ = std::move(liveCandidate);
+			if (!live_)
+			{
+				live_ = std::move(liveCandidate);
+			}
 			// Drop the cmdlet-socket route (live wins).
 			cmdletSocket_.reset();
 			route_ = Route::Live;
@@ -250,7 +283,10 @@ void AutoBlueprintReader::Probe() {
 		if (hs &&
 			TcpProbe(hs->host.empty() ? "127.0.0.1" : hs->host,
 					 hs->port, cfg_.probeConnectTimeout)) {
-			if (!cmdletSocket_) cmdletSocket_ = std::move(cmdletCandidate);
+			if (!cmdletSocket_)
+			{
+				cmdletSocket_ = std::move(cmdletCandidate);
+			}
 			route_ = Route::CmdletSocket;
 			return;
 		}
@@ -266,8 +302,14 @@ IBlueprintReader& AutoBlueprintReader::Pick() {
 	if (now - lastProbe_ >= cfg_.probeTtl) {
 		Probe();
 	}
-	if (route_ == Route::Live && live_) return *live_;
-	if (route_ == Route::CmdletSocket && cmdletSocket_) return *cmdletSocket_;
+	if (route_ == Route::Live && live_)
+	{
+		return *live_;
+	}
+	if (route_ == Route::CmdletSocket && cmdletSocket_)
+	{
+		return *cmdletSocket_;
+	}
 	return EnsureCommandlet();
 }
 

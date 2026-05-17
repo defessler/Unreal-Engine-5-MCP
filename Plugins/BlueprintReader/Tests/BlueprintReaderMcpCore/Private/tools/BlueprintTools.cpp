@@ -42,7 +42,10 @@ std::string RequireString(const nlohmann::json& obj, std::string_view key) {
 std::string OptString(const nlohmann::json& obj, std::string_view key,
 					  std::string fallback) {
 	auto it = obj.find(key);
-	if (it == obj.end() || it->is_null()) return fallback;
+	if (it == obj.end() || it->is_null())
+	{
+		return fallback;
+	}
 	if (!it->is_string()) {
 		throw std::invalid_argument(fmt::format(R"(argument "{}" must be a string)", key));
 	}
@@ -65,7 +68,10 @@ nlohmann::json AssetPathSchema() {
 // Returns an int arg or fallback. Negative values raise.
 int OptInt(const nlohmann::json& obj, std::string_view key, int fallback) {
 	auto it = obj.find(key);
-	if (it == obj.end() || it->is_null()) return fallback;
+	if (it == obj.end() || it->is_null())
+	{
+		return fallback;
+	}
 	if (!it->is_number_integer()) {
 		throw std::invalid_argument(fmt::format(R"(argument "{}" must be an integer)", key));
 	}
@@ -112,8 +118,14 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	ctl.offset = OptInt(args, "offset", 0);
 	ctl.limit  = OptInt(args, "limit", -1);
 	ctl.fields = ParseFieldsArg(args);
-	if (ctl.offset < 0) throw std::invalid_argument(R"(argument "offset" must be >= 0)");
-	if (ctl.limit < -1) throw std::invalid_argument(R"(argument "limit" must be >= 0)");
+	if (ctl.offset < 0)
+	{
+		throw std::invalid_argument(R"(argument "offset" must be >= 0)");
+	}
+	if (ctl.limit < -1)
+	{
+		throw std::invalid_argument(R"(argument "limit" must be >= 0)");
+	}
 	return ctl;
 }
 void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
@@ -123,7 +135,10 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 							  ? body.size()
 							  : std::min<std::size_t>(off + ctl.limit, body.size());
 		nlohmann::json sliced = nlohmann::json::array();
-		for (std::size_t i = off; i < end; ++i) sliced.push_back(std::move(body[i]));
+		for (std::size_t i = off; i < end; ++i)
+		{
+			sliced.push_back(std::move(body[i]));
+		}
 		body = std::move(sliced);
 	}
 	ApplyProjection(body, ctl.fields);
@@ -384,9 +399,15 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			// we don't want a typo to fail the whole transpile.
 			auto loadStringMap = [&](const char* key, std::map<std::string, std::string>& out) {
 				auto it = args.find(key);
-				if (it == args.end() || !it->is_object()) return;
+				if (it == args.end() || !it->is_object())
+				{
+					return;
+				}
 				for (auto& [k, v] : it->items()) {
-					if (v.is_string()) out[k] = v.get<std::string>();
+					if (v.is_string())
+					{
+						out[k] = v.get<std::string>();
+					}
 				}
 			};
 			loadStringMap("category_remap", opts.categoryRemap);
@@ -910,7 +931,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			// Map MCP-side names → plugin commandlet flag names.
 			auto put = [&](const char* mcpKey, const char* flagKey) {
 				std::string v = OptString(args, mcpKey, "");
-				if (!v.empty()) extras.emplace(flagKey, std::move(v));
+				if (!v.empty())
+				{
+					extras.emplace(flagKey, std::move(v));
+				}
 			};
 			put("variable",       "Variable");
 			put("function",       "Function");
@@ -936,11 +960,26 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 						nodeClass = n.Class;
 						for (const auto& p : n.Pins) {
 							nlohmann::json t = {{"category", p.Type.Category}};
-							if (p.Type.SubCategory)       t["sub_category"]        = *p.Type.SubCategory;
-							if (p.Type.SubCategoryObject) t["sub_category_object"] = *p.Type.SubCategoryObject;
-							if (p.Type.IsArray) t["is_array"] = true;
-							if (p.Type.IsSet)   t["is_set"]   = true;
-							if (p.Type.IsMap)   t["is_map"]   = true;
+							if (p.Type.SubCategory)
+							{
+								t["sub_category"]        = *p.Type.SubCategory;
+							}
+							if (p.Type.SubCategoryObject)
+							{
+								t["sub_category_object"] = *p.Type.SubCategoryObject;
+							}
+							if (p.Type.IsArray)
+							{
+								t["is_array"] = true;
+							}
+							if (p.Type.IsSet)
+							{
+								t["is_set"]   = true;
+							}
+							if (p.Type.IsMap)
+							{
+								t["is_map"]   = true;
+							}
 							pinsJson.push_back({
 								{"name",      p.Name},
 								{"guid",      p.Id},
@@ -957,8 +996,14 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"node_id", newId},
 				{"pins", std::move(pinsJson)},
 			};
-			if (!title.empty())     out["title"] = title;
-			if (!nodeClass.empty()) out["class"] = nodeClass;
+			if (!title.empty())
+			{
+				out["title"] = title;
+			}
+			if (!nodeClass.empty())
+			{
+				out["class"] = nodeClass;
+			}
 			return out;
 		});
 	}
@@ -1044,7 +1089,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			// can be either depending on engine version + how the BP was saved).
 			auto matchesClass = [](std::string_view candidate,
 								   std::string_view query) {
-				if (candidate == query) return true;
+				if (candidate == query)
+				{
+					return true;
+				}
 				// Strip path / class-suffix to compare short names.
 				auto last = candidate.find_last_of("/.");
 				std::string_view candShort = last == std::string_view::npos
@@ -1132,15 +1180,27 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				std::string fromType, toType;
 				auto findPin = [](const BPNode& n, const std::string& spec) -> const BPPin* {
 					for (const auto& p : n.Pins) {
-						if (p.Id == spec || p.Name == spec) return &p;
+						if (p.Id == spec || p.Name == spec)
+						{
+							return &p;
+						}
 					}
 					return nullptr;
 				};
 				auto describeType = [](const BPPinType& t) {
 					std::string s = t.Category;
-					if (t.SubCategory) s += ":" + *t.SubCategory;
-					if (t.SubCategoryObject) s += "(" + *t.SubCategoryObject + ")";
-					if (t.IsArray) s = "[]" + s;
+					if (t.SubCategory)
+					{
+						s += ":" + *t.SubCategory;
+					}
+					if (t.SubCategoryObject)
+					{
+						s += "(" + *t.SubCategoryObject + ")";
+					}
+					if (t.IsArray)
+					{
+						s = "[]" + s;
+					}
 					if (t.IsSet)   s = "{}" + s;
 					if (t.IsMap)   s = "{key:" + s + "}";
 					return s;
@@ -1149,10 +1209,16 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 					auto g = reader.GetGraph(asset, graph);
 					for (const auto& n : g.Nodes) {
 						if (n.Id == fromNode) {
-							if (auto* p = findPin(n, fromPin)) fromType = describeType(p->Type);
+							if (auto* p = findPin(n, fromPin))
+							{
+								fromType = describeType(p->Type);
+							}
 						}
 						if (n.Id == toNode) {
-							if (auto* p = findPin(n, toPin)) toType = describeType(p->Type);
+							if (auto* p = findPin(n, toPin))
+							{
+								toType = describeType(p->Type);
+							}
 						}
 					}
 				} catch (...) { /* type lookup is best-effort */ }
@@ -1596,7 +1662,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 					{"description", desc},
 					{"sub_categories", subs},
 				};
-				if (objHint) j["sub_category_object_hint"] = objHint;
+				if (objHint)
+				{
+					j["sub_category_object_hint"] = objHint;
+				}
 				return j;
 			};
 			return nlohmann::json{
@@ -1728,9 +1797,18 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				// Exec edge if either endpoint pin's name looks exec-y.
 				std::string fpName = c.FromPin;
 				std::string tpName = c.ToPin;
-				if (auto it = pinName.find(c.FromPin); it != pinName.end()) fpName = it->second;
-				if (auto it = pinName.find(c.ToPin);   it != pinName.end()) tpName = it->second;
-				if (!isExecPinName(fpName) && !isExecPinName(tpName)) continue;
+				if (auto it = pinName.find(c.FromPin); it != pinName.end())
+				{
+					fpName = it->second;
+				}
+				if (auto it = pinName.find(c.ToPin);   it != pinName.end())
+				{
+					tpName = it->second;
+				}
+				if (!isExecPinName(fpName) && !isExecPinName(tpName))
+				{
+					continue;
+				}
 				downstream[c.FromNode].push_back(c.ToNode);
 			}
 
@@ -1739,40 +1817,64 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			// as their own roots — at least they'll be ranked into columns.
 			std::set<std::string> hasUpstream;
 			for (const auto& [_, dsts] : downstream)
-				for (const auto& d : dsts) hasUpstream.insert(d);
+				for (const auto& d : dsts)
+				{
+					hasUpstream.insert(d);
+				}
 			std::vector<std::string> roots;
 			for (const auto& n : g.Nodes) {
 				bool isEntryClass = n.Class.find("FunctionEntry") != std::string::npos ||
 									n.Class.find("Event")         != std::string::npos ||
 									n.Class.find("CustomEvent")   != std::string::npos;
-				if (isEntryClass && !hasUpstream.count(n.Id)) roots.push_back(n.Id);
+				if (isEntryClass && !hasUpstream.count(n.Id))
+				{
+					roots.push_back(n.Id);
+				}
 			}
 			if (roots.empty()) {
-				for (const auto& n : g.Nodes) if (!hasUpstream.count(n.Id)) roots.push_back(n.Id);
+				for (const auto& n : g.Nodes)
+				{
+					if (!hasUpstream.count(n.Id)) roots.push_back(n.Id);
+				}
 			}
 
 			// BFS from roots; column = depth, row = order-of-discovery within column.
 			std::map<std::string, int, std::less<>> col;  // node_id -> column
 			std::vector<std::string> bfs = roots;
-			for (const auto& r : roots) col[r] = 0;
+			for (const auto& r : roots)
+			{
+				col[r] = 0;
+			}
 			for (std::size_t i = 0; i < bfs.size(); ++i) {
 				int c = col[bfs[i]];
 				for (const auto& d : downstream[bfs[i]]) {
 					auto [it, inserted] = col.insert({d, c + 1});
-					if (inserted) bfs.push_back(d);
+					if (inserted)
+					{
+						bfs.push_back(d);
+					}
 				}
 			}
 			// Any disconnected leftovers get their own column at the right.
 			int maxCol = 0;
-			for (auto& [_, v] : col) maxCol = std::max(maxCol, v);
+			for (auto& [_, v] : col)
+			{
+				maxCol = std::max(maxCol, v);
+			}
 			int leftoverCol = maxCol + 1;
 			for (const auto& n : g.Nodes) {
-				if (col.find(n.Id) == col.end()) col[n.Id] = leftoverCol;
+				if (col.find(n.Id) == col.end())
+				{
+					col[n.Id] = leftoverCol;
+				}
 			}
 
 			// Group by column, assign rows.
 			std::map<int, std::vector<std::string>> byCol;
-			for (const auto& [id, c] : col) byCol[c].push_back(id);
+			for (const auto& [id, c] : col)
+			{
+				byCol[c].push_back(id);
+			}
 
 			// Apply positions via set_node_position. Done as individual
 			// ops here (not apply_ops) because the reader saves per-call
@@ -1958,7 +2060,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListDataTables(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& s : summaries) arr.push_back(s);
+			for (const auto& s : summaries)
+			{
+				arr.push_back(s);
+			}
 			return arr;
 		});
 	}
@@ -2182,7 +2287,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"file", file.empty() ? std::string("Engine") : file},
 				{"exists", r.exists},
 			};
-			if (r.exists) out["value"] = r.value;
+			if (r.exists)
+			{
+				out["value"] = r.value;
+			}
 			return out;
 		});
 	}
@@ -2220,7 +2328,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"file", file.empty() ? std::string("Engine") : file},
 				{"value", value},
 			};
-			if (r.previousExisted) out["previous_value"] = r.previousValue;
+			if (r.previousExisted)
+			{
+				out["previous_value"] = r.previousValue;
+			}
 			else                   out["previous_value"] = nullptr;
 			return out;
 		});
@@ -2393,7 +2504,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::vector<std::string> names;
 			if (auto it = args.find("actor_names"); it != args.end() && it->is_array()) {
 				for (const auto& v : *it) {
-					if (v.is_string()) names.push_back(v.get<std::string>());
+					if (v.is_string())
+					{
+						names.push_back(v.get<std::string>());
+					}
 				}
 			}
 			bool replace = args.value("replace", true);
@@ -2796,7 +2910,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListMaterials(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& s : summaries) arr.push_back(s);
+			for (const auto& s : summaries)
+			{
+				arr.push_back(s);
+			}
 			return arr;
 		});
 	}
@@ -3205,7 +3322,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListBehaviorTrees(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& s : summaries) arr.push_back(s);
+			for (const auto& s : summaries)
+			{
+				arr.push_back(s);
+			}
 			return arr;
 		});
 	}
@@ -3353,7 +3473,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListDataAssets(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& s : summaries) arr.push_back(s);
+			for (const auto& s : summaries)
+			{
+				arr.push_back(s);
+			}
 			return arr;
 		});
 	}
@@ -3456,7 +3579,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListStateTrees(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& s : summaries) arr.push_back(s);
+			for (const auto& s : summaries)
+			{
+				arr.push_back(s);
+			}
 			return arr;
 		});
 	}
@@ -3925,7 +4051,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListNiagaraSystems(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& v : s) arr.push_back(v);
+			for (const auto& v : s)
+			{
+				arr.push_back(v);
+			}
 			return arr;
 		});
 	}
@@ -4019,7 +4148,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListLevelSequences(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& v : s) arr.push_back(v);
+			for (const auto& v : s)
+			{
+				arr.push_back(v);
+			}
 			return arr;
 		});
 	}
@@ -4187,7 +4319,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListAnimBlueprints(path);
 			nlohmann::json arr = nlohmann::json::array();
-			for (const auto& v : s) arr.push_back(v);
+			for (const auto& v : s)
+			{
+				arr.push_back(v);
+			}
 			return arr;
 		});
 	}

@@ -1240,7 +1240,10 @@ TEST_CASE("EmitCppClass: component property of unknown type emits TODO") {
 	CHECK(Contains(out.implSource, "Weird"));
 	bool found = false;
 	for (const auto& n : out.notes) {
-		if (n.value("treatment", "") == "todo_unsupported_type") found = true;
+		if (n.value("treatment", "") == "todo_unsupported_type")
+		{
+			found = true;
+		}
 	}
 	CHECK(found);
 }
@@ -1352,7 +1355,10 @@ TEST_CASE("EmitCppClass: delegate with one param emits _OneParam variant") {
 	bool found = false;
 	for (const auto& n : out.notes) {
 		if (n.value("treatment", "") == "delegate_typedef_resolved" &&
-			n.value("param_count", 0)  == 1) found = true;
+			n.value("param_count", 0)  == 1)
+		{
+			found = true;
+		}
 	}
 	CHECK(found);
 }
@@ -1422,7 +1428,10 @@ TEST_CASE("EmitCppClass: component asset-ref with property_class fills in FObjec
 	bool found = false;
 	for (const auto& n : out.notes) {
 		if (n.value("treatment", "") == "asset_ref_objectfinder_resolved" &&
-			n.value("asset_class", "") == "USkeletalMesh") found = true;
+			n.value("asset_class", "") == "USkeletalMesh")
+		{
+			found = true;
+		}
 	}
 	CHECK(found);
 }

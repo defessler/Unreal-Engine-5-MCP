@@ -61,7 +61,10 @@ public:
 		if (Socket)
 		{
 			ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
-			if (SocketSubsystem) SocketSubsystem->DestroySocket(Socket);
+			if (SocketSubsystem)
+			{
+				SocketSubsystem->DestroySocket(Socket);
+			}
 			Socket = nullptr;
 		}
 	}
@@ -82,7 +85,10 @@ public:
 		} DisconnectGuard{Server, ConnectionId};
 
 		// 1. Send hello.
-		if (!SendFrame(MakeHello())) return 0;
+		if (!SendFrame(MakeHello()))
+		{
+			return 0;
+		}
 
 		// 2. Read auth frame.
 		FString AuthRaw;
@@ -108,7 +114,10 @@ public:
 		while (!bStopRequested)
 		{
 			FString FrameRaw;
-			if (!ReadFrame(FrameRaw)) break;  // EOF / error
+			if (!ReadFrame(FrameRaw))
+			{
+				break;  // EOF / error
+			}
 			TSharedPtr<FJsonObject> Msg = ParseJson(FrameRaw);
 			if (!Msg.IsValid())
 			{
@@ -141,7 +150,10 @@ public:
 			{
 				if (V.IsValid() && V->Type == EJson::String)
 				{
-					if (!Params.IsEmpty()) Params.AppendChar(TEXT(' '));
+					if (!Params.IsEmpty())
+					{
+						Params.AppendChar(TEXT(' '));
+					}
 					Params.Append(V->AsString());
 				}
 			}
@@ -223,7 +235,10 @@ private:
 	{
 		TSharedPtr<FJsonObject> Out;
 		TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Raw);
-		if (!FJsonSerializer::Deserialize(Reader, Out)) return nullptr;
+		if (!FJsonSerializer::Deserialize(Reader, Out))
+		{
+			return nullptr;
+		}
 		return Out;
 	}
 
@@ -233,7 +248,10 @@ private:
 	}
 	bool SendRaw(const FString& Text)
 	{
-		if (!Socket) return false;
+		if (!Socket)
+		{
+			return false;
+		}
 		FTCHARToUTF8 Conv(*Text);
 		const uint8* Bytes = (const uint8*)Conv.Get();
 		int32 Total = Conv.Length();
@@ -241,7 +259,10 @@ private:
 		while (Sent < Total)
 		{
 			int32 Wrote = 0;
-			if (!Socket->Send(Bytes + Sent, Total - Sent, Wrote) || Wrote == 0) return false;
+			if (!Socket->Send(Bytes + Sent, Total - Sent, Wrote) || Wrote == 0)
+			{
+				return false;
+			}
 			Sent += Wrote;
 		}
 		return true;
@@ -314,7 +335,10 @@ FCmdletServer::~FCmdletServer() { Stop(); }
 
 bool FCmdletServer::WantsShutdown() const
 {
-	if (bShuttingDown) return true;
+	if (bShuttingDown)
+	{
+		return true;
+	}
 
 	// Idle check: only fire once at least one client has fully
 	// connected + disconnected. Otherwise a fresh daemon with no
@@ -368,7 +392,10 @@ void FCmdletServer::OnClientDisconnected(uint64 ConnectionId)
 	{
 		// Clamp at zero — defensive against any stray underflow path.
 		// FThreadSafeCounter::Set returns the previous value, ignore it.
-		if (Remaining < 0) ActiveConnections.Set(0);
+		if (Remaining < 0)
+		{
+			ActiveConnections.Set(0);
+		}
 		LastDisconnectAtUnix.Set(FDateTime::UtcNow().ToUnixTimestamp());
 	}
 }
@@ -636,11 +663,17 @@ void FCmdletServer::Stop()
 		FScopeLock Lock(&GCmdletState->Mu);
 		for (auto& Conn : GCmdletState->Connections)
 		{
-			if (Conn->Runnable) Conn->Runnable->Stop();
+			if (Conn->Runnable)
+			{
+				Conn->Runnable->Stop();
+			}
 		}
 		for (auto& Conn : GCmdletState->Connections)
 		{
-			if (Conn->Thread) Conn->Thread->WaitForCompletion();
+			if (Conn->Thread)
+			{
+				Conn->Thread->WaitForCompletion();
+			}
 		}
 		GCmdletState->Connections.Empty();
 		GCmdletState.Reset();
@@ -706,17 +739,29 @@ FString FCmdletServer::PortCacheFilePath()
 int32 FCmdletServer::ReadCachedPort()
 {
 	const FString Path = PortCacheFilePath();
-	if (!IFileManager::Get().FileExists(*Path)) return 0;
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		return 0;
+	}
 	FString Body;
-	if (!FFileHelper::LoadFileToString(Body, *Path)) return 0;
+	if (!FFileHelper::LoadFileToString(Body, *Path))
+	{
+		return 0;
+	}
 
 	TSharedPtr<FJsonObject> Obj;
 	TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Body);
-	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) return 0;
+	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid())
+	{
+		return 0;
+	}
 	int32 Port = 0;
 	Obj->TryGetNumberField(TEXT("port"), Port);
 
-	if (Port < 1024 || Port > 65535) return 0;
+	if (Port < 1024 || Port > 65535)
+	{
+		return 0;
+	}
 	return Port;
 }
 
@@ -742,7 +787,10 @@ void FCmdletServer::WriteCachedPort(int32 Port)
 void FCmdletServer::DeleteHandshakeFile()
 {
 	const FString Path = HandshakeFilePath();
-	if (!IFileManager::Get().FileExists(*Path)) return;
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		return;
+	}
 	if (!IFileManager::Get().Delete(*Path, /*RequireExists=*/false,
 									/*EvenReadOnly=*/true,
 									/*Quiet=*/true))
@@ -835,7 +883,10 @@ bool FCmdletServer::AcquireLifetimeLock()
 
 void FCmdletServer::ReleaseLifetimeLock()
 {
-	if (LifetimeLockHandle == nullptr) return;
+	if (LifetimeLockHandle == nullptr)
+	{
+		return;
+	}
 #if PLATFORM_WINDOWS
 	HANDLE H = static_cast<HANDLE>(LifetimeLockHandle);
 	CloseHandle(H);
@@ -880,7 +931,10 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
 	if (bShuttingDown || !GCmdletState.IsValid())
 	{
 		ISocketSubsystem* Sub = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
-		if (Sub) Sub->DestroySocket(Socket);
+		if (Sub)
+		{
+			Sub->DestroySocket(Socket);
+		}
 		return false;
 	}
 
@@ -935,7 +989,10 @@ bool FCmdletServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& E
 
 FCmdletServer* GetCmdletServer()
 {
-	if (!GCmdletServer.IsValid()) GCmdletServer = MakeUnique<FCmdletServer>();
+	if (!GCmdletServer.IsValid())
+	{
+		GCmdletServer = MakeUnique<FCmdletServer>();
+	}
 	return GCmdletServer.Get();
 }
 
