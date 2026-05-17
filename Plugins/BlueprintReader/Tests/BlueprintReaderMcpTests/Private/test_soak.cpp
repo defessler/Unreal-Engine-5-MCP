@@ -61,25 +61,43 @@ DrainResult RunServerOn(const std::string& input) {
 	// for the whole session).
 	std::size_t i = 0;
 	while (i < raw.size() && (raw[i] == '\r' || raw[i] == '\n' ||
-							  raw[i] == ' ' || raw[i] == '\t')) ++i;
-	if (i >= raw.size()) return r;
+							  raw[i] == ' ' || raw[i] == '\t'))
+	{
+		++i;
+	}
+	if (i >= raw.size())
+	{
+		return r;
+	}
 
 	if (raw[i] == '{' || raw[i] == '[') {
 		std::string buf;
 		for (; i < raw.size(); ++i) {
 			if (raw[i] == '\n') {
-				if (!buf.empty() && buf.back() == '\r') buf.pop_back();
-				if (!buf.empty()) r.frames.push_back(json::parse(buf));
+				if (!buf.empty() && buf.back() == '\r')
+				{
+					buf.pop_back();
+				}
+				if (!buf.empty())
+				{
+					r.frames.push_back(json::parse(buf));
+				}
 				buf.clear();
 			} else {
 				buf.push_back(raw[i]);
 			}
 		}
-		if (!buf.empty()) r.frames.push_back(json::parse(buf));
+		if (!buf.empty())
+		{
+			r.frames.push_back(json::parse(buf));
+		}
 	} else {
 		while (i < raw.size()) {
 			auto split = raw.find("\r\n\r\n", i);
-			if (split == std::string::npos) break;
+			if (split == std::string::npos)
+			{
+				break;
+			}
 			auto headers = raw.substr(i, split - i);
 			auto pos = headers.find("Content-Length:");
 			REQUIRE(pos != std::string::npos);
@@ -166,7 +184,10 @@ TEST_CASE("soak: 5000 mixed read tool calls, all return correct shape"
 		const auto& f = r.frames[i];
 		CHECK(f["id"] == i);
 		CHECK(f["jsonrpc"] == "2.0");
-		if (f.contains("error")) ++errorCount;
+		if (f.contains("error"))
+		{
+			++errorCount;
+		}
 	}
 	CHECK(errorCount == 0);
 }

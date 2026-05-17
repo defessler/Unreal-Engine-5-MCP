@@ -29,7 +29,10 @@ std::string GetEnv(const char* key) {
 	}
 	return {};
 #else    // !_MSC_VER
-	if (const char* v = std::getenv(key); v != nullptr && *v != '\0') return std::string(v);
+	if (const char* v = std::getenv(key); v != nullptr && *v != '\0')
+	{
+		return std::string(v);
+	}
 	return {};
 #endif    // _MSC_VER
 }
@@ -57,8 +60,14 @@ TEST_CASE("CommandletBlueprintReader: List under /Game/AI returns seeded bluepri
 	REQUIRE_GE(items.size(), 2);
 	bool sawEnemy = false, sawPickup = false;
 	for (const auto& s : items) {
-		if (s.AssetPath == "/Game/AI/BP_TestEnemy")  sawEnemy  = true;
-		if (s.AssetPath == "/Game/AI/BP_TestPickup") sawPickup = true;
+		if (s.AssetPath == "/Game/AI/BP_TestEnemy")
+		{
+			sawEnemy  = true;
+		}
+		if (s.AssetPath == "/Game/AI/BP_TestPickup")
+		{
+			sawPickup = true;
+		}
 	}
 	CHECK(sawEnemy);
 	CHECK(sawPickup);
@@ -152,7 +161,10 @@ TEST_CASE("CommandletBlueprintReader: extended add_node kinds (Cast, Self, MakeA
 	CHECK(std::adjacent_find(ids.begin(), ids.end()) == ids.end());
 
 	// Cleanup so subsequent runs / fixtures stay tidy.
-	for (const auto& id : ids) reader->DeleteNode(asset, "EventGraph", id);
+	for (const auto& id : ids)
+	{
+		reader->DeleteNode(asset, "EventGraph", id);
+	}
 }
 
 TEST_CASE("CommandletBlueprintReader: function composition — add_function + add_function_input/output + set_variable_default + delete_function"
@@ -182,8 +194,14 @@ TEST_CASE("CommandletBlueprintReader: function composition — add_function + ad
 	REQUIRE_GE(fnSpec.Inputs.size(),  1);
 	REQUIRE_GE(fnSpec.Outputs.size(), 1);
 	bool sawInput = false, sawOutput = false;
-	for (const auto& v : fnSpec.Inputs)  if (v.Name == "Damage")  sawInput  = true;
-	for (const auto& v : fnSpec.Outputs) if (v.Name == "Killed") sawOutput = true;
+	for (const auto& v : fnSpec.Inputs)
+	{
+		if (v.Name == "Damage")  sawInput  = true;
+	}
+	for (const auto& v : fnSpec.Outputs)
+	{
+		if (v.Name == "Killed") sawOutput = true;
+	}
 	CHECK(sawInput);
 	CHECK(sawOutput);
 
@@ -199,7 +217,10 @@ TEST_CASE("CommandletBlueprintReader: function composition — add_function + ad
 	reader->DeleteFunction(asset, fn);
 	auto md = reader->ReadBlueprint(asset);
 	bool stillThere = false;
-	for (const auto& f : md.Functions) if (f.Name == fn) stillThere = true;
+	for (const auto& f : md.Functions)
+	{
+		if (f.Name == fn) stillThere = true;
+	}
 	CHECK_FALSE(stillThere);
 }
 
@@ -241,7 +262,10 @@ TEST_CASE("CommandletBlueprintReader: extended write tools — add_node + wire_p
 	reader->RenameVariable(asset, "MaxHealth", "MaxHP");
 	auto vars1 = reader->ListVariables(asset);
 	bool sawNew = false;
-	for (const auto& v : vars1) if (v.Name == "MaxHP") sawNew = true;
+	for (const auto& v : vars1)
+	{
+		if (v.Name == "MaxHP") sawNew = true;
+	}
 	CHECK(sawNew);
 	reader->RenameVariable(asset, "MaxHP", "MaxHealth");
 
@@ -250,7 +274,10 @@ TEST_CASE("CommandletBlueprintReader: extended write tools — add_node + wire_p
 	try { reader->DeleteVariable(asset, "AggroTarget"); } catch (...) {}
 	auto vars2 = reader->ListVariables(asset);
 	bool sawAggro = false;
-	for (const auto& v : vars2) if (v.Name == "AggroTarget") sawAggro = true;
+	for (const auto& v : vars2)
+	{
+		if (v.Name == "AggroTarget") sawAggro = true;
+	}
 	CHECK_FALSE(sawAggro);
 
 	// 8. Re-add it via add_variable so reseed isn't strictly necessary
@@ -337,7 +364,10 @@ TEST_CASE("CommandletBlueprintReader: FindNode kind filter narrows by K2 extras"
 	REQUIRE_GE(vars.size(), 1);
 	bool sawIsAlive = false;
 	for (const auto& n : vars) {
-		if (n.Class == "K2Node_VariableGet") sawIsAlive = true;
+		if (n.Class == "K2Node_VariableGet")
+		{
+			sawIsAlive = true;
+		}
 	}
 	CHECK(sawIsAlive);
 

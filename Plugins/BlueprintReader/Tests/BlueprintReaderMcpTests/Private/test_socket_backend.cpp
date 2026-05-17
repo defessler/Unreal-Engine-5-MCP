@@ -70,7 +70,10 @@ public:
 		thread_ = std::thread([this] {
 			for (auto& script : scripts_) {
 				SOCKET client = ::accept(listenSock_, nullptr, nullptr);
-				if (client == INVALID_SOCKET) return;
+				if (client == INVALID_SOCKET)
+				{
+					return;
+				}
 				try { script(client); } catch (...) {}
 				::closesocket(client);
 			}
@@ -78,7 +81,10 @@ public:
 	}
 	~MockServer() {
 		::closesocket(listenSock_);
-		if (thread_.joinable()) thread_.join();
+		if (thread_.joinable())
+		{
+			thread_.join();
+		}
 	}
 	int port() const { return port_; }
 
@@ -94,7 +100,10 @@ std::string ReadLine(SOCKET s) {
 	std::string out;
 	char c;
 	while (::recv(s, &c, 1, 0) == 1) {
-		if (c == '\n') break;
+		if (c == '\n')
+		{
+			break;
+		}
 		out.push_back(c);
 	}
 	return out;

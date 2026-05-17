@@ -22,7 +22,10 @@ std::string LowerAscii(std::string_view s) {
 }
 
 bool ContainsCI(std::string_view haystack, std::string_view needle) {
-	if (needle.empty()) return true;
+	if (needle.empty())
+	{
+		return true;
+	}
 	auto h = LowerAscii(haystack);
 	auto n = LowerAscii(needle);
 	return h.find(n) != std::string::npos;
@@ -35,9 +38,18 @@ bool PathMatches(std::string_view filter, std::string_view assetPath) {
 		// Root filter — anything under /Game counts.
 		return assetPath.rfind("/Game", 0) == 0;
 	}
-	if (assetPath.size() < filter.size()) return false;
-	if (assetPath.compare(0, filter.size(), filter) != 0) return false;
-	if (assetPath.size() == filter.size()) return true;
+	if (assetPath.size() < filter.size())
+	{
+		return false;
+	}
+	if (assetPath.compare(0, filter.size(), filter) != 0)
+	{
+		return false;
+	}
+	if (assetPath.size() == filter.size())
+	{
+		return true;
+	}
 	char next = assetPath[filter.size()];
 	return next == '/';
 }
@@ -58,8 +70,14 @@ MockBlueprintReader::MockBlueprintReader(const std::filesystem::path& fixturesDi
 
 void MockBlueprintReader::LoadDir(const std::filesystem::path& dir) {
 	for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-		if (!entry.is_regular_file()) continue;
-		if (entry.path().extension() != ".json") continue;
+		if (!entry.is_regular_file())
+		{
+			continue;
+		}
+		if (entry.path().extension() != ".json")
+		{
+			continue;
+		}
 		LoadFile(entry.path());
 	}
 }
@@ -139,7 +157,10 @@ BPGraph MockBlueprintReader::GetGraph(std::string_view assetPath,
 									  std::string_view graphName) {
 	const auto& entry = Require(assetPath);
 	for (const auto& g : entry.graphs) {
-		if (g.Name == graphName) return g;
+		if (g.Name == graphName)
+		{
+			return g;
+		}
 	}
 	throw BlueprintReaderError(
 		fmt::format("graph not found in {}: {}", assetPath, graphName));
@@ -149,7 +170,10 @@ BPFunction MockBlueprintReader::GetFunction(std::string_view assetPath,
 											std::string_view fnName) {
 	const auto& entry = Require(assetPath);
 	for (const auto& f : entry.functions) {
-		if (f.Name == fnName) return f;
+		if (f.Name == fnName)
+		{
+			return f;
+		}
 	}
 	throw BlueprintReaderError(
 		fmt::format("function not found in {}: {}", assetPath, fnName));
@@ -278,16 +302,34 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 	std::vector<BPNode> out;
 	const std::string kindLower = kind.empty() ? std::string{} : LowerAscii(kind);
 	auto matchKind = [&](const BPNode& n) -> bool {
-		if (kindLower.empty()) return true;
-		if (!n.Meta.is_object()) return false;
+		if (kindLower.empty())
+		{
+			return true;
+		}
+		if (!n.Meta.is_object())
+		{
+			return false;
+		}
 		auto it = n.Meta.find("kind");
-		if (it == n.Meta.end() || !it->is_string()) return false;
+		if (it == n.Meta.end() || !it->is_string())
+		{
+			return false;
+		}
 		return LowerAscii(it->get<std::string>()) == kindLower;
 	};
 	auto match = [&](const BPNode& n) {
-		if (!matchKind(n)) return false;
-		if (query.empty()) return true;
-		if (ContainsCI(n.Class, query) || ContainsCI(n.Title, query)) return true;
+		if (!matchKind(n))
+		{
+			return false;
+		}
+		if (query.empty())
+		{
+			return true;
+		}
+		if (ContainsCI(n.Class, query) || ContainsCI(n.Title, query))
+		{
+			return true;
+		}
 		// Also match against meta.targetFunction / meta.variableName so
 		// searches by function name find nodes whose title is operator-
 		// aliased (e.g. Greater_IntInt → "integer > integer"). Issue #12.
@@ -303,7 +345,10 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 									"eventName",      "event_name"}) {
 				auto it = n.Meta.find(key);
 				if (it != n.Meta.end() && it->is_string()) {
-					if (ContainsCI(it->get<std::string>(), query)) return true;
+					if (ContainsCI(it->get<std::string>(), query))
+					{
+						return true;
+					}
 				}
 			}
 		}
@@ -321,12 +366,18 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 	};
 	for (const auto& g : entry.graphs) {
 		for (const auto& n : g.Nodes) {
-			if (match(n)) tagAndPush(n, g.Name, g.Type);
+			if (match(n))
+			{
+				tagAndPush(n, g.Name, g.Type);
+			}
 		}
 	}
 	for (const auto& f : entry.functions) {
 		for (const auto& n : f.Graph.Nodes) {
-			if (match(n)) tagAndPush(n, f.Graph.Name, "Function");
+			if (match(n))
+			{
+				tagAndPush(n, f.Graph.Name, "Function");
+			}
 		}
 	}
 	return out;

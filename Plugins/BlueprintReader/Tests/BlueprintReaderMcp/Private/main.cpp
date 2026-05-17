@@ -152,7 +152,10 @@ std::string EscapeJsonPath(const std::filesystem::path& p) {
 	std::string out;
 	out.reserve(s.size() + 8);
 	for (char c : s) {
-		if (c == '\\') out.append("\\\\");
+		if (c == '\\')
+		{
+			out.append("\\\\");
+		}
 		else out.push_back(c);
 	}
 	return out;
@@ -348,7 +351,10 @@ int RunServerLoop() {
 				cur.push_back(c);
 			}
 		}
-		if (!cur.empty()) out.push_back(cur);
+		if (!cur.empty())
+		{
+			out.push_back(cur);
+		}
 		return out;
 	};
 
@@ -379,8 +385,14 @@ int RunServerLoop() {
 		std::cerr << "[bp-reader-mcp] tool filter: kept "
 				  << registry.Size() << " of " << before
 				  << " tools";
-		if (!allowSpec.empty()) std::cerr << " (allow=" << env::GetOrDefault("BP_READER_TOOLS") << ")";
-		if (!denySpec.empty())  std::cerr << " (deny="  << env::GetOrDefault("BP_READER_TOOLS_EXCLUDE") << ")";
+		if (!allowSpec.empty())
+		{
+			std::cerr << " (allow=" << env::GetOrDefault("BP_READER_TOOLS") << ")";
+		}
+		if (!denySpec.empty())
+		{
+			std::cerr << " (deny="  << env::GetOrDefault("BP_READER_TOOLS_EXCLUDE") << ")";
+		}
 		std::cerr << "\n";
 	}
 	if (progressiveMode) {
@@ -413,7 +425,10 @@ int RunServerLoop() {
 
 int main(int argc, char** argv) {
 	std::vector<std::string> args;
-	for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+	for (int i = 1; i < argc; ++i)
+	{
+		args.emplace_back(argv[i]);
+	}
 
 	if (!args.empty()) {
 		const auto& a = args[0];

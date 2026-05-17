@@ -57,7 +57,10 @@ public:
 	uint32 Run() override
 	{
 		// 1. Hello.
-		if (!SendFrame(TEXT("{\"type\":\"hello\",\"version\":\"1\"}"))) return 0;
+		if (!SendFrame(TEXT("{\"type\":\"hello\",\"version\":\"1\"}")))
+		{
+			return 0;
+		}
 
 		// 2. Auth.
 		FString AuthRaw;
@@ -83,7 +86,10 @@ public:
 		while (!bStopRequested)
 		{
 			FString FrameRaw;
-			if (!ReadFrame(FrameRaw)) break;
+			if (!ReadFrame(FrameRaw))
+			{
+				break;
+			}
 			TSharedPtr<FJsonObject> Msg = ParseJson(FrameRaw);
 			if (!Msg.IsValid())
 			{
@@ -113,9 +119,15 @@ public:
 			TMap<FString, FString> ArgMap;
 			for (const TSharedPtr<FJsonValue>& V : *ArgsArray)
 			{
-				if (!V.IsValid() || V->Type != EJson::String) continue;
+				if (!V.IsValid() || V->Type != EJson::String)
+				{
+					continue;
+				}
 				FString S = V->AsString();
-				if (S.StartsWith(TEXT("-"))) S.RightChopInline(1);
+				if (S.StartsWith(TEXT("-")))
+				{
+					S.RightChopInline(1);
+				}
 				int32 EqIdx = INDEX_NONE;
 				if (S.FindChar(TEXT('='), EqIdx))
 				{
@@ -175,7 +187,10 @@ private:
 	{
 		auto GetArg = [&](const TCHAR* Key, const FString& Fallback = FString())
 		{
-			if (const FString* V = ArgMap.Find(Key)) return *V;
+			if (const FString* V = ArgMap.Find(Key))
+			{
+				return *V;
+			}
 			return Fallback;
 		};
 
@@ -274,7 +289,10 @@ private:
 	}
 	bool SendRaw(const FString& Text)
 	{
-		if (!Socket) return false;
+		if (!Socket)
+		{
+			return false;
+		}
 		FTCHARToUTF8 Conv(*Text);
 		const uint8* Bytes = (const uint8*)Conv.Get();
 		int32 Total = Conv.Length();
@@ -507,11 +525,17 @@ void FRuntimeServer::Stop()
 		FScopeLock Lock(&GState->Mu);
 		for (auto& Conn : GState->Connections)
 		{
-			if (Conn->Runnable) Conn->Runnable->Stop();
+			if (Conn->Runnable)
+			{
+				Conn->Runnable->Stop();
+			}
 		}
 		for (auto& Conn : GState->Connections)
 		{
-			if (Conn->Thread) Conn->Thread->WaitForCompletion();
+			if (Conn->Thread)
+			{
+				Conn->Thread->WaitForCompletion();
+			}
 		}
 		GState->Connections.Empty();
 		GState.Reset();
@@ -535,7 +559,10 @@ bool FRuntimeServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& 
 		return true;  // keep listener alive
 	}
 
-	if (!GState.IsValid()) return true;
+	if (!GState.IsValid())
+	{
+		return true;
+	}
 
 	auto Runnable = MakeUnique<FRuntimeConnectionRunnable>(Socket, ExpectedToken);
 	auto Thread = TUniquePtr<FRunnableThread>(FRunnableThread::Create(
@@ -606,24 +633,39 @@ FString FRuntimeServer::PortCacheFilePath()
 int32 FRuntimeServer::ReadCachedPort()
 {
 	const FString Path = PortCacheFilePath();
-	if (!IFileManager::Get().FileExists(*Path)) return 0;
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		return 0;
+	}
 	FString Body;
-	if (!FFileHelper::LoadFileToString(Body, *Path)) return 0;
+	if (!FFileHelper::LoadFileToString(Body, *Path))
+	{
+		return 0;
+	}
 
 	TSharedPtr<FJsonObject> Obj;
 	TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Body);
-	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) return 0;
+	if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid())
+	{
+		return 0;
+	}
 	int32 Port = 0;
 	Obj->TryGetNumberField(TEXT("port"), Port);
 	// Reject malformed / privileged-port caches. See editor-side
 	// ReadCachedPort for the same defense.
-	if (Port < 1024 || Port > 65535) return 0;
+	if (Port < 1024 || Port > 65535)
+	{
+		return 0;
+	}
 	return Port;
 }
 
 void FRuntimeServer::WriteCachedPort(int32 Port)
 {
-	if (Port < 1024 || Port > 65535) return;
+	if (Port < 1024 || Port > 65535)
+	{
+		return;
+	}
 	const FString Path = PortCacheFilePath();
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
 	const FString Json = FString::Printf(TEXT("{\"port\":%d}\n"), Port);
@@ -662,9 +704,15 @@ static void StartIfRequested()
 	const int32 CVarVal = GCVarListen->GetInt();
 	FString EnvVar = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_RUNTIME_LISTEN"));
 	const bool bEnvOn = EnvVar == TEXT("1") || EnvVar.Equals(TEXT("true"), ESearchCase::IgnoreCase);
-	if (CVarVal == 0 && !bEnvOn) return;
+	if (CVarVal == 0 && !bEnvOn)
+	{
+		return;
+	}
 
-	if (!GRuntimeServer.IsValid()) GRuntimeServer = MakeUnique<FRuntimeServer>();
+	if (!GRuntimeServer.IsValid())
+	{
+		GRuntimeServer = MakeUnique<FRuntimeServer>();
+	}
 	if (!GRuntimeServer->IsListening())
 	{
 		GRuntimeServer->Start();

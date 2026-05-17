@@ -95,7 +95,10 @@ std::string GetString(const nlohmann::json& obj, std::string_view key) {
 std::string OptStr(const nlohmann::json& obj, std::string_view key,
 				   std::string fallback = {}) {
 	auto it = obj.find(key);
-	if (it == obj.end() || it->is_null()) return fallback;
+	if (it == obj.end() || it->is_null())
+	{
+		return fallback;
+	}
 	if (!it->is_string()) {
 		throw std::invalid_argument(fmt::format(
 			R"(field "{}" must be a string)", key));
@@ -186,7 +189,10 @@ nlohmann::json OpAddFunctionParam(backends::IBlueprintReader& reader,
 			R"(add_function_input/output op requires "type")");
 	}
 	BPPinType type = ParseTypeArg(*typeIt);
-	if (isOutput) reader.AddFunctionOutput(asset, fn, param, type);
+	if (isOutput)
+	{
+		reader.AddFunctionOutput(asset, fn, param, type);
+	}
 	else          reader.AddFunctionInput (asset, fn, param, type);
 	return {{"ok", true}};
 }
@@ -201,7 +207,10 @@ nlohmann::json OpAddNode(backends::IBlueprintReader& reader,
 	std::map<std::string, std::string, std::less<>> extras;
 	auto put = [&](const char* mcpKey, const char* flagKey) {
 		std::string v = OptStr(op, mcpKey, "");
-		if (!v.empty()) extras.emplace(flagKey, std::move(v));
+		if (!v.empty())
+		{
+			extras.emplace(flagKey, std::move(v));
+		}
 	};
 	put("variable",       "Variable");
 	put("function",       "Function");
@@ -224,11 +233,26 @@ nlohmann::json OpAddNode(backends::IBlueprintReader& reader,
 			if (n.Id == newId) {
 				for (const auto& p : n.Pins) {
 					nlohmann::json t = {{"category", p.Type.Category}};
-					if (p.Type.SubCategory)       t["sub_category"]        = *p.Type.SubCategory;
-					if (p.Type.SubCategoryObject) t["sub_category_object"] = *p.Type.SubCategoryObject;
-					if (p.Type.IsArray) t["is_array"] = true;
-					if (p.Type.IsSet)   t["is_set"]   = true;
-					if (p.Type.IsMap)   t["is_map"]   = true;
+					if (p.Type.SubCategory)
+					{
+						t["sub_category"]        = *p.Type.SubCategory;
+					}
+					if (p.Type.SubCategoryObject)
+					{
+						t["sub_category_object"] = *p.Type.SubCategoryObject;
+					}
+					if (p.Type.IsArray)
+					{
+						t["is_array"] = true;
+					}
+					if (p.Type.IsSet)
+					{
+						t["is_set"]   = true;
+					}
+					if (p.Type.IsMap)
+					{
+						t["is_map"]   = true;
+					}
 					pinsJson.push_back({
 						{"name",      p.Name},
 						{"guid",      p.Id},
@@ -392,23 +416,74 @@ nlohmann::json DispatchOp(backends::IBlueprintReader& reader,
 		throw std::invalid_argument(R"(every op requires a string "op" field)");
 	}
 	const auto& kind = it->get_ref<const std::string&>();
-	if (kind == "create_blueprint")     return OpCreateBlueprint(reader, op, slots);
-	if (kind == "set_pin_default")      return OpSetPinDefault(reader, op, slots);
-	if (kind == "retype_variable")      return OpRetypeVariable(reader, op, slots);
-	if (kind == "set_variable_category")return OpSetVariableCategory(reader, op, slots);
-	if (kind == "duplicate_blueprint")  return OpDuplicateBlueprint(reader, op, slots);
-	if (kind == "add_variable")         return OpAddVariable    (reader, op, slots);
-	if (kind == "delete_variable")      return OpDeleteVariable (reader, op, slots);
-	if (kind == "rename_variable")      return OpRenameVariable (reader, op, slots);
-	if (kind == "set_variable_default") return OpSetVariableDefault(reader, op, slots);
-	if (kind == "add_function")         return OpAddFunction    (reader, op, slots);
-	if (kind == "add_function_input")   return OpAddFunctionParam(reader, op, slots, /*isOutput=*/false);
-	if (kind == "add_function_output")  return OpAddFunctionParam(reader, op, slots, /*isOutput=*/true);
-	if (kind == "delete_function")      return OpDeleteFunction (reader, op, slots);
-	if (kind == "add_node")             return OpAddNode        (reader, op, slots);
-	if (kind == "wire_pins")            return OpWirePins       (reader, op, slots);
-	if (kind == "set_node_position")    return OpSetNodePosition(reader, op, slots);
-	if (kind == "delete_node")          return OpDeleteNode     (reader, op, slots);
+	if (kind == "create_blueprint")
+	{
+		return OpCreateBlueprint(reader, op, slots);
+	}
+	if (kind == "set_pin_default")
+	{
+		return OpSetPinDefault(reader, op, slots);
+	}
+	if (kind == "retype_variable")
+	{
+		return OpRetypeVariable(reader, op, slots);
+	}
+	if (kind == "set_variable_category")
+	{
+		return OpSetVariableCategory(reader, op, slots);
+	}
+	if (kind == "duplicate_blueprint")
+	{
+		return OpDuplicateBlueprint(reader, op, slots);
+	}
+	if (kind == "add_variable")
+	{
+		return OpAddVariable    (reader, op, slots);
+	}
+	if (kind == "delete_variable")
+	{
+		return OpDeleteVariable (reader, op, slots);
+	}
+	if (kind == "rename_variable")
+	{
+		return OpRenameVariable (reader, op, slots);
+	}
+	if (kind == "set_variable_default")
+	{
+		return OpSetVariableDefault(reader, op, slots);
+	}
+	if (kind == "add_function")
+	{
+		return OpAddFunction    (reader, op, slots);
+	}
+	if (kind == "add_function_input")
+	{
+		return OpAddFunctionParam(reader, op, slots, /*isOutput=*/false);
+	}
+	if (kind == "add_function_output")
+	{
+		return OpAddFunctionParam(reader, op, slots, /*isOutput=*/true);
+	}
+	if (kind == "delete_function")
+	{
+		return OpDeleteFunction (reader, op, slots);
+	}
+	if (kind == "add_node")
+	{
+		return OpAddNode        (reader, op, slots);
+	}
+	if (kind == "wire_pins")
+	{
+		return OpWirePins       (reader, op, slots);
+	}
+	if (kind == "set_node_position")
+	{
+		return OpSetNodePosition(reader, op, slots);
+	}
+	if (kind == "delete_node")
+	{
+		return OpDeleteNode     (reader, op, slots);
+	}
 	throw std::invalid_argument(fmt::format(
 		"unknown op '{}'. Supported: create_blueprint, duplicate_blueprint, "
 		"add_variable, delete_variable, rename_variable, retype_variable, "
@@ -542,7 +617,10 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		std::string asset = GetString(op, "asset_path");
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
-		if (nIt == op.end()) throw std::invalid_argument(R"(set_node_position requires "node_id")");
+		if (nIt == op.end())
+		{
+			throw std::invalid_argument(R"(set_node_position requires "node_id")");
+		}
 		(void)ResolveNodeRef(*nIt, slots, "node_id");
 		(void)GetInt(op, "x"); (void)GetInt(op, "y");
 		noteAsset(asset);
@@ -552,7 +630,10 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		std::string asset = GetString(op, "asset_path");
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
-		if (nIt == op.end()) throw std::invalid_argument(R"(delete_node requires "node_id")");
+		if (nIt == op.end())
+		{
+			throw std::invalid_argument(R"(delete_node requires "node_id")");
+		}
 		(void)ResolveNodeRef(*nIt, slots, "node_id");
 		noteAsset(asset);
 		return;
@@ -561,7 +642,10 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		std::string asset = GetString(op, "asset_path");
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
-		if (nIt == op.end()) throw std::invalid_argument(R"(set_pin_default requires "node_id")");
+		if (nIt == op.end())
+		{
+			throw std::invalid_argument(R"(set_pin_default requires "node_id")");
+		}
 		(void)ResolveNodeRef(*nIt, slots, "node_id");
 		(void)GetString(op, "pin_name");
 		noteAsset(asset);
@@ -717,10 +801,19 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 		};
 		for (const char* key : kRefFields) {
 			auto it = op.find(key);
-			if (it == op.end()) continue;
+			if (it == op.end())
+			{
+				continue;
+			}
 			auto slotId = ExtractSlotRefId(*it);
-			if (!slotId.has_value()) continue;     // raw GUID or malformed
-			if (slots.find(*slotId) != slots.end()) continue;  // already bound
+			if (!slotId.has_value())
+			{
+				continue;     // raw GUID or malformed
+			}
+			if (slots.find(*slotId) != slots.end())
+			{
+				continue;  // already bound
+			}
 			auto fIt = failedSlotReasons.find(*slotId);
 			if (fIt != failedSlotReasons.end()) {
 				return fmt::format(
@@ -850,9 +943,18 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 			}
 			out["diagnostics"] = std::move(tagged);
 		}
-		if (flushAck.contains("error_count"))   out["compile_errors"]   = flushAck["error_count"];
-		if (flushAck.contains("warning_count")) out["compile_warnings"] = flushAck["warning_count"];
-		if (flushAck.contains("recompiled"))    out["recompiled"]       = flushAck["recompiled"];
+		if (flushAck.contains("error_count"))
+		{
+			out["compile_errors"]   = flushAck["error_count"];
+		}
+		if (flushAck.contains("warning_count"))
+		{
+			out["compile_warnings"] = flushAck["warning_count"];
+		}
+		if (flushAck.contains("recompiled"))
+		{
+			out["recompiled"]       = flushAck["recompiled"];
+		}
 	}
 	return out;
 }

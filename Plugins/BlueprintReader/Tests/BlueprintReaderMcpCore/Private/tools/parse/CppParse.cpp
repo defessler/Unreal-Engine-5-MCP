@@ -60,9 +60,15 @@ bool ends_with(std::string_view s, std::string_view suffix) {
 }
 std::string trim(std::string_view s) {
 	std::size_t a = 0;
-	while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+	while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a])))
+	{
+		++a;
+	}
 	std::size_t b = s.size();
-	while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+	while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1])))
+	{
+		--b;
+	}
 	return std::string(s.substr(a, b - a));
 }
 
@@ -71,7 +77,10 @@ std::size_t FindTemplateComma(std::string_view inner) {
 	int depth = 0;
 	for (std::size_t i = 0; i < inner.size(); ++i) {
 		char c = inner[i];
-		if (c == '<') ++depth;
+		if (c == '<')
+		{
+			++depth;
+		}
 		else if (c == '>') --depth;
 		else if (c == ',' && depth == 0) return i;
 	}
@@ -144,16 +153,46 @@ std::string ReverseMapTypeImpl(std::string cpp) {
 	}
 
 	// Scalars and core wrappers.
-	if (cpp == "bool")    return "bool";
-	if (cpp == "int32" || cpp == "int") return "int";
-	if (cpp == "int64")   return "int64";
-	if (cpp == "uint8" || cpp == "byte") return "byte";
-	if (cpp == "float")   return "float";
-	if (cpp == "double")  return "double";
-	if (cpp == "FString") return "string";
-	if (cpp == "FName")   return "name";
-	if (cpp == "FText")   return "text";
-	if (cpp == "void")    return "exec";
+	if (cpp == "bool")
+	{
+		return "bool";
+	}
+	if (cpp == "int32" || cpp == "int")
+	{
+		return "int";
+	}
+	if (cpp == "int64")
+	{
+		return "int64";
+	}
+	if (cpp == "uint8" || cpp == "byte")
+	{
+		return "byte";
+	}
+	if (cpp == "float")
+	{
+		return "float";
+	}
+	if (cpp == "double")
+	{
+		return "double";
+	}
+	if (cpp == "FString")
+	{
+		return "string";
+	}
+	if (cpp == "FName")
+	{
+		return "name";
+	}
+	if (cpp == "FText")
+	{
+		return "text";
+	}
+	if (cpp == "void")
+	{
+		return "exec";
+	}
 
 	// F-prefixed struct (UE convention).
 	if (cpp.size() >= 2 && cpp[0] == 'F' &&
@@ -201,7 +240,10 @@ public:
 			{"name", "Anonymous"},
 			{"body", ParseBareBody()},
 		};
-		if (!locals_.empty()) doc["locals"] = locals_;
+		if (!locals_.empty())
+		{
+			doc["locals"] = locals_;
+		}
 		return doc;
 	}
 
@@ -224,12 +266,18 @@ private:
 
 	const CppToken& Eat() {
 		const CppToken& t = toks_[pos_];
-		if (pos_ + 1 < toks_.size()) ++pos_;
+		if (pos_ + 1 < toks_.size())
+		{
+			++pos_;
+		}
 		return t;
 	}
 
 	bool Match(CppTokenKind k) {
-		if (!At(k)) return false;
+		if (!At(k))
+		{
+			return false;
+		}
 		Eat();
 		return true;
 	}
@@ -298,9 +346,18 @@ private:
 			{"name", name},
 			{"body", ParseBareBody()},
 		};
-		if (!inputs.empty())  doc["inputs"]  = inputs;
-		if (!outputs.empty()) doc["outputs"] = outputs;
-		if (!locals_.empty()) doc["locals"]  = locals_;
+		if (!inputs.empty())
+		{
+			doc["inputs"]  = inputs;
+		}
+		if (!outputs.empty())
+		{
+			doc["outputs"] = outputs;
+		}
+		if (!locals_.empty())
+		{
+			doc["locals"]  = locals_;
+		}
 		return doc;
 	}
 
@@ -317,10 +374,16 @@ private:
 			while (pos_ < toks_.size() && Cur().kind != CppTokenKind::Eof) {
 				if (At(CppTokenKind::LParen)) { ++parenDepth; Eat(); continue; }
 				if (At(CppTokenKind::RParen)) {
-					if (parenDepth == 0) break;
+					if (parenDepth == 0)
+					{
+						break;
+					}
 					--parenDepth; Eat(); continue;
 				}
-				if (At(CppTokenKind::Comma) && parenDepth == 0) break;
+				if (At(CppTokenKind::Comma) && parenDepth == 0)
+				{
+					break;
+				}
 				Eat();
 			}
 		}
@@ -330,7 +393,10 @@ private:
 						typeStr.find("const") == std::string::npos;
 		std::string bpirType = ReverseMapType(typeStr);
 		nlohmann::json p = {{"name", paramName}, {"type", bpirType}};
-		if (isOutRef) outputs.push_back(std::move(p));
+		if (isOutRef)
+		{
+			outputs.push_back(std::move(p));
+		}
 		else          inputs.push_back(std::move(p));
 	}
 
@@ -347,16 +413,25 @@ private:
 		// Modifiers.
 		while (At(CppTokenKind::KwConst)) {
 			Eat();
-			if (!out.empty()) out += " ";
+			if (!out.empty())
+			{
+				out += " ";
+			}
 			out += "const";
 		}
 		// Base.
 		if (At(CppTokenKind::Identifier) || At(CppTokenKind::QualifiedName)) {
-			if (!out.empty()) out += " ";
+			if (!out.empty())
+			{
+				out += " ";
+			}
 			out += Eat().text;
 		} else if (At(CppTokenKind::KwAuto)) {
 			Eat();
-			if (!out.empty()) out += " ";
+			if (!out.empty())
+			{
+				out += " ";
+			}
 			out += "auto";
 		} else {
 			Error(fmt::format("expected a type, got {}",
@@ -379,7 +454,10 @@ private:
 			out += (Eat().kind == CppTokenKind::Star ? "*" : "&");
 		}
 		// Trailing const (e.g. `const T* const`) — accept and drop.
-		while (At(CppTokenKind::KwConst)) Eat();
+		while (At(CppTokenKind::KwConst))
+		{
+			Eat();
+		}
 		return out;
 	}
 
@@ -560,7 +638,10 @@ private:
 		}
 		Expect(CppTokenKind::RBrace, "end of switch body");
 		nlohmann::json node = {{"switch", scrutinee}, {"cases", cases}};
-		if (sawDefault) node["default"] = defaultBody;
+		if (sawDefault)
+		{
+			node["default"] = defaultBody;
+		}
 		return node;
 	}
 
@@ -598,10 +679,22 @@ private:
 			Error("case label must be a literal");
 		}
 		const auto& v = expr.at("lit");
-		if (v.is_string()) return v.get<std::string>();
-		if (v.is_number_integer()) return std::to_string(v.get<long long>());
-		if (v.is_number()) return std::to_string(v.get<double>());
-		if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
+		if (v.is_string())
+		{
+			return v.get<std::string>();
+		}
+		if (v.is_number_integer())
+		{
+			return std::to_string(v.get<long long>());
+		}
+		if (v.is_number())
+		{
+			return std::to_string(v.get<double>());
+		}
+		if (v.is_boolean())
+		{
+			return v.get<bool>() ? "true" : "false";
+		}
 		Error("case label literal has unsupported type");
 	}
 
@@ -625,7 +718,10 @@ private:
 		bool startsType  = At(CppTokenKind::Identifier) ||
 						   At(CppTokenKind::QualifiedName);
 
-		if (!startsAuto && !startsConst && !startsType) return std::nullopt;
+		if (!startsAuto && !startsConst && !startsType)
+		{
+			return std::nullopt;
+		}
 
 		// Attempt to read type, then identifier, then `=` or `;`.
 		try {
@@ -661,7 +757,10 @@ private:
 	void AddLocal(const std::string& name, const std::string& cppType) {
 		// Skip if already declared (re-declarations / shadowing).
 		for (const auto& l : locals_) {
-			if (l.value("name", "") == name) return;
+			if (l.value("name", "") == name)
+			{
+				return;
+			}
 		}
 		std::string bpirType = ReverseMapType(cppType);
 		locals_.push_back({{"name", name}, {"type", bpirType}});
@@ -882,7 +981,10 @@ private:
 		// Args become {A: ..., B: ...} keyed by alphabetic position so
 		// alphabetical iteration in CppEmit reproduces input order.
 		nlohmann::json args = nlohmann::json::object();
-		if (At(CppTokenKind::RParen)) return args;
+		if (At(CppTokenKind::RParen))
+		{
+			return args;
+		}
 		std::size_t i = 0;
 		do {
 			nlohmann::json a = ParseAssignment();

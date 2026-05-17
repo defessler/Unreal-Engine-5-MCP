@@ -147,17 +147,50 @@ std::string MapInner(std::string_view inner, bool forMember) {
 	std::string_view name = (colon == std::string_view::npos) ? inner : inner.substr(0, colon);
 	std::string_view sub  = (colon == std::string_view::npos) ? std::string_view{} : inner.substr(colon + 1);
 
-	if (name == "bool")    return "bool";
-	if (name == "byte")    return "uint8";
-	if (name == "int")     return "int32";
-	if (name == "int64")   return "int64";
-	if (name == "float")   return "float";
-	if (name == "real")    return "float";    // BP "real" defaults to float without subcategory
-	if (name == "double")  return "double";
-	if (name == "string")  return "FString";
-	if (name == "name")    return "FName";
-	if (name == "text")    return "FText";
-	if (name == "exec")    return "void";
+	if (name == "bool")
+	{
+		return "bool";
+	}
+	if (name == "byte")
+	{
+		return "uint8";
+	}
+	if (name == "int")
+	{
+		return "int32";
+	}
+	if (name == "int64")
+	{
+		return "int64";
+	}
+	if (name == "float")
+	{
+		return "float";
+	}
+	if (name == "real")
+	{
+		return "float";    // BP "real" defaults to float without subcategory
+	}
+	if (name == "double")
+	{
+		return "double";
+	}
+	if (name == "string")
+	{
+		return "FString";
+	}
+	if (name == "name")
+	{
+		return "FName";
+	}
+	if (name == "text")
+	{
+		return "FText";
+	}
+	if (name == "exec")
+	{
+		return "void";
+	}
 
 	if (name == "object" || name == "soft_object") {
 		// Helper: render the bare class name with its UE prefix.
@@ -186,13 +219,19 @@ std::string MapInner(std::string_view inner, bool forMember) {
 		// disk references); hard refs use TObjectPtr in member context,
 		// raw pointer in arg / local context.
 		auto wrap = [forMember, isSoft](const std::string& cls) {
-			if (isSoft) return std::string("TSoftObjectPtr<") + cls + ">";
+			if (isSoft)
+			{
+				return std::string("TSoftObjectPtr<") + cls + ">";
+			}
 			return forMember
 				? std::string("TObjectPtr<") + cls + ">"
 				: cls + "*";
 		};
 
-		if (sub.empty()) return wrap("UObject");
+		if (sub.empty())
+		{
+			return wrap("UObject");
+		}
 
 		// Strip /Script/Module.ClassName path prefix down to bare
 		// ClassName.
@@ -212,18 +251,30 @@ std::string MapInner(std::string_view inner, bool forMember) {
 		// the canonical UE5 type. Hard class refs use TSubclassOf which
 		// gives compile-time type safety + the editor's class picker.
 		if (name == "soft_class") {
-			if (sub.empty()) return "TSoftClassPtr<UObject>";
+			if (sub.empty())
+			{
+				return "TSoftClassPtr<UObject>";
+			}
 			return std::string("TSoftClassPtr<") + std::string(sub) + ">";
 		}
-		if (sub.empty()) return "UClass*";
+		if (sub.empty())
+		{
+			return "UClass*";
+		}
 		return std::string("TSubclassOf<") + std::string(sub) + ">";
 	}
 	if (name == "interface") {
 		return std::string("TScriptInterface<I") + std::string(sub) + ">";
 	}
 	if (name == "struct") {
-		if (sub.empty()) return "FStruct";
-		if (!sub.empty() && sub[0] == 'F') return std::string(sub);
+		if (sub.empty())
+		{
+			return "FStruct";
+		}
+		if (!sub.empty() && sub[0] == 'F')
+		{
+			return std::string(sub);
+		}
 		return std::string("F") + std::string(sub);
 	}
 	return std::string(name);  // unknown — pass through
@@ -446,7 +497,10 @@ struct Emitter {
 	std::set<std::string> paramAndLocalNames;
 
 	void Indent() {
-		for (int i = 0; i < indentLevel * opts.indentSpaces; ++i) out << ' ';
+		for (int i = 0; i < indentLevel * opts.indentSpaces; ++i)
+		{
+			out << ' ';
+		}
 	}
 	void Line(std::string_view s) { Indent(); out << s << "\n"; }
 	void RawLine(std::string_view s) { out << s << "\n"; }
@@ -480,7 +534,10 @@ struct Emitter {
 			// compile.
 			ResolvedRef r = ResolveAssetPath(e.value("to", ""));
 			std::string target = r.bareOwner;
-			if (target.empty()) target = "UObject";
+			if (target.empty())
+			{
+				target = "UObject";
+			}
 			std::string inner = EmitExpr(e["cast"]);
 			return fmt::format("Cast<{}>({})", target, inner);
 		}
@@ -497,7 +554,10 @@ struct Emitter {
 			std::string s = "{";
 			bool first = true;
 			for (const auto& el : e["new_array"]) {
-				if (!first) s += ", ";
+				if (!first)
+				{
+					s += ", ";
+				}
 				first = false;
 				s += EmitExpr(el);
 			}
@@ -512,7 +572,10 @@ struct Emitter {
 			std::string s = "{";
 			bool first = true;
 			for (const auto& el : e["new_set"]) {
-				if (!first) s += ", ";
+				if (!first)
+				{
+					s += ", ";
+				}
 				first = false;
 				s += EmitExpr(el);
 			}
@@ -526,7 +589,10 @@ struct Emitter {
 			std::string s = "{";
 			bool first = true;
 			for (const auto& kv : e["new_map"]) {
-				if (!first) s += ", ";
+				if (!first)
+				{
+					s += ", ";
+				}
 				first = false;
 				s += fmt::format("{{ {}, {} }}",
 					EmitExpr(kv["key"]), EmitExpr(kv["value"]));
@@ -540,7 +606,10 @@ struct Emitter {
 			if (e.contains("fields") && e["fields"].is_object()) {
 				bool first = true;
 				for (auto& [k, v] : e["fields"].items()) {
-					if (!first) s += ", ";
+					if (!first)
+					{
+						s += ", ";
+					}
 					first = false;
 					s += fmt::format("/*{}=*/{}", k, EmitExpr(v));
 				}
@@ -553,9 +622,18 @@ struct Emitter {
 	}
 
 	std::string EmitLit(const nlohmann::json& v) {
-		if (v.is_null())    return "nullptr";
-		if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
-		if (v.is_number_integer()) return std::to_string(v.get<long long>());
+		if (v.is_null())
+		{
+			return "nullptr";
+		}
+		if (v.is_boolean())
+		{
+			return v.get<bool>() ? "true" : "false";
+		}
+		if (v.is_number_integer())
+		{
+			return std::to_string(v.get<long long>());
+		}
 		if (v.is_number())  return fmt::format("{}f", v.get<double>());  // float literal
 		if (v.is_string()) {
 			const auto& s = v.get_ref<const std::string&>();
@@ -591,7 +669,10 @@ struct Emitter {
 						receiver = EmitExpr(v);
 						continue;
 					}
-					if (!first) rest += ", ";
+					if (!first)
+					{
+						rest += ", ";
+					}
 					first = false;
 					rest += EmitExpr(v);
 				}
@@ -682,7 +763,10 @@ struct Emitter {
 			// Collect option slots in numerical order.
 			std::vector<std::pair<int, std::string>> selectOpts;
 			for (auto& [k, v] : a.items()) {
-				if (k == "Index") continue;
+				if (k == "Index")
+				{
+					continue;
+				}
 				// "Option_<n>"
 				if (k.size() > 7 && k.compare(0, 7, "Option_") == 0) {
 					try {
@@ -692,7 +776,10 @@ struct Emitter {
 			}
 			std::sort(selectOpts.begin(), selectOpts.end(),
 					  [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
-			if (selectOpts.empty()) return "0";
+			if (selectOpts.empty())
+			{
+				return "0";
+			}
 			// Build right-associative chain. The trailing option is the
 			// default fallback.
 			std::string chain = selectOpts.back().second;
@@ -771,7 +858,10 @@ struct Emitter {
 		if (needsThis) { args = "this"; first = false; }
 		if (e.contains("args") && e["args"].is_object()) {
 			for (auto& [_, v] : e["args"].items()) {
-				if (!first) args += ", ";
+				if (!first)
+				{
+					args += ", ";
+				}
 				first = false;
 				args += EmitExpr(v);
 			}
@@ -834,9 +924,15 @@ struct Emitter {
 		bool first = true;
 		for (auto& [k, v] : e["args"].items()) {
 			std::string n = SanitizeIdentifier(k);
-			if (n.empty()) n = "Arg";
+			if (n.empty())
+			{
+				n = "Arg";
+			}
 			fields += fmt::format("auto {}; ", n);
-			if (!first) inits += ", ";
+			if (!first)
+			{
+				inits += ", ";
+			}
 			first = false;
 			inits += EmitExpr(v);
 		}
@@ -897,19 +993,28 @@ struct Emitter {
 		std::string dt   = a.contains("DataTable") ? EmitExpr(a["DataTable"]) : "DataTable";
 		std::string row  = a.contains("RowName")   ? EmitExpr(a["RowName"])   : R"(TEXT(""))";
 		std::string rowStruct = s.value("row_struct", std::string{});
-		if (rowStruct.empty()) rowStruct = "FTableRowBase";
+		if (rowStruct.empty())
+		{
+			rowStruct = "FTableRowBase";
+		}
 		// Strip path prefix on row struct (BP encodes as `/Script/X.FFoo`).
 		if (auto dot = rowStruct.find_last_of('.'); dot != std::string::npos) {
 			rowStruct = rowStruct.substr(dot + 1);
 		}
 		// Ensure F prefix on the struct name.
-		if (!rowStruct.empty() && rowStruct[0] != 'F') rowStruct = "F" + rowStruct;
+		if (!rowStruct.empty() && rowStruct[0] != 'F')
+		{
+			rowStruct = "F" + rowStruct;
+		}
 
 		Line(fmt::format(
 			"if (auto* Row = {}->FindRow<{}>({}, TEXT(\"BPR\")))", dt, rowStruct, row));
 		Line("{");
 		++indentLevel;
-		if (s.contains("success")) EmitStatementList(s["success"]);
+		if (s.contains("success"))
+		{
+			EmitStatementList(s["success"]);
+		}
 		--indentLevel;
 		Line("}");
 		if (s.contains("fail") && !s["fail"].empty()) {
@@ -968,7 +1073,10 @@ struct Emitter {
 		std::string escaped;
 		escaped.reserve(fmtStr.size());
 		for (char c : fmtStr) {
-			if (c == '"' || c == '\\') escaped.push_back('\\');
+			if (c == '"' || c == '\\')
+			{
+				escaped.push_back('\\');
+			}
 			escaped.push_back(c);
 		}
 		std::string body;
@@ -1003,7 +1111,10 @@ struct Emitter {
 			// Self-target collapses to `this->Destroy()`; literal "this"
 			// shows up if BuildExpression emitted a `{self:nullptr}` shape
 			// upstream. Either way the rendering is the same.
-			if (tgt == "this") return "this->Destroy()";
+			if (tgt == "this")
+			{
+				return "this->Destroy()";
+			}
 			return fmt::format("{}->Destroy()", tgt);
 		}
 		return "this->Destroy()";
@@ -1037,7 +1148,10 @@ struct Emitter {
 
 	// ----- Statement emitters -------------------------------------------
 	void EmitStatementList(const nlohmann::json& stmts) {
-		for (const auto& s : stmts) EmitStatement(s);
+		for (const auto& s : stmts)
+		{
+			EmitStatement(s);
+		}
 	}
 
 	void EmitStatement(const nlohmann::json& s) {
@@ -1050,7 +1164,10 @@ struct Emitter {
 			std::string cond = EmitExpr(s["if"]);
 			Line(fmt::format("if ({}) {{", cond));
 			++indentLevel;
-			if (s.contains("then")) EmitStatementList(s["then"]);
+			if (s.contains("then"))
+			{
+				EmitStatementList(s["then"]);
+			}
 			--indentLevel;
 			if (s.contains("else") && !s["else"].empty()) {
 				Line("} else {");
@@ -1132,7 +1249,10 @@ struct Emitter {
 			ResolvedRef r = ResolveAssetPath(s.value("to", ""));
 			std::string target  = r.bareOwner.empty() ? std::string("UObject") : r.bareOwner;
 			std::string asName  = SanitizeIdentifier(s.value("as", "AsCast"));
-			if (asName.empty()) asName = "AsCast";
+			if (asName.empty())
+			{
+				asName = "AsCast";
+			}
 			Line(fmt::format("if (auto* {} = Cast<{}>({})) {{", asName, target, castVal));
 			++indentLevel;
 			EmitStatementList(s["success"]);
@@ -1173,7 +1293,10 @@ struct Emitter {
 		}
 		if (form == "for_each") {
 			std::string elem = SanitizeIdentifier(s.value("for_each", ""));
-			if (elem.empty()) elem = "Element";
+			if (elem.empty())
+			{
+				elem = "Element";
+			}
 			std::string in   = EmitExpr(s["in"]);
 			Line(fmt::format("for (auto& {} : {}) {{", elem, in));
 			++indentLevel;
@@ -1196,7 +1319,10 @@ struct Emitter {
 			// markers, no empty-branch comments; both were noise that
 			// grouped statements visually without adding semantic info.
 			for (const auto& branch : s["sequence"]) {
-				if (branch.is_array() && branch.empty()) continue;
+				if (branch.is_array() && branch.empty())
+				{
+					continue;
+				}
 				EmitStatementList(branch);
 			}
 			return;
@@ -1219,7 +1345,10 @@ struct Emitter {
 				if (s.contains("args") && s["args"].is_object()) {
 					bool first = true;
 					for (auto& [k, v] : s["args"].items()) {
-						if (!first) parts += ", ";
+						if (!first)
+						{
+							parts += ", ";
+						}
 						first = false;
 						parts += EmitExpr(v);
 					}
@@ -1266,8 +1395,14 @@ struct Emitter {
 					auto nl = cls.snippet.find('\n', pos);
 					std::string lineText = cls.snippet.substr(
 						pos, nl == std::string::npos ? std::string::npos : nl - pos);
-					if (!lineText.empty()) Line(lineText);
-					if (nl == std::string::npos) break;
+					if (!lineText.empty())
+					{
+						Line(lineText);
+					}
+					if (nl == std::string::npos)
+					{
+						break;
+					}
 					pos = nl + 1;
 				}
 			} else {
@@ -1284,7 +1419,10 @@ struct Emitter {
 			note["treatment"] =
 				(cls.kind == UnsupportedClassification::Kind::Approximation)
 					? "approximation" : "todo_comment";
-			if (!cls.note.empty()) note["manual_note"] = cls.note;
+			if (!cls.note.empty())
+			{
+				note["manual_note"] = cls.note;
+			}
 			notes.push_back(std::move(note));
 			return;
 		}
@@ -1337,7 +1475,10 @@ std::string MapBpirTypeToCppArg(std::string_view bpirType) {
 			return false;
 		}
 		// FName fits in a register — pass by value by convention.
-		if (head == "FName") return true;
+		if (head == "FName")
+		{
+			return true;
+		}
 		// Primitives.
 		if (head == "bool" || head == "uint8" || head == "int32" ||
 			head == "int64" || head == "uint16" || head == "uint32" ||
@@ -1346,10 +1487,16 @@ std::string MapBpirTypeToCppArg(std::string_view bpirType) {
 			return true;
 		}
 		// Pointer types end in `*`.
-		if (!head.empty() && head.back() == '*') return true;
+		if (!head.empty() && head.back() == '*')
+		{
+			return true;
+		}
 		return false;
 	};
-	if (isLightweight(base)) return base;
+	if (isLightweight(base))
+	{
+		return base;
+	}
 	return std::string("const ") + base + "&";
 }
 
@@ -1376,16 +1523,25 @@ CppEmitResult EmitCppFunctionBody(const nlohmann::json& doc, CppEmitOptions opts
 	// `var` / `set` emission. Output names matter too -- they're ref-out
 	// params on the C++ side and share the namespace with inputs.
 	auto addNames = [&](const char* field) {
-		if (!doc.contains(field) || !doc[field].is_array()) return;
+		if (!doc.contains(field) || !doc[field].is_array())
+		{
+			return;
+		}
 		for (const auto& v : doc[field]) {
 			std::string n = SanitizeIdentifier(v.value("name", ""));
-			if (!n.empty()) em.paramAndLocalNames.insert(std::move(n));
+			if (!n.empty())
+			{
+				em.paramAndLocalNames.insert(std::move(n));
+			}
 		}
 	};
 	addNames("inputs");
 	addNames("outputs");
 	addNames("locals");
-	if (doc.contains("body")) em.EmitStatementList(doc["body"]);
+	if (doc.contains("body"))
+	{
+		em.EmitStatementList(doc["body"]);
+	}
 	return CppEmitResult{em.out.str(), std::move(em.notes)};
 }
 
@@ -1410,7 +1566,10 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
 	if (doc.contains("inputs")) {
 		bool first = true;
 		for (const auto& in : doc["inputs"]) {
-			if (!first) args += ", ";
+			if (!first)
+			{
+				args += ", ";
+			}
 			first = false;
 			args += MapBpirTypeToCppArg(in.value("type", "void"));
 			args += " ";
@@ -1422,7 +1581,10 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
 	if (doc.contains("outputs") && doc["outputs"].is_array() &&
 		doc["outputs"].size() > 1) {
 		for (const auto& out : doc["outputs"]) {
-			if (!args.empty()) args += ", ";
+			if (!args.empty())
+			{
+				args += ", ";
+			}
 			args += MapBpirTypeToCppArg(out.value("type", "void"));
 			args += "& ";
 			std::string nm = SanitizeIdentifier(out.value("name", ""));
@@ -1433,7 +1595,10 @@ CppEmitResult EmitCppFunction(const nlohmann::json& doc, CppEmitOptions opts) {
 	auto bodyResult = EmitCppFunctionBody(doc, opts);
 
 	std::string fnName = SanitizeIdentifier(doc.value("name", ""));
-	if (fnName.empty()) fnName = "Fn";
+	if (fnName.empty())
+	{
+		fnName = "Fn";
+	}
 	std::ostringstream s;
 	s << returnType << " " << fnName << "(" << args << ") {\n";
 	s << bodyResult.source;

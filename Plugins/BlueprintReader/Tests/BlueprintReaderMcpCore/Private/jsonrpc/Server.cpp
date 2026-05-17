@@ -60,7 +60,10 @@ std::optional<std::string> ReadNewlineFrame(std::istream& in) {
 		}
 		if (c == '\n') {
 			// Strip a trailing \r if the line was \r\n-terminated.
-			if (!body.empty() && body.back() == '\r') body.pop_back();
+			if (!body.empty() && body.back() == '\r')
+			{
+				body.pop_back();
+			}
 			return body;
 		}
 		body.push_back(static_cast<char>(c));
@@ -78,7 +81,10 @@ std::optional<std::string> ReadContentLengthFrame(std::istream& in) {
 		if (!ReadHeaderLine(in, line)) {
 			return std::nullopt;
 		}
-		if (line.empty()) break;  // end of headers
+		if (line.empty())
+		{
+			break;  // end of headers
+		}
 
 		auto colon = line.find(':');
 		if (colon == std::string::npos) {
@@ -124,7 +130,10 @@ std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat) {
 	// parser throws on a leading BOM by default.
 	while (true) {
 		int c = in.peek();
-		if (c == std::char_traits<char>::eof()) return std::nullopt;
+		if (c == std::char_traits<char>::eof())
+		{
+			return std::nullopt;
+		}
 		if (c == '\r' || c == '\n' || c == ' ' || c == '\t') { in.get(); continue; }
 		// BOM check: if the next 3 bytes are EF BB BF, eat them and re-skip.
 		if (c == 0xEF) {
@@ -139,22 +148,34 @@ std::optional<std::string> ReadFrame(std::istream& in, FrameFormat* outFormat) {
 				continue;  // BOM consumed, skip more whitespace
 			}
 			// Not a BOM — push back what we read and let it fail downstream.
-			for (int i = 2; i >= 0; --i) in.putback(tri[i]);
+			for (int i = 2; i >= 0; --i)
+			{
+				in.putback(tri[i]);
+			}
 			break;
 		}
 		break;
 	}
 
 	int peeked = in.peek();
-	if (peeked == std::char_traits<char>::eof()) return std::nullopt;
+	if (peeked == std::char_traits<char>::eof())
+	{
+		return std::nullopt;
+	}
 
 	// Auto-detect: JSON values start with `{` (object) or `[` (array). Anything
 	// else (printable ASCII like "Content-Length:") is LSP-style header framing.
 	if (peeked == '{' || peeked == '[') {
-		if (outFormat) *outFormat = FrameFormat::NewlineDelimited;
+		if (outFormat)
+		{
+			*outFormat = FrameFormat::NewlineDelimited;
+		}
 		return ReadNewlineFrame(in);
 	}
-	if (outFormat) *outFormat = FrameFormat::ContentLength;
+	if (outFormat)
+	{
+		*outFormat = FrameFormat::ContentLength;
+	}
 	return ReadContentLengthFrame(in);
 }
 
@@ -182,7 +203,10 @@ void Server::QueueNotification(std::string method, nlohmann::json params) {
 		{"jsonrpc", "2.0"},
 		{"method", std::move(method)},
 	};
-	if (!params.empty()) env["params"] = std::move(params);
+	if (!params.empty())
+	{
+		env["params"] = std::move(params);
+	}
 	std::lock_guard<std::mutex> lock(notifMu_);
 	pendingNotifications_.push_back(std::move(env));
 }
@@ -230,7 +254,10 @@ std::optional<nlohmann::json> Server::Dispatch(const nlohmann::json& body) {
 
 	auto jsonrpcIt = body.find("jsonrpc");
 	if (jsonrpcIt == body.end() || !jsonrpcIt->is_string() || jsonrpcIt->get<std::string>() != "2.0") {
-		if (isNotification) return std::nullopt;
+		if (isNotification)
+		{
+			return std::nullopt;
+		}
 		return MakeErrorEnvelope(id,
 			Error{static_cast<int>(ErrorCode::InvalidRequest),
 				  R"(missing or unsupported "jsonrpc" version)", std::nullopt});
@@ -238,7 +265,10 @@ std::optional<nlohmann::json> Server::Dispatch(const nlohmann::json& body) {
 
 	auto methodIt = body.find("method");
 	if (methodIt == body.end() || !methodIt->is_string()) {
-		if (isNotification) return std::nullopt;
+		if (isNotification)
+		{
+			return std::nullopt;
+		}
 		return MakeErrorEnvelope(id,
 			Error{static_cast<int>(ErrorCode::InvalidRequest),
 				  R"(missing or non-string "method")", std::nullopt});
@@ -253,7 +283,10 @@ std::optional<nlohmann::json> Server::Dispatch(const nlohmann::json& body) {
 
 	auto h = handlers_.find(method);
 	if (h == handlers_.end()) {
-		if (isNotification) return std::nullopt;
+		if (isNotification)
+		{
+			return std::nullopt;
+		}
 		return MakeErrorEnvelope(id,
 			Error{static_cast<int>(ErrorCode::MethodNotFound),
 				  fmt::format("method not found: {}", method), std::nullopt});
@@ -263,7 +296,10 @@ std::optional<nlohmann::json> Server::Dispatch(const nlohmann::json& body) {
 	try {
 		resp = h->second(params);
 	} catch (const std::exception& e) {
-		if (isNotification) return std::nullopt;
+		if (isNotification)
+		{
+			return std::nullopt;
+		}
 		return MakeErrorEnvelope(id,
 			Error{static_cast<int>(ErrorCode::InternalError),
 				  fmt::format("handler threw: {}", e.what()), std::nullopt});

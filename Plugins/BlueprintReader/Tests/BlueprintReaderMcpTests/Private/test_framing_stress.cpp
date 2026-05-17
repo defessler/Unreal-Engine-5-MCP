@@ -52,8 +52,14 @@ DrainResult DriveServer(Server& s, const std::string& input) {
 	// chose; they can just check the bodies.
 	std::size_t i = 0;
 	while (i < raw.size() && (raw[i] == '\r' || raw[i] == '\n' ||
-							  raw[i] == ' ' || raw[i] == '\t')) ++i;
-	if (i >= raw.size()) return r;
+							  raw[i] == ' ' || raw[i] == '\t'))
+	{
+		++i;
+	}
+	if (i >= raw.size())
+	{
+		return r;
+	}
 	if (raw[i] == '{' || raw[i] == '[') {
 		r.outputFormat = FrameFormat::NewlineDelimited;
 		// newline-delimited: split on '\n'
@@ -61,20 +67,32 @@ DrainResult DriveServer(Server& s, const std::string& input) {
 		for (; i < raw.size(); ++i) {
 			char c = raw[i];
 			if (c == '\n') {
-				if (!buf.empty() && buf.back() == '\r') buf.pop_back();
-				if (!buf.empty()) r.frames.push_back(json::parse(buf));
+				if (!buf.empty() && buf.back() == '\r')
+				{
+					buf.pop_back();
+				}
+				if (!buf.empty())
+				{
+					r.frames.push_back(json::parse(buf));
+				}
 				buf.clear();
 			} else {
 				buf.push_back(c);
 			}
 		}
-		if (!buf.empty()) r.frames.push_back(json::parse(buf));
+		if (!buf.empty())
+		{
+			r.frames.push_back(json::parse(buf));
+		}
 	} else {
 		r.outputFormat = FrameFormat::ContentLength;
 		// Content-Length: walk header blocks
 		while (i < raw.size()) {
 			auto split = raw.find("\r\n\r\n", i);
-			if (split == std::string::npos) break;
+			if (split == std::string::npos)
+			{
+				break;
+			}
 			// Parse Content-Length out of the header.
 			auto headers = raw.substr(i, split - i);
 			auto pos = headers.find("Content-Length:");

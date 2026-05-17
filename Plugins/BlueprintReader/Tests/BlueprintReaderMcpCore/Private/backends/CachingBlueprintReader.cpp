@@ -46,7 +46,10 @@ std::filesystem::path ResolveUasset(const std::filesystem::path& projectDir,
 	// projectDir may be a .uproject path or its containing dir. Normalize:
 	// if it's a file, take parent.
 	std::filesystem::path root = projectDir;
-	if (root.has_extension()) root = root.parent_path();
+	if (root.has_extension())
+	{
+		root = root.parent_path();
+	}
 	return root / "Content" / (std::string(rest) + ".uasset");
 }
 
@@ -54,10 +57,16 @@ std::filesystem::path ResolveUasset(const std::filesystem::path& projectDir,
 // permission, etc.) — caller treats that as "no mtime info, skip check".
 std::optional<std::filesystem::file_time_type>
 SafeMtime(const std::filesystem::path& p) {
-	if (p.empty()) return std::nullopt;
+	if (p.empty())
+	{
+		return std::nullopt;
+	}
 	std::error_code ec;
 	auto t = std::filesystem::last_write_time(p, ec);
-	if (ec) return std::nullopt;
+	if (ec)
+	{
+		return std::nullopt;
+	}
 	return t;
 }
 } // namespace
@@ -99,7 +108,10 @@ std::shared_ptr<const void> CachingBlueprintReader::LookupOrCompute(
 	// compute itself (e.g. a write op flushed the BP). Using the post-
 	// compute mtime ensures the entry isn't immediately stale.
 	auto postMtime = SafeMtime(sourcePath);
-	if (!postMtime) postMtime = currentMtime;  // fall back to the pre-stat
+	if (!postMtime)
+	{
+		postMtime = currentMtime;  // fall back to the pre-stat
+	}
 
 	{
 		std::lock_guard lock(mu_);
@@ -128,14 +140,20 @@ void CachingBlueprintReader::InvalidateAsset(std::string_view assetPath) {
 	}
 	auto it = byAsset_.find(std::string(assetPath));
 	if (it != byAsset_.end()) {
-		for (const auto& k : it->second) entries_.erase(k);
+		for (const auto& k : it->second)
+		{
+			entries_.erase(k);
+		}
 		byAsset_.erase(it);
 	}
 	// ListBlueprints is keyed under "" — drop those too because any
 	// asset write changes the modified_iso summary.
 	auto globalIt = byAsset_.find("");
 	if (globalIt != byAsset_.end()) {
-		for (const auto& k : globalIt->second) entries_.erase(k);
+		for (const auto& k : globalIt->second)
+		{
+			entries_.erase(k);
+		}
 		byAsset_.erase(globalIt);
 	}
 	stats_.invalidations.fetch_add(1, std::memory_order_relaxed);
@@ -172,7 +190,10 @@ nlohmann::json CachingBlueprintReader::EndBatch(bool skipCompile) {
 	bool flushGlobal = false;
 	{
 		std::lock_guard lock(mu_);
-		if (batchDepth_ > 0) --batchDepth_;
+		if (batchDepth_ > 0)
+		{
+			--batchDepth_;
+		}
 		if (batchDepth_ == 0) {
 			toInvalidate = std::move(pendingInvalidations_);
 			pendingInvalidations_.clear();
@@ -191,7 +212,10 @@ nlohmann::json CachingBlueprintReader::EndBatch(bool skipCompile) {
 		std::lock_guard lock(mu_);
 		auto globalIt = byAsset_.find("");
 		if (globalIt != byAsset_.end()) {
-			for (const auto& k : globalIt->second) entries_.erase(k);
+			for (const auto& k : globalIt->second)
+			{
+				entries_.erase(k);
+			}
 			byAsset_.erase(globalIt);
 			stats_.invalidations.fetch_add(1, std::memory_order_relaxed);
 		}
@@ -436,7 +460,10 @@ CachingBlueprintReader::MoveAsset(std::string_view sourcePath,
 IBlueprintReader::DeleteAssetResult
 CachingBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
 	auto out = inner_->DeleteAsset(assetPath, force);
-	if (out.deleted) InvalidateAsset(assetPath);
+	if (out.deleted)
+	{
+		InvalidateAsset(assetPath);
+	}
 	return out;
 }
 
@@ -827,7 +854,10 @@ CachingBlueprintReader::CompileAnimBlueprint(std::string_view a) {
 std::unique_ptr<IBlueprintReader> WrapWithCache(
 	std::unique_ptr<IBlueprintReader> inner, std::chrono::seconds ttl,
 	std::filesystem::path projectDir) {
-	if (ttl <= std::chrono::seconds(0)) return inner;
+	if (ttl <= std::chrono::seconds(0))
+	{
+		return inner;
+	}
 	return std::make_unique<CachingBlueprintReader>(
 		std::move(inner), ttl, std::move(projectDir));
 }
