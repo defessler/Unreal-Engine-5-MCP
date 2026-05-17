@@ -54,30 +54,26 @@ namespace BlueprintReader
 	public:
 		static FBatchRegistry& Get();
 
-		/** Returns nullptr only if ConnectionId == 0 (legacy / no-session). */
+		// Returns nullptr only if ConnectionId == 0 (legacy / no-session).
 		FBatchContext* Find(uint64 ConnectionId);
 
-		/** Creates the context on first touch. Always non-null for non-zero ConnectionId. */
+		// Creates the context on first touch. Always non-null for non-zero ConnectionId.
 		FBatchContext& GetOrCreate(uint64 ConnectionId);
 
-		/**
-		 * Mark BP as owned by `ConnectionId` for the duration of an open batch.
-		 * Returns: 0 = acquired (or already held), 1 = locked-by-other (held_by set).
-		 * No-op (returns 0) for ConnectionId == 0.
-		 */
+		// Mark BP as owned by `ConnectionId` for the duration of an open batch.
+		// Returns: 0 = acquired (or already held), 1 = locked-by-other (held_by set).
+		// No-op (returns 0) for ConnectionId == 0.
 		int32 AcquireWriteOwnership(uint64 ConnectionId, UBlueprint* BP, uint64& OutHeldByConnectionId);
 
-		/** Release every BP this connection owns. Called by EndBatch and disconnect. */
+		// Release every BP this connection owns. Called by EndBatch and disconnect.
 		void ReleaseAllWriteOwnership(uint64 ConnectionId);
 
-		/**
-		 * Disconnect hook. Returns the pending BP set so the caller can
-		 * commit-partial (compile + save) before the context is wiped.
-		 *
-		 * After this returns, calling `Find/GetOrCreate(ConnectionId)`
-		 * for the same id reallocates a fresh context — id reuse is OK
-		 * (the daemon's counter is monotonic, but defense in depth).
-		 */
+		// Disconnect hook. Returns the pending BP set so the caller can
+		// commit-partial (compile + save) before the context is wiped.
+		//
+		// After this returns, calling `Find/GetOrCreate(ConnectionId)`
+		// for the same id reallocates a fresh context — id reuse is OK
+		// (the daemon's counter is monotonic, but defense in depth).
 		TArray<TWeakObjectPtr<UBlueprint>> Discard(uint64 ConnectionId);
 
 	private:
@@ -110,18 +106,16 @@ namespace BlueprintReader
 		uint64 Previous = 0;
 	};
 
-	/** Returns 0 if no scope is active (legacy / non-server callers). */
+	// Returns 0 if no scope is active (legacy / non-server callers).
 	uint64 GetCurrentConnectionId();
 
-	/**
-	 * Commit-partial-on-disconnect (Task 4.4).
-	 * Called from the server's disconnect path. Synchronously schedules
-	 * a game-thread compile + save of every BP the connection had
-	 * pending. Defined in BlueprintReaderCommandlet.cpp (which owns
-	 * CompileAndSaveBlueprint); declared here to break the include
-	 * cycle. Honors `BP_READER_BATCH_ON_DISCONNECT=discard` to drop
-	 * pending edits instead — matches the "fail closed" mode where the
-	 * client wants no half-applied state.
-	 */
+	// Commit-partial-on-disconnect (Task 4.4).
+	// Called from the server's disconnect path. Synchronously schedules
+	// a game-thread compile + save of every BP the connection had
+	// pending. Defined in BlueprintReaderCommandlet.cpp (which owns
+	// CompileAndSaveBlueprint); declared here to break the include
+	// cycle. Honors `BP_READER_BATCH_ON_DISCONNECT=discard` to drop
+	// pending edits instead — matches the "fail closed" mode where the
+	// client wants no half-applied state.
 	void FlushBatchForConnection(uint64 ConnectionId);
 }    // namespace BlueprintReader
