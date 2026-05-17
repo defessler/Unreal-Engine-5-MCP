@@ -156,12 +156,12 @@ namespace
 		}
 		if (!GA)
 		{
-			Add(R, GraphPath, TEXT("missing"));
+			Add(R, GraphPath, TEXT("extra"));
 			return;
 		}
 		if (!GB)
 		{
-			Add(R, GraphPath, TEXT("extra"));
+			Add(R, GraphPath, TEXT("missing"));
 			return;
 		}
 
