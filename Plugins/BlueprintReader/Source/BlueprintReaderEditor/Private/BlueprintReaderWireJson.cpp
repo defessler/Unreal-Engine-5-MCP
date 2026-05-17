@@ -26,7 +26,10 @@ namespace
 
 	TSharedPtr<FJsonValue> StringOrNull(const FString& Str)
 	{
-		if (Str.IsEmpty()) return MakeShared<FJsonValueNull>();
+		if (Str.IsEmpty())
+		{
+			return MakeShared<FJsonValueNull>();
+		}
 		return MakeShared<FJsonValueString>(Str);
 	}
 
@@ -166,7 +169,10 @@ namespace
 		{
 			for (const FBPPinInfo& P : N.Pins)
 			{
-				if (P.Direction != TEXT("Output")) continue;
+				if (P.Direction != TEXT("Output"))
+				{
+					continue;
+				}
 				for (const FBPPinLinkInfo& Link : P.LinkedTo)
 				{
 					auto Conn = MakeShared<FJsonObject>();
@@ -214,10 +220,22 @@ namespace
 			}
 			return nullptr;
 		};
-		if (auto* G = Search(Info.EventGraphs))               return G;
-		if (auto* G = Search(Info.FunctionGraphs))            return G;
-		if (auto* G = Search(Info.MacroGraphs))               return G;
-		if (auto* G = Search(Info.DelegateSignatureGraphs))   return G;
+		if (auto* G = Search(Info.EventGraphs))
+		{
+			return G;
+		}
+		if (auto* G = Search(Info.FunctionGraphs))
+		{
+			return G;
+		}
+		if (auto* G = Search(Info.MacroGraphs))
+		{
+			return G;
+		}
+		if (auto* G = Search(Info.DelegateSignatureGraphs))
+		{
+			return G;
+		}
 		return nullptr;
 	}
 
@@ -239,11 +257,17 @@ namespace
 		{
 			const bool bIsEntry  = (N.ClassName == TEXT("K2Node_FunctionEntry"));
 			const bool bIsResult = (N.ClassName == TEXT("K2Node_FunctionResult"));
-			if (!bIsEntry && !bIsResult) continue;
+			if (!bIsEntry && !bIsResult)
+			{
+				continue;
+			}
 
 			for (const FBPPinInfo& P : N.Pins)
 			{
-				if (IsExecPin(P)) continue;
+				if (IsExecPin(P))
+				{
+					continue;
+				}
 				FBPVariableInfo V;
 				V.Name = P.Name;
 				V.Type = P.Type;
@@ -251,17 +275,29 @@ namespace
 				V.DefaultValue = P.DefaultValue;
 				V.bIsReplicated = false;
 				V.bIsEditable   = false;
-				if (bIsEntry  && P.Direction == TEXT("Output")) OutInputs.Add(MoveTemp(V));
-				if (bIsResult && P.Direction == TEXT("Input"))  OutOutputs.Add(MoveTemp(V));
+				if (bIsEntry  && P.Direction == TEXT("Output"))
+				{
+					OutInputs.Add(MoveTemp(V));
+				}
+				if (bIsResult && P.Direction == TEXT("Input"))
+				{
+					OutOutputs.Add(MoveTemp(V));
+				}
 			}
 		}
 	}
 
 	bool NodeKindMatches(const FBPNodeInfo& N, const FString& LowerKind)
 	{
-		if (LowerKind.IsEmpty()) return true;
+		if (LowerKind.IsEmpty())
+		{
+			return true;
+		}
 		const FString* Kind = N.Extras.Find(TEXT("kind"));
-		if (!Kind) return false;
+		if (!Kind)
+		{
+			return false;
+		}
 		return Kind->ToLower() == LowerKind;
 	}
 
@@ -272,7 +308,10 @@ namespace
 	{
 		for (const FBPNodeInfo& N : Graph.Nodes)
 		{
-			if (!NodeKindMatches(N, LowerKind)) continue;
+			if (!NodeKindMatches(N, LowerKind))
+			{
+				continue;
+			}
 			if (!LowerQuery.IsEmpty())
 			{
 				const bool bClassMatch = N.ClassName.ToLower().Contains(LowerQuery);
@@ -318,7 +357,10 @@ namespace
 						}
 					}
 				}
-				if (!bClassMatch && !bTitleMatch && !bExtrasMatch) continue;
+				if (!bClassMatch && !bTitleMatch && !bExtrasMatch)
+				{
+					continue;
+				}
 			}
 			// find_node spans every graph in the blueprint, so each hit
 			// needs to carry the graph it came from — otherwise the
@@ -358,7 +400,10 @@ TSharedRef<FJsonObject> FBlueprintReaderWireJson::MetadataToJson(const FBlueprin
 	for (const FBPGraphInfo& G : Info.FunctionGraphs)
 	{
 		// Skip ConstructionScript here — it's reported separately under graphs.
-		if (G.WireType == TEXT("Construction")) continue;
+		if (G.WireType == TEXT("Construction"))
+		{
+			continue;
+		}
 		auto FnObj = MakeShared<FJsonObject>();
 		FnObj->SetStringField(TEXT("name"), G.Name);
 		Functions.Add(MakeShared<FJsonValueObject>(FnObj));
@@ -380,11 +425,17 @@ TSharedRef<FJsonObject> FBlueprintReaderWireJson::MetadataToJson(const FBlueprin
 		S->SetStringField(TEXT("type"), G.WireType);
 		Graphs.Add(MakeShared<FJsonValueObject>(S));
 	};
-	for (const FBPGraphInfo& G : Info.EventGraphs)             AddGraphSummary(G);
+	for (const FBPGraphInfo& G : Info.EventGraphs)
+	{
+		AddGraphSummary(G);
+	}
 	for (const FBPGraphInfo& G : Info.FunctionGraphs)
 	{
 		// Surface ConstructionScript as a graph summary (matches the wire fixture shape).
-		if (G.WireType == TEXT("Construction")) AddGraphSummary(G);
+		if (G.WireType == TEXT("Construction"))
+		{
+			AddGraphSummary(G);
+		}
 	}
 	Obj->SetArrayField(TEXT("graphs"), Graphs);
 	return Obj;
@@ -393,7 +444,10 @@ TSharedRef<FJsonObject> FBlueprintReaderWireJson::MetadataToJson(const FBlueprin
 TSharedPtr<FJsonObject> FBlueprintReaderWireJson::GraphToJson(const FBlueprintInfo& Info, const FString& GraphName)
 {
 	const FBPGraphInfo* G = FindGraphByName(Info, GraphName);
-	if (!G) return nullptr;
+	if (!G)
+	{
+		return nullptr;
+	}
 	return GraphInfoToJson(*G);
 }
 
@@ -401,7 +455,10 @@ TSharedPtr<FJsonObject> FBlueprintReaderWireJson::FunctionToJson(const FBlueprin
 {
 	for (const FBPGraphInfo& G : Info.FunctionGraphs)
 	{
-		if (!G.Name.Equals(FunctionName, ESearchCase::IgnoreCase)) continue;
+		if (!G.Name.Equals(FunctionName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetStringField(TEXT("name"), G.Name);
@@ -486,10 +543,22 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintReaderWireJson::FindNodesAsJson(const F
 	const FString LowerQuery = Query.ToLower();
 	const FString LowerKind  = Kind.ToLower();
 	TArray<TSharedPtr<FJsonValue>> Out;
-	for (const FBPGraphInfo& G : Info.EventGraphs)             GatherNodesMatching(G, LowerQuery, LowerKind, Out);
-	for (const FBPGraphInfo& G : Info.FunctionGraphs)          GatherNodesMatching(G, LowerQuery, LowerKind, Out);
-	for (const FBPGraphInfo& G : Info.MacroGraphs)             GatherNodesMatching(G, LowerQuery, LowerKind, Out);
-	for (const FBPGraphInfo& G : Info.DelegateSignatureGraphs) GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	for (const FBPGraphInfo& G : Info.EventGraphs)
+	{
+		GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	}
+	for (const FBPGraphInfo& G : Info.FunctionGraphs)
+	{
+		GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	}
+	for (const FBPGraphInfo& G : Info.MacroGraphs)
+	{
+		GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	}
+	for (const FBPGraphInfo& G : Info.DelegateSignatureGraphs)
+	{
+		GatherNodesMatching(G, LowerQuery, LowerKind, Out);
+	}
 	return Out;
 }
 
@@ -530,7 +599,10 @@ FString FBlueprintReaderWireJson::WriteString(const TSharedRef<FJsonObject>& Obj
 
 bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& Json, FEdGraphPinType& OutType)
 {
-	if (!Json.IsValid()) return false;
+	if (!Json.IsValid())
+	{
+		return false;
+	}
 
 	FString Category;
 	if (!Json->TryGetStringField(TEXT("category"), Category) || Category.IsEmpty())
@@ -573,7 +645,10 @@ bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& J
 	Json->TryGetBoolField(TEXT("is_array"), bArr);
 	Json->TryGetBoolField(TEXT("is_set"),   bSet);
 	Json->TryGetBoolField(TEXT("is_map"),   bMap);
-	if (bArr)      OutType.ContainerType = EPinContainerType::Array;
+	if (bArr)
+	{
+		OutType.ContainerType = EPinContainerType::Array;
+	}
 	else if (bSet) OutType.ContainerType = EPinContainerType::Set;
 	else if (bMap) OutType.ContainerType = EPinContainerType::Map;
 	else           OutType.ContainerType = EPinContainerType::None;

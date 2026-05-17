@@ -399,7 +399,10 @@ namespace
 	FString ResolveAssetPath(const FString& Params)
 	{
 		FString Asset;
-		if (FParse::Value(*Params, TEXT("Asset="), Asset)) return Asset;
+		if (FParse::Value(*Params, TEXT("Asset="), Asset))
+		{
+			return Asset;
+		}
 		FParse::Value(*Params, TEXT("Path="), Asset);
 		return Asset;
 	}
@@ -407,7 +410,10 @@ namespace
 	FString ResolveOutputPath(const FString& Params)
 	{
 		FString Out;
-		if (FParse::Value(*Params, TEXT("Out="), Out)) return Out;
+		if (FParse::Value(*Params, TEXT("Out="), Out))
+		{
+			return Out;
+		}
 		FParse::Value(*Params, TEXT("Output="), Out);
 		return Out;
 	}
@@ -435,7 +441,10 @@ namespace
 	{
 		IFileManager& FM = IFileManager::Get();
 		const FDateTime DT = FM.GetTimeStamp(*Filename);
-		if (DT == FDateTime::MinValue()) return FString();
+		if (DT == FDateTime::MinValue())
+		{
+			return FString();
+		}
 		return DT.ToIso8601();
 	}
 
@@ -559,19 +568,34 @@ namespace
 			}
 			return nullptr;
 		};
-		if (UEdGraph* G = Search(BP->UbergraphPages)) return G;
-		if (UEdGraph* G = Search(BP->FunctionGraphs)) return G;
-		if (UEdGraph* G = Search(BP->MacroGraphs))    return G;
+		if (UEdGraph* G = Search(BP->UbergraphPages))
+		{
+			return G;
+		}
+		if (UEdGraph* G = Search(BP->FunctionGraphs))
+		{
+			return G;
+		}
+		if (UEdGraph* G = Search(BP->MacroGraphs))
+		{
+			return G;
+		}
 		return nullptr;
 	}
 
 	UEdGraphNode* FindNodeByGuid(UEdGraph* Graph, const FString& Guid)
 	{
 		FGuid Parsed;
-		if (!FGuid::Parse(Guid, Parsed)) return nullptr;
+		if (!FGuid::Parse(Guid, Parsed))
+		{
+			return nullptr;
+		}
 		for (UEdGraphNode* N : Graph->Nodes)
 		{
-			if (N && N->NodeGuid == Parsed) return N;
+			if (N && N->NodeGuid == Parsed)
+			{
+				return N;
+			}
 		}
 		return nullptr;
 	}
@@ -660,7 +684,10 @@ namespace
 		}
 
 		UPackage* Package = BP->GetOutermost();
-		if (!Package) return false;
+		if (!Package)
+		{
+			return false;
+		}
 
 		const FString FileName = FPackageName::LongPackageNameToFilename(
 			Package->GetName(), FPackageName::GetAssetPackageExtension());
@@ -757,7 +784,10 @@ namespace
 	// mode it just records the BP for EndBatch to process.
 	bool MaybeCompileAndSave(UBlueprint* BP)
 	{
-		if (!BP) return false;
+		if (!BP)
+		{
+			return false;
+		}
 		if (BatchDeferFlag())
 		{
 			BatchPending().AddUnique(BP);
@@ -818,7 +848,10 @@ namespace
 		for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
 		{
 			UBlueprint* BP = Weak.Get();
-			if (!BP) continue;  // GC'd between batch ops — nothing to save
+			if (!BP)
+			{
+				continue;  // GC'd between batch ops — nothing to save
+			}
 			const FString AssetPath = BP->GetPathName();
 			if (bSkipCompile)
 			{
@@ -829,7 +862,10 @@ namespace
 			}
 			TArray<TSharedPtr<FJsonValue>> Diags;
 			const bool bOk = CompileAndSaveBlueprint(BP, &Diags);
-			if (!bOk) ++Failures;
+			if (!bOk)
+			{
+				++Failures;
+			}
 			// Tag each diagnostic with the asset_path so callers can attribute
 			// when multiple BPs compile in one batch.
 			for (auto& D : Diags)
@@ -841,8 +877,14 @@ namespace
 					{
 						Obj->SetStringField(TEXT("asset_path"), AssetPath);
 						const FString Sev = Obj->GetStringField(TEXT("severity"));
-						if (Sev == TEXT("error"))   ++Errors;
-						if (Sev == TEXT("warning")) ++Warnings;
+						if (Sev == TEXT("error"))
+						{
+							++Errors;
+						}
+						if (Sev == TEXT("warning"))
+						{
+							++Warnings;
+						}
 					}
 				}
 				AllDiagnostics.Add(D);
@@ -868,20 +910,32 @@ namespace
 	// can LoadMutableBlueprint it.
 	UClass* ResolveParentClass(const FString& Spec)
 	{
-		if (Spec.IsEmpty()) return nullptr;
+		if (Spec.IsEmpty())
+		{
+			return nullptr;
+		}
 		// Direct path form: "/Script/Engine.Actor"
-		if (UClass* C = LoadObject<UClass>(nullptr, *Spec)) return C;
+		if (UClass* C = LoadObject<UClass>(nullptr, *Spec))
+		{
+			return C;
+		}
 		// Short-name form: "Actor", "Pawn", "ACharacter" — try common prefixes.
 		const TCHAR* Prefixes[] = {TEXT(""), TEXT("/Script/Engine."), TEXT("/Script/CoreUObject.")};
 		for (const TCHAR* Pre : Prefixes)
 		{
 			FString Trial = FString(Pre) + Spec;
-			if (UClass* C = LoadObject<UClass>(nullptr, *Trial)) return C;
+			if (UClass* C = LoadObject<UClass>(nullptr, *Trial))
+			{
+				return C;
+			}
 			// Drop a leading 'A' or 'U' if present (UE convention).
 			if (Spec.Len() > 1 && (Spec[0] == TEXT('A') || Spec[0] == TEXT('U')))
 			{
 				FString Trim = FString(Pre) + Spec.RightChop(1);
-				if (UClass* C = LoadObject<UClass>(nullptr, *Trim)) return C;
+				if (UClass* C = LoadObject<UClass>(nullptr, *Trim))
+				{
+					return C;
+				}
 			}
 		}
 		return nullptr;
@@ -956,7 +1010,10 @@ namespace
 		FAssetRegistryModule& ARM = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 		ARM.Get().AssetCreated(BP);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -986,11 +1043,20 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 2;
+		if (!BP)
+		{
+			return 2;
+		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph) return 4;
+		if (!Graph)
+		{
+			return 4;
+		}
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
-		if (!Node) return 4;
+		if (!Node)
+		{
+			return 4;
+		}
 		UEdGraphPin* Pin = FindPinByIdOrName(Node, PinSpec);
 		if (!Pin)
 		{
@@ -1005,7 +1071,10 @@ namespace
 		Schema->TrySetDefaultValue(*Pin, Value);
 		Pin->Modify();
 		Node->Modify();
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -1027,7 +1096,10 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		// Confirm the variable exists before mutating — UE's
 		// ChangeMemberVariableType is a void function with no failure
 		// signal; the only way to fail loudly is to pre-check.
@@ -1038,7 +1110,10 @@ namespace
 			return 4;
 		}
 		FBlueprintEditorUtils::ChangeMemberVariableType(BP, FName(*VarName), NewType);
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -1058,7 +1133,10 @@ namespace
 			return 1;
 		}
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, FName(*VarName)) == INDEX_NONE)
 		{
 			UE_LOG(LogBlueprintReader, Error,
@@ -1071,7 +1149,10 @@ namespace
 		FBlueprintEditorUtils::SetBlueprintVariableCategory(
 			BP, FName(*VarName), nullptr, FText::FromString(Category),
 			/*bDontRecompile=*/true);
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -1162,7 +1243,10 @@ namespace
 		for (TObjectIterator<UPackage> It; It; ++It)
 		{
 			UPackage* Pkg = *It;
-			if (Pkg && Pkg->IsDirty()) DirtyBefore.Add(Pkg);
+			if (Pkg && Pkg->IsDirty())
+			{
+				DirtyBefore.Add(Pkg);
+			}
 		}
 
 		// UEditorLoadingAndSavingUtils::SaveDirtyPackages(bSaveMapPackages,
@@ -1176,7 +1260,10 @@ namespace
 		int32 SavedCount = 0;
 		for (UPackage* Pkg : DirtyBefore)
 		{
-			if (!Pkg) continue;
+			if (!Pkg)
+			{
+				continue;
+			}
 			if (Pkg->IsDirty())
 			{
 				FailedJson.Add(MakeShared<FJsonValueString>(Pkg->GetName()));
@@ -1387,7 +1474,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -1493,7 +1583,10 @@ namespace
 	{
 		if (GEditor)
 		{
-			if (UWorld* W = GEditor->GetEditorWorldContext().World()) return W;
+			if (UWorld* W = GEditor->GetEditorWorldContext().World())
+			{
+				return W;
+			}
 		}
 		return GWorld;
 	}
@@ -1671,7 +1764,10 @@ namespace
 	FString EditorStateToPackagePath(const FString& In)
 	{
 		int32 DotIdx = INDEX_NONE;
-		if (In.FindChar(TEXT('.'), DotIdx)) return In.Left(DotIdx);
+		if (In.FindChar(TEXT('.'), DotIdx))
+		{
+			return In.Left(DotIdx);
+		}
 		return In;
 	}
 
@@ -1706,9 +1802,15 @@ namespace
 				double BestActivation = -1.0;
 				for (UObject* Obj : OpenAssets)
 				{
-					if (!Obj) continue;
+					if (!Obj)
+					{
+						continue;
+					}
 					IAssetEditorInstance* Inst = AES->FindEditorForAsset(Obj, /*bFocusIfOpen=*/false);
-					if (!Inst) continue;
+					if (!Inst)
+					{
+						continue;
+					}
 					const double T = Inst->GetLastActivationTime();
 					if (T > BestActivation)
 					{
@@ -1720,7 +1822,10 @@ namespace
 				// Second pass: emit the array, flagging which one matched.
 				for (UObject* Obj : OpenAssets)
 				{
-					if (!Obj) continue;
+					if (!Obj)
+					{
+						continue;
+					}
 					auto Entry = MakeShared<FJsonObject>();
 					Entry->SetStringField(TEXT("package_path"),
 						EditorStateToPackagePath(Obj->GetPathName()));
@@ -1737,7 +1842,10 @@ namespace
 			}
 		}
 		Out->SetArrayField(TEXT("open_assets"), OpenAssetsJson);
-		if (ActiveAssetJson.IsValid()) Out->SetField(TEXT("active_asset"), ActiveAssetJson);
+		if (ActiveAssetJson.IsValid())
+		{
+			Out->SetField(TEXT("active_asset"), ActiveAssetJson);
+		}
 		else                            Out->SetField(TEXT("active_asset"), MakeShared<FJsonValueNull>());
 
 		// ----- current level --------------------------------------------
@@ -1755,7 +1863,10 @@ namespace
 				LevelJson->SetBoolField(TEXT("is_dirty"), bDirty);
 			}
 		}
-		if (LevelJson.IsValid()) Out->SetObjectField(TEXT("current_level"), LevelJson);
+		if (LevelJson.IsValid())
+		{
+			Out->SetObjectField(TEXT("current_level"), LevelJson);
+		}
 		else                      Out->SetField(TEXT("current_level"), MakeShared<FJsonValueNull>());
 
 		// ----- viewport camera (read; we already have set_camera_transform) -
@@ -1768,7 +1879,10 @@ namespace
 			FEditorViewportClient* Best = nullptr;
 			for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
 			{
-				if (!VC) continue;
+				if (!VC)
+				{
+					continue;
+				}
 				if (VC->IsLevelEditorClient())
 				{
 					if (VC->Viewport && VC->Viewport->HasFocus())
@@ -1776,7 +1890,10 @@ namespace
 						Best = VC;
 						break;
 					}
-					if (!Best && VC->IsPerspective()) Best = VC;
+					if (!Best && VC->IsPerspective())
+					{
+						Best = VC;
+					}
 				}
 			}
 			if (Best)
@@ -1796,7 +1913,10 @@ namespace
 				CameraJson->SetObjectField(TEXT("rotation"), Rot);
 			}
 		}
-		if (CameraJson.IsValid()) Out->SetObjectField(TEXT("camera"), CameraJson);
+		if (CameraJson.IsValid())
+		{
+			Out->SetObjectField(TEXT("camera"), CameraJson);
+		}
 		else                       Out->SetField(TEXT("camera"), MakeShared<FJsonValueNull>());
 
 		// ----- selected actors (duplicated for one-call convenience) ----
@@ -1893,7 +2013,10 @@ namespace
 			}
 			~FPyTransactionScope()
 			{
-				if (bActive && GEditor) GEditor->EndTransaction();
+				if (bActive && GEditor)
+				{
+					GEditor->EndTransaction();
+				}
 			}
 		} TxScope(TransactionTitle);
 
@@ -1996,11 +2119,22 @@ namespace
 		{
 			return GEngineIni;
 		}
-		if (Token.Equals(TEXT("Game"), ESearchCase::IgnoreCase))     return GGameIni;
-		if (Token.Equals(TEXT("Input"), ESearchCase::IgnoreCase))    return GInputIni;
-		if (Token.Equals(TEXT("Editor"), ESearchCase::IgnoreCase))   return GEditorIni;
+		if (Token.Equals(TEXT("Game"), ESearchCase::IgnoreCase))
+		{
+			return GGameIni;
+		}
+		if (Token.Equals(TEXT("Input"), ESearchCase::IgnoreCase))
+		{
+			return GInputIni;
+		}
+		if (Token.Equals(TEXT("Editor"), ESearchCase::IgnoreCase))
+		{
+			return GEditorIni;
+		}
 		if (Token.Equals(TEXT("EditorPerProjectIni"), ESearchCase::IgnoreCase))
-			return GEditorPerProjectIni;
+		{
+				return GEditorPerProjectIni;
+		}
 		// Caller passed a full path; let GConfig sort it out.
 		return Token;
 	}
@@ -2034,7 +2168,10 @@ namespace
 		Out->SetStringField(TEXT("section"), Section);
 		Out->SetStringField(TEXT("key"), Key);
 		Out->SetStringField(TEXT("file"), Branch);
-		if (bFound) Out->SetStringField(TEXT("value"), Value);
+		if (bFound)
+		{
+			Out->SetStringField(TEXT("value"), Value);
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
@@ -2073,7 +2210,10 @@ namespace
 		Out->SetStringField(TEXT("key"), Key);
 		Out->SetStringField(TEXT("file"), Branch);
 		Out->SetStringField(TEXT("value"), Value);
-		if (bExisted) Out->SetStringField(TEXT("previous_value"), OldValue);
+		if (bExisted)
+		{
+			Out->SetStringField(TEXT("previous_value"), OldValue);
+		}
 		else          Out->SetField(TEXT("previous_value"), MakeShared<FJsonValueNull>());
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
@@ -2088,7 +2228,10 @@ namespace
 		// only when the editor is interactive; this path uses the UEd
 		// API directly so it works from commandlet + automation contexts.
 		ELightingBuildQuality Q = ELightingBuildQuality::Quality_Production;
-		if      (Quality.Equals(TEXT("Preview"), ESearchCase::IgnoreCase))    Q = ELightingBuildQuality::Quality_Preview;
+		if      (Quality.Equals(TEXT("Preview"), ESearchCase::IgnoreCase))
+		{
+			Q = ELightingBuildQuality::Quality_Preview;
+		}
 		else if (Quality.Equals(TEXT("Medium"), ESearchCase::IgnoreCase))     Q = ELightingBuildQuality::Quality_Medium;
 		else if (Quality.Equals(TEXT("High"), ESearchCase::IgnoreCase))       Q = ELightingBuildQuality::Quality_High;
 		else if (Quality.Equals(TEXT("Production"), ESearchCase::IgnoreCase)) Q = ELightingBuildQuality::Quality_Production;
@@ -2234,10 +2377,16 @@ namespace
 	AActor* FindActorByName(const FString& Name)
 	{
 		UWorld* World = GetEditorWorldOrNull();
-		if (!World) return nullptr;
+		if (!World)
+		{
+			return nullptr;
+		}
 		for (TActorIterator<AActor> It(World); It; ++It)
 		{
-			if (*It && (*It)->GetName() == Name) return *It;
+			if (*It && (*It)->GetName() == Name)
+			{
+				return *It;
+			}
 		}
 		return nullptr;
 	}
@@ -2372,7 +2521,10 @@ namespace
 		for (const auto& Pair : Values->Values)
 		{
 			FProperty* Prop = RowStruct->FindPropertyByName(FName(*Pair.Key));
-			if (!Prop) continue;  // ignore unknown keys
+			if (!Prop)
+			{
+				continue;  // ignore unknown keys
+			}
 			FString Stringified;
 			if (Pair.Value.IsValid())
 			{
@@ -2501,13 +2653,19 @@ namespace
 
 	USCS_Node* FindSCSNodeOrNull(USimpleConstructionScript* SCS, FName Name)
 	{
-		if (!SCS) return nullptr;
+		if (!SCS)
+		{
+			return nullptr;
+		}
 		return SCS->FindSCSNode(Name);
 	}
 
 	USCS_Node* FindParentOfNode(USimpleConstructionScript* SCS, USCS_Node* Target)
 	{
-		if (!SCS || !Target) return nullptr;
+		if (!SCS || !Target)
+		{
+			return nullptr;
+		}
 		for (USCS_Node* Root : SCS->GetRootNodes())
 		{
 			TArray<USCS_Node*> Stack;
@@ -2515,10 +2673,16 @@ namespace
 			while (Stack.Num() > 0)
 			{
 				USCS_Node* Cur = Stack.Pop();
-				if (!Cur) continue;
+				if (!Cur)
+				{
+					continue;
+				}
 				for (USCS_Node* Child : Cur->GetChildNodes())
 				{
-					if (Child == Target) return Cur;
+					if (Child == Target)
+					{
+						return Cur;
+					}
 					Stack.Push(Child);
 				}
 			}
@@ -2542,7 +2706,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
 		if (!SCS)
 		{
@@ -2587,7 +2754,10 @@ namespace
 		if (Parent)
 		{
 			Parent->AddChildNode(NewNode);
-			if (!Socket.IsEmpty()) NewNode->AttachToName = FName(*Socket);
+			if (!Socket.IsEmpty())
+			{
+				NewNode->AttachToName = FName(*Socket);
+			}
 		}
 		else
 		{
@@ -2620,7 +2790,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
 		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
 
@@ -2656,7 +2829,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
 		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*Name)) : nullptr;
 		if (!Node)
@@ -2684,7 +2860,10 @@ namespace
 		if (NewParentNode)
 		{
 			NewParentNode->AddChildNode(Node);
-			if (!Socket.IsEmpty()) Node->AttachToName = FName(*Socket);
+			if (!Socket.IsEmpty())
+			{
+				Node->AttachToName = FName(*Socket);
+			}
 			bReparented = true;
 		}
 		else
@@ -2721,7 +2900,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
 		USCS_Node* Node = SCS ? SCS->FindSCSNode(FName(*ComponentName)) : nullptr;
 		if (!Node || !Node->ComponentTemplate)
@@ -2787,7 +2969,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -2848,7 +3033,10 @@ namespace
 		// within the material — we use it as the id.
 		for (UMaterialExpression* E : Mat->GetExpressions())
 		{
-			if (!E) continue;
+			if (!E)
+			{
+				continue;
+			}
 			auto Obj = MakeShared<FJsonObject>();
 			Obj->SetStringField(TEXT("id"),    E->GetName());
 			Obj->SetStringField(TEXT("class"), E->GetClass()->GetName());
@@ -2877,7 +3065,10 @@ namespace
 			for (FExpressionInputIterator It{ E }; It; ++It)
 			{
 				FExpressionInput* In = It.Input;
-				if (!In || !In->Expression) continue;
+				if (!In || !In->Expression)
+				{
+					continue;
+				}
 				auto C = MakeShared<FJsonObject>();
 				C->SetStringField(TEXT("from_node"), In->Expression->GetName());
 				C->SetStringField(TEXT("from_pin"),  In->OutputIndex == 0
@@ -2894,7 +3085,10 @@ namespace
 		// "wired to the material itself".
 		auto EmitSlot = [&](const TCHAR* SlotName, FExpressionInput& Slot)
 		{
-			if (!Slot.Expression) return;
+			if (!Slot.Expression)
+			{
+				return;
+			}
 			auto C = MakeShared<FJsonObject>();
 			C->SetStringField(TEXT("from_node"), Slot.Expression->GetName());
 			C->SetStringField(TEXT("from_pin"),  Slot.OutputIndex == 0
@@ -2937,7 +3131,10 @@ namespace
 		}
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat) return 4;
+		if (!Mat)
+		{
+			return 4;
+		}
 
 		// Resolve the expression class by short name. UMaterialEditingLibrary
 		// expects a UClass*, not a string — look it up via UObject iteration
@@ -2945,7 +3142,10 @@ namespace
 		UClass* ExprClass = nullptr;
 		for (TObjectIterator<UClass> It; It; ++It)
 		{
-			if (!It->IsChildOf(UMaterialExpression::StaticClass())) continue;
+			if (!It->IsChildOf(UMaterialExpression::StaticClass()))
+			{
+				continue;
+			}
 			if (It->GetName() == ClassName) { ExprClass = *It; break; }
 		}
 		if (!ExprClass)
@@ -2957,7 +3157,10 @@ namespace
 
 		UMaterialExpression* Expr =
 			UMaterialEditingLibrary::CreateMaterialExpression(Mat, ExprClass, X, Y);
-		if (!Expr) return 4;
+		if (!Expr)
+		{
+			return 4;
+		}
 
 		Mat->MarkPackageDirty();
 
@@ -2979,13 +3182,19 @@ namespace
 		FParse::Value(*Params, TEXT("ToPin="),   ToPin);
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat) return 4;
+		if (!Mat)
+		{
+			return 4;
+		}
 
 		auto FindExpr = [&](const FString& Name) -> UMaterialExpression*
 		{
 			for (UMaterialExpression* E : Mat->GetExpressions())
 			{
-				if (E && E->GetName() == Name) return E;
+				if (E && E->GetName() == Name)
+				{
+					return E;
+				}
 			}
 			return nullptr;
 		};
@@ -3027,7 +3236,10 @@ namespace
 		FParse::Value(*Params, TEXT("Value="), Value);
 
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat) return 4;
+		if (!Mat)
+		{
+			return 4;
+		}
 
 		// Locate the parameter expression by name. ScalarParameter wins
 		// over VectorParameter — we never have name collisions in practice
@@ -3062,7 +3274,10 @@ namespace
 			}
 		}
 
-		if (bSet) Mat->MarkPackageDirty();
+		if (bSet)
+		{
+			Mat->MarkPackageDirty();
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), bSet);
@@ -3083,7 +3298,10 @@ namespace
 
 		UMaterialInstanceConstant* MIC =
 			LoadObject<UMaterialInstanceConstant>(nullptr, *AssetPath);
-		if (!MIC) return 4;
+		if (!MIC)
+		{
+			return 4;
+		}
 
 		bool bOk = false;
 		if (Type.Equals(TEXT("scalar"), ESearchCase::IgnoreCase))
@@ -3112,7 +3330,10 @@ namespace
 			}
 		}
 
-		if (bOk) MIC->MarkPackageDirty();
+		if (bOk)
+		{
+			MIC->MarkPackageDirty();
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), bOk);
@@ -3128,7 +3349,10 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath);
-		if (!Mat) return 4;
+		if (!Mat)
+		{
+			return 4;
+		}
 
 		UMaterialEditingLibrary::RecompileMaterial(Mat);
 		Mat->MarkPackageDirty();
@@ -3170,18 +3394,27 @@ namespace
 
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		FString RootName;
-		if (UWidget* Root = WBP->WidgetTree->RootWidget) RootName = Root->GetName();
+		if (UWidget* Root = WBP->WidgetTree->RootWidget)
+		{
+			RootName = Root->GetName();
+		}
 
 		// Walk every widget in the tree. WidgetTree::ForEachWidget visits
 		// every node including the root. ParentName is empty for the root.
 		WBP->WidgetTree->ForEachWidget([&](UWidget* W)
 		{
-			if (!W) return;
+			if (!W)
+			{
+				return;
+			}
 			auto Obj = MakeShared<FJsonObject>();
 			Obj->SetStringField(TEXT("name"),  W->GetName());
 			Obj->SetStringField(TEXT("class"), W->GetClass()->GetName());
 			FString ParentName;
-			if (UPanelWidget* P = W->GetParent()) ParentName = P->GetName();
+			if (UPanelWidget* P = W->GetParent())
+			{
+				ParentName = P->GetName();
+			}
 			Obj->SetStringField(TEXT("parent"), ParentName);
 			Nodes.Add(MakeShared<FJsonValueObject>(Obj));
 		});
@@ -3203,7 +3436,10 @@ namespace
 		FParse::Value(*Params, TEXT("Name="),   Name);
 
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
-		if (!WBP || !WBP->WidgetTree) return 4;
+		if (!WBP || !WBP->WidgetTree)
+		{
+			return 4;
+		}
 
 		// Already exists?
 		if (UWidget* Existing = WBP->WidgetTree->FindWidget(FName(*Name)))
@@ -3222,7 +3458,10 @@ namespace
 		UClass* WidgetClass = nullptr;
 		for (TObjectIterator<UClass> It; It; ++It)
 		{
-			if (!It->IsChildOf(UWidget::StaticClass())) continue;
+			if (!It->IsChildOf(UWidget::StaticClass()))
+			{
+				continue;
+			}
 			if (It->GetName() == ClassName) { WidgetClass = *It; break; }
 		}
 		if (!WidgetClass)
@@ -3234,7 +3473,10 @@ namespace
 
 		UWidget* NewWidget = WBP->WidgetTree->ConstructWidget<UWidget>(
 			WidgetClass, FName(*Name));
-		if (!NewWidget) return 4;
+		if (!NewWidget)
+		{
+			return 4;
+		}
 
 		bool bCreated = false;
 		if (ParentName.IsEmpty())
@@ -3283,12 +3525,21 @@ namespace
 		FParse::Value(*Params, TEXT("Value="),    Value);
 
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
-		if (!WBP || !WBP->WidgetTree) return 4;
+		if (!WBP || !WBP->WidgetTree)
+		{
+			return 4;
+		}
 		UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName));
-		if (!W) return 4;
+		if (!W)
+		{
+			return 4;
+		}
 
 		FProperty* Prop = W->GetClass()->FindPropertyByName(FName(*PropName));
-		if (!Prop) return 4;
+		if (!Prop)
+		{
+			return 4;
+		}
 
 		FString OldText;
 		Prop->ExportText_Direct(OldText,
@@ -3322,7 +3573,10 @@ namespace
 		FParse::Value(*Params, TEXT("Handler="), Handler);
 
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
-		if (!WBP || !WBP->WidgetTree) return 4;
+		if (!WBP || !WBP->WidgetTree)
+		{
+			return 4;
+		}
 
 		// Binding here = creating a function with the right signature and
 		// hooking up the widget's delegate. UMG editor does this with
@@ -3378,7 +3632,10 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
-		if (!WBP) return 4;
+		if (!WBP)
+		{
+			return 4;
+		}
 
 		FCompilerResultsLog ResultsLog;
 		FKismetEditorUtilities::CompileBlueprint(WBP,
@@ -3408,7 +3665,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -3441,7 +3701,10 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT) return 4;
+		if (!BT)
+		{
+			return 4;
+		}
 
 		TArray<TSharedPtr<FJsonValue>> Nodes;
 		FString RootName;
@@ -3450,10 +3713,16 @@ namespace
 		// Children + Decorators + Services arrays.
 		TFunction<void(UBTNode*, const FString&)> Walk = [&](UBTNode* N, const FString& Parent)
 		{
-			if (!N) return;
+			if (!N)
+			{
+				return;
+			}
 			auto Obj = MakeShared<FJsonObject>();
 			FString Kind;
-			if (Cast<UBTCompositeNode>(N))      Kind = TEXT("composite");
+			if (Cast<UBTCompositeNode>(N))
+			{
+				Kind = TEXT("composite");
+			}
 			else if (Cast<UBTTaskNode>(N))      Kind = TEXT("task");
 			else if (Cast<UBTDecorator>(N))     Kind = TEXT("decorator");
 			else if (Cast<UBTService>(N))       Kind = TEXT("service");
@@ -3469,12 +3738,24 @@ namespace
 				for (const FBTCompositeChild& Child : Comp->Children)
 				{
 					// Decorators on this slot.
-					for (UBTDecorator* Dec : Child.Decorators) Walk(Dec, N->GetName());
+					for (UBTDecorator* Dec : Child.Decorators)
+					{
+						Walk(Dec, N->GetName());
+					}
 					// Child node + its sub-tree.
-					if (Child.ChildComposite) Walk(Child.ChildComposite, N->GetName());
-					if (Child.ChildTask)      Walk(Child.ChildTask,      N->GetName());
+					if (Child.ChildComposite)
+					{
+						Walk(Child.ChildComposite, N->GetName());
+					}
+					if (Child.ChildTask)
+					{
+						Walk(Child.ChildTask,      N->GetName());
+					}
 				}
-				for (UBTService* Svc : Comp->Services) Walk(Svc, N->GetName());
+				for (UBTService* Svc : Comp->Services)
+				{
+					Walk(Svc, N->GetName());
+				}
 			}
 		};
 		if (BT->RootNode)
@@ -3500,13 +3781,19 @@ namespace
 		FParse::Value(*Params, TEXT("Class="),  ClassName);
 
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT) return 4;
+		if (!BT)
+		{
+			return 4;
+		}
 
 		// Resolve node class by short name from any UBTNode subclass.
 		UClass* NodeClass = nullptr;
 		for (TObjectIterator<UClass> It; It; ++It)
 		{
-			if (!It->IsChildOf(UBTNode::StaticClass())) continue;
+			if (!It->IsChildOf(UBTNode::StaticClass()))
+			{
+				continue;
+			}
 			if (It->GetName() == ClassName) { NodeClass = *It; break; }
 		}
 		if (!NodeClass)
@@ -3517,14 +3804,20 @@ namespace
 		}
 
 		UBTNode* NewNode = NewObject<UBTNode>(BT, NodeClass);
-		if (!NewNode) return 4;
+		if (!NewNode)
+		{
+			return 4;
+		}
 
 		// Attach. Root composite if empty parent + this is composite + tree empty.
 		if (ParentName.IsEmpty())
 		{
 			if (UBTCompositeNode* AsComp = Cast<UBTCompositeNode>(NewNode))
 			{
-				if (!BT->RootNode) BT->RootNode = AsComp;
+				if (!BT->RootNode)
+				{
+					BT->RootNode = AsComp;
+				}
 			}
 		}
 		else
@@ -3560,22 +3853,37 @@ namespace
 		FParse::Value(*Params, TEXT("Value="),    Value);
 
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT) return 4;
+		if (!BT)
+		{
+			return 4;
+		}
 
 		// Linear search across all UBTNode children of the asset's package.
 		UBTNode* Target = nullptr;
 		ForEachObjectWithOuter(BT, [&](UObject* O)
 		{
-			if (Target) return;
+			if (Target)
+			{
+				return;
+			}
 			if (UBTNode* N = Cast<UBTNode>(O))
 			{
-				if (N->GetName() == NodeName) Target = N;
+				if (N->GetName() == NodeName)
+				{
+					Target = N;
+				}
 			}
 		});
-		if (!Target) return 4;
+		if (!Target)
+		{
+			return 4;
+		}
 
 		FProperty* Prop = Target->GetClass()->FindPropertyByName(FName(*PropName));
-		if (!Prop) return 4;
+		if (!Prop)
+		{
+			return 4;
+		}
 
 		FString OldText;
 		Prop->ExportText_Direct(OldText,
@@ -3603,7 +3911,10 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UBehaviorTree* BT = LoadObject<UBehaviorTree>(nullptr, *AssetPath);
-		if (!BT) return 4;
+		if (!BT)
+		{
+			return 4;
+		}
 
 		// UBehaviorTree doesn't have an explicit "compile" — re-save +
 		// mark dirty triggers the BT editor's lazy re-init on next open.
@@ -3624,7 +3935,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -3657,7 +3971,10 @@ namespace
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
-		if (!DA) return 4;
+		if (!DA)
+		{
+			return 4;
+		}
 
 		auto Props = MakeShared<FJsonObject>();
 		for (TFieldIterator<FProperty> It(DA->GetClass()); It; ++It)
@@ -3698,19 +4015,31 @@ namespace
 		UClass* AssetClass = nullptr;
 		for (TObjectIterator<UClass> It; It; ++It)
 		{
-			if (!It->IsChildOf(UDataAsset::StaticClass())) continue;
+			if (!It->IsChildOf(UDataAsset::StaticClass()))
+			{
+				continue;
+			}
 			if (It->GetName() == ClassName) { AssetClass = *It; break; }
 		}
-		if (!AssetClass) return 4;
+		if (!AssetClass)
+		{
+			return 4;
+		}
 
 		// Convert package path to disk path + create the asset.
 		FString PackageName = AssetPath;
 		FString AssetName = FPackageName::GetShortName(PackageName);
 		UPackage* Pkg = CreatePackage(*PackageName);
-		if (!Pkg) return 4;
+		if (!Pkg)
+		{
+			return 4;
+		}
 		UDataAsset* NewDA = NewObject<UDataAsset>(Pkg, AssetClass,
 			FName(*AssetName), RF_Public | RF_Standalone | RF_Transactional);
-		if (!NewDA) return 4;
+		if (!NewDA)
+		{
+			return 4;
+		}
 		FAssetRegistryModule::AssetCreated(NewDA);
 		NewDA->MarkPackageDirty();
 
@@ -3731,10 +4060,16 @@ namespace
 		FParse::Value(*Params, TEXT("Value="),    Value);
 
 		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
-		if (!DA) return 4;
+		if (!DA)
+		{
+			return 4;
+		}
 
 		FProperty* Prop = DA->GetClass()->FindPropertyByName(FName(*PropName));
-		if (!Prop) return 4;
+		if (!Prop)
+		{
+			return 4;
+		}
 
 		FString OldText;
 		Prop->ExportText_Direct(OldText,
@@ -3769,7 +4104,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -3890,11 +4228,17 @@ namespace
 	{
 		FString Mode;
 		FParse::Value(*Params, TEXT("Mode="), Mode);
-		if (Mode.IsEmpty()) Mode = TEXT("stats");
+		if (Mode.IsEmpty())
+		{
+			Mode = TEXT("stats");
+		}
 		Mode = Mode.ToLower();
 
 		FString Cmd;
-		if (Mode == TEXT("stats"))    Cmd = TEXT("stat startfile");
+		if (Mode == TEXT("stats"))
+		{
+			Cmd = TEXT("stat startfile");
+		}
 		else if (Mode == TEXT("csv")) Cmd = TEXT("csvprofile start");
 		else if (Mode == TEXT("insights")) Cmd = TEXT("trace.start");
 		else Cmd = TEXT("stat startfile");
@@ -3979,7 +4323,10 @@ namespace
 	{
 		FString Platform;
 		FParse::Value(*Params, TEXT("Platform="), Platform);
-		if (Platform.IsEmpty()) Platform = TEXT("Windows");
+		if (Platform.IsEmpty())
+		{
+			Platform = TEXT("Windows");
+		}
 
 		// Cooking via UAT is a heavy external process — we report
 		// "scaffolded" + tell the agent how to run it manually. Full
@@ -4025,7 +4372,10 @@ namespace
 		{
 			if (It->GetName() == ClassName) { Cls = *It; break; }
 		}
-		if (!Cls) Cls = FindObject<UClass>(nullptr, *ClassName);
+		if (!Cls)
+		{
+			Cls = FindObject<UClass>(nullptr, *ClassName);
+		}
 		if (!Cls)
 		{
 			auto Err = MakeShared<FJsonObject>();
@@ -4059,11 +4409,26 @@ namespace
 			F->SetStringField(TEXT("name"), It->GetName());
 			// Emit a small flag CSV that covers the BP-callable surface.
 			TArray<FString> Flags;
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable)) Flags.Add(TEXT("BlueprintCallable"));
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))     Flags.Add(TEXT("BlueprintPure"));
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))    Flags.Add(TEXT("BlueprintEvent"));
-			if (It->HasAnyFunctionFlags(FUNC_Net))               Flags.Add(TEXT("Net"));
-			if (It->HasAnyFunctionFlags(FUNC_Static))            Flags.Add(TEXT("Static"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+			{
+				Flags.Add(TEXT("BlueprintCallable"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))
+			{
+				Flags.Add(TEXT("BlueprintPure"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))
+			{
+				Flags.Add(TEXT("BlueprintEvent"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_Net))
+			{
+				Flags.Add(TEXT("Net"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_Static))
+			{
+				Flags.Add(TEXT("Static"));
+			}
 			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
 			Funcs.Add(MakeShared<FJsonValueObject>(F));
 		}
@@ -4089,7 +4454,10 @@ namespace
 			if (It->GetName().Contains(Query, ESearchCase::IgnoreCase))
 			{
 				Classes.Add(MakeShared<FJsonValueString>(It->GetName()));
-				if (Classes.Num() >= 200) break;  // cap
+				if (Classes.Num() >= 200)
+				{
+					break;  // cap
+				}
 			}
 		}
 
@@ -4109,7 +4477,10 @@ namespace
 		{
 			if (It->GetName() == ClassName) { Cls = *It; break; }
 		}
-		if (!Cls) Cls = FindObject<UClass>(nullptr, *ClassName);
+		if (!Cls)
+		{
+			Cls = FindObject<UClass>(nullptr, *ClassName);
+		}
 		if (!Cls)
 		{
 			TArray<TSharedPtr<FJsonValue>> Empty;
@@ -4122,11 +4493,26 @@ namespace
 			auto F = MakeShared<FJsonObject>();
 			F->SetStringField(TEXT("name"), It->GetName());
 			TArray<FString> Flags;
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable)) Flags.Add(TEXT("BlueprintCallable"));
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))     Flags.Add(TEXT("BlueprintPure"));
-			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))    Flags.Add(TEXT("BlueprintEvent"));
-			if (It->HasAnyFunctionFlags(FUNC_Net))               Flags.Add(TEXT("Net"));
-			if (It->HasAnyFunctionFlags(FUNC_Static))            Flags.Add(TEXT("Static"));
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+			{
+				Flags.Add(TEXT("BlueprintCallable"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintPure))
+			{
+				Flags.Add(TEXT("BlueprintPure"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_BlueprintEvent))
+			{
+				Flags.Add(TEXT("BlueprintEvent"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_Net))
+			{
+				Flags.Add(TEXT("Net"));
+			}
+			if (It->HasAnyFunctionFlags(FUNC_Static))
+			{
+				Flags.Add(TEXT("Static"));
+			}
 			F->SetStringField(TEXT("flags"), FString::Join(Flags, TEXT(",")));
 			Funcs.Add(MakeShared<FJsonValueObject>(F));
 		}
@@ -4253,7 +4639,10 @@ namespace
 	{
 		FString PathFilter;
 		FParse::Value(*Params, TEXT("Path="), PathFilter);
-		if (PathFilter.IsEmpty()) PathFilter = TEXT("/Game");
+		if (PathFilter.IsEmpty())
+		{
+			PathFilter = TEXT("/Game");
+		}
 
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -4511,7 +4900,10 @@ namespace
 							}
 						}
 						(void)CName; (void)LName;
-						if (!E->HasField(TEXT("level"))) E->SetNumberField(TEXT("level"), 1);
+						if (!E->HasField(TEXT("level")))
+						{
+							E->SetNumberField(TEXT("level"), 1);
+						}
 						Abilities.Add(MakeShared<FJsonValueObject>(E));
 					}
 				}
@@ -4537,7 +4929,10 @@ namespace
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 
 		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
-		if (!ABP) return 4;
+		if (!ABP)
+		{
+			return 4;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4578,7 +4973,10 @@ namespace
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
 
 		UAnimBlueprint* ABP = LoadObject<UAnimBlueprint>(nullptr, *AssetPath);
-		if (!ABP) return 4;
+		if (!ABP)
+		{
+			return 4;
+		}
 
 		FCompilerResultsLog ResultsLog;
 		FKismetEditorUtilities::CompileBlueprint(ABP,
@@ -4635,7 +5033,10 @@ namespace
 		// MCP-server tool's schema constrains values to the five common
 		// ones; anything else is treated as "no filter."
 		ELogVerbosity::Type MinVerb = ELogVerbosity::NoLogging;
-		if (MinSeverity.Equals(TEXT("Fatal"),   ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Fatal;
+		if (MinSeverity.Equals(TEXT("Fatal"),   ESearchCase::IgnoreCase))
+		{
+			MinVerb = ELogVerbosity::Fatal;
+		}
 		else if (MinSeverity.Equals(TEXT("Error"),  ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Error;
 		else if (MinSeverity.Equals(TEXT("Warning"),ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Warning;
 		else if (MinSeverity.Equals(TEXT("Display"),ESearchCase::IgnoreCase)) MinVerb = ELogVerbosity::Display;
@@ -4761,7 +5162,10 @@ namespace
 		// MaybeCompileAndSave handles the save + compile. AssetCreated
 		// notification fires inside DuplicateAsset already, so a
 		// follow-up batch op can LoadMutableBlueprint it.
-		if (!MaybeCompileAndSave(NewBP)) return 5;
+		if (!MaybeCompileAndSave(NewBP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4804,8 +5208,14 @@ namespace
 
 		auto TypeJson = MakeShared<FJsonObject>();
 		TypeJson->SetStringField(TEXT("category"), TypeCategory);
-		if (!TypeSubCategory.IsEmpty()) TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
-		if (!TypeSubObject.IsEmpty())   TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		if (!TypeSubCategory.IsEmpty())
+		{
+			TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
+		}
+		if (!TypeSubObject.IsEmpty())
+		{
+			TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		}
 		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
 		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
 		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
@@ -4839,11 +5249,20 @@ namespace
 			return 1;
 		}
 		FBPVariableDescription& Var = BP->NewVariables[Index];
-		if (!Category.IsEmpty()) Var.Category = FText::FromString(Category);
-		if (bEditable)   Var.PropertyFlags |= CPF_Edit | CPF_BlueprintVisible;
+		if (!Category.IsEmpty())
+		{
+			Var.Category = FText::FromString(Category);
+		}
+		if (bEditable)
+		{
+			Var.PropertyFlags |= CPF_Edit | CPF_BlueprintVisible;
+		}
 		if (bReplicated) { Var.PropertyFlags |= CPF_Net; Var.ReplicationCondition = COND_None; }
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -4864,7 +5283,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
 		if (!Graph)
@@ -4882,7 +5304,10 @@ namespace
 		Node->NodePosX = X;
 		Node->NodePosY = Y;
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -4900,9 +5325,15 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph) return 4;
+		if (!Graph)
+		{
+			return 4;
+		}
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
 		if (!Node)
 		{
@@ -4914,7 +5345,10 @@ namespace
 		// handles both, plus refreshes any dependent UI state.
 		FBlueprintEditorUtils::RemoveNode(BP, Node, /*bDontRecompile=*/true);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -4923,7 +5357,10 @@ namespace
 	// "Actor" or "/Script/Engine.Actor").
 	UClass* ResolveClass(const FString& Spec)
 	{
-		if (Spec.IsEmpty()) return nullptr;
+		if (Spec.IsEmpty())
+		{
+			return nullptr;
+		}
 		// Try as full path first.
 		if (UObject* Resolved = StaticLoadObject(UClass::StaticClass(), nullptr, *Spec))
 		{
@@ -4966,7 +5403,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
 		if (!Graph)
 		{
@@ -5150,10 +5590,16 @@ namespace
 			return 1;
 		}
 
-		if (!Spawned) return 5;
+		if (!Spawned)
+		{
+			return 5;
+		}
 		const FString NewId = Spawned->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -5170,7 +5616,10 @@ namespace
 		{
 			for (UEdGraphPin* P : Node->Pins)
 			{
-				if (P && P->PinId == AsGuid) return P;
+				if (P && P->PinId == AsGuid)
+				{
+					return P;
+				}
 			}
 		}
 		// Fall back to FName match. This is the underlying pin name —
@@ -5192,7 +5641,10 @@ namespace
 		// Required for issue #10: callers often pass the visible label.
 		for (UEdGraphPin* P : Node->Pins)
 		{
-			if (!P) continue;
+			if (!P)
+			{
+				continue;
+			}
 			const FString Friendly = P->PinFriendlyName.IsEmpty()
 				? FString()
 				: P->PinFriendlyName.ToString();
@@ -5224,9 +5676,15 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindGraphByName(BP, GraphName);
-		if (!Graph) return 4;
+		if (!Graph)
+		{
+			return 4;
+		}
 
 		UEdGraphNode* FromNode = FindNodeByGuid(Graph, FromNodeId);
 		UEdGraphNode* ToNode   = FindNodeByGuid(Graph, ToNodeId);
@@ -5279,7 +5737,10 @@ namespace
 			return 1;
 		}
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5297,7 +5758,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		const FName Var(*VarName);
 		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, Var) == INDEX_NONE)
 		{
@@ -5306,7 +5770,10 @@ namespace
 		}
 		FBlueprintEditorUtils::RemoveMemberVariable(BP, Var);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5317,12 +5784,21 @@ namespace
 		FParse::Value(*Params, TEXT("TypeCategory="),         TypeCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategory="),      TypeSubCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategoryObject="), TypeSubObject);
-		if (TypeCategory.IsEmpty()) return false;
+		if (TypeCategory.IsEmpty())
+		{
+			return false;
+		}
 
 		auto TypeJson = MakeShared<FJsonObject>();
 		TypeJson->SetStringField(TEXT("category"), TypeCategory);
-		if (!TypeSubCategory.IsEmpty()) TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
-		if (!TypeSubObject.IsEmpty())   TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		if (!TypeSubCategory.IsEmpty())
+		{
+			TypeJson->SetStringField(TEXT("sub_category"), TypeSubCategory);
+		}
+		if (!TypeSubObject.IsEmpty())
+		{
+			TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
+		}
 		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
 		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
 		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
@@ -5345,7 +5821,10 @@ namespace
 	{
 		for (UEdGraphNode* N : Graph->Nodes)
 		{
-			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(N)) return Entry;
+			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(N))
+			{
+				return Entry;
+			}
 		}
 		return nullptr;
 	}
@@ -5354,7 +5833,10 @@ namespace
 	{
 		for (UEdGraphNode* N : Graph->Nodes)
 		{
-			if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N)) return R;
+			if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N))
+			{
+				return R;
+			}
 		}
 		UK2Node_FunctionResult* Result = NewObject<UK2Node_FunctionResult>(Graph);
 		Result->CreateNewGuid();
@@ -5380,7 +5862,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		if (FindFunctionGraph(BP, FunctionName))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunction: function %s already exists"), *FunctionName);
@@ -5391,7 +5876,10 @@ namespace
 			BP, FName(*FunctionName), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
 		FBlueprintEditorUtils::AddFunctionGraph<UClass>(BP, NewGraph, /*bIsUserCreated=*/true, nullptr);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetStringField(TEXT("function_name"), FunctionName);
@@ -5424,7 +5912,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
 		if (!Graph)
 		{
@@ -5439,7 +5930,10 @@ namespace
 		}
 		Entry->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output, /*bUseUniqueName=*/false);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5460,7 +5954,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
 		if (!Graph)
 		{
@@ -5470,7 +5967,10 @@ namespace
 		UK2Node_FunctionResult* Result = FindOrCreateFunctionResult(Graph);
 		Result->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Input, /*bUseUniqueName=*/false);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5488,7 +5988,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		UEdGraph* Graph = FindFunctionGraph(BP, FunctionName);
 		if (!Graph)
 		{
@@ -5498,7 +6001,10 @@ namespace
 		// EFlags=None purges the graph + any UFUNCTION the compiler emitted.
 		FBlueprintEditorUtils::RemoveGraph(BP, Graph, EGraphRemoveFlags::None);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5517,7 +6023,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		const FName Var(*VarName);
 		const int32 Index = FBlueprintEditorUtils::FindNewVariableIndex(BP, Var);
 		if (Index == INDEX_NONE)
@@ -5527,7 +6036,10 @@ namespace
 		}
 		BP->NewVariables[Index].DefaultValue = NewDefault;
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5546,7 +6058,10 @@ namespace
 		}
 
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
-		if (!BP) return 4;
+		if (!BP)
+		{
+			return 4;
+		}
 		const FName Old(*OldName), New(*NewName);
 		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, Old) == INDEX_NONE)
 		{
@@ -5560,7 +6075,10 @@ namespace
 		}
 		FBlueprintEditorUtils::RenameMemberVariable(BP, Old, New);
 
-		if (!MaybeCompileAndSave(BP)) return 5;
+		if (!MaybeCompileAndSave(BP))
+		{
+			return 5;
+		}
 		return EmitOk(OutputPath, bPretty);
 	}
 
@@ -5681,7 +6199,10 @@ namespace
 // emit the structured error JSON instead of whatever the handler wrote.
 int32 ApplyLoadFailureOverride(int32 HandlerCode, const FString& OutputPath)
 {
-	if (LoadFailure::OverrideCode == 0) return HandlerCode;
+	if (LoadFailure::OverrideCode == 0)
+	{
+		return HandlerCode;
+	}
 	const int32 Code = LoadFailure::OverrideCode;
 	const FString Json = MoveTemp(LoadFailure::OverrideJson);
 	LoadFailure::OverrideCode = 0;
@@ -5693,7 +6214,10 @@ int32 ApplyLoadFailureOverride(int32 HandlerCode, const FString& OutputPath)
 int32 RunOneOp(const FString& Params)
 {
 	EOp Op;
-	if (!ParseOp(Params, Op)) return 1;
+	if (!ParseOp(Params, Op))
+	{
+		return 1;
+	}
 
 	const bool bPretty = !FParse::Param(*Params, TEXT("Compact"));
 	const FString OutputPath = ResolveOutputPath(Params);
@@ -5962,10 +6486,16 @@ int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString
 // the strict-atomic-mode contract where clients want no half state.
 void BlueprintReader::FlushBatchForConnection(uint64 ConnectionId)
 {
-    if (ConnectionId == 0) return;
+    if (ConnectionId == 0)
+    {
+    	return;
+    }
     TArray<TWeakObjectPtr<UBlueprint>> Pending =
         BlueprintReader::FBatchRegistry::Get().Discard(ConnectionId);
-    if (Pending.IsEmpty()) return;
+    if (Pending.IsEmpty())
+    {
+    	return;
+    }
 
     const bool bSkipCompile =
         FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_BATCH_ON_DISCONNECT"))

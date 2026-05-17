@@ -17,7 +17,10 @@ namespace {
 std::vector<CppTokenKind> Kinds(const std::vector<CppToken>& toks) {
 	std::vector<CppTokenKind> out;
 	out.reserve(toks.size());
-	for (const auto& t : toks) out.push_back(t.kind);
+	for (const auto& t : toks)
+	{
+		out.push_back(t.kind);
+	}
 	return out;
 }
 

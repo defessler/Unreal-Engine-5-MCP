@@ -218,7 +218,10 @@ std::string StripClassPrefix(std::string_view name) {
 // prefix) vs. plain UObject lineage (U prefix). Falls back to U for
 // unknowns, which matches UE convention for non-Actor objects.
 char ChoosePrefixFor(std::string_view parentClassName) {
-	if (parentClassName.empty()) return 'U';
+	if (parentClassName.empty())
+	{
+		return 'U';
+	}
 	if (parentClassName[0] == 'A' || parentClassName[0] == 'U') {
 		// Already-prefixed: take its prefix.
 		return parentClassName[0];
@@ -245,7 +248,10 @@ char ChoosePrefixFor(std::string_view parentClassName) {
 
 // Normalize the parent class to its prefixed form.
 std::string NormalizeParent(std::string_view parentClassName) {
-	if (parentClassName.empty()) return "UObject";
+	if (parentClassName.empty())
+	{
+		return "UObject";
+	}
 	// Strip "/Script/Engine.Actor" → "Actor".
 	auto dot = parentClassName.find_last_of('.');
 	std::string_view base = (dot == std::string_view::npos)
@@ -270,14 +276,20 @@ std::string StripBpSuffix(std::string_view bpName) {
 } // namespace
 
 std::string ParentClassToHeader(std::string_view parentClassName) {
-	if (parentClassName.empty()) return "UObject/Object.h";
+	if (parentClassName.empty())
+	{
+		return "UObject/Object.h";
+	}
 	// Strip path/dot prefix.
 	auto dot = parentClassName.find_last_of('.');
 	std::string base = (dot == std::string_view::npos)
 						  ? std::string(parentClassName)
 						  : std::string(parentClassName.substr(dot + 1));
 	auto it = ParentHeaderMap().find(base);
-	if (it != ParentHeaderMap().end()) return it->second;
+	if (it != ParentHeaderMap().end())
+	{
+		return it->second;
+	}
 	// Unknown — best-guess as a project-local header. UE convention
 	// names headers after the class without the prefix
 	// (`AMyEnemy` → `MyEnemy.h`), so strip A/U if present.
@@ -317,9 +329,15 @@ bool LooksLikeComponentType(std::string_view bpirType) {
 	// Strip object:/soft_object: prefix.
 	std::string_view t = bpirType;
 	auto colon = t.find(':');
-	if (colon == std::string_view::npos) return false;
+	if (colon == std::string_view::npos)
+	{
+		return false;
+	}
 	std::string_view head = t.substr(0, colon);
-	if (head != "object" && head != "soft_object") return false;
+	if (head != "object" && head != "soft_object")
+	{
+		return false;
+	}
 	std::string_view sub = t.substr(colon + 1);
 	if (auto dot = sub.find_last_of('.'); dot != std::string_view::npos) {
 		sub = sub.substr(dot + 1);
@@ -381,7 +399,10 @@ std::string BuildUPropertyList(const nlohmann::json& varDecl) {
 	}
 	std::string out;
 	for (std::size_t i = 0; i < specs.size(); ++i) {
-		if (i) out += ", ";
+		if (i)
+		{
+			out += ", ";
+		}
 		out += specs[i];
 	}
 	return out;
@@ -416,7 +437,10 @@ std::string BuildUFunctionList(const nlohmann::json& fnDoc) {
 	}
 	std::string out;
 	for (std::size_t i = 0; i < specs.size(); ++i) {
-		if (i) out += ", ";
+		if (i)
+		{
+			out += ", ";
+		}
 		out += specs[i];
 	}
 	return out;
@@ -431,11 +455,17 @@ namespace {
 std::string TrimFloatDefault(std::string_view in) {
 	std::string s(in);
 	auto dot = s.find('.');
-	if (dot == std::string::npos) return s + ".0";
+	if (dot == std::string::npos)
+	{
+		return s + ".0";
+	}
 	// Trim trailing zeros after the decimal point, but keep at least
 	// one digit after the dot so we don't end up with bare "100.".
 	// We scan from the right while we're past `dot+1` and the char is '0'.
-	while (s.size() > dot + 2 && s.back() == '0') s.pop_back();
+	while (s.size() > dot + 2 && s.back() == '0')
+	{
+		s.pop_back();
+	}
 	return s;
 }
 
@@ -450,7 +480,10 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
 	std::string cppType = MapBpirTypeToCppMember(typeStr);
 	std::string rawName = v.value("name", "");
 	std::string name    = SanitizeIdentifier(rawName);
-	if (name.empty()) name = "Var";
+	if (name.empty())
+	{
+		name = "Var";
+	}
 	std::string defaultStr = v.value("default", std::string{});
 	// Safety default for primitive UPROPERTYs: BP defaults bool to
 	// false, numerics to 0 — when BP doesn't carry an explicit value,
@@ -458,7 +491,10 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
 	// members are undefined behavior in C++. Pointers / TObjectPtr
 	// default-construct to nullptr so they're safe without our help.
 	if (defaultStr.empty()) {
-		if (cppType == "bool") defaultStr = "false";
+		if (cppType == "bool")
+		{
+			defaultStr = "false";
+		}
 		else if (cppType == "int32" || cppType == "int64" || cppType == "uint8" ||
 				 cppType == "uint16" || cppType == "uint32" || cppType == "uint64" ||
 				 cppType == "int16" || cppType == "int8") {
@@ -486,7 +522,10 @@ std::string RenderUPropertyDecl(const nlohmann::json& v) {
 			// Strip trailing decimals from BP's "0.000000" form on int fields.
 			std::string trimmed = defaultStr;
 			auto dot = trimmed.find('.');
-			if (dot != std::string::npos) trimmed = trimmed.substr(0, dot);
+			if (dot != std::string::npos)
+			{
+				trimmed = trimmed.substr(0, dot);
+			}
 			line += fmt::format(" = {}", trimmed);
 		} else if (cppType == "FString" || cppType == "FName") {
 			// Escape embedded `"` / `\` / newlines so a BP default like
@@ -597,7 +636,10 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
 	if (fn.contains("inputs") && fn["inputs"].is_array()) {
 		bool first = true;
 		for (const auto& in : fn["inputs"]) {
-			if (!first) args += ", ";
+			if (!first)
+			{
+				args += ", ";
+			}
 			first = false;
 			args += MapBpirTypeToCppArg(in.value("type", "void"));
 			args += " ";
@@ -608,7 +650,10 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
 	if (fn.contains("outputs") && fn["outputs"].is_array() &&
 		fn["outputs"].size() > 1) {
 		for (const auto& out : fn["outputs"]) {
-			if (!args.empty()) args += ", ";
+			if (!args.empty())
+			{
+				args += ", ";
+			}
 			args += MapBpirTypeToCppArg(out.value("type", "void"));
 			args += "& ";
 			std::string nm = SanitizeIdentifier(out.value("name", ""));
@@ -616,7 +661,10 @@ std::string RenderUFunctionDecl(const nlohmann::json& fn) {
 		}
 	}
 	std::string fnName = SanitizeIdentifier(fn.value("name", ""));
-	if (fnName.empty()) fnName = "Fn";
+	if (fnName.empty())
+	{
+		fnName = "Fn";
+	}
 	// BlueprintPure → emit `const` on the member function. UE auto-
 	// derives the Pure-ness from const-ness when the function has a
 	// return value, so this keeps the two specifiers in lockstep.
@@ -669,8 +717,14 @@ EmittedValue TranslateComponentPropertyValue(const std::string& propType,
 											 const std::string& valueText) {
 	EmittedValue out;
 	auto trimTrailingZeros = [](std::string s) {
-		if (s.find('.') == std::string::npos) return s + ".0";
-		while (s.size() > 2 && s.back() == '0' && s[s.size()-2] != '.') s.pop_back();
+		if (s.find('.') == std::string::npos)
+		{
+			return s + ".0";
+		}
+		while (s.size() > 2 && s.back() == '0' && s[s.size()-2] != '.')
+		{
+			s.pop_back();
+		}
 		return s;
 	};
 	if (propType == "FloatProperty") {
@@ -687,7 +741,10 @@ EmittedValue TranslateComponentPropertyValue(const std::string& propType,
 		propType == "UInt16Property"|| propType == "UInt32Property"||
 		propType == "UInt64Property") {
 		std::string s = valueText;
-		if (auto dot = s.find('.'); dot != std::string::npos) s = s.substr(0, dot);
+		if (auto dot = s.find('.'); dot != std::string::npos)
+		{
+			s = s.substr(0, dot);
+		}
 		out.code = s;
 		return out;
 	}
@@ -805,13 +862,25 @@ EmittedValue TranslateComponentPropertyValue(const std::string& propType,
 // All three are determined by the BP's authoring metadata; we read
 // them off metadata.ufunction_specifiers as set by the introspector.
 bool HasUFunctionSpecifier(const nlohmann::json& fn, std::string_view name) {
-	if (!fn.contains("metadata") || !fn["metadata"].is_object()) return false;
+	if (!fn.contains("metadata") || !fn["metadata"].is_object())
+	{
+		return false;
+	}
 	const auto& md = fn["metadata"];
 	if (!md.contains("ufunction_specifiers") ||
-		!md["ufunction_specifiers"].is_array()) return false;
+		!md["ufunction_specifiers"].is_array())
+	{
+		return false;
+	}
 	for (const auto& s : md["ufunction_specifiers"]) {
-		if (!s.is_string()) continue;
-		if (s.get_ref<const std::string&>() == name) return true;
+		if (!s.is_string())
+		{
+			continue;
+		}
+		if (s.get_ref<const std::string&>() == name)
+		{
+			return true;
+		}
 	}
 	return false;
 }
@@ -856,7 +925,10 @@ std::string RenderUFunctionImpl(const std::string& className,
 	if (fn.contains("inputs") && fn["inputs"].is_array()) {
 		bool first = true;
 		for (const auto& in : fn["inputs"]) {
-			if (!first) args += ", ";
+			if (!first)
+			{
+				args += ", ";
+			}
 			first = false;
 			args += MapBpirTypeToCppArg(in.value("type", "void"));
 			args += " ";
@@ -867,7 +939,10 @@ std::string RenderUFunctionImpl(const std::string& className,
 	if (fn.contains("outputs") && fn["outputs"].is_array() &&
 		fn["outputs"].size() > 1) {
 		for (const auto& out : fn["outputs"]) {
-			if (!args.empty()) args += ", ";
+			if (!args.empty())
+			{
+				args += ", ";
+			}
 			args += MapBpirTypeToCppArg(out.value("type", "void"));
 			args += "& ";
 			std::string nm = SanitizeIdentifier(out.value("name", ""));
@@ -875,7 +950,10 @@ std::string RenderUFunctionImpl(const std::string& className,
 		}
 	}
 	std::string fnName = SanitizeIdentifier(fn.value("name", ""));
-	if (fnName.empty()) fnName = "Fn";
+	if (fnName.empty())
+	{
+		fnName = "Fn";
+	}
 	// ConstructionScript / UserConstructionScript -> OnConstruction
 	// (the canonical AActor virtual). Force the canonical signature
 	// here too -- ignore whatever BPIR carries for the inputs since
@@ -900,7 +978,10 @@ std::string RenderUFunctionImpl(const std::string& className,
 	const char* constSuffix = isPure ? " const" : "";
 
 	auto bodyResult = EmitCppFunctionBody(fn, emitOpts);
-	for (const auto& n : bodyResult.notes) accumulatedNotes.push_back(n);
+	for (const auto& n : bodyResult.notes)
+	{
+		accumulatedNotes.push_back(n);
+	}
 
 	return fmt::format(
 		"{} {}::{}({}){} {{\n{}}}\n",
@@ -1021,16 +1102,25 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			std::string typeStr = v.value("type", "");
 			// Extract the "X" out of "object:X" / "soft_object:X" / "[]object:X".
 			auto colon = typeStr.find(':');
-			if (colon == std::string::npos) continue;
+			if (colon == std::string::npos)
+			{
+				continue;
+			}
 			std::string head = typeStr.substr(0, colon);
 			// Walk past TArray/TSet container prefixes.
 			// "[]object:X" head = "[]object". We want the leaf type only.
 			auto isObjectHead = [](std::string_view s) {
 				// Strip optional `[]` / `{}` container prefix.
-				while (s.size() >= 2 && (s[0] == '[' || s[0] == '{')) s = s.substr(2);
+				while (s.size() >= 2 && (s[0] == '[' || s[0] == '{'))
+				{
+					s = s.substr(2);
+				}
 				return s == "object" || s == "soft_object";
 			};
-			if (!isObjectHead(head)) continue;
+			if (!isObjectHead(head))
+			{
+				continue;
+			}
 			std::string sub = typeStr.substr(colon + 1);
 			// Path strip.
 			if (auto dot = sub.find_last_of('.'); dot != std::string::npos) {
@@ -1057,14 +1147,20 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				fullName = "U" + sub;
 			}
 			// Skip if it's the parent class (already #included transitively).
-			if (fullName == parentClass) continue;
+			if (fullName == parentClass)
+			{
+				continue;
+			}
 			forwardDecls.insert(fullName);
 		}
 	}
 	for (const auto& fwd : forwardDecls) {
 		H << "class " << fwd << ";\n";
 	}
-	if (!forwardDecls.empty()) H << "\n";
+	if (!forwardDecls.empty())
+	{
+		H << "\n";
+	}
 
 	// BP-implemented interfaces — emit them in the inheritance list.
 	// UE convention: interface types are named `IFoo` (header form);
@@ -1073,7 +1169,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	std::vector<std::string> interfaceClasses;
 	if (doc.contains("interfaces") && doc["interfaces"].is_array()) {
 		for (const auto& iface : doc["interfaces"]) {
-			if (!iface.is_string()) continue;
+			if (!iface.is_string())
+			{
+				continue;
+			}
 			std::string name = iface.get<std::string>();
 			// Strip /Script/Module. path prefix.
 			if (auto dot = name.find_last_of('.'); dot != std::string::npos) {
@@ -1117,7 +1216,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			"mcdelegate", "MulticastDelegate", "MulticastInlineDelegate"
 		};
 		for (const auto& tag : tags) {
-			if (s == tag) return true;
+			if (s == tag)
+			{
+				return true;
+			}
 			if (s.size() > tag.size() &&
 				s.compare(0, tag.size(), tag) == 0 &&
 				(s[tag.size()] == ':' || s[tag.size()] == '(')) {
@@ -1163,7 +1265,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	if (doc.contains("variables") && doc["variables"].is_array()) {
 		for (const auto& v : doc["variables"]) {
 			std::string t = v.value("type", "");
-			if (!isMcDelegateType(t)) continue;
+			if (!isMcDelegateType(t))
+			{
+				continue;
+			}
 			std::string varName = v.value("name", "Delegate");
 			McDelegateInfo info;
 			info.typedefName = deriveTypedefName(varName);
@@ -1219,7 +1324,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			  << "(" << info.typedefName;
 			for (const auto& p : info.params) {
 				std::string pname = SanitizeIdentifier(p.value("name", ""));
-				if (pname.empty()) pname = "Arg";
+				if (pname.empty())
+				{
+					pname = "Arg";
+				}
 				std::string ptype = MapBpirTypeToCppArg(p.value("type", "void"));
 				H << ", " << ptype << ", " << pname;
 			}
@@ -1228,7 +1336,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		}
 		out.notes.push_back(std::move(note));
 	}
-	if (!mcDelegateTypedefs.empty()) H << "\n";
+	if (!mcDelegateTypedefs.empty())
+	{
+		H << "\n";
+	}
 
 	// .generated.h must be the LAST include in any UCLASS-bearing header.
 	H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
@@ -1248,7 +1359,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		uclassMetaArg = ", meta=(";
 		bool first = true;
 		for (const auto& [k, v] : opts.uclassMeta) {
-			if (!first) uclassMetaArg += ", ";
+			if (!first)
+			{
+				uclassMetaArg += ", ";
+			}
 			first = false;
 			uclassMetaArg += fmt::format("{}=\"{}\"", k, v);
 		}
@@ -1260,7 +1374,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		H << "UCLASS(Blueprintable" << uclassMetaArg << ")\n";
 	}
 	H << "class ";
-	if (!opts.moduleApiMacro.empty()) H << opts.moduleApiMacro << " ";
+	if (!opts.moduleApiMacro.empty())
+	{
+		H << opts.moduleApiMacro << " ";
+	}
 	H << className << " : public " << parentClass;
 	for (const auto& iface : interfaceClasses) {
 		H << ", public " << iface;
@@ -1302,9 +1419,15 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				patched["category"] = finalCat;
 			}
 			H << RenderUPropertyDecl(patched);
-			if (v.value("replicated", false)) anyReplicated = true;
+			if (v.value("replicated", false))
+			{
+				anyReplicated = true;
+			}
 		}
-		if (!doc["variables"].empty()) H << "\n";
+		if (!doc["variables"].empty())
+		{
+			H << "\n";
+		}
 	}
 
 	// Detect whether we're an Actor-derived class — drives both the
@@ -1328,7 +1451,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		for (const auto& c : doc["components"]) {
 			std::string nm  = c.value("name",  "Component");
 			std::string cls = resolveComponentClass(c.value("class", ""));
-			if (cls.empty()) cls = "UActorComponent";
+			if (cls.empty())
+			{
+				cls = "UActorComponent";
+			}
 			H << "    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=\"Components\")\n";
 			H << "    TObjectPtr<" << cls << "> " << nm << ";\n";
 		}
@@ -1363,12 +1489,18 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				it != v.end() && it->is_string()) {
 				notifyFn = it->get<std::string>();
 			}
-			if (notifyFn.empty()) continue;
+			if (notifyFn.empty())
+			{
+				continue;
+			}
 			H << "    UFUNCTION()\n";
 			H << "    void " << notifyFn << "();\n";
 			emittedAny = true;
 		}
-		if (emittedAny) H << "\n";
+		if (emittedAny)
+		{
+			H << "\n";
+		}
 	}
 
 	// UFUNCTION decls. RenderUFunctionDecl auto-detects when the BP
@@ -1380,7 +1512,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		for (const auto& fn : doc["functions"]) {
 			H << RenderUFunctionDecl(fn);
 			std::string fnName = fn.value("name", "");
-			if (!UeReservedMethodNames().count(fnName)) continue;
+			if (!UeReservedMethodNames().count(fnName))
+			{
+				continue;
+			}
 			bool hasOutputs = fn.contains("outputs") &&
 							  fn["outputs"].is_array() &&
 							  !fn["outputs"].empty();
@@ -1455,15 +1590,24 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			for (const auto& c : doc["components"]) {
 				std::string nm  = c.value("name", "Component");
 				std::string cls = resolveComponentClass(c.value("class", ""));
-				if (cls.empty()) cls = "UActorComponent";
+				if (cls.empty())
+				{
+					cls = "UActorComponent";
+				}
 				I << "    " << nm << " = CreateDefaultSubobject<" << cls
 				  << ">(TEXT(\"" << nm << "\"));\n";
-				if (c.value("is_root", false)) rootCompName = nm;
+				if (c.value("is_root", false))
+				{
+					rootCompName = nm;
+				}
 			}
 			// Second pass: attach non-root components to either their
 			// explicit parent (if BP set one) or to the root.
 			for (const auto& c : doc["components"]) {
-				if (c.value("is_root", false)) continue;
+				if (c.value("is_root", false))
+				{
+					continue;
+				}
 				std::string nm = c.value("name", "Component");
 				std::string parent = c.value("parent", std::string{});
 				if (parent.empty() && !rootCompName.empty()) {
@@ -1484,13 +1628,19 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			// is in place before we tweak properties (UE doesn't
 			// strictly require it but reads cleaner).
 			for (const auto& c : doc["components"]) {
-				if (!c.contains("properties") || !c["properties"].is_array()) continue;
+				if (!c.contains("properties") || !c["properties"].is_array())
+				{
+					continue;
+				}
 				std::string nm = c.value("name", "Component");
 				for (const auto& p : c["properties"]) {
 					std::string pname = p.value("name", "");
 					std::string ptype = p.value("type", "");
 					std::string pval  = p.value("value", "");
-					if (pname.empty()) continue;
+					if (pname.empty())
+					{
+						continue;
+					}
 					EmittedValue v = TranslateComponentPropertyValue(ptype, pval);
 					if (!v.code.empty()) {
 						I << "    " << nm << "->" << pname << " = " << v.code << ";\n";
@@ -1532,7 +1682,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 						note["property"]      = pname;
 						note["asset_path"]    = v.assetPath;
 						note["property_type"] = ptype;
-						if (!assetClass.empty()) note["asset_class"] = assetClass;
+						if (!assetClass.empty())
+						{
+							note["asset_class"] = assetClass;
+						}
 						out.notes.push_back(std::move(note));
 					} else {
 						// Untranslatable -- emit a clear TODO with
@@ -1566,7 +1719,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		I << "    Super::GetLifetimeReplicatedProps(OutLifetimeProps);\n";
 		if (doc.contains("variables") && doc["variables"].is_array()) {
 			for (const auto& v : doc["variables"]) {
-				if (!v.value("replicated", false)) continue;
+				if (!v.value("replicated", false))
+				{
+					continue;
+				}
 				std::string varName = v.value("name", "Var");
 				// BP's RepCondition field maps directly to a COND_*
 				// specifier in DOREPLIFETIME_CONDITION. When the field
@@ -1594,7 +1750,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 			// BlueprintImplementableEvent has no C++ impl -- UE's
 			// generated.cpp glue provides the entire dispatcher. The
 			// header decl alone is the full binding.
-			if (IsBlueprintImplementableEvent(fn)) continue;
+			if (IsBlueprintImplementableEvent(fn))
+			{
+				continue;
+			}
 			I << RenderUFunctionImpl(className, fn, opts.emitOpts, out.notes);
 			I << "\n";
 		}

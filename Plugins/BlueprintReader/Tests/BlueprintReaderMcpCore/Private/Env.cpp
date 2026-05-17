@@ -24,7 +24,10 @@ std::optional<std::string> Get(const char* key) {
 	if (_dupenv_s(&buf, &len, key) == 0 && buf != nullptr) {
 		std::string out(buf);
 		std::free(buf);
-		if (out.empty()) return std::nullopt;
+		if (out.empty())
+		{
+			return std::nullopt;
+		}
 		return out;
 	}
 	return std::nullopt;
@@ -37,18 +40,33 @@ std::optional<std::string> Get(const char* key) {
 }
 
 std::string GetOrDefault(const char* key, std::string fallback) {
-	if (auto v = Get(key)) return *v;
+	if (auto v = Get(key))
+	{
+		return *v;
+	}
 	return fallback;
 }
 
 bool BoolOrDefault(const char* key, bool fallback, std::ostream& log) {
 	auto v = Get(key);
-	if (!v) return fallback;
+	if (!v)
+	{
+		return fallback;
+	}
 	std::string lower;
 	lower.reserve(v->size());
-	for (char c : *v) lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-	if (lower == "1" || lower == "true" || lower == "yes" || lower == "on") return true;
-	if (lower == "0" || lower == "false" || lower == "no" || lower == "off") return false;
+	for (char c : *v)
+	{
+		lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+	}
+	if (lower == "1" || lower == "true" || lower == "yes" || lower == "on")
+	{
+		return true;
+	}
+	if (lower == "0" || lower == "false" || lower == "no" || lower == "off")
+	{
+		return false;
+	}
 	log << "[bp-reader-mcp] warning: " << key << "=" << *v
 		<< " not understood (expected 0/1/true/false/yes/no/on/off); using default "
 		<< (fallback ? "true" : "false") << "\n";
@@ -57,7 +75,10 @@ bool BoolOrDefault(const char* key, bool fallback, std::ostream& log) {
 
 int IntOrDefault(const char* key, int fallback) {
 	auto v = Get(key);
-	if (!v) return fallback;
+	if (!v)
+	{
+		return fallback;
+	}
 	try {
 		return std::stoi(*v);
 	} catch (...) {
@@ -73,27 +94,45 @@ std::optional<std::filesystem::path>
 FindUprojectAbove(const std::filesystem::path& start, int maxDepth) {
 	std::error_code ec;
 	auto current = std::filesystem::absolute(start, ec);
-	if (ec) return std::nullopt;
+	if (ec)
+	{
+		return std::nullopt;
+	}
 	for (int i = 0; i < maxDepth; ++i) {
 		if (!std::filesystem::is_directory(current, ec)) {
 			current = current.parent_path();
-			if (current.empty()) return std::nullopt;
+			if (current.empty())
+			{
+				return std::nullopt;
+			}
 			continue;
 		}
 		// Look for exactly one *.uproject in this dir.
 		std::filesystem::path found;
 		int count = 0;
 		for (const auto& entry : std::filesystem::directory_iterator(current, ec)) {
-			if (ec) break;
+			if (ec)
+			{
+				break;
+			}
 			if (entry.is_regular_file(ec) && entry.path().extension() == ".uproject") {
 				found = entry.path();
-				if (++count > 1) break;
+				if (++count > 1)
+				{
+					break;
+				}
 			}
 		}
-		if (count == 1) return found;
+		if (count == 1)
+		{
+			return found;
+		}
 		// Walk up.
 		auto parent = current.parent_path();
-		if (parent == current) return std::nullopt;
+		if (parent == current)
+		{
+			return std::nullopt;
+		}
 		current = parent;
 	}
 	return std::nullopt;
@@ -103,7 +142,10 @@ std::optional<std::string>
 ReadEngineAssociation(const std::filesystem::path& uproject) {
 	try {
 		std::ifstream in(uproject);
-		if (!in) return std::nullopt;
+		if (!in)
+		{
+			return std::nullopt;
+		}
 		nlohmann::json j;
 		in >> j;
 		auto it = j.find("EngineAssociation");
@@ -140,7 +182,10 @@ ResolveEngineFromRegistry(const std::string& engineAssociation) {
 	std::string s(buf, (bufLen > 0 && buf[bufLen - 1] == '\0') ? bufLen - 1 : bufLen);
 	std::filesystem::path p(s);
 	std::error_code ec;
-	if (!std::filesystem::is_directory(p, ec)) return std::nullopt;
+	if (!std::filesystem::is_directory(p, ec))
+	{
+		return std::nullopt;
+	}
 	return p;
 #else    // defined(_WIN32)
 	(void)engineAssociation;
@@ -152,19 +197,31 @@ std::optional<std::string>
 DetectEditorConfig(const std::filesystem::path& pluginDir) {
 	auto binDir = pluginDir / "Binaries" / "Win64";
 	std::error_code ec;
-	if (!std::filesystem::is_directory(binDir, ec)) return std::nullopt;
+	if (!std::filesystem::is_directory(binDir, ec))
+	{
+		return std::nullopt;
+	}
 
 	// Prefer suffix-less Development if it exists — that's what the daemon
 	// launches by default.
 	auto dev = binDir / "UnrealEditor-BlueprintReaderEditor.dll";
-	if (std::filesystem::exists(dev, ec)) return std::string("Development");
+	if (std::filesystem::exists(dev, ec))
+	{
+		return std::string("Development");
+	}
 
 	// Otherwise pick whichever -Win64-<Config>.dll variant exists.
 	static const std::regex re(
 		R"(^UnrealEditor-BlueprintReaderEditor-Win64-([A-Za-z]+)\.dll$)");
 	for (const auto& entry : std::filesystem::directory_iterator(binDir, ec)) {
-		if (ec) break;
-		if (!entry.is_regular_file(ec)) continue;
+		if (ec)
+		{
+			break;
+		}
+		if (!entry.is_regular_file(ec))
+		{
+			continue;
+		}
 		auto name = entry.path().filename().string();
 		std::smatch m;
 		if (std::regex_match(name, m, re)) {

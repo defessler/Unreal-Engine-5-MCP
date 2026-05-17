@@ -17,7 +17,10 @@ namespace
 		if (!S.IsEmpty())
 		{
 			const int32 N = FCString::Atoi(*S);
-			if (N > 0 && N <= 1'000'000) return N;
+			if (N > 0 && N <= 1'000'000)
+			{
+				return N;
+			}
 		}
 		return 1024;
 	}
@@ -41,7 +44,10 @@ FLogSink::~FLogSink()
 void FLogSink::Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity,
 						  const FName& Category)
 {
-	if (Capacity <= 0 || !V) return;
+	if (Capacity <= 0 || !V)
+	{
+		return;
+	}
 
 	FLogSinkEntry Entry;
 	Entry.Timestamp = FDateTime::UtcNow();
@@ -52,7 +58,10 @@ void FLogSink::Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity,
 	FScopeLock Lock(&Mu);
 	Ring[Head] = MoveTemp(Entry);
 	Head = (Head + 1) % Capacity;
-	if (Count < Capacity) ++Count;
+	if (Count < Capacity)
+	{
+		++Count;
+	}
 }
 
 namespace
@@ -63,7 +72,10 @@ namespace
 	bool VerbosityPasses(ELogVerbosity::Type EntryVerbosity,
 						 ELogVerbosity::Type MinVerbosity)
 	{
-		if (MinVerbosity == ELogVerbosity::NoLogging) return true;
+		if (MinVerbosity == ELogVerbosity::NoLogging)
+		{
+			return true;
+		}
 		return static_cast<uint8>(EntryVerbosity) <= static_cast<uint8>(MinVerbosity);
 	}
 }
@@ -74,7 +86,10 @@ void FLogSink::Drain(int32 MaxEntries,
 {
 	Out.Reset();
 	FScopeLock Lock(&Mu);
-	if (Count == 0 || MaxEntries <= 0) return;
+	if (Count == 0 || MaxEntries <= 0)
+	{
+		return;
+	}
 
 	// Walk the ring oldest→newest, accumulating filtered hits. We
 	// collect into a temp buffer, then slice to MaxEntries from the
@@ -85,7 +100,10 @@ void FLogSink::Drain(int32 MaxEntries,
 	for (int32 i = 0; i < Count; ++i)
 	{
 		const FLogSinkEntry& E = Ring[(Tail + i) % Capacity];
-		if (VerbosityPasses(E.Verbosity, MinVerbosity)) Filtered.Add(E);
+		if (VerbosityPasses(E.Verbosity, MinVerbosity))
+		{
+			Filtered.Add(E);
+		}
 	}
 	const int32 Start = FMath::Max(0, Filtered.Num() - MaxEntries);
 	for (int32 i = Start; i < Filtered.Num(); ++i)
@@ -98,7 +116,10 @@ FLogSink* GetLogSink() { return GLogSink.Get(); }
 
 void StartLogSink()
 {
-	if (GLogSink) return;
+	if (GLogSink)
+	{
+		return;
+	}
 	GLogSink = MakeUnique<FLogSink>(ResolveCapacityFromEnv());
 	// GLog dispatches to every registered output device.
 	if (GLog)
@@ -109,7 +130,10 @@ void StartLogSink()
 
 void StopLogSink()
 {
-	if (!GLogSink) return;
+	if (!GLogSink)
+	{
+		return;
+	}
 	if (GLog)
 	{
 		GLog->RemoveOutputDevice(GLogSink.Get());

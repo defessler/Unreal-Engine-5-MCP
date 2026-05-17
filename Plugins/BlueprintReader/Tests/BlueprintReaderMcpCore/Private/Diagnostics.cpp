@@ -34,21 +34,36 @@ std::filesystem::path GuessPluginDirFromCfg(const backends::BackendConfig& cfg) 
 	//   <plugin>/mcp-server/build/Release/bp-reader-mcp.exe
 	auto exeDir = cfg.fixturesDir.parent_path();
 	auto p = exeDir;
-	for (int i = 0; i < 3 && !p.empty(); ++i) p = p.parent_path();
+	for (int i = 0; i < 3 && !p.empty(); ++i)
+	{
+		p = p.parent_path();
+	}
 	return p;
 }
 
 bool UProjectListsBlueprintReader(const std::filesystem::path& uproject) {
 	try {
 		std::ifstream in(uproject);
-		if (!in) return false;
+		if (!in)
+		{
+			return false;
+		}
 		nlohmann::json j;
 		in >> j;
-		if (!j.is_object()) return false;
+		if (!j.is_object())
+		{
+			return false;
+		}
 		auto plugins = j.find("Plugins");
-		if (plugins == j.end() || !plugins->is_array()) return false;
+		if (plugins == j.end() || !plugins->is_array())
+		{
+			return false;
+		}
 		for (const auto& p : *plugins) {
-			if (!p.is_object()) continue;
+			if (!p.is_object())
+			{
+				continue;
+			}
 			auto name = p.find("Name");
 			if (name != p.end() && name->is_string() &&
 				name->get<std::string>() == "BlueprintReader") {
@@ -64,11 +79,17 @@ bool UProjectListsBlueprintReader(const std::filesystem::path& uproject) {
 } // namespace
 
 bool Report::HasError() const {
-	for (const auto& f : findings) if (f.severity == Severity::Error) return true;
+	for (const auto& f : findings)
+	{
+		if (f.severity == Severity::Error) return true;
+	}
 	return false;
 }
 bool Report::HasWarning() const {
-	for (const auto& f : findings) if (f.severity == Severity::Warning) return true;
+	for (const auto& f : findings)
+	{
+		if (f.severity == Severity::Warning) return true;
+	}
 	return false;
 }
 
@@ -175,7 +196,10 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 				static const std::regex re(
 					R"(^UnrealEditor-BlueprintReaderEditor(?:-Win64-([A-Za-z]+))?\.dll$)");
 				for (const auto& e : std::filesystem::directory_iterator(pluginBin, ec)) {
-					if (!e.is_regular_file(ec)) continue;
+					if (!e.is_regular_file(ec))
+					{
+						continue;
+					}
 					auto name = e.path().filename().string();
 					std::smatch m;
 					if (std::regex_match(name, m, re)) {
@@ -217,7 +241,10 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 
 void PrintReport(const Report& report, std::ostream& out, bool colors) {
 	auto color = [&](Severity s) -> const char* {
-		if (!colors) return "";
+		if (!colors)
+		{
+			return "";
+		}
 		switch (s) {
 			case Severity::Ok:      return "\x1b[32m";  // green
 			case Severity::Info:    return "\x1b[36m";  // cyan
@@ -239,7 +266,10 @@ void PrintReport(const Report& report, std::ostream& out, bool colors) {
 	for (const auto& f : report.findings) {
 		out << color(f.severity) << label(f.severity) << reset() << " "
 			<< f.label << "\n";
-		if (!f.detail.empty()) out << "       " << f.detail << "\n";
+		if (!f.detail.empty())
+		{
+			out << "       " << f.detail << "\n";
+		}
 		if (!f.fix_hint.empty()) {
 			// Indent multi-line fix hints.
 			out << "       Fix: ";
@@ -249,7 +279,10 @@ void PrintReport(const Report& report, std::ostream& out, bool colors) {
 					out << "       ";
 				}
 			}
-			if (f.fix_hint.back() != '\n') out << "\n";
+			if (f.fix_hint.back() != '\n')
+			{
+				out << "\n";
+			}
 		}
 	}
 }

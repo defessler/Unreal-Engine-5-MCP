@@ -44,7 +44,10 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
 	REQUIRE(out.is_array());
 	CHECK(out.size() == 12);
 	std::vector<std::string> kinds;
-	for (auto& k : out) kinds.push_back(k["kind"].get<std::string>());
+	for (auto& k : out)
+	{
+		kinds.push_back(k["kind"].get<std::string>());
+	}
 	auto has = [&](const std::string& s) {
 		return std::find(kinds.begin(), kinds.end(), s) != kinds.end();
 	};
@@ -73,8 +76,14 @@ TEST_CASE("Discoverability: list_pin_categories returns categories + containers"
 	// soft refs are first-class — verify they appear in the discovery list.
 	bool sawSoftObject = false, sawSoftClass = false;
 	for (const auto& c : out["categories"]) {
-		if (c.value("category", "") == "soft_object") sawSoftObject = true;
-		if (c.value("category", "") == "soft_class")  sawSoftClass  = true;
+		if (c.value("category", "") == "soft_object")
+		{
+			sawSoftObject = true;
+		}
+		if (c.value("category", "") == "soft_class")
+		{
+			sawSoftClass  = true;
+		}
 	}
 	CHECK(sawSoftObject);
 	CHECK(sawSoftClass);
@@ -324,7 +333,10 @@ TEST_CASE("find_overriders: parent_class filter (short name match)") {
 	for (auto& el : out) {
 		CHECK(el.contains("matched"));
 		CHECK(el.contains("asset_path"));
-		if (el["asset_path"] == "/Game/AI/BP_Enemy") foundEnemy = true;
+		if (el["asset_path"] == "/Game/AI/BP_Enemy")
+		{
+			foundEnemy = true;
+		}
 	}
 	CHECK(foundEnemy);
 }
@@ -343,7 +355,10 @@ TEST_CASE("find_overriders: function_name filter") {
 			// matched array should contain the filter that matched.
 			REQUIRE(el["matched"].is_array());
 			bool sawFn = false;
-			for (auto& m : el["matched"]) if (m == "function_name") sawFn = true;
+			for (auto& m : el["matched"])
+			{
+				if (m == "function_name") sawFn = true;
+			}
 			CHECK(sawFn);
 		}
 	}
@@ -464,7 +479,10 @@ TEST_CASE("compile_function v2: lit expression emits set_pin_default") {
 	bool sawSetPinDefault = false;
 	bool sawWireFromLit = false;
 	for (auto& op : out["ops"]) {
-		if (op.value("op", "") == "set_pin_default") sawSetPinDefault = true;
+		if (op.value("op", "") == "set_pin_default")
+		{
+			sawSetPinDefault = true;
+		}
 		// The literal must NOT have produced a wire_pins from a __lit slot —
 		// the slot ref is consumed by set_pin_default's pin_name path.
 		if (op.value("op", "") == "wire_pins" &&

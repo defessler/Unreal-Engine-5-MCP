@@ -24,7 +24,10 @@ void AddNamed(ToolRegistry& r, const std::string& name) {
 
 ToolRegistry MakeWith(std::initializer_list<const char*> names) {
 	ToolRegistry r;
-	for (const char* n : names) AddNamed(r, n);
+	for (const char* n : names)
+	{
+		AddNamed(r, n);
+	}
 	return r;
 }
 

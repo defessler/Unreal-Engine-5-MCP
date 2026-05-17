@@ -165,11 +165,17 @@ TEST_CASE("EncodeArgForFParse: full WirePins arg line round-trips via UE FParse"
 		auto start = pos + match.size();
 		if (start < stream.size() && stream[start] == L'"') {
 			auto end = stream.find(L'"', start + 1);
-			if (end == std::wstring_view::npos) end = stream.size();
+			if (end == std::wstring_view::npos)
+			{
+				end = stream.size();
+			}
 			return std::wstring(stream.substr(start + 1, end - start - 1));
 		}
 		auto end = stream.find_first_of(L" \t\r\n", start);
-		if (end == std::wstring_view::npos) end = stream.size();
+		if (end == std::wstring_view::npos)
+		{
+			end = stream.size();
+		}
 		return std::wstring(stream.substr(start, end - start));
 	};
 	CHECK(fparseValue(line, L"FromPin=") == L"Dummy Targets");

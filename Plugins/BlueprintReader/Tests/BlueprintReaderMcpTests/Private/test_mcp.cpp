@@ -30,7 +30,10 @@ std::vector<json> ReadAllFrames(std::istream& in) {
 	std::vector<json> out;
 	while (true) {
 		auto raw = jsonrpc::ReadFrame(in);
-		if (!raw) break;
+		if (!raw)
+		{
+			break;
+		}
 		out.push_back(json::parse(*raw));
 	}
 	return out;
@@ -89,7 +92,10 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	REQUIRE(list.is_array());
 	CHECK(list.size() == 126);
 	std::vector<std::string> names;
-	for (auto& t : list) names.push_back(t["name"].get<std::string>());
+	for (auto& t : list)
+	{
+		names.push_back(t["name"].get<std::string>());
+	}
 	auto has = [&](const std::string& n) {
 		return std::find(names.begin(), names.end(), n) != names.end();
 	};
