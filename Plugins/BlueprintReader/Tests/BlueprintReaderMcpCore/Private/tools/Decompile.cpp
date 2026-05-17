@@ -1332,6 +1332,30 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			sanitizedTitle = "Async";
 		}
 
+		// Parse plugin-provided per-delegate parameter lists if present.
+		// The introspector serializes them as a JSON string in
+		// `meta.delegate_params`, keyed by delegate name (which matches
+		// the output exec pin name).  Each value is an array of
+		// `{name, type}` objects in BPIR shorthand. Missing meta means
+		// the plugin doesn't surface delegate signatures yet — callbacks
+		// fall back to parameter-less signatures.
+		nlohmann::json delegateParamsByPin = nlohmann::json::object();
+		if (n.Meta.is_object()) {
+			auto dpIt = n.Meta.find("delegate_params");
+			if (dpIt != n.Meta.end() && dpIt->is_string()) {
+				try {
+					auto parsed = nlohmann::json::parse(dpIt->get<std::string>());
+					if (parsed.is_object()) {
+						delegateParamsByPin = std::move(parsed);
+					}
+				} catch (...) {
+					// Malformed JSON from plugin — defensively skip. Falls
+					// through to parameter-less callbacks; agent gets the
+					// raw string in the sidecar for triage.
+				}
+			}
+		}
+
 		for (const auto& p : n.Pins) {
 			if (p.Direction != "Output" || p.Type.Category != "exec") {
 				continue;
@@ -1348,10 +1372,28 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			std::set<std::string> visited;
 			nlohmann::json cbBody = DecompileStatementsFrom(w, bodyStart, nullptr, visited);
 
-			// Build the continuation function doc. Signature is
-			// initially parameter-less; the agent adds the matching
-			// delegate-payload params after inspecting the action's
-			// declared multicast signature.
+			// Look up the delegate's params (if plugin surfaced them).
+			// inputs[] is populated when found; otherwise parameter-less.
+			nlohmann::json cbInputs = nlohmann::json::array();
+			auto pinDpIt = delegateParamsByPin.find(p.Name);
+			if (pinDpIt != delegateParamsByPin.end() && pinDpIt->is_array()) {
+				for (const auto& param : *pinDpIt) {
+					if (!param.is_object()) {
+						continue;
+					}
+					if (!param.contains("name") || !param.contains("type")) {
+						continue;
+					}
+					cbInputs.push_back(nlohmann::json{
+						{"name", param["name"]},
+						{"type", param["type"]},
+					});
+				}
+			}
+
+			// Build the continuation function doc. inputs[] populated
+			// when plugin-side delegate-sig introspection provided
+			// per-pin parameter info; empty otherwise.
 			nlohmann::json cbDoc = {
 				{"version", kBpirSchemaVersion},
 				{"kind",    "function"},
@@ -1363,7 +1405,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 					{"source_node_guid", n.Id},
 					{"source_exec_pin",  p.Name},
 				}},
-				{"inputs",  nlohmann::json::array()},
+				{"inputs",  std::move(cbInputs)},
 				{"outputs", nlohmann::json::array()},
 				{"locals",  nlohmann::json::array()},
 				{"body",    std::move(cbBody)},
