@@ -71,4 +71,4 @@ FLogSink* GetLogSink();
 void StartLogSink();
 void StopLogSink();
 
-}  // namespace BlueprintReader
+}    // namespace BlueprintReader

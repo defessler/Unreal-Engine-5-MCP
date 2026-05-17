@@ -234,7 +234,7 @@ namespace nlohmann
 			else             opt = j.get<std::string>();
 		}
 	};
-}
+}    // namespace nlohmann
 
 inline void to_json(nlohmann::json& j, const BPPinType& v)
 {
@@ -566,4 +566,4 @@ inline void from_json(const nlohmann::json& j, BPComponent& v)
 		j.at("properties").get_to(v.Properties);
 	}
 }
-#endif // !WITH_UE
+#endif    // !WITH_UE

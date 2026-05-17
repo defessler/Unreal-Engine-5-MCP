@@ -83,4 +83,4 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
                            const nlohmann::json& ops);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

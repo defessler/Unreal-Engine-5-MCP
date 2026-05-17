@@ -51,4 +51,4 @@ Report RunSetupChecks(const backends::BackendConfig& cfg);
 // Pretty-print to a stream with ANSI colors when `colors=true`.
 void PrintReport(const Report& report, std::ostream& out, bool colors = true);
 
-} // namespace bpr::diag
+}    // namespace bpr::diag

@@ -76,4 +76,4 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 // directories.
 std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg);
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

@@ -157,4 +157,4 @@ bool FBlueprintReaderJsonEmptyInfoTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
-#endif
+#endif    // WITH_DEV_AUTOMATION_TESTS

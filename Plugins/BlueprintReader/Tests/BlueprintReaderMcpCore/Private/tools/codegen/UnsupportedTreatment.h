@@ -79,4 +79,4 @@ nlohmann::json BuildSidecar(std::string_view sourceBp,
 							const std::vector<std::string>& generatedFiles,
 							const nlohmann::json& notes);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

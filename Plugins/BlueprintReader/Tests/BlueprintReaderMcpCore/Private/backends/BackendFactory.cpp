@@ -265,4 +265,4 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 	return MaybeWrapReadOnly(std::move(cached), cfg.readOnly);
 }
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

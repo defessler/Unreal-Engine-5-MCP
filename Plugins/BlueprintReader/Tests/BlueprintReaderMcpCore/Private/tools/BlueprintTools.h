@@ -22,4 +22,4 @@ void RegisterBlueprintTools(ToolRegistry& registry,
 // `enable_tool_category("editor")` to incrementally widen the surface.
 void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

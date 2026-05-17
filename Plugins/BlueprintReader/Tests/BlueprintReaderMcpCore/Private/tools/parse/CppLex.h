@@ -86,4 +86,4 @@ std::vector<CppToken> LexCpp(std::string_view source);
 // Map a token kind to a printable name (for error messages + tests).
 std::string TokenKindName(CppTokenKind k);
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

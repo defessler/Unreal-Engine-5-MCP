@@ -10,7 +10,7 @@
 
 #if defined(_WIN32)
 	#include <windows.h>
-#endif
+#endif    // defined(_WIN32)
 
 namespace bpr::test {
 
@@ -20,9 +20,9 @@ inline std::filesystem::path TestExecutableDir() {
 	DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
 	if (n == 0 || n == MAX_PATH) return std::filesystem::current_path();
 	return std::filesystem::path(buf).parent_path();
-#else
+#else    // defined(_WIN32)
 	return std::filesystem::current_path();
-#endif
+#endif    // defined(_WIN32)
 }
 
 inline std::filesystem::path FixturesDir() {
@@ -41,4 +41,4 @@ inline std::unique_ptr<backends::MockBlueprintReader> MakeMockReaderUnique() {
 	return std::make_unique<backends::MockBlueprintReader>(FixturesDir());
 }
 
-} // namespace bpr::test
+}    // namespace bpr::test

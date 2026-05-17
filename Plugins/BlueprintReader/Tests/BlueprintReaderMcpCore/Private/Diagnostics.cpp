@@ -254,4 +254,4 @@ void PrintReport(const Report& report, std::ostream& out, bool colors) {
 	}
 }
 
-} // namespace bpr::diag
+}    // namespace bpr::diag

@@ -4326,4 +4326,4 @@ void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry) {
 	registry.Add(std::move(d), std::move(handler));
 }
 
-} // namespace bpr::tools
+}    // namespace bpr::tools

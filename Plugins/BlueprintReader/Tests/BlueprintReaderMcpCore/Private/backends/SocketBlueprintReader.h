@@ -330,4 +330,4 @@ private:
 	int        nextRequestId_ = 1;
 };
 
-} // namespace bpr::backends
+}    // namespace bpr::backends

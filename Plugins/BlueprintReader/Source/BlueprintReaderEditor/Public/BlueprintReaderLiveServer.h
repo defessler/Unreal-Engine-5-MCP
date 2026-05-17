@@ -127,4 +127,4 @@ private:
 // for its lifetime; tests + other code can reach it via this if needed.
 FLiveServer* GetLiveServer();
 
-} // namespace BlueprintReader
+}    // namespace BlueprintReader

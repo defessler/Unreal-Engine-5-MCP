@@ -46,7 +46,7 @@
 #include "HAL/FileManager.h"
 #if PLATFORM_WINDOWS
     #include "Windows/WindowsHWrapper.h"
-#endif
+#endif    // PLATFORM_WINDOWS
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "K2Node_CallFunction.h"
@@ -472,7 +472,7 @@ namespace
 	{
 		thread_local int32   OverrideCode = 0;     // 0 = no override
 		thread_local FString OverrideJson;          // already-serialized JSON body
-	}
+	}    // namespace LoadFailure
 
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
@@ -718,11 +718,11 @@ namespace
 					     "compile/serialization error"),
 					*FileName);
 			}
-#else
+#else    // PLATFORM_WINDOWS
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("SavePackage failed: %s — check the editor log for the underlying error"),
 				*FileName);
-#endif
+#endif    // PLATFORM_WINDOWS
 		}
 		return bOk;
 	}
@@ -5940,7 +5940,7 @@ namespace BlueprintReader
     // Forward decl of the anon-ns helper, hoisted to the same namespace
     // as our bridge so name lookup picks it up.
     int32 RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params);
-}
+}    // namespace BlueprintReader
 namespace
 {
 int32 RunOneOp(const FString& Params);  // forward decl from earlier defn
