@@ -1225,6 +1225,60 @@ struct Emitter {
 					actionExpr, trigger, callback));
 				return;
 			}
+			// Async-task lowering sentinels — Decompile.cpp's
+			// async-task handler emits a triplet:
+			//   __bpr_async_factory  → factory call assigning to a local
+			//   __bpr_async_bind     → AddDynamic for one wired delegate
+			//   __bpr_async_activate → Action->Activate()
+			// All three use {lit: "<ident>"} for action/factory/callback
+			// names so the validator's expression-form check passes; we
+			// unwrap them as bare identifiers here.
+			auto unwrapLit = [](const nlohmann::json& v) -> std::string {
+				if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
+					return v["lit"].get<std::string>();
+				}
+				return {};
+			};
+			if (fnName == "__bpr_async_factory") {
+				auto a = (s.contains("args") && s["args"].is_object())
+							 ? s["args"] : nlohmann::json::object();
+				const std::string actionLocal  = SanitizeIdentifier(unwrapLit(a.value("Action",       nlohmann::json{})));
+				const std::string factoryClass = unwrapLit(a.value("FactoryClass", nlohmann::json{}));
+				const std::string factoryFn    = SanitizeIdentifier(unwrapLit(a.value("Factory",      nlohmann::json{})));
+				// Emit each FactoryArg expression positionally —
+				// args are JSON-object so iteration order is alphabetical.
+				std::string argList;
+				if (auto fIt = a.find("FactoryArgs"); fIt != a.end() && fIt->is_object()) {
+					bool first = true;
+					for (auto& [k, v] : fIt->items()) {
+						if (!first) {
+							argList += ", ";
+						}
+						first = false;
+						argList += EmitExpr(v);
+					}
+				}
+				Line(fmt::format("auto* {} = {}::{}({});",
+								 actionLocal, factoryClass, factoryFn, argList));
+				return;
+			}
+			if (fnName == "__bpr_async_bind") {
+				auto a = (s.contains("args") && s["args"].is_object())
+							 ? s["args"] : nlohmann::json::object();
+				const std::string actionLocal = SanitizeIdentifier(unwrapLit(a.value("Action",   nlohmann::json{})));
+				const std::string delegate    = SanitizeIdentifier(unwrapLit(a.value("Delegate", nlohmann::json{})));
+				const std::string callback    = SanitizeIdentifier(unwrapLit(a.value("Callback", nlohmann::json{})));
+				Line(fmt::format("{}->{}.AddDynamic(this, &ThisClass::{});",
+								 actionLocal, delegate, callback));
+				return;
+			}
+			if (fnName == "__bpr_async_activate") {
+				auto a = (s.contains("args") && s["args"].is_object())
+							 ? s["args"] : nlohmann::json::object();
+				const std::string actionLocal = SanitizeIdentifier(unwrapLit(a.value("Action", nlohmann::json{})));
+				Line(fmt::format("{}->Activate();", actionLocal));
+				return;
+			}
 			// Latent-action lowering sentinel — Decompile.cpp's Delay
 			// handler emits this to wire up the timer + generated
 			// continuation method. Args use string literals for
