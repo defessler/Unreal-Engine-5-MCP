@@ -23,18 +23,36 @@ namespace
 		                    MoveTemp(ValueA), MoveTemp(ValueB) });
 	}
 
-	FString PinTypeStr(const FEdGraphPinType& T)
+	// PinTypeStr — when a pin's PinSubCategoryObject is the owning BP's own
+	// GeneratedClass (the typical `self` pin pattern), substitute the class
+	// path with the placeholder `<SELF>` so signatures compare equal across
+	// source/clone BPs. Otherwise the source BP's `self` pin would always
+	// differ from the clone BP's `self` pin even when structurally identical.
+	FString PinTypeStr(const FEdGraphPinType& T, UBlueprint* SelfBP)
 	{
+		FString ObjPath;
+		if (T.PinSubCategoryObject.IsValid())
+		{
+			UObject* Obj = T.PinSubCategoryObject.Get();
+			if (SelfBP && SelfBP->GeneratedClass && Obj == SelfBP->GeneratedClass)
+			{
+				ObjPath = TEXT("<SELF>");
+			}
+			else
+			{
+				ObjPath = Obj->GetPathName();
+			}
+		}
 		return FString::Printf(TEXT("%s/%s/%s%s%s%s"),
 			*T.PinCategory.ToString(),
 			*T.PinSubCategory.ToString(),
-			T.PinSubCategoryObject.IsValid() ? *T.PinSubCategoryObject->GetPathName() : TEXT(""),
+			*ObjPath,
 			T.IsArray() ? TEXT("[]") : TEXT(""),
 			T.IsSet()   ? TEXT("(set)") : TEXT(""),
 			T.IsMap()   ? TEXT("(map)") : TEXT(""));
 	}
 
-	FString NodeSignature(UEdGraphNode* N)
+	FString NodeSignature(UEdGraphNode* N, UBlueprint* SelfBP)
 	{
 		FString Sig = N->GetClass()->GetName() + TEXT("|") +
 		              N->GetNodeTitle(ENodeTitleType::ListView).ToString();
@@ -43,7 +61,7 @@ namespace
 			Sig += FString::Printf(TEXT("|%s:%s:%s"),
 				*P->PinName.ToString(),
 				P->Direction == EGPD_Input ? TEXT("In") : TEXT("Out"),
-				*PinTypeStr(P->PinType));
+				*PinTypeStr(P->PinType, SelfBP));
 		}
 		return Sig;
 	}
@@ -72,8 +90,8 @@ namespace
 			}
 			const FBPVariableDescription* VA = Pair.Value;
 			const FBPVariableDescription* VB = *Found;
-			const FString TA = PinTypeStr(VA->VarType);
-			const FString TB = PinTypeStr(VB->VarType);
+			const FString TA = PinTypeStr(VA->VarType, A);
+			const FString TB = PinTypeStr(VB->VarType, B);
 			if (TA != TB)
 			{
 				Add(R, FString::Printf(TEXT("variables.%s.type"), *Pair.Key.ToString()),
@@ -148,6 +166,7 @@ namespace
 	}
 
 	void CompareGraph(const FString& GraphPath, UEdGraph* GA, UEdGraph* GB,
+	                  UBlueprint* BPA, UBlueprint* BPB,
 	                  const FCompareOptions& Opt, FResult& R)
 	{
 		if (!GA && !GB)
@@ -193,7 +212,7 @@ namespace
 			{
 				continue;
 			}
-			SigCountA.FindOrAdd(NodeSignature(N))++;
+			SigCountA.FindOrAdd(NodeSignature(N, BPA))++;
 		}
 		for (UEdGraphNode* N : GB->Nodes)
 		{
@@ -201,7 +220,7 @@ namespace
 			{
 				continue;
 			}
-			SigCountB.FindOrAdd(NodeSignature(N))++;
+			SigCountB.FindOrAdd(NodeSignature(N, BPB))++;
 		}
 
 		for (const auto& Pair : SigCountA)
@@ -289,7 +308,7 @@ namespace
 		{
 			UEdGraph** Found = MapB.Find(Pair.Key);
 			const FString Path = FString::Printf(TEXT("graphs.%s"), *Pair.Key.ToString());
-			CompareGraph(Path, Pair.Value, Found ? *Found : nullptr, Opt, R);
+			CompareGraph(Path, Pair.Value, Found ? *Found : nullptr, A, B, Opt, R);
 		}
 		for (const auto& Pair : MapB)
 		{
