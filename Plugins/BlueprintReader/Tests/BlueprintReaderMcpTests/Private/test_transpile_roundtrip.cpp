@@ -11,9 +11,9 @@
 
 #include <doctest/doctest.h>
 
+#include "tools/Bpir.h"
 #include "tools/codegen/CppEmit.h"
 #include "tools/parse/CppParse.h"
-#include "tools/Bpir.h"
 
 using namespace bpr::tools;
 using nlohmann::json;

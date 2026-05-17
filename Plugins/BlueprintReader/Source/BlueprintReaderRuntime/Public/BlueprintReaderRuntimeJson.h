@@ -3,8 +3,8 @@
 // MCP server can speak to a packaged build with the same parser.
 #pragma once
 
-#include "CoreMinimal.h"
 #include "BlueprintRuntimeIntrospector.h"
+#include "CoreMinimal.h"
 
 // FJsonObject + JsonValue are templates with an ESPMode default — UE's
 // CoreMinimal forwards TSharedRef / TSharedPtr already, but we need

@@ -32,8 +32,8 @@
 
 #pragma once
 
-#include "tools/ToolRegistry.h"
 #include "backends/IBlueprintReader.h"
+#include "tools/ToolRegistry.h"
 
 #include <nlohmann/json.hpp>
 
