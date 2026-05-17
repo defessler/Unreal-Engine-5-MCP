@@ -143,16 +143,16 @@ TEST_CASE("[live][roundtrip][bpir] BP_Enemy -> decompile -> emit cpp"
 	CHECK(hSrc.find("BP_TestEnemy") != std::string::npos);
 	CHECK(cppSrc.find("BP_TestEnemy") != std::string::npos);
 
-	// Stages 4-5 are stubbed in BPIRRoundtrip.cpp. Assert the
-	// documented failure shape -- when parse/transpile land, these
-	// CHECKs should be tightened to require res.ok and
-	// bpir_after populated.
+	// Stage 4 is MINIMAL (passes bpir_before through as bpir_after) and
+	// Stage 5 is a documented stub (BPIR -> BP materialization needs
+	// RunCommand log-capture fixed first — see BPIRRoundtrip.cpp).
+	// What we CAN verify today: bpir_after is non-null (pipeline ran
+	// through Stage 4) and the failure mode is the documented stub.
+	CHECK_FALSE(res.bpir_after.is_null());
+	CHECK(res.bpir_after.is_object());
 	CHECK_FALSE(res.ok);
-	CHECK(res.failing_stage == "parse");
-	CHECK(res.error_message.find("parse stage not yet implemented")
-		  != std::string::npos);
-	CHECK(res.error_message.find("ParseCppFunction") != std::string::npos);
-	CHECK(res.bpir_after.is_null());
+	CHECK(res.failing_stage == "transpile");
+	CHECK(res.error_message.find("stage 5") != std::string::npos);
 
 	// Cleanup the generated pair so the next run starts fresh and a
 	// regression in the emit step doesn't get masked by stale files.
@@ -211,14 +211,13 @@ TEST_CASE("[live][slow][roundtrip][bpir] BP_ThirdPersonCharacter -> decompile ->
 	CHECK(hSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
 	CHECK(cppSrc.find("BP_ThirdPersonCharacter") != std::string::npos);
 
-	// Stages 4-5: same deferred-stub assertions as the BP_Enemy case.
-	// Tighten when whole-class parse/transpile lands.
+	// Stage 4 is MINIMAL (passes bpir_before through as bpir_after) and
+	// Stage 5 is a documented stub. Same shape as the BP_TestEnemy test.
+	CHECK_FALSE(res.bpir_after.is_null());
+	CHECK(res.bpir_after.is_object());
 	CHECK_FALSE(res.ok);
-	CHECK(res.failing_stage == "parse");
-	CHECK(res.error_message.find("parse stage not yet implemented")
-		  != std::string::npos);
-	CHECK(res.error_message.find("ParseCppFunction") != std::string::npos);
-	CHECK(res.bpir_after.is_null());
+	CHECK(res.failing_stage == "transpile");
+	CHECK(res.error_message.find("stage 5") != std::string::npos);
 
 	if (GetEnv("BP_READER_KEEP_GENERATED").empty()) {
 		RemoveIfExists(hPath);
