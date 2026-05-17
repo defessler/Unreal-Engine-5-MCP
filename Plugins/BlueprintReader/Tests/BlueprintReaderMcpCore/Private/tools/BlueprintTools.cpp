@@ -4405,6 +4405,42 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- bp_structural_diff ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "bp_structural_diff";
+		d.description =
+			"[blueprint] Compare two Blueprints structurally — variables, "
+			"components, function/macro/event-graph node signatures, "
+			"connection counts. Returns {ok, differences[]}. Position- and "
+			"GUID-independent so a freshly-rebuilt clone diffs cleanly "
+			"against its source. Requires live or commandlet backend.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"source",    {{"type","string"},{"description","Source BP package path"}}},
+				{"candidate", {{"type","string"},{"description","Clone BP package path"}}},
+				{"options",   {{"type","object"},
+							   {"properties", {
+								   {"ignore_node_positions", {{"type","boolean"}}},
+								   {"ignore_comment_nodes",  {{"type","boolean"}}},
+							   }}}},
+			}},
+			{"required", nlohmann::json::array({"source","candidate"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string a = RequireString(args, "source");
+			std::string b = RequireString(args, "candidate");
+			backends::IBlueprintReader::StructuralDiffOptions opts;
+			if (args.contains("options") && args["options"].is_object()) {
+				const auto& o = args["options"];
+				opts.ignoreNodePositions = o.value("ignore_node_positions", true);
+				opts.ignoreCommentNodes  = o.value("ignore_comment_nodes", false);
+			}
+			return reader.StructuralDiff(a, b, opts);
+		});
+	}
+
 	// ===== Batch + DSL =====================================================
 	// apply_ops and compile_function live in their own files because their
 	// dispatch tables are bigger than the per-tool handlers above.

@@ -131,6 +131,12 @@ ReadOnlyBlueprintReader::WriteGeneratedSource(std::string_view, std::string_view
 	Reject("write_generated_source");
 }
 
+nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
+	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
+	// Diff is a read op — passes through.
+	return inner_->StructuralDiff(a, b, opts);
+}
+
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode
 // no individual op will mutate, so EndBatch's compile/save loop has

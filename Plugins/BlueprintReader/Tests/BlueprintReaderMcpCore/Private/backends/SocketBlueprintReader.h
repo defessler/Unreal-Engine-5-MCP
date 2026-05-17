@@ -119,6 +119,8 @@ public:
 	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view destPath,
 													std::string_view content,
 													bool createDirs) override;
+	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
+								   const StructuralDiffOptions& opts) override;
 
 	// ----- Project + Content Browser ops --------------------------------
 	ProjectMetadata GetProjectMetadata() override;

@@ -47,6 +47,22 @@ public:
 	virtual std::vector<BPNode>         FindNode(std::string_view assetPath, std::string_view query,
 												 std::string_view kind = {}) = 0;
 
+	// Compare two Blueprints structurally — returns the diff JSON shape
+	// produced by BlueprintStructuralDiff::FResult::ToJson(). Position-
+	// and GUID-independent so a freshly-rebuilt clone diffs cleanly
+	// against its source. Requires the live or commandlet backend (mock
+	// fixtures don't carry UBlueprint reflection). Read-only — passes
+	// through the ReadOnly decorator.
+	struct StructuralDiffOptions {
+		bool ignoreNodePositions = true;
+		bool ignoreCommentNodes  = false;
+	};
+	virtual nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
+										   const StructuralDiffOptions& opts = {}) {
+		(void)a; (void)b; (void)opts;
+		throw BlueprintReaderError("StructuralDiff not supported by this backend");
+	}
+
 	// Write tools. Backends that don't support mutation throw
 	// BlueprintReaderError. Each call should leave the .uasset compilable.
 
