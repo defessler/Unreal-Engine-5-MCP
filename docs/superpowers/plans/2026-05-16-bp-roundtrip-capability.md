@@ -1775,11 +1775,11 @@ git commit -m "feat(plugin): BlueprintStructuralDiff — position-independent UB
 **Files:**
 - Modify: `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReaderCommandlet.cpp`
 
-- [ ] **Step 1: Add the enum value**
+- [x] **Step 1: Add the enum value**
 
 Find the `EOp` enum in `BlueprintReaderCommandlet.cpp`. Add `StructuralDiff,` to the list (typically before any sentinel `Count`).
 
-- [ ] **Step 2: Add the `ParseOp` entry**
+- [x] **Step 2: Add the `ParseOp` entry**
 
 In the parser function around line 281 (look for the chain of `if (OpStr.Equals(TEXT("List")...`):
 
@@ -1787,7 +1787,7 @@ In the parser function around line 281 (look for the chain of `if (OpStr.Equals(
 if (OpStr.Equals(TEXT("StructuralDiff"), ESearchCase::IgnoreCase)) { OutOp = EOp::StructuralDiff; return true; }
 ```
 
-- [ ] **Step 3: Add the dispatch arm**
+- [x] **Step 3: Add the dispatch arm**
 
 In `RunOneOp` (search for `case EOp::List:`), add:
 
@@ -1796,7 +1796,7 @@ case EOp::StructuralDiff:
     return RunStructuralDiffOp(Params, OutputPath, bPretty);
 ```
 
-- [ ] **Step 4: Add the impl**
+- [x] **Step 4: Add the impl**
 
 Near the other `RunFooOp` impls in the same file:
 
@@ -1826,7 +1826,7 @@ static int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPat
 
 (`EmitOk` / `EmitErr` are existing helpers in the same file — find them by grep if signatures differ.)
 
-- [ ] **Step 5: Add the include at the top of the file**
+- [x] **Step 5: Add the include at the top of the file**
 
 ```cpp
 #include "BlueprintStructuralDiff.h"
@@ -1846,7 +1846,7 @@ static int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPat
 
 Expected: `{"ok": true, "differences": []}` on stdout.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReaderCommandlet.cpp
