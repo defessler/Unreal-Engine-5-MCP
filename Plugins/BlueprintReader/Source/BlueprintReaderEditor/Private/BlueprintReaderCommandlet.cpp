@@ -126,6 +126,16 @@ UBPRCommandlet::UBPRCommandlet()
 	IsEditor = true;
 	LogToConsole = true;
 	ShowErrorCount = false;
+	// Honour the explicit return value from Main() / RunOneOp() / RunDaemon()
+	// instead of letting the engine override exit=0 → exit=1 just because
+	// some op logged an Error (see LaunchEngineLoop.cpp ~line 4160). Several
+	// of our ops emit Error-level diagnostics on EXPECTED no-op paths — most
+	// notably CreateBlueprint's idempotency probe, which calls
+	// LoadMutableBlueprint to check for an existing asset and gets back
+	// `LoadBlueprint: ... asset not in registry` on the (intended) miss.
+	// Without this flag the MCP client sees a spurious exit=1 and treats the
+	// successful create as a hard failure.
+	UseCommandletResultAsExitCode = true;
 }
 
 namespace
