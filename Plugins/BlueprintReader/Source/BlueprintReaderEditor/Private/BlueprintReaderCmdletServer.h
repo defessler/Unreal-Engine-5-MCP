@@ -26,7 +26,7 @@
 // back as `json`.
 //
 // Lifecycle: the listener is started ONLY from the `-Daemon` path of
-// `UBlueprintReaderCommandlet` — not from editor module startup. It
+// `UBPRCommandlet` — not from editor module startup. It
 // picks an ephemeral port + random token and writes them to
 // `<ProjectDir>/Saved/bp-reader-cmdlet.json` for the MCP server to
 // discover. A sibling `<ProjectDir>/Saved/bp-reader-cmdlet.lock` file

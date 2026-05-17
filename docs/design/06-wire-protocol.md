@@ -400,7 +400,7 @@ if (!path.empty()) args.push_back("-Path=" + std::string(path));
 return RunOp(args).get<std::vector<BPAssetSummary>>();
 ```
 
-The commandlet plugin's `UBlueprintReaderCommandlet::ParseOp` reads
+The commandlet plugin's `UBPRCommandlet::ParseOp` reads
 exactly the same `-Op=` flag and dispatches per op kind. The op set
 is documented in CLAUDE.md (the
 `-Op=List|Read|Graph|Function|Variables|Components|Find|AddVariable|...`

@@ -8,14 +8,14 @@
 // integration testing of the BlueprintReader commandlet pipeline.
 //
 // Run via:
-//   UnrealEditor-Cmd.exe <uproject> -run=BlueprintReaderSeed -unattended -nopause -nullrhi -nosplash
+//   UnrealEditor-Cmd.exe <uproject> -run=BPRSeed -unattended -nopause -nullrhi -nosplash
 UCLASS()
-class UBlueprintReaderSeedCommandlet : public UCommandlet
+class UBPRSeedCommandlet : public UCommandlet
 {
 	GENERATED_BODY()
 
 public:
-	UBlueprintReaderSeedCommandlet();
+	UBPRSeedCommandlet();
 
 	virtual int32 Main(const FString& Params) override;
 };

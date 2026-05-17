@@ -461,7 +461,7 @@ FString InfoToWireJson(const FBlueprintInfo& Info, bool bPretty)
 Extend the commandlet to parse `-Op=Read`/`-Asset=...`/`-Output=...`:
 
 ```cpp
-int32 UBlueprintReaderCommandlet::Main(const FString& Params)
+int32 UBPRCommandlet::Main(const FString& Params)
 {
     FString OpName;
     FParse::Value(*Params, TEXT("-Op="), OpName);
@@ -534,7 +534,7 @@ Build the plugin (same `Build.bat` invocation as chapter 3), then:
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
-  -run=BlueprintReader -Op=Read -Asset=/Game/AI/BP_Foo ^
+  -run=BPR -Op=Read -Asset=/Game/AI/BP_Foo ^
   -nullrhi -nosplash -unattended -nopause
 ```
 
@@ -547,7 +547,7 @@ $proc = Start-Process `
   "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
   -ArgumentList @(
     '"D:\Projects\UE5_MCP\UE5_MCP.uproject"',
-    '-run=BlueprintReader','-Op=Read',
+    '-run=BPR','-Op=Read',
     '-Asset=/Game/AI/BP_Foo',
     '-Output=D:\Temp\bp.json',
     '-nullrhi','-nosplash','-unattended','-nopause'

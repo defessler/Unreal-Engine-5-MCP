@@ -172,15 +172,15 @@ handful of `meta` fields, and tags each hit with its `graph_name` /
 
 Source: `CommandletBlueprintReader.h`, `CommandletBlueprintReader.cpp`.
 
-The commandlet backend drives a real `UnrealEditor-Cmd.exe -run=BlueprintReader`.
-The plugin's `UBlueprintReaderCommandlet` dispatches per `-Op=...` to
+The commandlet backend drives a real `UnrealEditor-Cmd.exe -run=BPR`.
+The plugin's `UBPRCommandlet` dispatches per `-Op=...` to
 the same `RunOneOp` logic the live backend executes; the only
 difference is the transport.
 
 Two modes, controlled by `Config::useDaemon`
 (`CommandletBlueprintReader.h:41-55`):
 
-- **One-shot** — spawn `UnrealEditor-Cmd.exe -run=BlueprintReader -Op=...`
+- **One-shot** — spawn `UnrealEditor-Cmd.exe -run=BPR -Op=...`
   per tool call. Each call pays the editor cold-start cost (~5–7 s on a
   dev box).
 - **Daemon** — spawn once with `-Daemon`. The daemon now hosts a
@@ -285,7 +285,7 @@ A real argv:
 
 ```
 <uproject>
-  -run=BlueprintReader -Op=Graph
+  -run=BPR -Op=Graph
   -Asset=/Game/AI/BP_Enemy -Graph=EventGraph
   -Out=C:\Users\...\Temp\bp-reader-deadbeef.json
   -Compact -nullrhi -nosplash -unattended -nopause -stdout

@@ -201,7 +201,7 @@ Source:
 `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReaderSeedCommandlet.cpp`.
 
 The plugin ships a separate commandlet —
-`UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) — that
+`UBPRSeedCommandlet` (`-run=BPRSeed`) — that
 synthesizes the two BPs every live test depends on:
 
 - `/Game/AI/BP_TestEnemy` — 5 variables, 2 functions, event-graph
@@ -216,7 +216,7 @@ Run with:
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
-  -run=BlueprintReaderSeed -nullrhi -nosplash -unattended -nopause
+  -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
 The seed is idempotent — running it twice is safe. The output

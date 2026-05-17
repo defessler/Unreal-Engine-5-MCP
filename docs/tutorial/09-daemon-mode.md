@@ -65,7 +65,7 @@ use. Wrap that in a `Daemon` check before the dispatch:
 
 ```cpp
 // BlueprintReaderCommandlet.cpp
-int32 UBlueprintReaderCommandlet::Main(const FString& Params)
+int32 UBPRCommandlet::Main(const FString& Params)
 {
     if (FParse::Param(*Params, TEXT("Daemon")))
     {
@@ -84,7 +84,7 @@ factored into a runnable that mirrors `BlueprintReaderLiveServer`
 
 ```cpp
 // BlueprintReaderCommandlet.cpp — abbreviated
-int32 UBlueprintReaderCommandlet::RunDaemon()
+int32 UBPRCommandlet::RunDaemon()
 {
     // Cold-start work happens once on entry: UE has already loaded
     // its modules, scanned the asset registry, and brought up our

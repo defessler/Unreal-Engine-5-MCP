@@ -257,7 +257,7 @@ regenerate:
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
     "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
-    -run=BlueprintReaderSeed -nullrhi -nosplash -unattended -nopause
+    -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
 Recreates `BP_TestEnemy` (5 vars + 2 functions + event-graph topology)
