@@ -1515,6 +1515,25 @@ CommandletBlueprintReader::DuplicateBlueprint(std::string_view sourceAssetPath,
 	return out;
 }
 
+nlohmann::json CommandletBlueprintReader::StructuralDiff(
+	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=StructuralDiff");
+	args.push_back(L"-A=" + Widen(a));
+	args.push_back(L"-B=" + Widen(b));
+	// Plugin default for ignoreNodePositions is true; only emit the flag
+	// when the caller wants to opt out (-IgnoreNodePositions=0). The
+	// flag-style boolean -IgnoreCommentNodes enables comment-node
+	// skipping (default off).
+	if (!opts.ignoreNodePositions) {
+		args.push_back(L"-IgnoreNodePositions=0");
+	}
+	if (opts.ignoreCommentNodes) {
+		args.push_back(L"-IgnoreCommentNodes");
+	}
+	return RunOp(args);
+}
+
 // ----- Project + Content Browser ops -------------------------------------
 
 IBlueprintReader::ProjectMetadata

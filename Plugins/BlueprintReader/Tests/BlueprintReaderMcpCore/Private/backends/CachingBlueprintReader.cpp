@@ -434,6 +434,11 @@ CachingBlueprintReader::WriteGeneratedSource(std::string_view destPath,
 	return inner_->WriteGeneratedSource(destPath, content, createDirs);
 }
 
+nlohmann::json CachingBlueprintReader::StructuralDiff(
+	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
+	return inner_->StructuralDiff(a, b, opts);
+}
+
 // ----- Project + Content Browser ops (pass-through with invalidation) ----
 
 IBlueprintReader::ProjectMetadata
