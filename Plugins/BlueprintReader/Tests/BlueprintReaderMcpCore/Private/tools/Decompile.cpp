@@ -1333,7 +1333,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 
 		// Helper: derive a unique, identifier-safe tag for a stateful
 		// macro instance from its node GUID. We use 8 hex chars so the
-		// synth-var names stay readable (e.g. b__BprDoOnce_a1b2c3d4_HasFired)
+		// synth-var names stay readable (e.g. bBPRDoOnce_a1b2c3d4_HasFired)
 		// while still being collision-free across a sane class size.
 		auto tagFromGuid = [](const std::string& guid) {
 			std::string out;
@@ -1383,8 +1383,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// DoOnce — semantics: the body after `Completed` runs the
 		// first time the Start exec input fires, and not again until
 		// Reset is pulsed. We lower the Start side to:
-		//   if (!b__BprDoOnce_<tag>_HasFired) {
-		//       b__BprDoOnce_<tag>_HasFired = true;
+		//   if (!bBPRDoOnce_<tag>_HasFired) {
+		//       bBPRDoOnce_<tag>_HasFired = true;
 		//       <Completed body>
 		//   }
 		//
@@ -1401,7 +1401,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// `<flag> = false;` where the Reset exec line would have led.)
 		if (isDoOnce) {
 			const std::string tag = tagFromGuid(n.Id);
-			const std::string flagName = fmt::format("b__BprDoOnce_{}_HasFired", tag);
+			const std::string flagName = fmt::format("bBPRDoOnce_{}_HasFired", tag);
 			// bStartClosed input: if true, the macro "starts fired"
 			// and Start does nothing until Reset. Read literal/default
 			// off the input pin.
@@ -1477,11 +1477,11 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// call. Single exec input (Input), two outputs (A, B), plus
 		// a data output IsA (bool, true when next call goes to A).
 		// Lower to:
-		//   if (b__BprFlipFlop_<tag>_IsA) {
-		//       b__BprFlipFlop_<tag>_IsA = false;
+		//   if (bBPRFlipFlop_<tag>_IsA) {
+		//       bBPRFlipFlop_<tag>_IsA = false;
 		//       <A body>
 		//   } else {
-		//       b__BprFlipFlop_<tag>_IsA = true;
+		//       bBPRFlipFlop_<tag>_IsA = true;
 		//       <B body>
 		//   }
 		//
@@ -1489,7 +1489,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// (first call routes to A).
 		if (isFlipFlop) {
 			const std::string tag = tagFromGuid(n.Id);
-			const std::string flagName = fmt::format("b__BprFlipFlop_{}_IsA", tag);
+			const std::string flagName = fmt::format("bBPRFlipFlop_{}_IsA", tag);
 			registerSynthVar(flagName, "bool", "true");
 
 			const BPNode* aStart = w.FollowExec(n, "A");
@@ -1538,8 +1538,8 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// either as a literal default or a wired upstream value.
 		//
 		// Lower to:
-		//   if (i__BprDoN_<tag>_Counter < <N expr>) {
-		//       ++i__BprDoN_<tag>_Counter;
+		//   if (BPRDoN_<tag>_Counter < <N expr>) {
+		//       ++BPRDoN_<tag>_Counter;
 		//       <Exit body>
 		//   }
 		//
@@ -1549,7 +1549,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// codegen can render the upstream expression.
 		if (isDoN) {
 			const std::string tag = tagFromGuid(n.Id);
-			const std::string counterName = fmt::format("i__BprDoN_{}_Counter", tag);
+			const std::string counterName = fmt::format("BPRDoN_{}_Counter", tag);
 			registerSynthVar(counterName, "int", "0");
 
 			// N expression. Prefer wired expression; fall back to
@@ -2239,7 +2239,12 @@ void ProcessEnhancedInputBindings(
 					continue;
 				}
 
-				const std::string callbackName = fmt::format("OnIA_{}_{}", actionName, trigger);
+				// Callback name: pure CamelCase, no underscores. The
+				// `IA_` prefix is already on the member variable
+				// (`IA_<Action>`); duplicating it on the callback was
+				// noise. UE convention: `OnJumpStarted`,
+				// `OnFireTriggered`, etc.
+				const std::string callbackName = fmt::format("On{}{}", actionName, trigger);
 
 				// Build the callback body by walking the post-event exec.
 				const BPNode* bodyStart = walker.GetNode(outIt->second.front().node);
