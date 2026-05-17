@@ -58,4 +58,12 @@ namespace bpr::tools {
 void RegisterCompileFunction(ToolRegistry& registry,
                              backends::IBlueprintReader& reader);
 
+// Public entry point — what the MCP tool handler forwards to. Takes
+// the same JSON shape as the MCP tool's input schema and executes the
+// ops directly against the reader. Useful for internal callers (e.g.
+// BPIRRoundtrip's Stage 5 body materialization) that already have a
+// function signature and just need to compile a body.
+nlohmann::json CompileFunctionFromBody(backends::IBlueprintReader& reader,
+                                       const nlohmann::json& args);
+
 }    // namespace bpr::tools
