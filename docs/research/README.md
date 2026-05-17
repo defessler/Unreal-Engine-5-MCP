@@ -14,6 +14,7 @@ for the implementation plan that generated these notes.
 - [`syntactic-sugar-nodes.md`](syntactic-sugar-nodes.md) — K2 nodes that desugar at compile time, with C++ equivalents.
 - [`bp-reader-extensibility-audit.md`](bp-reader-extensibility-audit.md) — current seams + how to extend.
 - [`tpc-anatomy.md`](tpc-anatomy.md) — full inventory of the UE5 ThirdPerson template (drives the roundtrip tests).
+- [`bp-roundtrip-architecture.md`](bp-roundtrip-architecture.md) — what the roundtrip code actually does, lessons-learned, extensibility points.
 
 ## How to read
 
