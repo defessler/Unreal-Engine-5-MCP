@@ -102,8 +102,14 @@
 #include "Engine/DataAsset.h"
 // AnimBlueprint authoring (Stage 4).
 #include "Animation/AnimBlueprint.h"
-#include <windows.h>
+// NOMINMAX before <windows.h> stops the Windows `min`/`max` macros from
+// clobbering `std::numeric_limits<T>::max()` etc. in engine headers
+// (MovieScene, RelativePtr, ...) that get pulled in transitively.
+#ifndef NOMINMAX
+	#define NOMINMAX
+#endif    // NOMINMAX
 #include "Windows/AllowWindowsPlatformTypes.h"
+#include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
 // Definition for the LogBlueprintReader category declared in
