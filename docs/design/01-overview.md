@@ -45,7 +45,7 @@ covers both Program targets (server + doctest exe) in one shot.
 UnrealEd-only module. Hosts the entry points that actually touch
 `UBlueprint` objects:
 
-- `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — the workhorse.
+- `UBPRCommandlet` (`-run=BPR`) — the workhorse.
   Dispatches every read and write op via a single `RunOneOp(Params)`
   function. Long-lived `-Daemon` mode reads newline-delimited args from
   stdin so one `UnrealEditor-Cmd.exe` process serves many tool calls
@@ -53,7 +53,7 @@ UnrealEd-only module. Hosts the entry points that actually touch
 - `BlueprintReaderLiveServer` — TCP listener that lets the MCP server
   talk to a running editor without spawning a second commandlet daemon.
   Auto-publishes port + token via `<Project>/Saved/bp-reader-live.json`.
-- `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
+- `UBPRSeedCommandlet` (`-run=BPRSeed`) —
   synthesizes `Content/AI/BP_TestEnemy.uasset` and
   `BP_TestPickup.uasset` for live integration tests.
 
@@ -85,7 +85,7 @@ blueprint?" behind an `IBlueprintReader` interface
 | Backend | When | How |
 |---------|------|-----|
 | `mock` | no UE setup needed (CI, server development) | reads canned JSON from `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/` |
-| `commandlet` | editor closed | spawns `UnrealEditor-Cmd.exe -run=BlueprintReader -Daemon`, talks to it over stdin/stdout |
+| `commandlet` | editor closed | spawns `UnrealEditor-Cmd.exe -run=BPR -Daemon`, talks to it over stdin/stdout |
 | `live` | editor open | connects to the editor's TCP listener (port + token from handshake file) |
 | `auto` | default when a `.uproject` is auto-discovered | probes per call: live if the editor's listener accepts, commandlet otherwise |
 

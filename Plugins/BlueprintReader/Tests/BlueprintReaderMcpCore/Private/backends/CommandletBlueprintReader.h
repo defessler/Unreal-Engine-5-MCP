@@ -2,11 +2,11 @@
 // commandlet to read blueprint data.
 //
 // Two modes:
-//   * One-shot (default): spawn `UnrealEditor-Cmd.exe -run=BlueprintReader
+//   * One-shot (default): spawn `UnrealEditor-Cmd.exe -run=BPR
 //     -Op=<...>` per tool call. Each call pays the editor cold-start cost
 //     (~5–7 s on a Dev box).
 //   * Daemon (`Config::useDaemon = true`): spawn the editor once with
-//     `-run=BlueprintReader -Daemon` and reuse the same process across
+//     `-run=BPR -Daemon` and reuse the same process across
 //     all calls. The plugin's daemon publishes a TCP listener; this
 //     class attaches to (or spawns + attaches to) that listener via
 //     `SocketBlueprintReader`, so the heavy startup is paid once and

@@ -11,7 +11,7 @@ halves:
   targets by UBT automatically; runtime module ships in both):
   - **`BlueprintReaderEditor`** (Type=Editor) — full BP introspection
     + write tools. Loaded only in editor builds.
-    - `UBlueprintReaderCommandlet` (`-run=BlueprintReader`) — dispatches
+    - `UBPRCommandlet` (`-run=BPR`) — dispatches
       every read + write op (`-Op=List|Read|Graph|Function|Variables|
       Components|Find|AddVariable|...`). Long-lived `-Daemon` mode reads
       newline-delimited commandlet-arg lines from stdin so one editor
@@ -20,7 +20,7 @@ halves:
       talk to a running editor without spawning a second commandlet
       daemon. Auto-publishes port + token via
       `<Project>/Saved/bp-reader-live.json`.
-    - `UBlueprintReaderSeedCommandlet` (`-run=BlueprintReaderSeed`) —
+    - `UBPRSeedCommandlet` (`-run=BPRSeed`) —
       synthesizes `Content/AI/BP_TestEnemy.uasset` and
       `BP_TestPickup.uasset` used by the live integration tests.
   - **`BlueprintReaderRuntime`** (Type=Runtime) — read-only BP
@@ -228,7 +228,7 @@ ground. For an interactive smoke, stream JSON-RPC frames against
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
-  -run=BlueprintReaderSeed -nullrhi -nosplash -unattended -nopause
+  -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
 Recreates `Content/AI/BP_TestEnemy.uasset` (5 vars + 2 functions +

@@ -268,7 +268,7 @@ nlohmann::json CommandletBlueprintReader::RunOp(
 
     std::vector<std::wstring> args;
     args.push_back(cfg_.uproject.wstring());      // positional: .uproject
-    args.push_back(L"-run=BlueprintReader");
+    args.push_back(L"-run=BPR");
     for (const auto& a : opArgs) args.push_back(a);
     args.push_back(L"-Out=" + outFile.wstring());
     args.push_back(L"-Compact");

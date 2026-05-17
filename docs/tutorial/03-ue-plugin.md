@@ -4,7 +4,7 @@ You have an MCP server. Now you need something that can actually read
 blueprints — which means crossing into Unreal Engine. The bridge is an
 editor-only UE plugin that exposes a *commandlet*: a UClass-derived
 entry point you can invoke headlessly with
-`UnrealEditor-Cmd.exe -run=BlueprintReader`. The commandlet runs inside
+`UnrealEditor-Cmd.exe -run=BPR`. The commandlet runs inside
 a real editor process (asset registry, GC, the works) but exits when
 done — no window, no PIE, no human in the loop.
 
@@ -37,7 +37,7 @@ For comparison, the production server has three modes:
 | Backend       | What it spawns                                  |
 |---------------|-------------------------------------------------|
 | `mock`        | Nothing (chapter 2 — fixture files)             |
-| `commandlet`  | `UnrealEditor-Cmd.exe -run=BlueprintReader`     |
+| `commandlet`  | `UnrealEditor-Cmd.exe -run=BPR`     |
 | `live`        | Talks to a running editor over TCP (chapter 9+) |
 
 Chapter 3 wires up commandlet mode.
@@ -195,11 +195,11 @@ you "module not found" at editor startup, not a compile error.
 #include "BlueprintReaderCommandlet.generated.h"
 
 UCLASS()
-class UBlueprintReaderCommandlet : public UCommandlet
+class UBPRCommandlet : public UCommandlet
 {
     GENERATED_BODY()
 public:
-    UBlueprintReaderCommandlet();
+    UBPRCommandlet();
     virtual int32 Main(const FString& Params) override;
 };
 ```
@@ -214,7 +214,7 @@ public:
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintReader, Log, All);
 
-UBlueprintReaderCommandlet::UBlueprintReaderCommandlet()
+UBPRCommandlet::UBPRCommandlet()
 {
     IsClient = false;
     IsServer = false;
@@ -223,7 +223,7 @@ UBlueprintReaderCommandlet::UBlueprintReaderCommandlet()
     ShowErrorCount = false;
 }
 
-int32 UBlueprintReaderCommandlet::Main(const FString& Params)
+int32 UBPRCommandlet::Main(const FString& Params)
 {
     UE_LOG(LogBlueprintReader, Display,
         TEXT("BlueprintReader commandlet running. Params=[%s]"), *Params);
@@ -323,17 +323,17 @@ Once the editor target builds, invoke the commandlet headlessly:
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
-  -run=BlueprintReader ^
+  -run=BPR ^
   -Asset=/Game/AI/BP_Foo ^
   -nullrhi -nosplash -unattended -nopause
 ```
 
-The flags after `-run=BlueprintReader` are yours; everything before is
+The flags after `-run=BPR` are yours; everything before is
 UE plumbing. Worth a sentence each:
 
-- **`-run=BlueprintReader`** — UE strips the `UBlueprintReaderCommandlet`
+- **`-run=BPR`** — UE strips the `UBPRCommandlet`
   class prefix/suffix and matches on the remaining name. Several spellings
-  work (`-run=BlueprintReaderCommandlet`, `-run=BlueprintReader`); pick
+  work (`-run=BlueprintReaderCommandlet`, `-run=BPR`); pick
   one and stick with it. The production server uses the short form.
 - **`-nullrhi`** — no rendering. The headless editor has no window, no
   GPU work. Cuts startup time noticeably.

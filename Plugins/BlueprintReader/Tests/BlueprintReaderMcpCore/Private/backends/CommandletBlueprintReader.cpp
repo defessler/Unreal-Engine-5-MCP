@@ -652,7 +652,7 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	std::vector<std::wstring> args;
 	args.reserve(opArgs.size() + 8);
 	args.push_back(cfg_.uproject.wstring());
-	args.push_back(L"-run=BlueprintReader");
+	args.push_back(L"-run=BPR");
 	for (const auto& a : opArgs) {
 		args.push_back(a);
 	}
@@ -1026,7 +1026,7 @@ void CommandletBlueprintReader::SpawnDaemon() {
 
 	std::vector<std::wstring> args;
 	args.push_back(cfg_.uproject.wstring());
-	args.push_back(L"-run=BlueprintReader");
+	args.push_back(L"-run=BPR");
 	args.push_back(L"-Daemon");
 	args.push_back(L"-nullrhi");
 	args.push_back(L"-nosplash");

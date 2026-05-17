@@ -38,7 +38,7 @@ namespace BlueprintReader
 	FBatchContext& FBatchRegistry::GetOrCreate(uint64 ConnectionId)
 	{
 		// ConnectionId == 0 sentinel: legacy single-session callers
-		// (direct -run=BlueprintReader without socket). They get a real
+		// (direct -run=BPR without socket). They get a real
 		// context too — just sharing slot 0. Backwards compatible.
 		FScopeLock Lock(&Mu);
 		TUniquePtr<FBatchContext>& P = Contexts.FindOrAdd(ConnectionId);

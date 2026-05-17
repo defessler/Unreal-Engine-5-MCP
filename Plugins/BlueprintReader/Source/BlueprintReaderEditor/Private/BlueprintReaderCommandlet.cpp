@@ -112,7 +112,7 @@
 // follow-up; diagnostic needed to fire on the read path too).
 DEFINE_LOG_CATEGORY(LogBlueprintReader);
 
-UBlueprintReaderCommandlet::UBlueprintReaderCommandlet()
+UBPRCommandlet::UBPRCommandlet()
 {
 	IsClient = false;
 	IsServer = false;
@@ -764,7 +764,7 @@ namespace
 	// would let conn2's BeginBatch clobber conn1's pending set. Now the
 	// state lives in BlueprintReader::FBatchRegistry keyed by the thread-
 	// local current connection id (set by FConnectionScope around each
-	// dispatch). A zero connection id (legacy direct -run=BlueprintReader)
+	// dispatch). A zero connection id (legacy direct -run=BPR)
 	// gets its own slot — backwards compatible.
 	bool& BatchDeferFlag()
 	{
@@ -6182,7 +6182,7 @@ namespace
 	int32 RunDaemon();
 }
 
-int32 UBlueprintReaderCommandlet::Main(const FString& Params)
+int32 UBPRCommandlet::Main(const FString& Params)
 {
 	if (FParse::Param(*Params, TEXT("Daemon")))
 	{

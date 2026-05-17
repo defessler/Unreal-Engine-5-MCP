@@ -15,7 +15,7 @@ Plugins/BlueprintReader/
     │   ├── Public/
     │   │   ├── BlueprintReaderTypes.h        FBP*Info structs (wire shapes)
     │   │   ├── BlueprintIntrospector.h       static reader API + DiagnoseFailedBlueprintLoad
-    │   │   ├── BlueprintReaderCommandlet.h   UBlueprintReaderCommandlet declaration
+    │   │   ├── BlueprintReaderCommandlet.h   UBPRCommandlet declaration
     │   │   ├── BlueprintReaderSeedCommandlet.h
     │   │   ├── BlueprintReaderLiveServer.h   FLiveServer + start/stop wiring
     │   │   ├── BlueprintReaderLogSink.h      captures UE_LOG into a per-op buffer
@@ -30,13 +30,13 @@ Plugins/BlueprintReader/
 
 Three editor-side entry points:
 
-- **`UBlueprintReaderCommandlet`** — invoked via
-  `UnrealEditor-Cmd.exe ... -run=BlueprintReader -Op=<Verb> ...`. One
+- **`UBPRCommandlet`** — invoked via
+  `UnrealEditor-Cmd.exe ... -run=BPR -Op=<Verb> ...`. One
   giant `RunOneOp(Params)` dispatch that handles every read + every
   write tool. Also the only entry point exposed by `-Daemon` and by
   the live TCP server.
-- **`UBlueprintReaderSeedCommandlet`** — invoked via
-  `-run=BlueprintReaderSeed`. Synthesizes the test BPs (`BP_TestEnemy`,
+- **`UBPRSeedCommandlet`** — invoked via
+  `-run=BPRSeed`. Synthesizes the test BPs (`BP_TestEnemy`,
   `BP_TestPickup`) so the live integration tests have something to
   read. Re-runnable; safe to commit the output.
 - **`FLiveServer`** — TCP listener bound at module startup if the
