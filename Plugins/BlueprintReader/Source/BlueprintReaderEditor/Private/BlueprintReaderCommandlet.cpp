@@ -1414,9 +1414,49 @@ namespace
 		FAssetRegistryModule& ARM =
 			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 		IAssetRegistry& AR = ARM.Get();
+		// Force-scan the containing folder so the registry picks up any
+		// .uasset files saved by a prior commandlet process. In commandlet
+		// mode the cached registry is loaded at startup; files written by
+		// later processes aren't in it. Without this rescan, DeleteAsset
+		// on a clone produced by a previous run says "not found" and
+		// leaves the .uasset rotting on disk.
+		const FString ContainingDir = FPaths::GetPath(AssetPath);
+		if (!ContainingDir.IsEmpty())
+		{
+			AR.ScanPathsSynchronous({ ContainingDir }, /*bForce=*/ true);
+		}
 		FAssetData AssetData = AR.GetAssetByObjectPath(FSoftObjectPath(AssetPath));
 		if (!AssetData.IsValid())
 		{
+			// Asset registry doesn't know about this path. With -Force,
+			// fall back to a raw disk-level purge — the .uasset file may
+			// have been saved by a prior commandlet process that exited
+			// before its cache update was persisted, leaving the registry
+			// in this process stale. Without this fallback, a clone from
+			// a previous test run rots on disk forever (no registry entry
+			// to delete) and the next CreateBlueprint trips its idempotency
+			// probe.
+			if (bForce)
+			{
+				const FString PkgFilename = FPackageName::LongPackageNameToFilename(
+					AssetPath, FPackageName::GetAssetPackageExtension());
+				bool bDiskPurged = false;
+				if (FPaths::FileExists(PkgFilename))
+				{
+					bDiskPurged = IFileManager::Get().Delete(
+						*PkgFilename, /*bRequireExists=*/false,
+						/*bEvenReadOnly=*/true, /*bQuiet=*/false);
+					UE_LOG(LogBlueprintReader, Display,
+						TEXT("DeleteAsset: registry miss, raw disk-purge: %s -> %s"),
+						*PkgFilename, bDiskPurged ? TEXT("OK") : TEXT("FAILED"));
+				}
+				auto Out = MakeShared<FJsonObject>();
+				Out->SetBoolField(TEXT("ok"), true);
+				Out->SetStringField(TEXT("path"), AssetPath);
+				Out->SetBoolField(TEXT("deleted"), bDiskPurged);
+				Out->SetBoolField(TEXT("already_absent"), !bDiskPurged);
+				return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+			}
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("DeleteAsset: asset not found: %s"), *AssetPath);
 			return 4;
@@ -1445,6 +1485,29 @@ namespace
 				const int32 NumDeleted = ObjectTools::ForceDeleteObjects(
 					ToDelete, /*bShowConfirmation=*/false);
 				bDeleted = NumDeleted > 0;
+			}
+			// ForceDeleteObjects removes the in-memory UObject + asset-
+			// registry entry, but in commandlet mode it doesn't persist
+			// a deletion to disk — the .uasset file lingers. A next-run
+			// CreateBlueprint then sees the stale file and short-circuits
+			// to idempotent-load, which makes downstream AddVariable
+			// fail with "variable already exists". Force-remove the
+			// .uasset off disk so the next process starts clean.
+			const FString PackageFilename = FPackageName::LongPackageNameToFilename(
+				AssetData.PackageName.ToString(), FPackageName::GetAssetPackageExtension());
+			if (FPaths::FileExists(PackageFilename))
+			{
+				const bool bRemoved = IFileManager::Get().Delete(
+					*PackageFilename, /*bRequireExists=*/false,
+					/*bEvenReadOnly=*/true, /*bQuiet=*/false);
+				UE_LOG(LogBlueprintReader, Display,
+					TEXT("DeleteAsset disk-purge: %s -> %s"),
+					*PackageFilename, bRemoved ? TEXT("OK") : TEXT("FAILED"));
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReader, Display,
+					TEXT("DeleteAsset: file does not exist at %s"), *PackageFilename);
 			}
 		}
 
