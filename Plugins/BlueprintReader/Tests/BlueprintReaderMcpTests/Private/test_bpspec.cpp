@@ -7,6 +7,7 @@
 
 #include "roundtrip/BPSpec.h"
 #include "roundtrip/ReadToSpec.h"
+#include "roundtrip/SpecToBP.h"
 
 #include "backends/MockBlueprintReader.h"
 #include "test_helpers.h"
@@ -79,4 +80,16 @@ TEST_CASE("ReadToSpec assembles a spec from the mock backend") {
 	CHECK(spec.variables.size() == 3);
 	CHECK(spec.functions.size() == 2);
 	CHECK_FALSE(spec.event_graph.nodes.empty());
+}
+
+TEST_CASE("SpecToBP returns mock-backend-not-supported on the first write") {
+	auto mock = bpr::test::MakeMockReader();
+	BPSpec spec;
+	spec.package_path = "/Game/X";
+	spec.parent_class = "/Script/Engine.Actor";
+
+	auto res = bpr::roundtrip::SpecToBP(mock, spec, "/Game/Recreated/X");
+	CHECK(!res.ok);  // mock is read-only
+	CHECK(res.failing_op == "CreateBlueprint");
+	CHECK(res.failing_stage == "create");
 }
