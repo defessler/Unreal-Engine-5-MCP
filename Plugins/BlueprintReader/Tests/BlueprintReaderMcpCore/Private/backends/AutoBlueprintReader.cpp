@@ -450,6 +450,10 @@ AutoBlueprintReader::WriteGeneratedSource(std::string_view p, std::string_view c
 										  bool cd) {
 	FORWARD(WriteGeneratedSource, p, c, cd);
 }
+nlohmann::json AutoBlueprintReader::StructuralDiff(
+	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
+	FORWARD(StructuralDiff, a, b, opts);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

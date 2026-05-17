@@ -296,6 +296,13 @@ MockBlueprintReader::WriteGeneratedSource(std::string_view, std::string_view, bo
 		"WriteGeneratedSource: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
+nlohmann::json MockBlueprintReader::StructuralDiff(
+	std::string_view, std::string_view, const StructuralDiffOptions&) {
+	throw BlueprintReaderError(
+		"StructuralDiff requires the live or commandlet backend "
+		"(needs UBlueprint reflection that mock fixtures don't provide)");
+}
+
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 												  std::string_view query,
 												  std::string_view kind) {
