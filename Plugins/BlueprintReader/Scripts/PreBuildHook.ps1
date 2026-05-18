@@ -1,8 +1,20 @@
 # PreBuildHook.ps1
 # Invoked by BlueprintReader.uplugin's PreBuildSteps for every target
-# that enables the plugin. Builds the MCP server (BlueprintReaderMcp
-# Program target) so editor builds don't leave Binaries/Win64/
-# BlueprintReaderMcp.exe stale.
+# that enables the plugin. Verifies that every co-resident Program
+# target (the MCP server + its tests) is up-to-date with the plugin's
+# current source, and stages fixture files into the runtime dir so the
+# test exe can find them.
+#
+# What gets verified each parent build:
+#   1. BlueprintReaderMcp.exe       -- the standalone MCP server
+#   2. BlueprintReaderMcpTests.exe  -- the doctest suite
+#   3. <Binaries>/<Platform>/fixtures/*.json staged from
+#      Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/
+#
+# UBT's own incremental build keeps "no-op rebuild" fast (sub-second
+# for an already-up-to-date target), so the per-build cost of verifying
+# everything is small in steady state. Stale targets fall back to a
+# full UBT rebuild for that target only.
 #
 # Recursion guard: the BlueprintReaderMcp and BlueprintReaderMcpTests
 # targets live inside this same plugin, so UBT runs the plugin's
@@ -13,8 +25,14 @@
 # All inputs come from UBT's PreBuildSteps macro expansion:
 #   $(EngineDir), $(ProjectFile), $(TargetName), $(TargetConfiguration)
 #
-# Skip the auto-build entirely by setting BP_READER_SKIP_PREBUILD=1 in
-# the build environment.
+# Env opt-outs (set any to '1' to suppress that part of the
+# verification):
+#   BP_READER_SKIP_PREBUILD     -- whole script no-ops
+#   BP_READER_SKIP_TESTS_BUILD  -- skip BlueprintReaderMcpTests
+#                                  (preserves the pre-#171 behavior
+#                                   for users who want the lighter
+#                                   parent-target builds)
+#   BP_READER_SKIP_FIXTURES     -- skip staging fixture .json files
 
 [CmdletBinding()]
 param(
@@ -37,11 +55,56 @@ if ($env:BP_READER_SKIP_PREBUILD) {
     exit 0
 }
 
+# Function to stage fixture .json files into <ProjectDir>/Binaries/Win64/fixtures/.
+# The mock backend reads from `<exe>/fixtures` (MockBlueprintReader ctor +
+# test_helpers::FixturesDir), and UBT doesn't copy them automatically -- the
+# fixtures aren't source files UBT tracks. Without this staging the test
+# exe hits "fixture directory does not exist" on first run after a clean
+# build. Idempotent: hash-compares src vs dst, only copies on mismatch.
+# Skips when BP_READER_SKIP_FIXTURES=1 (occasionally useful for users
+# hand-staging custom fixture sets).
+function Stage-Fixtures {
+    if ($env:BP_READER_SKIP_FIXTURES) { return }
+    $fixturesSrc = Join-Path $PluginDir 'Tests\BlueprintReaderMcpTests\fixtures'
+    if (-not (Test-Path -LiteralPath $fixturesSrc)) { return }
+    $projectDir = Split-Path -Parent $ProjectFile
+    $fixturesDst = Join-Path $projectDir 'Binaries\Win64\fixtures'
+    New-Item -ItemType Directory -Path $fixturesDst -Force | Out-Null
+    $srcFiles = Get-ChildItem -LiteralPath $fixturesSrc -Filter '*.json' -File -ErrorAction SilentlyContinue
+    $staged = 0
+    foreach ($f in $srcFiles) {
+        $dstPath = Join-Path $fixturesDst $f.Name
+        $needsCopy = $true
+        if (Test-Path -LiteralPath $dstPath) {
+            $srcHash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA1).Hash
+            $dstHash = (Get-FileHash -LiteralPath $dstPath  -Algorithm SHA1).Hash
+            if ($srcHash -eq $dstHash) { $needsCopy = $false }
+        }
+        if ($needsCopy) {
+            Copy-Item -LiteralPath $f.FullName -Destination $dstPath -Force
+            $staged++
+        }
+    }
+    if ($staged -gt 0) {
+        Write-Host "$tag staged $staged fixture(s) into $fixturesDst"
+    }
+}
+
+# Resolve PluginDir + ProjectFile-derived paths up front so Stage-Fixtures
+# (closure-style; reads outer-scope vars) works from both code paths below.
+if (-not $PluginDir) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $PluginDir = (Resolve-Path (Join-Path $scriptDir '..')).Path
+}
+
 # 2. Recursion guard -- when the parent target IS one of the plugin's
-# Program targets, building it again would loop. Skip.
+# Program targets, building it again would loop. We still stage fixtures
+# (the test exe is being built RIGHT NOW; staging fixtures here means
+# they're ready by the time the link finishes) but skip the nested UBT
+# recursion.
 $selfTargets = @('BlueprintReaderMcp', 'BlueprintReaderMcpTests')
 if ($selfTargets -contains $TargetName) {
-    # Quiet -- printing on every recursive entry spams the build log.
+    Stage-Fixtures
     exit 0
 }
 
@@ -68,8 +131,10 @@ if (-not (Test-Path -LiteralPath $wrapper)) {
     exit 1
 }
 
-# 5. Delegate to the wrapper. Build only the MCP server (not the test
-# exe) -- the tests are heavier and not needed for editor work.
+# 5. Delegate to the wrapper. By default we build BOTH the MCP server
+# AND its doctest suite so a parent editor build leaves every
+# co-resident Program target up-to-date. The user can opt out of the
+# tests-build via BP_READER_SKIP_TESTS_BUILD=1.
 #
 # Two flags are critical for nested UBT execution:
 #   -NoMutex   : parent UBT holds the global UBT mutex throughout
@@ -87,6 +152,20 @@ if (-not (Test-Path -LiteralPath $wrapper)) {
 # form. Belt-and-braces: use the 8.3 short name to dodge any spaces.
 $childLog = Join-Path $env:TEMP "UnrealBuildTool-BlueprintReaderMcp.log"
 $extra = "-NoMutex -Log=$childLog"
-Write-Host "$tag building BlueprintReaderMcp ($Configuration) before $TargetName..."
-& $wrapper -EngineDir $EngineDir -ProjectFile $ProjectFile -Config $Configuration -Targets Mcp -ExtraArgs $extra
-exit $LASTEXITCODE
+
+# Pick the target set: Mcp-only if the user opted out of tests,
+# otherwise All (Mcp + Tests).
+$targetSet = if ($env:BP_READER_SKIP_TESTS_BUILD) { "Mcp" } else { "All" }
+Write-Host "$tag verifying $targetSet ($Configuration) before $TargetName..."
+& $wrapper -EngineDir $EngineDir -ProjectFile $ProjectFile -Config $Configuration -Targets $targetSet -ExtraArgs $extra
+$buildExit = $LASTEXITCODE
+if ($buildExit -ne 0) {
+    Write-Error "$tag UBT child build failed (exit $buildExit) -- skipping fixture staging."
+    exit $buildExit
+}
+
+# 6. Stage fixture .json files into the runtime fixtures dir so the
+# test exe can find them. Implemented as Stage-Fixtures up top so the
+# recursion-guard path can also call it.
+Stage-Fixtures
+exit 0
