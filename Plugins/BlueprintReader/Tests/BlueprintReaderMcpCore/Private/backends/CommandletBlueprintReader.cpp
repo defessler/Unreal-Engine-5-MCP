@@ -529,20 +529,35 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
 	// BlueprintReaderEditor module's compiled config — mismatch = UE
 	// silently skips loading our plugin's DLL.
 	{
-		const auto binDir = cfg_.engineDir / "Engine" / "Binaries" / "Win64";
-		const std::string& cfgName = cfg_.editorConfig;  // "Development" / "DebugGame" / etc.
-		std::filesystem::path candidate = (cfgName.empty() || cfgName == "Development")
-			? binDir / "UnrealEditor-Cmd.exe"
-			: binDir / fmt::format("UnrealEditor-Win64-{}-Cmd.exe", cfgName);
+		const std::string& cfgName = cfg_.editorConfig;
+		std::filesystem::path candidate;
+		const char* envCmd = std::getenv("BP_READER_EDITOR_CMD");
+		if (envCmd != nullptr && envCmd[0] != '\0' &&
+		    std::filesystem::exists(envCmd)) {
+			candidate = std::filesystem::path(envCmd);
+		} else {
+			const char* envTarget = std::getenv("BP_READER_EDITOR_TARGET");
+			if (envTarget != nullptr && envTarget[0] != '\0') {
+				const auto projectBin = cfg_.uproject.parent_path() /
+				                        "Binaries" / "Win64";
+				auto projectCandidate = projectBin /
+					fmt::format("{}-Cmd.exe", envTarget);
+				if (std::filesystem::exists(projectCandidate)) {
+					candidate = projectCandidate;
+				}
+			}
+			if (candidate.empty()) {
+				const auto binDir = cfg_.engineDir / "Engine" / "Binaries" / "Win64";
+				candidate = (cfgName.empty() || cfgName == "Development")
+					? binDir / "UnrealEditor-Cmd.exe"
+					: binDir / fmt::format("UnrealEditor-Win64-{}-Cmd.exe", cfgName);
+			}
+		}
 		if (!std::filesystem::exists(candidate)) {
 			throw BlueprintReaderError(fmt::format(
-				"UnrealEditor-Cmd ({} config) not found at: {}\n"
-				"Hint: build the editor target in '{}' configuration, OR set "
-				"BP_READER_EDITOR_CONFIG to a config you've already built "
-				"(Development is the default).",
-				cfgName.empty() ? "Development" : cfgName,
-				candidate.string(),
-				cfgName.empty() ? "Development" : cfgName));
+				"editor -Cmd binary not found at: {}. Set BP_READER_EDITOR_CMD "
+				"or BP_READER_EDITOR_TARGET.",
+				candidate.string()));
 		}
 		editorCmdExe_ = candidate;
 	}
