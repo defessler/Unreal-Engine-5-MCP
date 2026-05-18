@@ -27,6 +27,7 @@ public class BPRoundtripModule : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"GameplayTags",
+			"EnhancedInput",     // FInputActionValue / UInputAction (TPC EIA decompile)
 		});
 	}
 }

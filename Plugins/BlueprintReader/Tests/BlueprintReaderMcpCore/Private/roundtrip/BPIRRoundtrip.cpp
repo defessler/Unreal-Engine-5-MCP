@@ -175,19 +175,20 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 
 	// Stage 3: compile via UBT.
 	// BPRoundtripModule is a plain Runtime module (no .Target.cs), so we
-	// drive UBT against UE5_MCPEditor — that target's intermediates already
-	// include BPRoundtripModule; the just-edited generated .cpp/.h triggers
-	// an incremental BPRoundtripModule recompile only.
+	// drive UBT against the consuming project's <Project>Editor target.
+	// Target name comes from BP_READER_EDITOR_TARGET (default "UE5_MCPEditor"
+	// for back-compat); Lyra and other consumers set it to e.g. "LyraEditor".
 	// BP_READER_SKIP_PREBUILD=1 stops the editor target from re-invoking
-	// the plugin's MCP-server PreBuildStep (which would otherwise rebuild
-	// BlueprintReaderMcp.exe on every stage-3 invocation — slow and
-	// recursive when run from inside the test harness).
+	// the plugin's MCP-server PreBuildStep.
 	{
+		const char* envTarget = std::getenv("BP_READER_EDITOR_TARGET");
+		std::string editorTarget = (envTarget && *envTarget)
+			? std::string(envTarget) : std::string("UE5_MCPEditor");
 		const std::string buildBat =
 			std::string(engineDir) + "/Engine/Build/BatchFiles/Build.bat";
 		const std::string cmd =
 			"set BP_READER_SKIP_PREBUILD=1 && \"" + buildBat +
-			"\" UE5_MCPEditor Win64 Development "
+			"\" " + editorTarget + " Win64 Development "
 			"-project=\"" + std::string(projectFile) + "\" "
 			"-NoUba -MaxParallelActions=4 -waitmutex";
 		const std::string logPath = genDir + "/build.log";
@@ -242,6 +243,21 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 				parentClass = meta["parent_class"].get<std::string>();
 			}
 		}
+
+		// Self-healing: nuke any stale clone left over from a previous
+		// run (variable-add isn't idempotent at the plugin layer, so a
+		// partial leftover BP would block this run). Soft-failure mode
+		// — when the asset doesn't exist, DeleteAsset(-Force) succeeds.
+		(void)runOp("DeleteAsset:" + outPath, [&]{
+			(void)reader.DeleteAsset(outPath, /*force=*/true);
+		});
+		// We intentionally ignore the boolean return — DeleteAsset failing
+		// shouldn't block the roundtrip (the CreateBlueprint that follows
+		// will surface the real error if any).
+		res.failing_stage.clear();
+		res.failing_op.clear();
+		res.error_message.clear();
+
 		if (!runOp("CreateBlueprint:" + outPath, [&]{
 			(void)reader.CreateBlueprint(outPath, parentClass);
 		})) return res;
@@ -267,6 +283,77 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 					reader.AddVariable(outPath, vname, type, defaultValue,
 					                   category, replicated, editable);
 				})) return res;
+			}
+		}
+
+		// Components: SCS subobjects (CameraBoom, Mesh, etc.). Order
+		// matters — parent components must exist before children, so
+		// we do two passes: roots first (no parent), then a second
+		// pass over the remainder where parent already exists. Repeat
+		// until no progress, which handles arbitrary depth.
+		if (res.bpir_after.is_object() && res.bpir_after.contains("components")
+		    && res.bpir_after["components"].is_array()) {
+			std::vector<nlohmann::json> pending;
+			pending.reserve(res.bpir_after["components"].size());
+			for (const auto& c : res.bpir_after["components"]) {
+				if (c.is_object() && c.contains("name") && c["name"].is_string()) {
+					pending.push_back(c);
+				}
+			}
+			std::set<std::string> created;
+			bool progress = true;
+			while (progress && !pending.empty()) {
+				progress = false;
+				for (auto it = pending.begin(); it != pending.end(); ) {
+					const std::string cname  = (*it).value("name",   std::string{});
+					const std::string ccls   = (*it).value("class",  std::string{});
+					const bool        isRoot = (*it).value("is_root", false);
+					const std::string parent = isRoot ? std::string{}
+					                                  : (*it).value("parent", std::string{});
+					// Skip until parent is created (unless root or already
+					// detected in source as root via missing parent).
+					if (!parent.empty() && !created.count(parent)) {
+						++it;
+						continue;
+					}
+					if (cname.empty() || ccls.empty()) {
+						it = pending.erase(it);
+						continue;
+					}
+					const bool ok = runOp("AddComponent:" + cname, [&]{
+						(void)reader.AddComponent(outPath, cname, ccls,
+						                          parent, std::string{});
+					});
+					if (!ok) return res;
+					// Apply property overrides (if any).
+					if (it->contains("properties") && (*it)["properties"].is_array()) {
+						for (const auto& p : (*it)["properties"]) {
+							if (!p.is_object()) continue;
+							const std::string pname = p.value("name",  std::string{});
+							const std::string pval  = p.value("value", std::string{});
+							if (pname.empty()) continue;
+							(void)runOp(
+								"SetComponentProperty:" + cname + "." + pname,
+								[&]{
+									(void)reader.SetComponentProperty(
+										outPath, cname, pname, pval);
+								});
+							// Per-property failures are soft — Stage 5 keeps
+							// going so missing/renamed properties don't lose
+							// the whole component.
+						}
+					}
+					created.insert(cname);
+					it = pending.erase(it);
+					progress = true;
+				}
+			}
+			for (const auto& leftover : pending) {
+				// Components whose parent never appeared — record as a soft
+				// failure but don't fail the stage.
+				const std::string cname = leftover.value("name", std::string{});
+				res.body_compile_failures.push_back(
+					"Component:" + cname + ": parent not found in components[]");
 			}
 		}
 
@@ -326,12 +413,20 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 				if (!pushParams("outputs", /*isOutput=*/true))  return res;
 
 				// Body materialization: compile_function translates the BPIR
-				// statement DSL (if/set/call/comment) into add_node + wire_pins
-				// ops. Statements outside the supported subset (return, cast,
-				// switch, loops, etc.) raise — we count those as soft failures
-				// so a single-statement edge case doesn't lose the otherwise-
-				// complete skeleton. Counts surface in body_compile_failures
-				// for callers to surface; res.ok stays true.
+				// statement DSL (if/set/call/comment/return) into add_node +
+				// wire_pins ops. Statements outside the supported subset
+				// (cast, switch, loops, etc.) raise — we count those as
+				// soft failures so a single-statement edge case doesn't lose
+				// the otherwise-complete skeleton. Counts surface in
+				// body_compile_failures for callers to surface; res.ok stays
+				// true.
+				//
+				// Pass `inputs`/`outputs` so compile_function's Compiler
+				// populates outputNames — required for positional return
+				// forms (which is how decompile emits single- and multi-
+				// output returns). add_function_input/output ops are
+				// idempotent so the re-emit is a no-op against the already-
+				// declared signature.
 				const auto& bodyJ = fn.value("body", nlohmann::json::array());
 				if (bodyJ.is_array() && !bodyJ.empty()) {
 					nlohmann::json compileArgs = {
@@ -340,6 +435,12 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 						{"body",          bodyJ},
 						{"atomic",        false},
 					};
+					if (fn.contains("inputs") && fn["inputs"].is_array()) {
+						compileArgs["inputs"] = fn["inputs"];
+					}
+					if (fn.contains("outputs") && fn["outputs"].is_array()) {
+						compileArgs["outputs"] = fn["outputs"];
+					}
 					try {
 						(void)tools::CompileFunctionFromBody(reader, compileArgs);
 					}
