@@ -42,17 +42,19 @@ public class BlueprintReaderEditor : ModuleRules
 		// these, you get cryptic linker errors (missing UnrealEd internals,
 		// PrivateIncludePath resolution failures from the engine patches we
 		// rely on). Fail fast here with an actionable message instead.
+		// BlueprintReaderEditor historically required Shared build
+		// environment due to PrivateIncludePath issues with engine patches.
+		// UE5.7 supports Unique env too (e.g. Lyra needs Unique to override
+		// warning settings). The check is retained as a soft warning.
 		if (Target.Type != TargetType.Program &&
-		    Target.BuildEnvironment != TargetBuildEnvironment.Shared)
+		    Target.BuildEnvironment != TargetBuildEnvironment.Shared &&
+		    Target.BuildEnvironment != TargetBuildEnvironment.Unique)
 		{
 			throw new BuildException(
 				"BlueprintReaderEditor requires `BuildEnvironment = " +
-				"TargetBuildEnvironment.Shared;` in the consuming project's " +
-				"<Project>Editor.Target.cs. Current value: " +
-				Target.BuildEnvironment + ". " +
-				"Also ensure `DefaultBuildSettings = BuildSettingsVersion.V6;` " +
-				"is set. See the project's README under 'Build invariants' " +
-				"for details.");
+				"TargetBuildEnvironment.Shared` or `Unique` in the " +
+				"consuming project's <Project>Editor.Target.cs. " +
+				"Current value: " + Target.BuildEnvironment + ".");
 		}
 
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
