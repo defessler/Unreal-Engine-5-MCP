@@ -6,6 +6,8 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/RunnableThread.h"
+#include "HAL/ThreadSafeBool.h"      // FThreadSafeBool — bStopRequested member
+#include "HAL/ThreadSafeCounter64.h" // FThreadSafeCounter64 — GLiveNextConnectionId
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
 #include "Misc/DateTime.h"
