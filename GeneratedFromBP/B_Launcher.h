@@ -21,7 +21,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
     TObjectPtr<ACharacter> OverlappingPawn;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
-    F/Script/CoreUObject.LinearColor LightColor;
+    FLinearColor LightColor;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
     double LightIntensity = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
@@ -31,7 +31,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
     double SphereRadius = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
-    F/Script/GameplayTags.GameplayTag GameplayTag;
+    FGameplayTag GameplayTag;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Launcher")
     bool DoNotActivateonFallEntry = false;
 

@@ -26,9 +26,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     bool EnableFootPlantEffect = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Vector FootStepHitLocation;
+    FVector FootStepHitLocation;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Quat FootStepOrientation;
+    FQuat FootStepOrientation;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     int32 FootStepSurfaceTypeNiagara = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
@@ -36,9 +36,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     uint8 FootStepSurfaceType = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Vector FootStepHitNormal;
+    FVector FootStepHitNormal;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Transform FootStepSocketTransform;
+    FTransform FootStepSocketTransform;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     FName CurrentSocket;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
@@ -46,7 +46,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     FName FootStepRightFootBone;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/Engine.HitResult HitResult;
+    FHitResult HitResult;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     FName CurrentBone;
 

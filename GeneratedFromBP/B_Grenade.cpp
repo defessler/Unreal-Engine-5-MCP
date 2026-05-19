@@ -2,27 +2,29 @@
 
 #include "B_Grenade.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/ProjectileMovementComponent.h"
+#include "Components/StaticMeshComponent.h"
 
 AB_Grenade::AB_Grenade() {
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
     RootComponent = Mesh;
-    ProjectileMovement->InitialSpeed = 2500.0f;
-    ProjectileMovement->MaxSpeed = 2550.0f;
-    ProjectileMovement->bShouldBounce = true;
-    ProjectileMovement->bInterpMovement = true;
-    ProjectileMovement->bInterpRotation = true;
-    ProjectileMovement->Bounciness = 0.3f;
-    ProjectileMovement->Friction = 0.8f;
-    ProjectileMovement->BounceVelocityStopSimulatingThreshold = 25.0f;
-    ProjectileMovement->MinFrictionFraction = 0.8f;
-    ProjectileMovement->Velocity = FVector(1.0f, 0.0f, 0.15f);
+    // TODO[bpr-comp-prop]: ProjectileMovement->InitialSpeed = 2500.0f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->MaxSpeed = 2550.0f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->bShouldBounce = true;
+    // TODO[bpr-comp-prop]: ProjectileMovement->bInterpMovement = true;
+    // TODO[bpr-comp-prop]: ProjectileMovement->bInterpRotation = true;
+    // TODO[bpr-comp-prop]: ProjectileMovement->Bounciness = 0.3f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->Friction = 0.8f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->BounceVelocityStopSimulatingThreshold = 25.0f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->MinFrictionFraction = 0.8f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->Velocity = FVector(1.0f, 0.0f, 0.15f);
     {
         static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshFinder(TEXT("/Script/Engine.StaticMesh'/Game/Weapons/Grenade/Mesh/SM_grenade.SM_grenade'"));
-        if (StaticMeshFinder.Succeeded()) { Mesh->StaticMesh = StaticMeshFinder.Object; }
+        if (StaticMeshFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Mesh->StaticMesh = StaticMeshFinder.Object; */ }
     }
     // TODO[bpr-component-default]: Mesh->BodyInstance = /* StructProperty: (CollisionProfileName="Custom",CollisionResponses=(ResponseArray=((Channel="Visibility",Response=ECR_Ignore),(Channel="Camera",Response=ECR_Ignore))),LinearDamping=0.200000,AngularDamping=0.100000,MassScale=5.000000) */;
-    Mesh->bCanEverAffectNavigation = false;
+    // TODO[bpr-comp-prop]: Mesh->bCanEverAffectNavigation = false;
     bReplicates = true;
 }
 

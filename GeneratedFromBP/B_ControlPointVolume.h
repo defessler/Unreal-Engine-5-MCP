@@ -35,13 +35,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<UB_ControlPointScoring> ControlPointGameMode;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Control Point")
-    F/Script/CoreUObject.LinearColor TargetColor;
+    FLinearColor TargetColor;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Control Point")
-    F/Script/CoreUObject.LinearColor OwningTeamColor;
+    FLinearColor OwningTeamColor;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Control Point")
     int32 CapturingTeamID = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Control Point")
-    F/Script/CoreUObject.Vector AreaScale;
+    FVector AreaScale;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Control Point")
     TArray<TObjectPtr<AStaticMeshActor>> StaticMeshList;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Control Point")

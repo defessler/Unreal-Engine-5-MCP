@@ -21,17 +21,17 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
     double TimeBeforeExplode = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
-    F/Script/Engine.TimerHandle Timer;
+    FTimerHandle Timer;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
     double Radius = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Grenade")
-    F/Script/GameplayTags.GameplayTag GameplayTag;
+    FGameplayTag GameplayTag;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
-    F/Script/GameplayAbilities.GameplayEffectContextHandle GameplayEffectContextHandleStruct;
+    FGameplayEffectContextHandle GameplayEffectContextHandleStruct;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Default")
     TObjectPtr<UAbilitySystemComponent> InstigatorAbilitySystem;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
-    F/Script/CoreUObject.LinearColor TeamColor;
+    FLinearColor TeamColor;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Grenade")
     TArray<TObjectPtr<AActor>> IgnoreActors;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Default")

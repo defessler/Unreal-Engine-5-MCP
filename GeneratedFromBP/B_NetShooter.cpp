@@ -2,6 +2,9 @@
 
 #include "B_NetShooter.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/ProjectileMovementComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/ArrowComponent.h"
 
 AB_NetShooter::AB_NetShooter() {
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
@@ -9,21 +12,21 @@ AB_NetShooter::AB_NetShooter() {
     Arrow = CreateDefaultSubobject<UArrowComponent>(TEXT("Arrow"));
     Arrow->SetupAttachment(Sphere);
     RootComponent = Sphere;
-    ProjectileMovement->InitialSpeed = 2500.0f;
-    ProjectileMovement->MaxSpeed = 2500.0f;
-    ProjectileMovement->bRotationFollowsVelocity = true;
-    ProjectileMovement->ProjectileGravityScale = 0.5f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->InitialSpeed = 2500.0f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->MaxSpeed = 2500.0f;
+    // TODO[bpr-comp-prop]: ProjectileMovement->bRotationFollowsVelocity = true;
+    // TODO[bpr-comp-prop]: ProjectileMovement->ProjectileGravityScale = 0.5f;
     {
         static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshFinder(TEXT("/Script/Engine.StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"));
-        if (StaticMeshFinder.Succeeded()) { Sphere->StaticMesh = StaticMeshFinder.Object; }
+        if (StaticMeshFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Sphere->StaticMesh = StaticMeshFinder.Object; */ }
     }
     // TODO[bpr-component-default]: Sphere->OverrideMaterials = /* ArrayProperty: ("/Script/Engine.MaterialInstanceConstant'/ShooterCore/Effects/Material/M_Launcher_Inst4.M_Launcher_Inst4'") */;
-    Sphere->bGenerateOverlapEvents = false;
+    // TODO[bpr-comp-prop]: Sphere->bGenerateOverlapEvents = false;
     // TODO[bpr-component-default]: Sphere->BodyInstance = /* StructProperty: (bNotifyRigidBodyCollision=True) */;
-    Arrow->ArrowColor = FLinearColor(33.0f, 255.0f, 0.0f, 255.0f);
-    Arrow->ArrowSize = 10.0f;
-    Arrow->ArrowLength = 15.0f;
-    Arrow->bHiddenInGame = false;
+    // TODO[bpr-comp-prop]: Arrow->ArrowColor = FLinearColor(33.0f, 255.0f, 0.0f, 255.0f);
+    // TODO[bpr-comp-prop]: Arrow->ArrowSize = 10.0f;
+    // TODO[bpr-comp-prop]: Arrow->ArrowLength = 15.0f;
+    // TODO[bpr-comp-prop]: Arrow->bHiddenInGame = false;
     bReplicates = true;
 }
 

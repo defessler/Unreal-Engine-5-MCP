@@ -2,6 +2,9 @@
 
 #include "B_Bomb_Base.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/SceneComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
 
 AB_Bomb_Base::AB_Bomb_Base() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
@@ -12,39 +15,39 @@ AB_Bomb_Base::AB_Bomb_Base() {
     FireballCollision->SetupAttachment(DefaultSceneRoot);
     OverlapBox->SetupAttachment(DefaultSceneRoot);
     RootComponent = DefaultSceneRoot;
-    DefaultSceneRoot->bVisualizeComponent = true;
+    // TODO[bpr-comp-prop]: DefaultSceneRoot->bVisualizeComponent = true;
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassFinder.Succeeded()) { CollisionBox->AreaClass = AreaClassFinder.Object; }
+        if (AreaClassFinder.Succeeded()) { /* TODO[bpr-comp-prop]: CollisionBox->AreaClass = AreaClassFinder.Object; */ }
     }
-    CollisionBox->bUseSystemDefaultObstacleAreaClass = false;
+    // TODO[bpr-comp-prop]: CollisionBox->bUseSystemDefaultObstacleAreaClass = false;
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassOverrideFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassOverrideFinder.Succeeded()) { CollisionBox->AreaClassOverride = AreaClassOverrideFinder.Object; }
+        if (AreaClassOverrideFinder.Succeeded()) { /* TODO[bpr-comp-prop]: CollisionBox->AreaClassOverride = AreaClassOverrideFinder.Object; */ }
     }
-    CollisionBox->CanCharacterStepUpOn = ECB_No;
-    // TODO[bpr-component-default]: CollisionBox->BodyInstance = /* StructProperty: (ObjectType=ECC_WorldStatic,CollisionEnabled=QueryAndPhysics,CollisionProfileName="BlockAll",CollisionResponses=(ResponseArray=((Channel="Lyra_TraceChannel_Interaction"),(Channel="Lyra_TraceChannel_Weapon"),(Channel="Lyra_TraceChannel_Weapon_Capsule"),(Channel="Lyra_TraceChannel_Weapon_Multi")))) */;
-    CollisionBox->RelativeLocation = FVector(-0.0f, -0.0f, 27.06225f);
+    // TODO[bpr-comp-prop]: CollisionBox->CanCharacterStepUpOn = ECB_No;
+    // TODO[bpr-component-default]: CollisionBox->BodyInstance = /* StructProperty: (ObjectType=ECC_WorldStatic,CollisionEnabled=QueryAndPhysics,CollisionProfileName="BlockAll",CollisionResponses=(ResponseArray=)) */;
+    // TODO[bpr-comp-prop]: CollisionBox->RelativeLocation = FVector(-0.0f, -0.0f, 27.06225f);
     {
         static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshFinder(TEXT("/Script/Engine.StaticMesh'/Engine/BasicShapes/Sphere.Sphere'"));
-        if (StaticMeshFinder.Succeeded()) { FireballCollision->StaticMesh = StaticMeshFinder.Object; }
+        if (StaticMeshFinder.Succeeded()) { /* TODO[bpr-comp-prop]: FireballCollision->StaticMesh = StaticMeshFinder.Object; */ }
     }
     // TODO[bpr-component-default]: FireballCollision->OverrideMaterials = /* ArrayProperty: (None) */;
     // TODO[bpr-component-default]: FireballCollision->BodyInstance = /* StructProperty: (ObjectType=ECC_WorldStatic,CollisionEnabled=QueryOnly,CollisionProfileName="OverlapAll",CollisionResponses=(ResponseArray=((Channel="WorldStatic",Response=ECR_Overlap),(Channel="WorldDynamic",Response=ECR_Overlap),(Channel="Pawn",Response=ECR_Overlap),(Channel="Visibility",Response=ECR_Overlap),(Channel="Camera",Response=ECR_Overlap),(Channel="PhysicsBody",Response=ECR_Overlap),(Channel="Vehicle",Response=ECR_Overlap),(Channel="Destructible",Response=ECR_Overlap)))) */;
-    FireballCollision->RelativeScale3D = FVector(0.98f, 0.98f, 0.98f);
-    FireballCollision->bHiddenInGame = true;
-    OverlapBox->BoxExtent = FVector(48.0f, 48.0f, 96.0f);
+    // TODO[bpr-comp-prop]: FireballCollision->RelativeScale3D = FVector(0.98f, 0.98f, 0.98f);
+    // TODO[bpr-comp-prop]: FireballCollision->bHiddenInGame = true;
+    // TODO[bpr-comp-prop]: OverlapBox->BoxExtent = FVector(48.0f, 48.0f, 96.0f);
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassFinder.Succeeded()) { OverlapBox->AreaClass = AreaClassFinder.Object; }
+        if (AreaClassFinder.Succeeded()) { /* TODO[bpr-comp-prop]: OverlapBox->AreaClass = AreaClassFinder.Object; */ }
     }
-    OverlapBox->bUseSystemDefaultObstacleAreaClass = false;
+    // TODO[bpr-comp-prop]: OverlapBox->bUseSystemDefaultObstacleAreaClass = false;
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassOverrideFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassOverrideFinder.Succeeded()) { OverlapBox->AreaClassOverride = AreaClassOverrideFinder.Object; }
+        if (AreaClassOverrideFinder.Succeeded()) { /* TODO[bpr-comp-prop]: OverlapBox->AreaClassOverride = AreaClassOverrideFinder.Object; */ }
     }
     // TODO[bpr-component-default]: OverlapBox->BodyInstance = /* StructProperty: (CollisionProfileName="OverlapOnlyPawn",CollisionResponses=(ResponseArray=((Channel="Pawn",Response=ECR_Overlap),(Channel="Camera",Response=ECR_Ignore),(Channel="Vehicle",Response=ECR_Overlap)))) */;
-    OverlapBox->RelativeLocation = FVector(0.0f, 0.0f, 50.0f);
+    // TODO[bpr-comp-prop]: OverlapBox->RelativeLocation = FVector(0.0f, 0.0f, 50.0f);
     bReplicates = true;
 }
 
