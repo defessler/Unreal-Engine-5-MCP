@@ -2,11 +2,12 @@
 
 #include "BP_TestEnemy.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/SceneComponent.h"
 
 ABP_TestEnemy::ABP_TestEnemy() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
     RootComponent = DefaultSceneRoot;
-    DefaultSceneRoot->bVisualizeComponent = true;
+    // TODO[bpr-comp-prop]: DefaultSceneRoot->bVisualizeComponent = true;
     bReplicates = true;
 }
 

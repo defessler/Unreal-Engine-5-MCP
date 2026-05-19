@@ -19,15 +19,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     int32 NumberOfWeb = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Default")
-    F/Script/CoreUObject.Vector End;
+    FVector End;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/Engine.HitResult HitBreakResult;
+    FHitResult HitBreakResult;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     double LifeTime = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Default")
-    TArray<F/Script/CoreUObject.Vector> TargetDirection;
+    TArray<FVector> TargetDirection;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Default")
-    F/Script/CoreUObject.Vector Start;
+    FVector Start;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     double DistanceTrace = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")

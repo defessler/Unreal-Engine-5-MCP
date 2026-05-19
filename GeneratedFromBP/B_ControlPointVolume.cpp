@@ -2,6 +2,11 @@
 
 #include "B_ControlPointVolume.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/NiagaraComponent.h"
+#include "Components/AudioComponent.h"
+#include "Components/PointLightComponent.h"
 
 AB_ControlPointVolume::AB_ControlPointVolume() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
@@ -18,62 +23,62 @@ AB_ControlPointVolume::AB_ControlPointVolume() {
     Audio_CPComplete->SetupAttachment(DefaultSceneRoot);
     PointLight->SetupAttachment(DefaultSceneRoot);
     RootComponent = DefaultSceneRoot;
-    DefaultSceneRoot->bVisualizeComponent = true;
-    DefaultSceneRoot->bReplicates = true;
+    // TODO[bpr-comp-prop]: DefaultSceneRoot->bVisualizeComponent = true;
+    // TODO[bpr-comp-prop]: DefaultSceneRoot->bReplicates = true;
     {
         static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshFinder(TEXT("/Script/Engine.StaticMesh'/Engine/BasicShapes/Cube.Cube'"));
-        if (StaticMeshFinder.Succeeded()) { Cube->StaticMesh = StaticMeshFinder.Object; }
+        if (StaticMeshFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Cube->StaticMesh = StaticMeshFinder.Object; */ }
     }
     // TODO[bpr-component-default]: Cube->OverrideMaterials = /* ArrayProperty: ("/Script/Engine.Material'/ShooterCore/Effects/Material/MT_ControlPoint.MT_ControlPoint'") */;
-    Cube->CastShadow = false;
+    // TODO[bpr-comp-prop]: Cube->CastShadow = false;
     // TODO[bpr-component-default]: Cube->BodyInstance = /* StructProperty: (ObjectType=ECC_WorldStatic,CollisionEnabled=QueryOnly,CollisionProfileName="Custom",CollisionResponses=(ResponseArray=((Channel="Camera",Response=ECR_Ignore),(Channel="WorldStatic",Response=ECR_Ignore),(Channel="WorldDynamic",Response=ECR_Ignore),(Channel="Pawn",Response=ECR_Overlap),(Channel="PhysicsBody",Response=ECR_Ignore),(Channel="Vehicle",Response=ECR_Ignore),(Channel="Destructible",Response=ECR_Ignore),(Channel="Visibility",Response=ECR_Ignore)))) */;
-    Cube->RelativeScale3D = FVector(10.0f, 8.0f, 4.0f);
-    Cube->bVisible = false;
+    // TODO[bpr-comp-prop]: Cube->RelativeScale3D = FVector(10.0f, 8.0f, 4.0f);
+    // TODO[bpr-comp-prop]: Cube->bVisible = false;
     {
         static ConstructorHelpers::FObjectFinder<UNiagaraSystem> AssetFinder(TEXT("/Script/Niagara.NiagaraSystem'/ShooterCore/Effects/Environmental/NS_CapturePoint.NS_CapturePoint'"));
-        if (AssetFinder.Succeeded()) { NS_CapturePoint->Asset = AssetFinder.Object; }
+        if (AssetFinder.Succeeded()) { /* TODO[bpr-comp-prop]: NS_CapturePoint->Asset = AssetFinder.Object; */ }
     }
     // TODO[bpr-component-default]: NS_CapturePoint->OverrideParameters = /* StructProperty: (UserParameterRedirects=(((Name="BlendingColor",TypeDefHandle=(RegisteredTypeIndex=102)), (Name="User.BlendingColor",TypeDefHandle=(RegisteredTypeIndex=102))),((Name="ColorBlend",TypeDefHandle=(RegisteredTypeIndex=95)), (Name="User.ColorBlend",TypeDefHandle=(RegisteredTypeIndex=95))),((Name="OwnerColor",TypeDefHandle=(RegisteredTypeIndex=102)), (Name="User.OwnerColor",TypeDefHandle=(RegisteredTypeIndex=102))),((Name="RingOffset",TypeDefHandle=(RegisteredTypeIndex=100)), (Name="User.RingOffset",TypeDefHandle=(RegisteredTypeIndex=100))),((Name="SidesOffset",TypeDefHandle=(RegisteredTypeIndex=101)), (Name="User.SidesOffset")),((Name="TeamColor",TypeDefHandle=(RegisteredTypeIndex=102)), (Name="User.TeamColor",TypeDefHandle=(RegisteredTypeIndex=102)))),SortedParameterOffsets=((Offset=0,Name="User.BlendingColor",TypeDefHandle=(RegisteredTypeIndex=102)),(Offset=16,Name="User.ColorBlend",TypeDefHandle=(RegisteredTypeIndex=95)),(Offset=20,Name="User.OwnerColor",TypeDefHandle=(RegisteredTypeIndex=102)),(Offset=36,Name="User.RingOffset",TypeDefHandle=(RegisteredTypeIndex=100)),(Offset=48,Name="User.SidesOffset"),(Offset=64,Name="User.TeamColor",TypeDefHandle=(RegisteredTypeIndex=102))),ParameterData=(0,0,72,66,0,0,72,66,0,0,72,66,0,0,128,63,0,0,0,63,0,0,128,63,96,147,247,61,0,0,0,0,0,0,128,63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,200,66,0,0,200,66,0,0,200,66,0,0,200,66,0,0,0,0,96,224,4,62,0,0,128,63,0,0,128,63)) */;
     // TODO[bpr-component-default]: NS_CapturePoint->TemplateParameterOverrides = /* MapProperty: (((Name="User.BlendingColor",TypeDefHandle=(RegisteredTypeIndex=102)), (Bytes=(0,0,72,66,0,0,72,66,0,0,72,66,0,0,128,63),CurrentMode=Bytes))) */;
-    NS_CapturePoint->bReplicates = true;
+    // TODO[bpr-comp-prop]: NS_CapturePoint->bReplicates = true;
     {
         static ConstructorHelpers::FObjectFinder<USoundBase> SoundFinder(TEXT("/Script/MetasoundEngine.MetaSoundSource'/Game/Audio/MetaSounds/sfx_CapturePoint_Progress_meta.sfx_CapturePoint_Progress_meta'"));
-        if (SoundFinder.Succeeded()) { Audio_CPProgress->Sound = SoundFinder.Object; }
+        if (SoundFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Audio_CPProgress->Sound = SoundFinder.Object; */ }
     }
     {
         static ConstructorHelpers::FObjectFinder<USoundClass> SoundClassOverrideFinder(TEXT("/Script/Engine.SoundClass'/Game/Audio/Classes/SFX.SFX'"));
-        if (SoundClassOverrideFinder.Succeeded()) { Audio_CPProgress->SoundClassOverride = SoundClassOverrideFinder.Object; }
+        if (SoundClassOverrideFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Audio_CPProgress->SoundClassOverride = SoundClassOverrideFinder.Object; */ }
     }
-    Audio_CPProgress->bAllowSpatialization = false;
-    Audio_CPProgress->VolumeMultiplier = 1.3f;
-    Audio_CPProgress->bReplicates = true;
-    Audio_CPProgress->bAutoActivate = false;
+    // TODO[bpr-comp-prop]: Audio_CPProgress->bAllowSpatialization = false;
+    // TODO[bpr-comp-prop]: Audio_CPProgress->VolumeMultiplier = 1.3f;
+    // TODO[bpr-comp-prop]: Audio_CPProgress->bReplicates = true;
+    // TODO[bpr-comp-prop]: Audio_CPProgress->bAutoActivate = false;
     {
         static ConstructorHelpers::FObjectFinder<UNiagaraSystem> AssetFinder(TEXT("/Script/Niagara.NiagaraSystem'/ShooterCore/Effects/Environmental/NS_CapturePointCounter.NS_CapturePointCounter'"));
-        if (AssetFinder.Succeeded()) { NS_CapturePointCounter->Asset = AssetFinder.Object; }
+        if (AssetFinder.Succeeded()) { /* TODO[bpr-comp-prop]: NS_CapturePointCounter->Asset = AssetFinder.Object; */ }
     }
     // TODO[bpr-component-default]: NS_CapturePointCounter->OverrideParameters = /* StructProperty: (UserParameterRedirects=(((Name="GunPad_Color",TypeDefHandle=(RegisteredTypeIndex=102)), (Name="User.GunPad_Color",TypeDefHandle=(RegisteredTypeIndex=102))),((Name="LifeTime",TypeDefHandle=(RegisteredTypeIndex=95)), (Name="User.LifeTime",TypeDefHandle=(RegisteredTypeIndex=95))),((Name="RibbonProgression",TypeDefHandle=(RegisteredTypeIndex=95)), (Name="User.RibbonProgression",TypeDefHandle=(RegisteredTypeIndex=95)))),SortedParameterOffsets=((Offset=4,Name="User.GunPad_Color",TypeDefHandle=(RegisteredTypeIndex=102)),(Offset=0,Name="User.LifeTime",TypeDefHandle=(RegisteredTypeIndex=95)),(Offset=20,Name="User.RibbonProgression",TypeDefHandle=(RegisteredTypeIndex=95))),ParameterData=(0,0,160,64,0,0,128,63,0,0,128,63,0,0,128,63,0,0,128,63,154,153,25,63)) */;
-    NS_CapturePointCounter->RelativeLocation = FVector(0.0f, 0.000001f, 115.024575f);
-    NS_CapturePointCounter->RelativeRotation = FRotator(0.0f, 180.0f, 0.0f);
-    NS_CapturePointCounter->bReplicates = true;
-    NS_CapturePointCounter->bAutoActivate = false;
+    // TODO[bpr-comp-prop]: NS_CapturePointCounter->RelativeLocation = FVector(0.0f, 0.000001f, 115.024575f);
+    // TODO[bpr-comp-prop]: NS_CapturePointCounter->RelativeRotation = FRotator(0.0f, 180.0f, 0.0f);
+    // TODO[bpr-comp-prop]: NS_CapturePointCounter->bReplicates = true;
+    // TODO[bpr-comp-prop]: NS_CapturePointCounter->bAutoActivate = false;
     {
         static ConstructorHelpers::FObjectFinder<USoundBase> SoundFinder(TEXT("/Script/Engine.SoundWave'/Game/Audio/Sounds/SFX/Lyra_ControlPoint_CapturedByEnemy_01.Lyra_ControlPoint_CapturedByEnemy_01'"));
-        if (SoundFinder.Succeeded()) { Audio_CPComplete->Sound = SoundFinder.Object; }
+        if (SoundFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Audio_CPComplete->Sound = SoundFinder.Object; */ }
     }
     {
         static ConstructorHelpers::FObjectFinder<USoundClass> SoundClassOverrideFinder(TEXT("/Script/Engine.SoundClass'/Game/Audio/Classes/SFX.SFX'"));
-        if (SoundClassOverrideFinder.Succeeded()) { Audio_CPComplete->SoundClassOverride = SoundClassOverrideFinder.Object; }
+        if (SoundClassOverrideFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Audio_CPComplete->SoundClassOverride = SoundClassOverrideFinder.Object; */ }
     }
-    Audio_CPComplete->bAllowSpatialization = false;
-    Audio_CPComplete->bAutoActivate = false;
-    PointLight->AttenuationRadius = 700.0f;
-    PointLight->SpecularScale = 0.0f;
-    PointLight->Intensity = 35000.0f;
-    PointLight->CastShadows = false;
-    PointLight->RelativeLocation = FVector(0.0f, 0.0f, 260.228642f);
-    PointLight->RelativeRotation = FRotator(-0.0f, 0.0f, -0.0f);
-    PointLight->bReplicates = true;
+    // TODO[bpr-comp-prop]: Audio_CPComplete->bAllowSpatialization = false;
+    // TODO[bpr-comp-prop]: Audio_CPComplete->bAutoActivate = false;
+    // TODO[bpr-comp-prop]: PointLight->AttenuationRadius = 700.0f;
+    // TODO[bpr-comp-prop]: PointLight->SpecularScale = 0.0f;
+    // TODO[bpr-comp-prop]: PointLight->Intensity = 35000.0f;
+    // TODO[bpr-comp-prop]: PointLight->CastShadows = false;
+    // TODO[bpr-comp-prop]: PointLight->RelativeLocation = FVector(0.0f, 0.0f, 260.228642f);
+    // TODO[bpr-comp-prop]: PointLight->RelativeRotation = FRotator(-0.0f, 0.0f, -0.0f);
+    // TODO[bpr-comp-prop]: PointLight->bReplicates = true;
     bReplicates = true;
 }
 

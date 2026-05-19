@@ -18,9 +18,9 @@ class AB_LoadRandomLobbyBackground : public AActor {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.PrimaryAssetId BackgroundToLoad;
+    FPrimaryAssetId BackgroundToLoad;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Vector BoxExtents;
+    FVector BoxExtents;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<ULoadingProcessTask> LoadingScreenTask;
 

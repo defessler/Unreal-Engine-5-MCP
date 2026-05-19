@@ -38,13 +38,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
     TObjectPtr<UStaticMesh> ShellEjectMesh;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
-    TArray<F/Script/CoreUObject.Vector> ImpactPositions;
+    TArray<FVector> ImpactPositions;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
-    TArray<F/Script/CoreUObject.Vector> ImpactNormals;
+    TArray<FVector> ImpactNormals;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
     TArray<uint8> ImpactSurfaceTypes;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
-    F/Script/CoreUObject.Vector MuzzlePosition;
+    FVector MuzzlePosition;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")
     bool NeedsFakeProjectileData = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lyra")

@@ -2,6 +2,9 @@
 
 #include "B_TopDownArena_Pickup.h"
 #include "Net/UnrealNetwork.h"
+#include "Components/SceneComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/NiagaraComponent.h"
 
 AB_TopDownArena_Pickup::AB_TopDownArena_Pickup() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
@@ -10,21 +13,21 @@ AB_TopDownArena_Pickup::AB_TopDownArena_Pickup() {
     Volume->SetupAttachment(DefaultSceneRoot);
     VFX->SetupAttachment(DefaultSceneRoot);
     RootComponent = DefaultSceneRoot;
-    DefaultSceneRoot->bVisualizeComponent = true;
-    Volume->SphereRadius = 48.0f;
+    // TODO[bpr-comp-prop]: DefaultSceneRoot->bVisualizeComponent = true;
+    // TODO[bpr-comp-prop]: Volume->SphereRadius = 48.0f;
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassFinder.Succeeded()) { Volume->AreaClass = AreaClassFinder.Object; }
+        if (AreaClassFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Volume->AreaClass = AreaClassFinder.Object; */ }
     }
-    Volume->bUseSystemDefaultObstacleAreaClass = false;
+    // TODO[bpr-comp-prop]: Volume->bUseSystemDefaultObstacleAreaClass = false;
     {
         static ConstructorHelpers::FObjectFinder<UClass> AreaClassOverrideFinder(TEXT("/Script/CoreUObject.Class'/Script/NavigationSystem.NavArea_Obstacle'"));
-        if (AreaClassOverrideFinder.Succeeded()) { Volume->AreaClassOverride = AreaClassOverrideFinder.Object; }
+        if (AreaClassOverrideFinder.Succeeded()) { /* TODO[bpr-comp-prop]: Volume->AreaClassOverride = AreaClassOverrideFinder.Object; */ }
     }
     // TODO[bpr-component-default]: Volume->BodyInstance = /* StructProperty: (CollisionProfileName="Trigger",CollisionResponses=(ResponseArray=((Channel="WorldStatic",Response=ECR_Overlap),(Channel="WorldDynamic",Response=ECR_Overlap),(Channel="Pawn",Response=ECR_Overlap),(Channel="Visibility",Response=ECR_Ignore),(Channel="Camera",Response=ECR_Overlap),(Channel="PhysicsBody",Response=ECR_Overlap),(Channel="Vehicle",Response=ECR_Overlap),(Channel="Destructible",Response=ECR_Overlap)))) */;
     {
         static ConstructorHelpers::FObjectFinder<UNiagaraSystem> AssetFinder(TEXT("/Script/Niagara.NiagaraSystem'/TopDownArena/Game/Effects/PickUp/NS_TopDownArenaPickupBomb.NS_TopDownArenaPickupBomb'"));
-        if (AssetFinder.Succeeded()) { VFX->Asset = AssetFinder.Object; }
+        if (AssetFinder.Succeeded()) { /* TODO[bpr-comp-prop]: VFX->Asset = AssetFinder.Object; */ }
     }
     // TODO[bpr-component-default]: VFX->OverrideParameters = /* StructProperty: () */;
     bReplicates = true;

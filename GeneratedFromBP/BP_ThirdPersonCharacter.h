@@ -36,5 +36,9 @@ public:
     void OnUnknownCompleted(const FInputActionValue& Value);
     UFUNCTION()
     void OnUnknownTriggered(const FInputActionValue& Value);
+    UFUNCTION()
+    void OnUnknownTriggered(const FInputActionValue& Value);
+    UFUNCTION()
+    void OnUnknownTriggered(const FInputActionValue& Value);
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 };

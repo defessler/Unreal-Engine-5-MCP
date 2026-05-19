@@ -32,7 +32,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter")
     TObjectPtr<ACharacter> OverlappingPawn;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter")
-    F/Script/GameplayTags.GameplayTag GameplayCueTag;
+    FGameplayTag GameplayCueTag;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter")
     double LaunchMultiplier = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter Size")
@@ -58,7 +58,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter Size")
     double TeleporterBrigtness = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Teleporter")
-    F/Script/CoreUObject.Vector AudioLocation;
+    FVector AudioLocation;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     TObjectPtr<USceneComponent> DefaultSceneRoot1;
