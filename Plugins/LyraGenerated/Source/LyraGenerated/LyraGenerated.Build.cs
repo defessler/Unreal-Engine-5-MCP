@@ -17,7 +17,23 @@ public class LyraGenerated : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
-			"Niagara",       // NiagaraComponent
+			"Niagara",
+			"AIModule",
+			"NavigationSystem",
+			"PhysicsCore",
+			// LyraGame + plugins for stub parents that target project classes.
+			"LyraGame",
+			"CommonUI",
+			"CommonInput",
+			"CommonGame",
+			"ModularGameplay",
+			"ModularGameplayActors",
+			"GameSettings",
+			"GameFeatures",
+			"GameplayMessageRuntime",
+			"ShooterCoreRuntime",
+			"TopDownArenaRuntime",
+			"ShooterTestsRuntime",
 		});
 	}
 }
