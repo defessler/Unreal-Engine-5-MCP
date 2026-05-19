@@ -173,7 +173,7 @@ Or both Program targets at once via the wrapper script:
 ```pwsh
 Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
   -EngineDir "D:\Projects\Unreal Engine 5" `
-  -ProjectFile "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+  -ProjectFile "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
   -ExtraArgs "-NoUba -MaxParallelActions=4"
 ```
 
@@ -229,7 +229,7 @@ requires a runner with the engine source available, not yet set up.
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
-$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
