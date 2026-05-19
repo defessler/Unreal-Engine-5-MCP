@@ -131,6 +131,7 @@ commandlet (editor closed).
 | `BP_READER_LIVE_PORT/TOKEN`   | auto from handshake file           | Editor publishes; MCP server reads |
 | `BP_READER_TIMEOUT_SECONDS`   | `120`                              | Per-call subprocess timeout |
 | `BP_READER_DAEMON`            | `1` (on)                           | Set `0` to opt out of daemon mode |
+| `BP_READER_ALLOW_TRANSPILE`  | `0` (off)                          | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
 
 For local dev, the mock backend works against a fresh checkout with no
 UE setup — useful for iterating on the MCP server itself.
