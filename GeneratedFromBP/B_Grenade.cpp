@@ -30,7 +30,7 @@ AB_Grenade::AB_Grenade() {
 
 void AB_Grenade::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    DOREPLIFETIME(AB_Grenade, Gameplay Tag);
+    DOREPLIFETIME(AB_Grenade, GameplayTag);
 }
 
 void AB_Grenade::SetupVFX() {
