@@ -8,7 +8,7 @@
 	"CreatedBy": "bp-reader",
 	"CanContainContent": false,
 	"IsBetaVersion": true,
-	"EnabledByDefault": false,
+	"EnabledByDefault": true,
 	"Modules": [
 		{
 			"Name": "LyraGenerated",
