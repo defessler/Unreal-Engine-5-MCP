@@ -2,7 +2,7 @@
 
 #include "B_Grenade.h"
 #include "Net/UnrealNetwork.h"
-#include "Components/ProjectileMovementComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "Components/StaticMeshComponent.h"
 
 AB_Grenade::AB_Grenade() {

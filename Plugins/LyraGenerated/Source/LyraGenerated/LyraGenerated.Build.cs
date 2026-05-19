@@ -17,6 +17,7 @@ public class LyraGenerated : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
+			"Niagara",       // NiagaraComponent
 		});
 	}
 }

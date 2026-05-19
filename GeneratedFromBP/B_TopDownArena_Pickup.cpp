@@ -4,7 +4,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Components/SceneComponent.h"
 #include "Components/SphereComponent.h"
-#include "Components/NiagaraComponent.h"
+#include "NiagaraComponent.h"
 
 AB_TopDownArena_Pickup::AB_TopDownArena_Pickup() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
