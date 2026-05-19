@@ -1,11 +1,15 @@
 # UE5_MCP Wiki
 
-> **Status update — Lyra integration.** The repo root now ships as a
-> Lyra Starter Game project (`LyraStarterGame.uproject`). The plugin is
+> **Status update — Lyra integration complete.** The repo root ships
+> as a Lyra Starter Game project (`LyraStarterGame.uproject`) on
+> UE 5.7.4. **All 302 Lyra blueprints have C++ companion classes**
+> under `Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
+> (17 full transpiles + 285 stubs); `LyraEditor` builds clean and
+> `LyraEditor-Cmd.exe` commandlet runs successfully. The plugin is
 > project-agnostic; set `BP_READER_PROJECT` and `BP_READER_EDITOR_TARGET`
-> when invoking against any project (Lyra = `LyraEditor`, the original
-> `UE5_MCP.uproject` example = `UE5_MCPEditor`). See `GeneratedFromBP/`
-> for ~270 Lyra blueprints auto-emitted to C++ via `transpile_blueprint`.
+> when invoking against any project (Lyra = `LyraEditor`). The
+> conversion recipe + lessons-learned live in
+> [`docs/research/lyra-bp-to-cpp-conversion.md`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/research/lyra-bp-to-cpp-conversion.md).
 
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP

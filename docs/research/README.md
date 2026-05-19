@@ -15,6 +15,7 @@ for the implementation plan that generated these notes.
 - [`bp-reader-extensibility-audit.md`](bp-reader-extensibility-audit.md) — current seams + how to extend.
 - [`tpc-anatomy.md`](tpc-anatomy.md) — full inventory of the UE5 ThirdPerson template (drives the roundtrip tests).
 - [`bp-roundtrip-architecture.md`](bp-roundtrip-architecture.md) — what the roundtrip code actually does, lessons-learned, extensibility points.
+- [`lyra-bp-to-cpp-conversion.md`](lyra-bp-to-cpp-conversion.md) — case study: converting all 302 Lyra Starter Game BPs to C++, including the LYRAGAME_API export + Private→Public header decisions.
 
 ## How to read
 

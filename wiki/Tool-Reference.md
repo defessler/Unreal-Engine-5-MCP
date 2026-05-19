@@ -945,7 +945,7 @@ JSON for anything else.
 {
   "ok": true,
   "project_name":       "UE5_MCP",
-  "project_path":       "D:/Projects/UE5_MCP/UE5_MCP.uproject",
+  "project_path":       "D:/Projects/UE5_MCP/LyraStarterGame.uproject",
   "engine_association": "5.7",
   "category":           "",
   "description":        "",
