@@ -27,6 +27,7 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_TOOLS`           | (unset → all 127 tools)                | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, leaving razor-thin headroom for the full bp-reader surface. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
 | `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` keeps ~89 of 127 tools. |
 | `BP_READER_ALLOW_PYTHON`    | `0` (off)                              | `1`/`true`/`yes`/`on` enables the `run_python_script` tool. Off by default — arbitrary Python in the editor has full `unreal.*` API access and bypasses every safety convention the curated tool surface establishes. When disabled, calling `run_python_script` returns `{ok: false, error: "python_disabled", hint: ...}` rather than executing. |
+| `BP_READER_ALLOW_TRANSPILE` | `0` (off)                              | `1`/`true`/`yes`/`on` enables the 6 BP↔C++ transpile tools (`decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function`). Off by default — the transpile path writes source files, parses caller-supplied C++, and shells to UBT downstream, so opt-in keeps the surface explicit. When disabled, the tools stay listed in `tools/list` but every call returns `{ok: false, error: "transpile_disabled", hint: ...}`. To remove them from `tools/list` entirely, use `BP_READER_TOOLS_EXCLUDE=cpp` instead. |
 
 ## Tool filtering
 
@@ -217,6 +218,52 @@ The server logs both decisions on stderr at startup:
 ```
 
 (36 = the 35 core tools + the `enable_tool_category` meta-tool.)
+
+## Capability gates vs tool filter
+
+Two independent controls shape what's reachable. They compose:
+
+| Control | Type | Effect on `tools/list` | Effect on `tools/call` |
+|---------|------|------------------------|------------------------|
+| `BP_READER_TOOLS` / `BP_READER_TOOLS_EXCLUDE` | static tool filter | tool **not advertised** when filtered out | call returns JSON-RPC `MethodNotFound` |
+| `BP_READER_ALLOW_PYTHON` | capability gate | tool still advertised | call returns `{ok: false, error: "python_disabled", hint: ...}` |
+| `BP_READER_ALLOW_TRANSPILE` | capability gate | tool still advertised | call returns `{ok: false, error: "transpile_disabled", hint: ...}` |
+| `BP_READER_READ_ONLY` | capability gate | every write tool still advertised | write calls return a structured `read_only` error |
+
+**Filter** is the right tool when you want to fit under a client's
+tool-count cap (Copilot's 128-tool limit, agent context-window
+concerns) — the tools simply disappear from the agent's visible
+surface, so it never even considers them.
+
+**Capability gates** are the right tool when you want the agent to
+*know the tool exists* but not be allowed to use it right now — the
+hint string steers the agent toward asking the human to flip the
+env var. Useful in pre-production / review modes where the tool
+surface should be discoverable but gated.
+
+Common combinations:
+
+- **Read-only Lyra exploration session.** Filter out write categories +
+  flip the global read-only gate:
+  ```jsonc
+  "env": {
+    "BP_READER_TOOLS_EXCLUDE": "write,cook,tests",
+    "BP_READER_READ_ONLY": "1"
+  }
+  ```
+
+- **Hide the transpile surface entirely.** Excluding the `cpp`
+  category drops all 7 transpile-related tools from `tools/list`:
+  ```jsonc
+  "env": { "BP_READER_TOOLS_EXCLUDE": "cpp" }
+  ```
+
+- **Allow transpile, opt in explicitly per session.** Default state
+  is fine — the tools are listed, every call fails fast with a hint
+  telling the agent to ask for the gate. When ready:
+  ```jsonc
+  "env": { "BP_READER_ALLOW_TRANSPILE": "1" }
+  ```
 
 ## Pre-warm
 

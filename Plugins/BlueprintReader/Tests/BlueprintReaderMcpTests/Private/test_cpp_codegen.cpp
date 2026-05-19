@@ -89,7 +89,7 @@ TEST_CASE("MapBpirTypeToCpp: containers") {
 }
 
 TEST_CASE("MapBpirTypeToCpp: class + interface refs") {
-	CHECK(MapBpirTypeToCpp("class:Actor")       == "TSubclassOf<Actor>");
+	CHECK(MapBpirTypeToCpp("class:Actor")       == "TSubclassOf<AActor>");
 	CHECK(MapBpirTypeToCpp("interface:Damageable") == "TScriptInterface<IDamageable>");
 }
 
@@ -644,12 +644,12 @@ TEST_CASE("Type mapping: soft_object → TSoftObjectPtr") {
 }
 
 TEST_CASE("Type mapping: soft_class → TSoftClassPtr") {
-	CHECK(MapBpirTypeToCpp("soft_class:Pawn") == "TSoftClassPtr<Pawn>");
+	CHECK(MapBpirTypeToCpp("soft_class:Pawn") == "TSoftClassPtr<APawn>");
 	CHECK(MapBpirTypeToCpp("soft_class") == "TSoftClassPtr<UObject>");
 }
 
 TEST_CASE("Type mapping: hard class → TSubclassOf (unchanged)") {
-	CHECK(MapBpirTypeToCpp("class:Actor") == "TSubclassOf<Actor>");
+	CHECK(MapBpirTypeToCpp("class:Actor") == "TSubclassOf<AActor>");
 	CHECK(MapBpirTypeToCpp("class") == "UClass*");
 }
 
