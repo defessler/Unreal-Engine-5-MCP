@@ -50,7 +50,7 @@ Get-Item $key | Select-Object -ExpandProperty Property | ForEach-Object {
 # Then associate this project with the engine
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
     /switchversionsilent `
-    "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     "D:\Projects\Unreal Engine 5"
 ```
 
@@ -73,7 +73,7 @@ Remove-Item -Recurse -Force "D:\Projects\UE5_MCP\.idea"
 # Regenerate project files for the new name
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" `
     -projectfiles `
-    -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     -game -rocket -progress
 ```
 
@@ -98,8 +98,8 @@ time for predictability.
 
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" `
-    UE5_MCPEditor Win64 Development `
-    -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    LyraEditor Win64 Development `
+    -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
@@ -383,7 +383,7 @@ double slash) and rejects it.
 
 ```bash
 MSYS_NO_PATHCONV=1 "D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
-  "D:/Projects/UE5_MCP/UE5_MCP.uproject" \
+  "D:/Projects/UE5_MCP/LyraStarterGame.uproject" \
   -run=BPR -Op=Read -Asset=/Game/AI/BP_TestEnemy -Out=D:/temp/out.json \
   -nullrhi -nosplash -unattended -nopause
 ```

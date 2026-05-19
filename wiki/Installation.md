@@ -30,7 +30,7 @@ cd UE5_MCP
 # Build the MCP server + the doctest suite via UBT:
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
   -EngineDir "<Path>\UnrealEngine" `
-  -ProjectFile "$PWD\UE5_MCP.uproject"
+  -ProjectFile "$PWD\LyraStarterGame.uproject"
 # Run the suite:
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
@@ -102,7 +102,7 @@ engine rebuild.
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
     /switchversionsilent `
-    "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     "D:\Projects\Unreal Engine 5"
 ```
 
@@ -119,7 +119,7 @@ Generate project files:
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" `
     -projectfiles `
-    -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     -game -rocket -progress
 ```
 
@@ -127,8 +127,8 @@ Then build the editor target:
 
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" `
-    UE5_MCPEditor Win64 Development `
-    -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    LyraEditor Win64 Development `
+    -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     -waitmutex
 ```
 
@@ -162,7 +162,7 @@ wrapper:
 ```powershell
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
   -EngineDir "D:\Path\To\UnrealEngine" `
-  -ProjectFile "$PWD\UE5_MCP.uproject" `
+  -ProjectFile "$PWD\LyraStarterGame.uproject" `
   [-Targets All|Mcp|Tests] [-Config Development] [-ExtraArgs "-NoUba -MaxParallelActions=4"]
 ```
 
@@ -256,7 +256,7 @@ regenerate:
 
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
-    "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
