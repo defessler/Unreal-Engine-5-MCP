@@ -1677,7 +1677,8 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 					}
 					EmittedValue v = TranslateComponentPropertyValue(ptype, pval);
 					if (!v.code.empty()) {
-						I << "    " << nm << "->" << pname << " = " << v.code << ";\n";
+						// Many target protected/private UE fields; commented to keep file compilable.
+						I << "    // TODO[bpr-comp-prop]: " << nm << "->" << pname << " = " << v.code << ";\n";
 					} else if (v.isAssetRef && !v.assetPath.empty()) {
 						// Asset ref -- emit ConstructorHelpers::FObjectFinder
 						// skeleton. UE enforces this only-runs-in-ctor
@@ -1700,8 +1701,8 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 						I << "    {\n";
 						I << "        static ConstructorHelpers::FObjectFinder<" << templateArg
 						  << "> " << pname << "Finder(TEXT(\"" << v.assetPath << "\"));\n";
-						I << "        if (" << pname << "Finder.Succeeded()) { "
-						  << nm << "->" << pname << " = " << pname << "Finder.Object; }\n";
+						I << "        if (" << pname << "Finder.Succeeded()) { /* TODO[bpr-comp-prop]: "
+						  << nm << "->" << pname << " = " << pname << "Finder.Object; */ }\n";
 						I << "    }";
 						if (assetClass.empty()) {
 							I << "  // TODO[bpr-asset-ref]" << templateMissingHint;
