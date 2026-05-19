@@ -2,7 +2,7 @@
 
 #include "B_LyraGameMode.h"
 
-UB_LyraGameMode::UB_LyraGameMode() {
+AB_LyraGameMode::AB_LyraGameMode() {
     DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
     RootComponent = DefaultSceneRoot;
     DefaultSceneRoot->bVisualizeComponent = true;

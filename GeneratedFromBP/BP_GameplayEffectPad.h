@@ -19,7 +19,7 @@ class ABP_GameplayEffectPad : public AActor {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TSubclassOf</Script/GameplayAbilities.GameplayEffect> GameplayEffectToApply;
+    TSubclassOf<UGameplayEffect> GameplayEffectToApply;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<UMaterialInterface> MAT_HealPad;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
@@ -27,9 +27,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<UMaterialInterface> MAT_SpecialPad;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TSubclassOf</Script/GameplayAbilities.GameplayEffect> GE_Damage;
+    TSubclassOf<UGameplayEffect> GE_Damage;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TSubclassOf</Script/GameplayAbilities.GameplayEffect> GE_Heal;
+    TSubclassOf<UGameplayEffect> GE_Heal;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     TObjectPtr<USceneComponent> DefaultSceneRoot;
