@@ -452,7 +452,7 @@ Both are "talk to a running editor over a socket." Differences:
 
 ### Why `bp-reader` does not use it today
 
-The op surface is dynamic (126 tools, schema-driven) and the wire
+The op surface is dynamic (127 tools, schema-driven) and the wire
 shape is JSON-RPC 2.0 (the MCP standard). Mapping that to a fixed
 preset of exposed properties would force a "every op is a preset
 function" indirection — and the preset itself would need to be
@@ -527,7 +527,7 @@ runtime introspector tests at
 ### When it fits
 
 - Repeatable verification of editor / engine state changes ("after
-  this commit, do all 126 MCP tools still emit valid JSON against
+  this commit, do all 127 MCP tools still emit valid JSON against
   the seeded test BPs?").
 - Nightly CI runs against the cooked build to catch regressions in
   the runtime module.
@@ -631,7 +631,7 @@ path.
 - **Python (`run_python_script`)**. Already implemented behind
   `BP_READER_ALLOW_PYTHON=1`. Not enabled by default because
   arbitrary Python bypasses the curated tool boundary. Useful when
-  the agent needs "something the 126 curated tools don't cover" —
+  the agent needs "something the 127 curated tools don't cover" —
   the escape hatch. Per-call cost is the script-source parse;
   module imports cache across calls within the daemon's lifetime.
 - **RemoteControl mirror**. Could re-host the same dispatch on

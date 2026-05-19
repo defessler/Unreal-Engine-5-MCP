@@ -22,7 +22,7 @@ deep-dives are in [03-plugin-internals.md](03-plugin-internals.md)
                                           |  mcp::Register…           |
                                           |     initialize / tools/*   |
                                           |  tools::ToolRegistry       |
-                                          |     126 descriptors        |
+                                          |     127 descriptors        |
                                           |  IBlueprintReader (iface)  |
                                           +-------------------------+
                                                        |

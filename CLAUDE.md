@@ -11,7 +11,7 @@ and `LyraEditor-Cmd.exe` commandlet runs successfully. Details +
 recipe in
 [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md).
 
-UE 5.7.4 project plus a standalone MCP server that exposes 126
+UE 5.7.4 project plus a standalone MCP server that exposes 127
 Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
 tools to MCP
 clients (Claude Code, Claude Desktop, Copilot, ChatGPT bridge). Two
@@ -317,7 +317,7 @@ output changed.
 
 ## Adding a new tool
 
-The pattern is consistent across all 126 tools:
+The pattern is consistent across all 127 tools:
 
 1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
    a `ParseOp` entry, a dispatch line in `RunOneOp`, and a
