@@ -176,14 +176,15 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 	// Stage 3: compile via UBT.
 	// BPRoundtripModule is a plain Runtime module (no .Target.cs), so we
 	// drive UBT against the consuming project's <Project>Editor target.
-	// Target name comes from BP_READER_EDITOR_TARGET (default "UE5_MCPEditor"
-	// for back-compat); Lyra and other consumers set it to e.g. "LyraEditor".
+	// Target name comes from BP_READER_EDITOR_TARGET (default "LyraEditor"
+	// since the repo ships LyraStarterGame.uproject); override for other
+	// projects via the env var.
 	// BP_READER_SKIP_PREBUILD=1 stops the editor target from re-invoking
 	// the plugin's MCP-server PreBuildStep.
 	{
 		const char* envTarget = std::getenv("BP_READER_EDITOR_TARGET");
 		std::string editorTarget = (envTarget && *envTarget)
-			? std::string(envTarget) : std::string("UE5_MCPEditor");
+			? std::string(envTarget) : std::string("LyraEditor");
 		const std::string buildBat =
 			std::string(engineDir) + "/Engine/Build/BatchFiles/Build.bat";
 		const std::string cmd =
