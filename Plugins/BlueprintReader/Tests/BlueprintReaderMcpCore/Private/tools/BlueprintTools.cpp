@@ -13,6 +13,8 @@
 #include "backends/IBlueprintReader.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -50,6 +52,41 @@ std::string OptString(const nlohmann::json& obj, std::string_view key,
 		throw std::invalid_argument(fmt::format(R"(argument "{}" must be a string)", key));
 	}
 	return it->get<std::string>();
+}
+
+// Transpile gate. The 6 BP-to-C++ tools (decompile_function,
+// decompile_blueprint, transpile_function, transpile_blueprint,
+// write_generated_source, parse_cpp_function) are off by default.
+// Setting BP_READER_ALLOW_TRANSPILE=1 (or true / yes / on) in the
+// MCP server's env enables them. Off by default keeps the surface
+// explicit — the transpile path can write source files, parse
+// untrusted C++, and shells out to UBT downstream, so opt-in is
+// the safer default.
+bool TranspileEnabled() {
+	const char* raw = std::getenv("BP_READER_ALLOW_TRANSPILE");
+	if (!raw || !*raw) {
+		return false;
+	}
+	std::string v(raw);
+	for (char& c : v) {
+		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	}
+	return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
+nlohmann::json TranspileDisabledResponse(std::string_view toolName) {
+	return nlohmann::json{
+		{"ok", false},
+		{"error", "transpile_disabled"},
+		{"tool", std::string(toolName)},
+		{"hint",
+			"Set BP_READER_ALLOW_TRANSPILE=1 in the MCP server's env to "
+			"enable the BP-to-C++ transpile tools (decompile_function, "
+			"decompile_blueprint, transpile_function, transpile_blueprint, "
+			"write_generated_source, parse_cpp_function). Off by default "
+			"because these tools shell to UBT, write source files, and "
+			"parse caller-supplied C++."},
+	};
 }
 
 nlohmann::json AssetPathSchema() {
@@ -224,7 +261,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"Pair with `transpile_function` (BPIR → C++) for the full "
 			"BP→source pipeline. The BPIR returned here is also valid "
 			"input for `compile_function` (existing tool) — round-trip "
-			"BP → BPIR → BP works for the patterns BPIR covers cleanly.";
+			"BP → BPIR → BP works for the patterns BPIR covers cleanly.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -235,6 +272,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"asset_path","function_name"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("decompile_function");
+			}
 			std::string asset = RequireString(args, "asset_path");
 			std::string fname = RequireString(args, "function_name");
 			auto ctl = ParseResponseControls(args);
@@ -254,7 +294,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"input shape `transpile_blueprint` expects for full UCLASS "
 			"C++ generation. Per-function decompile failures don't tank "
 			"the whole call; failed functions appear with `<decompile-"
-			"failure>` markers in their unsupported_nodes.";
+			"failure>` markers in their unsupported_nodes.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -264,6 +304,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("decompile_blueprint");
+			}
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = DecompileBlueprint(reader, asset);
@@ -284,7 +327,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"comments); for compilable .h/.cpp pairs, use "
 			"`transpile_blueprint`. Unsupported nodes appear as "
 			"`// TODO[bpr-unsupported]` comments + a `notes` array "
-			"the agent can iterate over.";
+			"the agent can iterate over.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -302,6 +345,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"asset_path","function_name"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("transpile_function");
+			}
 			std::string asset = RequireString(args, "asset_path");
 			std::string fname = RequireString(args, "function_name");
 			std::string lang  = OptString(args, "target_lang", "cpp");
@@ -353,7 +399,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"Returns header + impl source strings, suggested filenames, "
 			"and a `notes` array listing every unsupported BP construct "
 			"encountered (timelines, latent actions, etc.) for the agent "
-			"to triage.";
+			"to triage.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -381,6 +427,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("transpile_blueprint");
+			}
 			std::string asset = RequireString(args, "asset_path");
 			std::string lang  = OptString(args, "target_lang", "cpp");
 			if (lang != "cpp") {
@@ -468,7 +517,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"destination paths under your game module's Source dir.\n\n"
 			"After all files are written, run UBT (or use the editor's "
 			"Live Coding) to compile the new class — the BP can then "
-			"reparent to the C++ class for hybrid workflows.";
+			"reparent to the C++ class for hybrid workflows.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -482,6 +531,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"path","content"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("write_generated_source");
+			}
 			std::string path    = RequireString(args, "path");
 			std::string content = RequireString(args, "content");
 			bool createDirs     = args.value("create_dirs", true);
@@ -535,7 +587,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"Errors are reported as `<line>:<col>: <message>`; the "
 			"produced BPIR is validated against the schema before "
 			"return — a malformed parse surfaces as a clear error rather "
-			"than corrupt downstream graphs.";
+			"than corrupt downstream graphs.\n\n**Gated:** the MCP server's process env must include `BP_READER_ALLOW_TRANSPILE=1`. Off by default — when disabled, returns `{ok: false, error: 'transpile_disabled', hint: ...}`.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -547,6 +599,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"required", nlohmann::json::array({"source"})},
 		};
 		registry.Add(std::move(d), [](const nlohmann::json& args) {
+			if (!TranspileEnabled()) {
+				return TranspileDisabledResponse("parse_cpp_function");
+			}
 			std::string source = RequireString(args, "source");
 			nlohmann::json bpir;
 			if (auto sigIt = args.find("signature");
