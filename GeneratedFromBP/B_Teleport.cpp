@@ -3,7 +3,7 @@
 #include "B_Teleport.h"
 #include "Components/SceneComponent.h"
 #include "Components/ArrowComponent.h"
-#include "Components/NiagaraComponent.h"
+#include "NiagaraComponent.h"
 #include "Components/BoxComponent.h"
 
 AB_Teleport::AB_Teleport() {
