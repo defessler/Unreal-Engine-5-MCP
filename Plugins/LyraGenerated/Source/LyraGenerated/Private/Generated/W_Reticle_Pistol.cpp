@@ -1,0 +1,2 @@
+// AUTO-GENERATED stub by bp-reader.
+#include "W_Reticle_Pistol.h"
