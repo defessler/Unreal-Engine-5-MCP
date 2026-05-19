@@ -98,11 +98,11 @@ the chosen reader with a TTL-keyed cache
 (`CachingBlueprintReader`) and an optional read-only guard
 (`ReadOnlyBlueprintReader`).
 
-## 126 tools across 22 categories
+## 127 tools across 22 categories
 
-The MCP server registers 126 tools at startup. The tests pin the
+The MCP server registers 127 tools at startup. The tests pin the
 expected count
-(`tests/test_tools.cpp:35`, `tests/test_mcp.cpp:90`). The categories,
+(`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:36`, `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp:94`). The categories,
 from the test breakdown:
 
 > 12 read + 22 write + 3 meta + 3 batch + 3 transpile + 13 project/asset

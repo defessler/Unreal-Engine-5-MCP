@@ -71,7 +71,7 @@ All cite paths are absolute. Line ranges are inclusive.
   3. Calls `registry.Add(std::move(d), [&reader](const json& args) { ... })`.
 - **Tool count assertions** at
   `D:/Projects/UE5_MCP/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:36`
-  and `test_mcp.cpp:94` both pin `spec.size() == 126`. Bump both when
+  and `test_mcp.cpp:94` both pin `spec.size() == 127`. Bump both when
   adding a tool. (CLAUDE.md's "tools/test count" note covers this.)
 - **Category membership** at
   `D:/Projects/UE5_MCP/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp`
@@ -196,7 +196,7 @@ All cite paths are absolute. Line ranges are inclusive.
   switch for the legacy read ops), with each `Run<X>Op` defined
   elsewhere in the file.
 - **Shape:** the op enum has one entry per plugin operation
-  (~120 entries; the server's 126 tools map to a subset because some
+  (~120 entries; the server's 127 tools map to a subset because some
   server-side tools are pure orchestrations of existing ops, e.g.
   `apply_ops`, `compile_function`, `summarize_blueprint`,
   `decompile_function`/`transpile_*`, `find_overriders`,
@@ -723,7 +723,7 @@ anything.
     `EngineVersion` value.
 12. **Bump tool-count assertions.**
     `D:/Projects/UE5_MCP/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:36`
-    and `test_mcp.cpp:94`: both `CHECK(spec.size() == 126)` become
+    and `test_mcp.cpp:94`: both `CHECK(spec.size() == 127)` become
     `== 127`.
 13. **Add tests.**
     - Mock case: `Fixture f; auto out = f.Call("get_engine_version", json::object());` — assert the throw or the stub return.
