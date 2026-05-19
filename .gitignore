@@ -51,3 +51,10 @@ desktop.ini
 Plugins/BlueprintReader/Source/BPRoundtripModule/Private/*
 !Plugins/BlueprintReader/Source/BPRoundtripModule/Private/.gitkeep
 !Plugins/BlueprintReader/Source/BPRoundtripModule/Private/BPRoundtripModule.cpp
+
+# Large content files unsuitable for direct GitHub hosting (>50MB).
+# Re-fetch from Epic's Lyra distribution or set up Git LFS to track these.
+Content/Effects/Textures/Flipbooks/SmokeSwirl_3_Flipbook_CHANNELPACK.uasset
+Plugins/LyraExampleContent/Content/Materials/Textures/T_Rough_Concrete_Floor_ulmmbiuo_4K_N.uasset
+Plugins/LyraExampleContent/Content/Megascans/Surfaces/Dirty_Painted_Concrete_Wall_vdqfcg3/T_Dirty_Painted_Concrete_Wall_vdqfcg3_4K_D.uasset
+Plugins/LyraExampleContent/Content/Megascans/Surfaces/Dirty_Painted_Concrete_Wall_vdqfcg3/T_DirtyPaintedConcreteWall_vdqfcg3_4K_ORDp.uasset
