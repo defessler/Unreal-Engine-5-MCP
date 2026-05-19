@@ -1369,8 +1369,13 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			// Generate continuation function name + walk the downstream.
 			const std::string cbName = fmt::format("{}{}_{}", sanitizedTitle, p.Name, tag);
 			const BPNode* bodyStart = w.GetNode(outIt->second.front().node);
-			std::set<std::string> visited;
-			nlohmann::json cbBody = DecompileStatementsFrom(w, bodyStart, nullptr, visited);
+			// `cbVisited` rather than `visited` to avoid shadowing the
+			// DecompileStatement parameter (MSVC C4457). Each callback
+			// body gets its own fresh visited set so the parent's
+			// cycle-detection state doesn't false-positive across the
+			// async-task boundary.
+			std::set<std::string> cbVisited;
+			nlohmann::json cbBody = DecompileStatementsFrom(w, bodyStart, nullptr, cbVisited);
 
 			// Look up the delegate's params (if plugin surfaced them).
 			// inputs[] is populated when found; otherwise parameter-less.
