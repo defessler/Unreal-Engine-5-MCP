@@ -1,12 +1,15 @@
 # Claude project guidance — UE5_MCP
 
 **Project state.** The repository ships as a Lyra Starter Game
-project (`LyraStarterGame.uproject` at the root). The historical
-`UE5_MCP.uproject` from earlier iterations is no longer the active
-target; remaining references in this doc are kept as-is for the build
-commands they document — the build commands work for either project
-with `BP_READER_PROJECT` / `BP_READER_EDITOR_TARGET` env vars (Lyra
-uses `LyraEditor`, the old project used `UE5_MCPEditor`).
+project (`LyraStarterGame.uproject` at the root) on UE 5.7.4. The
+historical `UE5_MCP.uproject` is gone — build commands target
+`LyraEditor`, env vars target `LyraStarterGame.uproject`. All 302
+Lyra blueprints have C++ companion classes under
+`Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
+(17 full transpiles + 285 stubs); the editor target builds clean
+and `LyraEditor-Cmd.exe` commandlet runs successfully. Details +
+recipe in
+[`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md).
 
 UE 5.7.4 project plus a standalone MCP server that exposes 126
 Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
@@ -69,8 +72,9 @@ means a fresh plugin pull always brings matching docs.
 
 ```
 UE5_MCP/                                      ← project root
-├── UE5_MCP.uproject
-├── Source/                                     project runtime module
+├── LyraStarterGame.uproject
+├── Source/LyraGame, LyraEditor                  Lyra project modules
+├── Plugins/LyraGenerated/                       302 BP→C++ companion classes
 ├── Plugins/BlueprintReader/                    plugin ships as one unit
 │   ├── BlueprintReader.uplugin
 │   ├── Scripts/Build-MCPServer.ps1             UBT-wrapper convenience script
@@ -144,20 +148,20 @@ explicit (heavier, less often needed):
 ```bat
 :: Editor (plugin DLLs) + MCP server exe (via plugin PreBuildStep):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
-  UE5_MCPEditor Win64 Development ^
-  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  LyraEditor Win64 Development ^
+  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
 :: MCP server exe in isolation (e.g. when iterating on server-only changes):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcp Win64 Development ^
-  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
 :: doctest suite (~441 cases) — not pulled in automatically:
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcpTests Win64 Development ^
-  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
@@ -182,10 +186,13 @@ incremental rebuild).
 
 ### Build invariants
 
-- `Source/UE5_MCPEditor.Target.cs` must declare:
+- `Source/LyraEditor.Target.cs` must declare:
   ```csharp
   DefaultBuildSettings = BuildSettingsVersion.V6;
-  BuildEnvironment = TargetBuildEnvironment.Shared;
+  BuildEnvironment = TargetBuildEnvironment.Unique;
+  // Lyra requires Unique because of its warning-override settings.
+  // When using Unique env, launch LyraEditor-Cmd.exe (not UnrealEditor-Cmd.exe)
+  // so the matching LyraEditor-*.dll plugin modules load.
   ```
   The MCP server auto-build is handled inside the plugin via
   `BlueprintReader.uplugin`'s `PreBuildSteps` block (which invokes
@@ -235,7 +242,7 @@ ground. For an interactive smoke, stream JSON-RPC frames against
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
