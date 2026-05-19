@@ -86,8 +86,8 @@ Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/
 Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/
   BlueprintTools.cpp                                                        (Task 15 — register bp_structural_diff)
 Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/
-  test_tools.cpp                                                            (Task 15 — bump 126 → 127)
-  test_mcp.cpp                                                              (Task 15 — bump 126 → 127)
+  test_tools.cpp                                                            (Task 15 — bump 127 → 127)
+  test_mcp.cpp                                                              (Task 15 — bump 127 → 127)
 .gitignore                                                                  (Task 16 — Recreated/, BPRoundtripModule emitted code)
 ```
 
@@ -2041,14 +2041,14 @@ Find the last `{ ToolDescriptor d; d.name = "..."; ... registry.Add(...); }` blo
 - [x] **Step 2: Bump tool count in `test_tools.cpp`**
 
 ```cpp
-// Was: CHECK(spec.size() == 126);
+// Was: CHECK(spec.size() == 127);
 CHECK(spec.size() == 127);
 ```
 
 - [x] **Step 3: Bump tool count in `test_mcp.cpp`**
 
 ```cpp
-// Was: CHECK(list.size() == 126);
+// Was: CHECK(list.size() == 127);
 CHECK(list.size() == 127);
 ```
 

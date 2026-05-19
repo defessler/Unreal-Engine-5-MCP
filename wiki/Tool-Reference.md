@@ -1,6 +1,6 @@
 # Tool Reference
 
-126 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 13 project /
+127 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 13 project /
 content-browser, 15 live editor, 1 automation, 7 material, 5 widget,
 5 behavior tree, 4 data asset, 5 state tree, 4 profiling, 2 cook,
 3 class introspection, 4 viewport, 4 Niagara, 4 Sequencer, 3 GAS, 4

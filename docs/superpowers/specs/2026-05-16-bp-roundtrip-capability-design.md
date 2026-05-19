@@ -279,6 +279,6 @@ These would have been Section-2 checkpoint questions; locking them in here:
 - Importing animation data, materials, meshes, textures into the spec — we represent them as path references and trust that the assets exist on disk.
 - BP-to-BP "is it semantically equivalent at runtime" testing (no PIE-based functional verification). Structural diff is the proof.
 - Live Coding integration for the BPIR compile step (UBT only — Live Coding is editor-bound and flaky for headless flows).
-- Performance optimization of the existing 126 tools.
+- Performance optimization of the existing 127 tools.
 - Verse support (UEFN-only, not in mainline UE5.7 — research will note this).
 - Implementing the `IScriptBackend` abstraction. Research notes will describe it; implementation is a follow-up project.

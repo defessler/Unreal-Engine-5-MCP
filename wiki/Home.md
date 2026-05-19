@@ -14,7 +14,7 @@
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
-graphs, nodes, connections, K2 metadata — through 126 tools.
+graphs, nodes, connections, K2 metadata — through 127 tools.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -36,6 +36,7 @@ graphs, nodes, connections, K2 metadata — through 126 tools.
   `parse_cpp_function`. Versioned JSON AST; pivot for BP ↔ C++ (and
   future Lua / Python / JS).
 - **[Configuration](Configuration)** — env vars, daemon mode, timeouts.
+- **[Coding-Conventions](Coding-Conventions)** — what hand-written + generated code in this repo looks like.
 - **[Troubleshooting](Troubleshooting)** — common failure modes + fixes.
 
 ## TL;DR

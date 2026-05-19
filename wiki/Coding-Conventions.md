@@ -1,0 +1,188 @@
+# Coding Conventions
+
+These are the conventions every C++ file, BPIR-generated file, and
+documentation page in this repo follows. They apply equally to
+hand-written code, code emitted by the BPIR codegen (`CppEmit.cpp`,
+`CppClassEmit.cpp`), and the stub generator. If a contribution or a
+generated artifact would violate one, the codegen path is fixed at
+the source rather than the output being hand-patched.
+
+## Comments
+
+**Default to no comments.** Well-named identifiers carry the WHAT.
+The reader can read the code; they can't read your mind. Comments
+buy their keep only when they encode a WHY that the code can't.
+
+A comment earns its line when it captures one of:
+
+- A hidden constraint (`// Must run on game thread — the editor's
+  KismetCompiler isn't thread-safe.`)
+- A workaround for a specific upstream bug (`// UE 5.7
+  AddFunctionOutput silently no-ops when no K2Node_FunctionResult
+  exists — spawn one first.`)
+- A subtle invariant a future editor would otherwise break (`// pinId
+  is stable across edits but not across cooks; do not persist.`)
+- Generated-file breadcrumbs (see [Generated code](#generated-code)).
+
+If you can delete a comment and the next reader is still fine,
+delete it.
+
+**Never write:**
+
+- WHAT comments restating the code (`// Increment counter` above
+  `counter++`).
+- References to the current task, PR, fix, or caller (`// Added for
+  the multi-session work in #142` — rots immediately).
+- Multi-paragraph docstrings or multi-line comment blocks.
+  One short line max.
+- Section-marker banners (`// === Variables ===`). The code already
+  groups itself.
+
+## Scope
+
+**Match the change to what was asked for.** A bug fix doesn't need
+surrounding cleanup. A one-shot operation doesn't need a helper
+function. Three similar lines is better than a premature abstraction
+— the abstraction can come later, when there's a fourth caller.
+
+**Don't design for hypothetical future requirements.** If we need
+feature X someday, add it then. Speculative interface surface is
+dead weight that complicates the code today.
+
+**No half-finished implementations.** If the function returns, every
+codepath has done its job.
+
+## Error handling
+
+**Validate only at system boundaries.** User input, external APIs,
+filesystem reads — those need defensive checks. Internal code can
+trust framework guarantees and earlier-validated state. Validation
+sprinkled through middle layers obscures the actual logic.
+
+**Don't catch errors you can't handle.** Letting an exception
+propagate is fine if the layer above does something useful with it.
+A blanket `catch (...) { /* swallow */ }` hides bugs.
+
+**No fallbacks for scenarios that can't happen.** If the enum has
+three values and you handle all three, don't add a `default:` that
+"can't happen" — that branch becomes a maintenance liability and the
+compiler's exhaustiveness warning is more useful anyway.
+
+## Backwards compatibility
+
+**No backwards-compat hacks unless an external consumer requires it.**
+Renaming a private function: rename it. Removing an internal
+parameter: remove it. We don't ship `// removed in v1.4, see X
+instead` comments — git remembers.
+
+**Avoid feature flags for code you can just change.** Flags are for
+runtime gating that needs to survive across users with different
+expectations — not for "I'm not sure if this is final yet."
+
+## Identifiers + style
+
+- UE source: PascalCase types, camelCase locals, ALL_CAPS macros,
+  `b` prefix on bools (`bIsReady`), `U`/`A`/`F`/`E`/`I` class
+  prefixes per UE convention.
+- MCP server / generic C++: snake_case locals, lowerCamelCase or
+  snake_case functions (codebase mixes both — match the file).
+- File names: `PascalCaseForUE.h`, `lowercase_for_generic.cpp`. Match
+  the directory.
+
+## Wire format (JSON)
+
+The MCP-side wire format is **pinned** in
+[`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h).
+The doctest suite asserts every shape.
+
+- **snake_case keys.** `asset_path`, not `assetPath` or `AssetPath`.
+- **`null` for empty optional strings.** Not `""`, not omitted.
+- **`BPNode.meta` is a real nested object.** Never serialize it as a
+  string-of-JSON.
+- **Object paths vs package paths.** The wire uses package paths
+  (`/Game/AI/BP_Foo`). `Blueprint->GetPathName()` returns object paths
+  (`/Game/AI/BP_Foo.BP_Foo`) — strip the suffix via
+  `BlueprintReaderWireJson::ToPackagePath` before emitting.
+
+## Generated code
+
+The BPIR codegen (`CppEmit.cpp`, `CppClassEmit.cpp`, the stub
+generator) produces output that follows the conventions above, with
+**these specific allowances** for generated files:
+
+- **First line is an `AUTO-GENERATED` marker.** Two flavors:
+  - Stubs: `// AUTO-GENERATED stub by bp-reader.`
+  - Full transpiles:
+    `// AUTO-GENERATED by bp-reader transpile. Do not edit — re-run to regenerate.`
+  This is a load-bearing WHY: it tells a reader (and a future code
+  reviewer) the file is regenerated, so edits will be overwritten and
+  the source of truth is the BP / BPIR.
+- **Source breadcrumb (full transpiles only).** A second line like
+  `// Source BP: /Game/AI/BP_Foo` lets a reader trace back to the
+  asset without grepping. Stubs skip this — the filename already
+  reflects the BP path 1:1.
+- **Schema version pin (full transpiles only).** A third line like
+  `// BPIR version: 1` makes incompatible IR changes visible — if a
+  consumer sees `version: 1` but the codegen now emits `version: 2`,
+  the regeneration is overdue.
+- **TODO markers for unhandled cases.** When the transpiler can't
+  represent something cleanly in C++ (component-property defaults
+  that need editor-only setters, struct-property literals,
+  resource-path references that aren't yet wrapped in
+  `FObjectFinder`), it emits `// TODO[bpr-comp-prop]: ...` or
+  `// TODO[bpr-component-default]: ...` with the original BP value
+  inline. These are *the* WHY signal: they tell the human why a line
+  is incomplete and exactly what value needs to be wired by hand.
+  Categories:
+  - `TODO[bpr-comp-prop]:` — component instance property the C++
+    side can't set without engine-internal access.
+  - `TODO[bpr-component-default]:` — component default (often a
+    struct property) the transpiler doesn't yet emit.
+
+**Things generated code does NOT do** — and these are bugs in the
+codegen if they appear:
+
+- Banner comments (`// === Properties ===`).
+- Restating the obvious in comments (`// Constructor` above the
+  constructor).
+- References to the agent run that generated it (`// Generated by
+  Claude on 2026-05-19` — rots immediately, and git already records
+  when this changed).
+- Excessive whitespace / blank-line separators between members.
+- Unused includes / forward declarations.
+
+If you spot a violation in a generated file, the fix lives in the
+codegen, not the file. Re-run the transpile after the fix to refresh
+the output.
+
+## Tests
+
+- Mock fixtures live under
+  `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`.
+- Real-editor cases auto-skip when env vars aren't set (so the mock
+  test pass is the default fast path; the live ones gate on
+  `BP_READER_BACKEND=commandlet|live` + project envs).
+- New tools require two new tests: a mock case (asserts shape or
+  throws-as-expected) and a live case if the op needs a real BP.
+- The tool-count assertion in
+  [`test_tools.cpp:36`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp#L36)
+  (`CHECK(spec.size() == N);`) needs bumping every time a tool is
+  added or removed. Same in `test_mcp.cpp`.
+
+## Documentation
+
+- **No emojis** unless asked for them explicitly.
+- **No marketing prose.** Documents describe what the code does and
+  why a reader would care. They don't sell the design.
+- **Concrete over abstract.** "30 ms per call after daemon warm-up"
+  beats "fast."
+- **One sentence per idea.** Reads better than the same content in
+  paragraphs.
+
+## See also
+
+- [Configuration](Configuration) — env vars + tool-filter presets.
+- [BPIR](BPIR) — the JSON AST shape the codegen consumes.
+- [Tool Reference](Tool-Reference) — every tool's input/output shape.
+- [`Plugins/BlueprintReader/Claude/skills/bp-cpp/SKILL.md`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Claude/skills/bp-cpp/SKILL.md)
+  — the BP↔C++ skill that drives the codegen.

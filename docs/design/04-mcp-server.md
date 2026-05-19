@@ -526,15 +526,15 @@ default works without env vars.
 
 ## Testing
 
-`tests/test_tools.cpp:32-35` and `tests/test_mcp.cpp:90` both pin
-`spec.size() == 126`. Bumping the tool count requires updating
-both. The descriptive comment on `test_tools.cpp:32` notes the
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:32-36` and `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp:94` both pin
+`spec.size() == 127`. Bumping the tool count requires updating
+both. The descriptive comment on `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:32` notes the
 shipping increments from each PR (this is more useful than a
 per-category breakdown that drifts the moment a new tool joins
 one of the categories):
 
 ```cpp
-TEST_CASE("ToolRegistry exposes 126 tools (121 prior + 5 quick-win
+TEST_CASE("ToolRegistry exposes 127 tools (121 prior + 5 quick-win
     additions from issue #83: get_referencers, get_dependencies,
     read_config_value, set_config_value, build_lighting) with input
     schemas")
