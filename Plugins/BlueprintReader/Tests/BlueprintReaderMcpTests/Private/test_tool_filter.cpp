@@ -163,6 +163,101 @@ TEST_CASE("ToolCategories: known + unknown lookups") {
 	CHECK(hasReadBp);
 }
 
+// ===== ListSpec exclusion ================================================
+// Verifies the user-facing contract: tools removed from the active set
+// don't appear in tools/list at all. tools/call also rejects them
+// (covered by the existing Find() tests above) — these check the
+// /advertisement/ surface specifically.
+
+namespace test_tool_filter_detail {
+static std::vector<std::string> SpecNames(const ToolRegistry& r) {
+	std::vector<std::string> out;
+	for (const auto& entry : r.ListSpec()) {
+		out.push_back(entry.at("name").get<std::string>());
+	}
+	return out;
+}
+static bool SpecHas(const ToolRegistry& r, const std::string& name) {
+	auto names = SpecNames(r);
+	return std::find(names.begin(), names.end(), name) != names.end();
+}
+}    // namespace test_tool_filter_detail
+
+TEST_CASE("ListSpec: denied tools are excluded by name") {
+	auto r = MakeWith({"read_blueprint", "add_node", "wire_pins", "save_all"});
+	r.ApplyFilter({}, {"add_node"});
+	// Excluded tool is gone:
+	CHECK(!SpecHas(r, "add_node"));
+	// Others remain:
+	CHECK(SpecHas(r, "read_blueprint"));
+	CHECK(SpecHas(r, "wire_pins"));
+	CHECK(SpecHas(r, "save_all"));
+}
+
+TEST_CASE("ListSpec: denied category drops every tool in it") {
+	// Approximation of `BP_READER_TOOLS_EXCLUDE=cpp` — the user's
+	// canonical "hide the transpile surface" recipe. With the cpp
+	// category denied, none of its tools should appear in tools/list.
+	auto r = MakeWith({
+		// `cpp` category members:
+		"decompile_function",
+		"decompile_blueprint",
+		"transpile_function",
+		"transpile_blueprint",
+		"parse_cpp_function",
+		"compile_function",
+		"write_generated_source",
+		// Non-cpp tools that should survive:
+		"read_blueprint",
+		"add_node",
+	});
+	r.ApplyFilter({}, {"cpp"});
+	for (const char* hidden : {
+			"decompile_function",
+			"decompile_blueprint",
+			"transpile_function",
+			"transpile_blueprint",
+			"parse_cpp_function",
+			"compile_function",
+			"write_generated_source",
+		}) {
+		CAPTURE(hidden);
+		CHECK(!SpecHas(r, hidden));
+	}
+	CHECK(SpecHas(r, "read_blueprint"));
+	CHECK(SpecHas(r, "add_node"));
+}
+
+TEST_CASE("ListSpec: allow-list narrows tools/list to exactly the allowed set") {
+	auto r = MakeWith({"read_blueprint", "add_node", "wire_pins", "save_all"});
+	r.ApplyFilter({"read_blueprint", "save_all"}, {});
+	auto names = SpecNames(r);
+	CHECK(names.size() == 2);
+	CHECK(std::find(names.begin(), names.end(), std::string("read_blueprint")) != names.end());
+	CHECK(std::find(names.begin(), names.end(), std::string("save_all"))       != names.end());
+	CHECK(std::find(names.begin(), names.end(), std::string("add_node"))       == names.end());
+	CHECK(std::find(names.begin(), names.end(), std::string("wire_pins"))      == names.end());
+}
+
+TEST_CASE("ListSpec: allow-then-deny composes — denied tools never appear") {
+	auto r = MakeWith({"read_blueprint", "add_node", "save_all"});
+	// Allow core (which includes all three), then deny one specifically.
+	r.ApplyFilter({"core"}, {"save_all"});
+	CHECK(SpecHas(r, "read_blueprint"));
+	CHECK(SpecHas(r, "add_node"));
+	CHECK(!SpecHas(r, "save_all"));
+}
+
+TEST_CASE("ListSpec: filtered tools are dropped from both list AND dispatch") {
+	// The contract: a denied tool is invisible (tools/list) *and*
+	// uncallable (tools/call). Pins both paths in one assertion so a
+	// future change that splits them is caught.
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	r.ApplyFilter({}, {"add_node"});
+	CHECK(!SpecHas(r, "add_node"));       // not advertised
+	CHECK(r.Find("add_node") == nullptr); // not dispatchable
+}
+
 // ===== Progressive disclosure ============================================
 // Pins the runtime widening flow exposed via enable_tool_category +
 // the listChanged notification, used when BP_READER_PROGRESSIVE=1.
