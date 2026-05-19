@@ -227,20 +227,18 @@ char ChoosePrefixFor(std::string_view parentClassName) {
 		return parentClassName[0];
 	}
 	// Unprefixed parent — use the same heuristic as CppEmit's object
-	// mapper. Actor-derived names get A, everything else U.
-	if (parentClassName == "Actor" ||
-		(parentClassName.size() > 5 &&
-		 parentClassName.substr(parentClassName.size() - 5) == "Actor") ||
-		parentClassName == "Pawn" ||
-		parentClassName == "Character" ||
-		parentClassName == "Controller" ||
-		parentClassName == "PlayerController" ||
-		parentClassName == "PlayerState" ||
-		parentClassName == "GameMode" ||
-		parentClassName == "GameModeBase" ||
-		parentClassName == "GameState" ||
-		parentClassName == "HUD" ||
-		parentClassName == "Info") {
+	// mapper. Actor-derived names get A, everything else U. Suffix match
+	// so project subclasses (LyraGameMode, LyraCharacter, etc.) inherit
+	// the correct prefix.
+	auto endsWith = [&](std::string_view suffix) {
+		return parentClassName.size() >= suffix.size() &&
+		       parentClassName.substr(parentClassName.size() - suffix.size()) == suffix;
+	};
+	if (endsWith("Actor") || endsWith("Pawn") || endsWith("Character") ||
+	    endsWith("Controller") || endsWith("PlayerController") ||
+	    endsWith("PlayerState") || endsWith("GameMode") ||
+	    endsWith("GameModeBase") || endsWith("GameState") ||
+	    endsWith("HUD") || endsWith("Info") || endsWith("Volume")) {
 		return 'A';
 	}
 	return 'U';

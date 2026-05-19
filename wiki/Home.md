@@ -1,5 +1,13 @@
 # UE5_MCP Wiki
 
+> **Status update — Lyra integration.** The repo root now ships as a
+> Lyra Starter Game project (`LyraStarterGame.uproject`). The plugin is
+> project-agnostic; set `BP_READER_PROJECT` and `BP_READER_EDITOR_TARGET`
+> when invoking against any project (Lyra = `LyraEditor`, the original
+> `UE5_MCP.uproject` example = `UE5_MCPEditor`). See `GeneratedFromBP/`
+> for ~270 Lyra blueprints auto-emitted to C++ via `transpile_blueprint`.
+
+
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
 graphs, nodes, connections, K2 metadata — through 126 tools.

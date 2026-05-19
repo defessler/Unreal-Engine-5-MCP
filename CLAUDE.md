@@ -1,5 +1,13 @@
 # Claude project guidance — UE5_MCP
 
+**Project state.** The repository ships as a Lyra Starter Game
+project (`LyraStarterGame.uproject` at the root). The historical
+`UE5_MCP.uproject` from earlier iterations is no longer the active
+target; remaining references in this doc are kept as-is for the build
+commands they document — the build commands work for either project
+with `BP_READER_PROJECT` / `BP_READER_EDITOR_TARGET` env vars (Lyra
+uses `LyraEditor`, the old project used `UE5_MCPEditor`).
+
 UE 5.7.4 project plus a standalone MCP server that exposes 126
 Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
 tools to MCP
