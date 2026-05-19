@@ -533,7 +533,7 @@ Build the plugin (same `Build.bat` invocation as chapter 3), then:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPR -Op=Read -Asset=/Game/AI/BP_Foo ^
   -nullrhi -nosplash -unattended -nopause
 ```
@@ -546,7 +546,7 @@ trick is finding your JSON in the UE log slurry):
 $proc = Start-Process `
   "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
   -ArgumentList @(
-    '"D:\Projects\UE5_MCP\UE5_MCP.uproject"',
+    '"D:\Projects\UE5_MCP\LyraStarterGame.uproject"',
     '-run=BPR','-Op=Read',
     '-Asset=/Game/AI/BP_Foo',
     '-Output=D:\Temp\bp.json',
