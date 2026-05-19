@@ -288,8 +288,8 @@ you'll use UE's `Build.bat`:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
-  UE5_MCPEditor Win64 Development ^
-  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  LyraEditor Win64 Development ^
+  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
@@ -322,7 +322,7 @@ Once the editor target builds, invoke the commandlet headlessly:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPR ^
   -Asset=/Game/AI/BP_Foo ^
   -nullrhi -nosplash -unattended -nopause
@@ -380,7 +380,7 @@ Pass all three of these:
 
 Diagnosing common failures:
 
-- **`Failed to find target 'UE5_MCPEditor'`** — the editor target
+- **`Failed to find target 'LyraEditor'`** — the editor target
   binary didn't build. Re-run `Build.bat` and watch for compile
   errors. Most often: forgot to add `UnrealEd` to `Build.cs`, missing
   `#include`, or a typo in `.uplugin`'s `Modules[].Name`.

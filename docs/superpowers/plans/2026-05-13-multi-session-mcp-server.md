@@ -147,7 +147,7 @@ In `Plugins/BlueprintReader/Source/BlueprintReaderEditor/Private/BlueprintReader
 - [ ] **Step 6: Build the plugin**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex 2>&1 | grep -E "error C|Compile|Link \[|Total" | tail -10
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" LyraEditor Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex 2>&1 | grep -E "error C|Compile|Link \[|Total" | tail -10
 ```
 
 Expected: clean compile of `BlueprintReaderCmdletServer.cpp`. Link may fail with `LNK1104` if editor is running — that's OK.
@@ -214,7 +214,7 @@ Same command as Task 1.1 Step 6. Expected: clean compile.
 Close the editor first if it's running. Then:
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BPR -Daemon -nullrhi -nosplash -unattended -nopause
+"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/LyraStarterGame.uproject" -run=BPR -Daemon -nullrhi -nosplash -unattended -nopause
 ```
 
 In another shell, watch for the handshake file:
@@ -590,7 +590,7 @@ TEST_CASE("AutoBackend: prefers live when both handshakes are valid") {
     writeHs("bp-reader-cmdlet.json", cmdletMock.port());
 
     AutoBlueprintReader::Config cfg;
-    cfg.uproject = tempDir / "UE5_MCP.uproject";
+    cfg.uproject = tempDir / "LyraStarterGame.uproject";
     AutoBlueprintReader reader(cfg);
 
     CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));

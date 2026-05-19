@@ -215,7 +215,7 @@ Run with:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  "D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 
@@ -229,7 +229,7 @@ you commit the regenerated `.uasset`s.
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
-$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 .\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 

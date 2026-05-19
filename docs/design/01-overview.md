@@ -34,7 +34,7 @@ under `Tests/` (only path UBT auto-scans for plugin Program
 same UBT pipeline — no separate CMake step. The plugin's `.uplugin`
 declares a `PreBuildSteps` hook that invokes UBT for
 `BlueprintReaderMcp` before any consuming target's own build runs, so
-`Build.bat UE5_MCPEditor …` builds the editor module *and* the MCP
+`Build.bat LyraEditor …` builds the editor module *and* the MCP
 server exe in one invocation. `Build.bat BlueprintReaderMcp …` builds
 the server in isolation when iterating on server-only changes; the
 convenience wrapper `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`
