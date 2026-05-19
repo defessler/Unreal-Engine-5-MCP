@@ -12,6 +12,8 @@ class USceneComponent;
 class USphereComponent;
 class UStaticMeshComponent;
 
+#include "GameplayTagContainer.h"
+
 #include "B_Launcher.generated.h"
 
 UCLASS(MinimalAPI, Blueprintable)
