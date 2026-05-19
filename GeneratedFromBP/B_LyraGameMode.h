@@ -11,12 +11,12 @@ class USceneComponent;
 #include "B_LyraGameMode.generated.h"
 
 UCLASS(MinimalAPI, Blueprintable)
-class UB_LyraGameMode : public ULyraGameMode {
+class AB_LyraGameMode : public ALyraGameMode {
     GENERATED_BODY()
 public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     TObjectPtr<USceneComponent> DefaultSceneRoot;
 
-    UB_LyraGameMode();
+    AB_LyraGameMode();
 
 };
