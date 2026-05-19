@@ -12,6 +12,9 @@ class UNiagaraComponent;
 class UProjectileMovementComponent;
 class UStaticMeshComponent;
 
+#include "GameplayEffectTypes.h"
+#include "GameplayTagContainer.h"
+
 #include "B_Grenade.generated.h"
 
 UCLASS(MinimalAPI, Blueprintable)

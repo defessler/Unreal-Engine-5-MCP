@@ -1355,6 +1355,32 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 		H << "\n";
 	}
 
+	// Struct UPROPERTYs need their full header before .generated.h.
+	static const std::map<std::string, std::string> kStructHeader = {
+		{"GameplayTag",                "GameplayTagContainer.h"},
+		{"GameplayTagContainer",       "GameplayTagContainer.h"},
+		{"GameplayTagQuery",           "GameplayTagContainer.h"},
+		{"GameplayEffectContextHandle","GameplayEffectTypes.h"},
+		{"InputActionValue",           "InputActionValue.h"},
+		{"InstancedStruct",            "StructUtils/InstancedStruct.h"},
+		{"DataTableRowHandle",         "Engine/DataTable.h"},
+	};
+	std::set<std::string> structIncludes;
+	if (doc.contains("variables") && doc["variables"].is_array()) {
+		for (const auto& v : doc["variables"]) {
+			std::string ts = v.value("type", "");
+			auto pos = ts.find("struct:");
+			if (pos == std::string::npos) continue;
+			std::string sub = ts.substr(pos + 7);
+			auto dot = sub.find_last_of('.');
+			if (dot != std::string::npos) sub = sub.substr(dot + 1);
+			auto h_it = kStructHeader.find(sub);
+			if (h_it != kStructHeader.end()) structIncludes.insert(h_it->second);
+		}
+	}
+	for (const auto& inc : structIncludes) H << "#include \"" << inc << "\"\n";
+	if (!structIncludes.empty()) H << "\n";
+
 	// .generated.h must be the LAST include in any UCLASS-bearing header.
 	H << "#include \"" << cleanFileBase << ".generated.h\"\n\n";
 
