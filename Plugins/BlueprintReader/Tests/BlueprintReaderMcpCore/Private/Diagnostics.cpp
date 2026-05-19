@@ -31,7 +31,7 @@ Finding Error(std::string label, std::string detail, std::string fix = {}) {
 std::filesystem::path GuessPluginDirFromCfg(const backends::BackendConfig& cfg) {
 	// The fixturesDir defaults to <exeDir>/fixtures, so back-compute exeDir
 	// from it. Plugin dir is 3 levels above exeDir:
-	//   <plugin>/mcp-server/build/Release/bp-reader-mcp.exe
+	//   <projectRoot>/Binaries/Win64/BlueprintReaderMcp.exe
 	auto exeDir = cfg.fixturesDir.parent_path();
 	auto p = exeDir;
 	for (int i = 0; i < 3 && !p.empty(); ++i)
