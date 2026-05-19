@@ -17,9 +17,9 @@ class AB_WeaponImpacts : public AActor {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Script/CoreUObject.Vector> ImpactPositions;
+    TArray<FVector> ImpactPositions;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Script/CoreUObject.Vector> ImpactNormals;
+    TArray<FVector> ImpactNormals;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TArray<uint8> ImpactSurfaceTypes;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Default")
@@ -39,11 +39,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     bool HasValidSystems = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.Vector MuzzlePosition;
+    FVector MuzzlePosition;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     bool UseDataChannels = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Game/Effects/Blueprints/SurfaceImpacts.SurfaceImpacts> ImpactBuckets;
+    TArray<FSurfaceImpacts> ImpactBuckets;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     TObjectPtr<USceneComponent> DefaultSceneRoot;

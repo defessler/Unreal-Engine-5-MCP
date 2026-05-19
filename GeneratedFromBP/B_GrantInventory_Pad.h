@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+class ULyraInventoryItemDefinition;
 class USceneComponent;
 class USkeletalMesh;
 class USoundBase;
@@ -20,9 +21,9 @@ class AB_GrantInventory_Pad : public AActor {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    F/Script/CoreUObject.LinearColor PadColor;
+    FLinearColor PadColor;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TSubclassOf</Script/LyraGame.LyraInventoryItemDefinition> ItemDefinition;
+    TSubclassOf<ULyraInventoryItemDefinition> ItemDefinition;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<USoundBase> PickUpSound;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")

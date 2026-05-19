@@ -23,9 +23,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TObjectPtr<UNiagaraSystem> DecalSystem;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Script/CoreUObject.Vector> ImpactPositions;
+    TArray<FVector> ImpactPositions;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Script/CoreUObject.Vector> ImpactNormals;
+    TArray<FVector> ImpactNormals;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TArray<uint8> ImpactSurfaceTypes;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")

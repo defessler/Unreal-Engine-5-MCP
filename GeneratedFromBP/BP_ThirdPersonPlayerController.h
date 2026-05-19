@@ -6,6 +6,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+class UUserWidget;
+
 #include "BP_ThirdPersonPlayerController.generated.h"
 
 UCLASS(MinimalAPI, Blueprintable)
@@ -13,7 +15,7 @@ class ABP_ThirdPersonPlayerController : public APlayerController {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input|Touch Controls")
-    TSubclassOf</Script/UMG.UserWidget> TouchControlsWidgetClass;
+    TSubclassOf<UUserWidget> TouchControlsWidgetClass;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input|Touch Controls")
     bool ForceTouchControls = false;
 

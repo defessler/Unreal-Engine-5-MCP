@@ -316,11 +316,18 @@ std::string MapInner(std::string_view inner, bool forMember) {
 		{
 			return "FStruct";
 		}
-		if (!sub.empty() && sub[0] == 'F')
-		{
-			return std::string(sub);
+		// Strip "/Script/Module.<StructName>" -> "<StructName>" so the
+		// F-prefix joins the bare identifier instead of yielding garbage
+		// like "F/Script/CoreUObject.Vector".
+		std::string_view bare = sub;
+		if (auto dot = bare.find_last_of('.'); dot != std::string_view::npos) {
+			bare = bare.substr(dot + 1);
 		}
-		return std::string("F") + std::string(sub);
+		if (!bare.empty() && bare[0] == 'F')
+		{
+			return std::string(bare);
+		}
+		return std::string("F") + std::string(bare);
 	}
 	return std::string(name);  // unknown — pass through
 }

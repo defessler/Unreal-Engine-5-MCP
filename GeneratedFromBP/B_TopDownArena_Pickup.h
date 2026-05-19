@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+class UGameplayEffect;
 class UNiagaraComponent;
 class USceneComponent;
 class USphereComponent;
@@ -17,7 +18,7 @@ class AB_TopDownArena_Pickup : public AActor {
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Default")
-    TSubclassOf</Script/GameplayAbilities.GameplayEffect> GameplayEffectToApply;
+    TSubclassOf<UGameplayEffect> GameplayEffectToApply;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     FText DebugDisplayText;
 

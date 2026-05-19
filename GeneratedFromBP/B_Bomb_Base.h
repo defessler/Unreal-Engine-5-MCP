@@ -8,6 +8,7 @@
 #include "GameFramework/Actor.h"
 class APlayerState;
 class UBoxComponent;
+class UGameplayEffect;
 class UInstancedStaticMeshComponent;
 class USceneComponent;
 
@@ -24,7 +25,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     bool IsFuseStillBurning = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TArray<F/Script/CoreUObject.IntPoint> DirectionsExpanding;
+    TArray<FIntPoint> DirectionsExpanding;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
     TArray<bool> DirectionsBlocked;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
@@ -42,7 +43,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category="Default")
     TArray<int32> DirectionalRadius;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Default")
-    TSubclassOf</Script/GameplayAbilities.GameplayEffect> BombDamageGameplayEffect;
+    TSubclassOf<UGameplayEffect> BombDamageGameplayEffect;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     TObjectPtr<USceneComponent> DefaultSceneRoot;
