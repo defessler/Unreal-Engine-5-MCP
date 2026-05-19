@@ -418,6 +418,23 @@ pulled in (heavier, less often needed); use
 to build it. Set `BP_READER_SKIP_PREBUILD=1` in the build environment
 to disable the auto-build entirely.
 
+## Working with non-UE5_MCP projects (Lyra)
+
+The plugin is now project-agnostic. Drop `Plugins/BlueprintReader/` into
+any UE 5.7 project and set these env vars when invoking the MCP server
+or running the live tests:
+
+| Variable | Purpose |
+|---|---|
+| `BP_READER_PROJECT` | Full path to the `.uproject` (replaces the auto-discovered UE5_MCP.uproject). |
+| `BP_READER_EDITOR_TARGET` | Editor-target name for projects that use `TargetBuildEnvironment.Unique` (e.g. `LyraEditor`). The plugin looks for `<Project>/Binaries/Win64/<TargetName>-Cmd.exe` before falling back to the engine's `UnrealEditor-Cmd.exe`. |
+| `BP_READER_EDITOR_CMD` | Full path to a `-Cmd.exe` binary that overrides both. |
+
+The `LyraStarterGame.uproject` checked in at the repo root demonstrates
+the Lyra Starter Game integration — see `GeneratedFromBP/` for 270+
+.h/.cpp pairs auto-emitted from Lyra's BP-style assets via
+`transpile_blueprint`.
+
 ## Engine setup (only needed for the `commandlet` backend)
 
 The mock backend works against a fresh clone with no UE setup. To run the

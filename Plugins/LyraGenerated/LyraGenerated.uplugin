@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "LyraGenerated",
+	"Description": "Auto-generated C++ classes from BP-reader transpile. Each .h/.cpp pair under Source/LyraGenerated/Private/Generated mirrors a Lyra Blueprint asset.",
+	"Category": "Generated",
+	"CreatedBy": "bp-reader",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"EnabledByDefault": false,
+	"Modules": [
+		{
+			"Name": "LyraGenerated",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
