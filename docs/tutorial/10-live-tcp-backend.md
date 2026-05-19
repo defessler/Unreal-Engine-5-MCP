@@ -2,7 +2,7 @@
 
 The commandlet daemon from Chapter 9 made per-call latency cheap, but
 it didn't fix the second problem: **the developer already has the
-editor open**. When the user has `UE5_MCP.uproject` open in
+editor open**. When the user has `LyraStarterGame.uproject` open in
 `UnrealEditor.exe` and the MCP server spawns its own
 `UnrealEditor-Cmd.exe`, both processes load the same `.uasset` files
 and compete for write locks on the same on-disk packages.
@@ -456,7 +456,7 @@ flight op, lock-step request/response.
 
 ## Checkpoint
 
-Open `UE5_MCP.uproject` in `UnrealEditor.exe` (full editor, not
+Open `LyraStarterGame.uproject` in `UnrealEditor.exe` (full editor, not
 commandlet). In the editor's Output Log filter for
 `LogBlueprintReaderLive` — you should see:
 

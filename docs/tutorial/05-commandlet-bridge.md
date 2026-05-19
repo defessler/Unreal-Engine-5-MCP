@@ -11,7 +11,7 @@ By the end you'll be able to run, with the editor closed:
 
 ```pwsh
 $env:BP_READER_BACKEND  = "commandlet"
-$env:BP_READER_PROJECT  = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT  = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
 BlueprintReaderMcp.exe   # JSON-RPC over stdio
 ```
@@ -463,7 +463,7 @@ With the editor closed, run:
 
 ```pwsh
 $env:BP_READER_BACKEND   = "commandlet"
-$env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
 
 <removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `
