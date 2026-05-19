@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+class UGameplayEffect;
 class UMaterialInterface;
 class USceneComponent;
 class USphereComponent;
