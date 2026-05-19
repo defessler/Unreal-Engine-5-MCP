@@ -143,9 +143,26 @@ std::string MapTypeRecursive(std::string_view t, bool forMember) {
 }
 
 std::string MapInner(std::string_view inner, bool forMember) {
+	// Accept two BPIR-shorthand subcategory delimiters: ":" (canonical,
+	// e.g. "object:/Script/Engine.Actor") and "(...)" (the form the
+	// plugin's TerminalToString produces for object/class/struct pins,
+	// e.g. "object(/Script/Engine.Actor)"). Without the paren branch
+	// types like "object(/Script/...)" pass through unmatched and emit
+	// literally — UHT then rejects the result.
 	auto colon = inner.find(':');
-	std::string_view name = (colon == std::string_view::npos) ? inner : inner.substr(0, colon);
-	std::string_view sub  = (colon == std::string_view::npos) ? std::string_view{} : inner.substr(colon + 1);
+	auto paren = inner.find('(');
+	std::string_view name, sub;
+	if (colon != std::string_view::npos &&
+	    (paren == std::string_view::npos || colon < paren)) {
+		name = inner.substr(0, colon);
+		sub  = inner.substr(colon + 1);
+	} else if (paren != std::string_view::npos && inner.back() == ')') {
+		name = inner.substr(0, paren);
+		sub  = inner.substr(paren + 1, inner.size() - paren - 2);
+	} else {
+		name = inner;
+		sub  = std::string_view{};
+	}
 
 	if (name == "bool")
 	{
@@ -250,18 +267,46 @@ std::string MapInner(std::string_view inner, bool forMember) {
 		// Soft class refs survive package boundaries — TSoftClassPtr is
 		// the canonical UE5 type. Hard class refs use TSubclassOf which
 		// gives compile-time type safety + the editor's class picker.
+		// Strip "/Script/Module.Class" -> "Class" so the template
+		// parameter is a valid C++ identifier (otherwise we emit forms
+		// like TSubclassOf</Script/GameplayAbilities.GameplayEffect>).
+		auto barename = [](std::string_view in) -> std::string {
+			std::string_view b = in;
+			if (auto dot = b.find_last_of('.'); dot != std::string_view::npos) {
+				b = b.substr(dot + 1);
+			}
+			if (b.size() > 2 && b.substr(b.size() - 2) == "_C") {
+				b = b.substr(0, b.size() - 2);
+			}
+			std::string out(b);
+			if (out.empty()) return out;
+			if (out.size() >= 2 &&
+				(out[0] == 'A' || out[0] == 'U' || out[0] == 'I') &&
+				out[1] >= 'A' && out[1] <= 'Z') return out;
+			auto endsWith = [&](std::string_view s) {
+				return out.size() >= s.size() &&
+				       out.substr(out.size() - s.size()) == s;
+			};
+			if (endsWith("Actor") || endsWith("Pawn") || endsWith("Character") ||
+			    endsWith("Controller") || endsWith("PlayerState") ||
+			    endsWith("GameMode") || endsWith("GameModeBase") ||
+			    endsWith("GameState") || endsWith("HUD") || endsWith("Info")) {
+				return "A" + out;
+			}
+			return "U" + out;
+		};
 		if (name == "soft_class") {
 			if (sub.empty())
 			{
 				return "TSoftClassPtr<UObject>";
 			}
-			return std::string("TSoftClassPtr<") + std::string(sub) + ">";
+			return std::string("TSoftClassPtr<") + barename(sub) + ">";
 		}
 		if (sub.empty())
 		{
 			return "UClass*";
 		}
-		return std::string("TSubclassOf<") + std::string(sub) + ">";
+		return std::string("TSubclassOf<") + barename(sub) + ">";
 	}
 	if (name == "interface") {
 		return std::string("TScriptInterface<I") + std::string(sub) + ">";

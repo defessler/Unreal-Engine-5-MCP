@@ -198,6 +198,19 @@ If a single call takes >1 s, something's off (editor crashed, daemon
 transport fell back to one-shot). Inspect `_meta.elapsed_ms` on the
 response envelope.
 
+## Project selection (non-default uproject)
+
+The plugin is project-agnostic. When the active project isn't auto-
+discovered (e.g. running against Lyra), set:
+
+- `BP_READER_PROJECT` — full path to the `.uproject`.
+- `BP_READER_EDITOR_TARGET` — editor-target name (e.g. `LyraEditor`)
+  when the project uses `TargetBuildEnvironment.Unique`. The plugin
+  looks for `<Project>/Binaries/Win64/<Target>-Cmd.exe` first, then
+  falls back to the engine's `UnrealEditor-Cmd.exe`.
+- `BP_READER_EDITOR_CMD` — full path to a `-Cmd` binary that
+  overrides both.
+
 ## Errors + edge cases
 
 - **`AssetNotFound`** — asset/graph/function/node missing. Treat as
