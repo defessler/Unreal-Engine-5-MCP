@@ -1123,7 +1123,13 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				{
 					s = s.substr(2);
 				}
-				return s == "object" || s == "soft_object";
+				// Forward declarations needed for the template argument
+				// of every object-OR-class reference: TObjectPtr<T>,
+				// TSubclassOf<T>, TSoftObjectPtr<T>, TSoftClassPtr<T> all
+				// require T to be at least forward-declared at the
+				// declaration site.
+				return s == "object" || s == "soft_object" ||
+				       s == "class"  || s == "soft_class";
 			};
 			if (!isObjectHead(head))
 			{
@@ -1577,6 +1583,26 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	I << "#include \"" << out.headerFileName << "\"\n";
 	if (anyReplicated) {
 		I << "#include \"Net/UnrealNetwork.h\"\n";
+	}
+	// .cpp needs full type defs of component classes so member access
+	// (Comp->Radius, Comp->SetupAttachment) compiles. Best-effort:
+	// engine components live under "Components/<Name>.h".
+	if (doc.contains("components") && doc["components"].is_array()) {
+		std::set<std::string> seenIncs;
+		for (const auto& c : doc["components"]) {
+			std::string cls = resolveComponentClass(c.value("class", ""));
+			if (cls.empty()) continue;
+			std::string base = cls;
+			if (base.size() > 1 && base[0] == 'U' &&
+			    base[1] >= 'A' && base[1] <= 'Z') {
+				base = base.substr(1);
+			}
+			if (base == "Object") continue;
+			std::string inc = "Components/" + base + ".h";
+			if (seenIncs.insert(inc).second) {
+				I << "#include \"" << inc << "\"\n";
+			}
+		}
 	}
 	I << "\n";
 
