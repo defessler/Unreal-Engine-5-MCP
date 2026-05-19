@@ -437,7 +437,7 @@ Build the plugin, then drive the MCP server end-to-end:
 
 ```pwsh
 $env:BP_READER_BACKEND   = "commandlet"
-$env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT   = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 $env:BP_READER_ENGINE_DIR = "D:\Projects\Unreal Engine 5"
 
 <removed in the UBT migration; use BlueprintReaderMcpTests.exe instead> `

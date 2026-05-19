@@ -535,7 +535,7 @@ int32 UBPRoundtripSeedCommandlet::Main(const FString& Params) {
 - [ ] **Step 4: Build the editor module to verify it compiles**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" LyraEditor Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 Expected: clean build (success exit 0). Set `BP_READER_SKIP_PREBUILD=1` if you only want to rebuild the editor module and not the MCP server.
@@ -558,7 +558,7 @@ git commit -m "feat(plugin): BPRoundtripSeed commandlet — imports TP_ThirdPers
 - [x] **Step 1: Run the seed commandlet**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BPRoundtripSeed -nullrhi -nosplash -unattended -nopause
+"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/LyraStarterGame.uproject" -run=BPRoundtripSeed -nullrhi -nosplash -unattended -nopause
 ```
 
 Expected: log lines `Copied /TPTemplate/Blueprints/BP_ThirdPersonCharacter -> /Game/Imported/ThirdPerson/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter`, etc. Exit code 0.
@@ -1057,7 +1057,7 @@ TEST_CASE("StableNodeId is deterministic and content-sensitive") {
 - [ ] **Step 4: Build & run the doctest binary**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="BPSpec*,StableNodeId*"
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="BPSpec*,StableNodeId*"
 ```
 
 Expected: 2 cases pass.
@@ -1122,7 +1122,7 @@ TEST_CASE("ReadToSpec assembles a spec from the mock backend") {
 - [ ] **Step 3: Build & run — expect link error (ReadToSpec not yet implemented)**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 Expected: unresolved-external link error for `ReadToSpec`.
@@ -1249,7 +1249,7 @@ BPSpec ReadToSpec(backends::IBlueprintReader& reader, std::string_view assetPath
 - [ ] **Step 5: Build & run, expect tests pass**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="ReadToSpec*"
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="ReadToSpec*"
 ```
 
 Expected: pass. If the BPMetadata field names (`ParentClass`, `Interfaces`, `Functions`, `Macros`) don't match what `BlueprintReaderTypes.h` defines, adjust the cpp accordingly — the compiler tells you which.
@@ -1525,7 +1525,7 @@ TEST_CASE("SpecToBP returns mock-backend-not-supported on the first write") {
 - [ ] **Step 4: Build & run**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="SpecToBP*"
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="SpecToBP*"
 ```
 
 Expected: pass.
@@ -1781,7 +1781,7 @@ TSharedPtr<FJsonObject> FResult::ToJson() const {
 - [ ] **Step 3: Build the editor module to verify it compiles**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" LyraEditor Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 - [x] **Step 4: Commit**
@@ -1858,13 +1858,13 @@ static int32 RunStructuralDiffOp(const FString& Params, const FString& OutputPat
 - [ ] **Step 6: Build & verify**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" LyraEditor Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 - [ ] **Step 7: Smoke-test from the command line**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/UE5_MCP.uproject" -run=BPR -Op=StructuralDiff -A=/Game/AI/BP_TestEnemy -B=/Game/AI/BP_TestEnemy -OutputPath=- -Pretty=1
+"D:/Projects/Unreal Engine 5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "D:/Projects/UE5_MCP/LyraStarterGame.uproject" -run=BPR -Op=StructuralDiff -A=/Game/AI/BP_TestEnemy -B=/Game/AI/BP_TestEnemy -OutputPath=- -Pretty=1
 ```
 
 Expected: `{"ok": true, "differences": []}` on stdout.
@@ -1975,7 +1975,7 @@ nlohmann::json AutoBlueprintReader::StructuralDiff(
 - [ ] **Step 8: Build & run all tests to confirm nothing else broke**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe
 ```
 
 Expected: all 441 cases still pass (tool count assertion will fail in Task 15 — that's expected at that point).
@@ -2055,7 +2055,7 @@ CHECK(list.size() == 127);
 - [ ] **Step 4: Build & run**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe
 ```
 
 Expected: all 441+ cases pass (count assertions pick up the new tool).
@@ -2131,7 +2131,7 @@ Plugins/BlueprintReader/Source/BPRoundtripModule/Private/Generated/
 - [ ] **Step 6: Build the editor to verify the new module compiles**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" UE5_MCPEditor Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" LyraEditor Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 Expected: clean build; UBT picks up the new module.
@@ -2336,7 +2336,7 @@ If the right composite isn't there, lift the registry-tool lambdas from `Bluepri
 - [ ] **Step 3: Build & verify it compiles (no tests for it yet — Task 21/22 cover it)**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex
 ```
 
 - [x] **Step 4: Commit**
@@ -2379,7 +2379,7 @@ TEST_CASE("structural_diff: mock backend reports not-supported") {
 - [ ] **Step 2: Build & run**
 
 ```bash
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="structural_diff*"
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="structural_diff*"
 ```
 
 - [x] **Step 3: Commit**
@@ -2467,8 +2467,8 @@ TEST_CASE("roundtrip_granular: BP_TestEnemy" * doctest::skip(!LiveBackendReady()
 ```bash
 export BP_READER_BACKEND=commandlet
 export BP_READER_ENGINE_DIR="D:/Projects/Unreal Engine 5"
-export BP_READER_PROJECT="D:/Projects/UE5_MCP/UE5_MCP.uproject"
-"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/UE5_MCP.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="roundtrip_granular: BP_TestEnemy"
+export BP_READER_PROJECT="D:/Projects/UE5_MCP/LyraStarterGame.uproject"
+"D:/Projects/Unreal Engine 5/Engine/Build/BatchFiles/Build.bat" BlueprintReaderMcpTests Win64 Development -project="D:/Projects/UE5_MCP/LyraStarterGame.uproject" -NoUba -MaxParallelActions=4 -waitmutex && Binaries/Win64/BlueprintReaderMcpTests.exe -tc="roundtrip_granular: BP_TestEnemy"
 ```
 
 Expected: test passes, fixture `BP_TestEnemy_spec.json` is created on first run.
@@ -2715,7 +2715,7 @@ git commit -m "test(roundtrip): BPIR full — TPC stages 1-3"
 ```bash
 export BP_READER_BACKEND=commandlet
 export BP_READER_ENGINE_DIR="D:/Projects/Unreal Engine 5"
-export BP_READER_PROJECT="D:/Projects/UE5_MCP/UE5_MCP.uproject"
+export BP_READER_PROJECT="D:/Projects/UE5_MCP/LyraStarterGame.uproject"
 Binaries/Win64/BlueprintReaderMcpTests.exe
 ```
 

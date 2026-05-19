@@ -468,7 +468,7 @@ shouldn't fail because the daemon's transport is degraded.
 ## Multi-session: N MCP servers, one daemon
 
 The structural payoff. Two Claude Code sessions running against
-`UE5_MCP.uproject` each launch their own MCP server process. Both
+`LyraStarterGame.uproject` each launch their own MCP server process. Both
 MCP servers, on first commandlet-mode call, run
 `EnsureDaemonAttached`:
 
@@ -558,12 +558,12 @@ Claude Code sessions:
 
 ```pwsh
 # Terminal A
-$env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 $env:BP_READER_BACKEND = "commandlet"
 & "D:/Projects/UE5_MCP/Binaries/Win64/BlueprintReaderMcp.exe"
 
 # Terminal B (simultaneously)
-$env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 $env:BP_READER_BACKEND = "commandlet"
 & "D:/Projects/UE5_MCP/Binaries/Win64/BlueprintReaderMcp.exe"
 ```
