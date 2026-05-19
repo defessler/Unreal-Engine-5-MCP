@@ -1589,6 +1589,19 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 	// engine components live under "Components/<Name>.h".
 	if (doc.contains("components") && doc["components"].is_array()) {
 		std::set<std::string> seenIncs;
+		// Known engine components that live outside Components/.
+		static const std::map<std::string, std::string> kCompPathOverride = {
+			{"ProjectileMovementComponent", "GameFramework/ProjectileMovementComponent.h"},
+			{"FloatingPawnMovement",        "GameFramework/FloatingPawnMovement.h"},
+			{"PawnMovementComponent",       "GameFramework/PawnMovementComponent.h"},
+			{"MovementComponent",           "GameFramework/MovementComponent.h"},
+			{"CharacterMovementComponent",  "GameFramework/CharacterMovementComponent.h"},
+			{"SpringArmComponent",          "GameFramework/SpringArmComponent.h"},
+			{"RotatingMovementComponent",   "GameFramework/RotatingMovementComponent.h"},
+			{"NiagaraComponent",            "NiagaraComponent.h"},
+			{"AudioComponent",              "Components/AudioComponent.h"},
+			{"ForceFeedbackComponent",      "Components/ForceFeedbackComponent.h"},
+		};
 		for (const auto& c : doc["components"]) {
 			std::string cls = resolveComponentClass(c.value("class", ""));
 			if (cls.empty()) continue;
@@ -1598,7 +1611,10 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				base = base.substr(1);
 			}
 			if (base == "Object") continue;
-			std::string inc = "Components/" + base + ".h";
+			auto override_it = kCompPathOverride.find(base);
+			std::string inc = (override_it != kCompPathOverride.end())
+				? override_it->second
+				: "Components/" + base + ".h";
 			if (seenIncs.insert(inc).second) {
 				I << "#include \"" << inc << "\"\n";
 			}

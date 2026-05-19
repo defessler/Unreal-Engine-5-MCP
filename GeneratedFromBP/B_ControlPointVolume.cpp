@@ -4,7 +4,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/NiagaraComponent.h"
+#include "NiagaraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/PointLightComponent.h"
 
