@@ -1800,7 +1800,7 @@ CppClassEmitResult EmitCppClass(const nlohmann::json& doc,
 				{
 					continue;
 				}
-				std::string varName = v.value("name", "Var");
+				std::string varName = SanitizeIdentifier(v.value("name", "Var"));
 				// BP's RepCondition field maps directly to a COND_*
 				// specifier in DOREPLIFETIME_CONDITION. When the field
 				// is absent or "None", emit unconditional DOREPLIFETIME.
