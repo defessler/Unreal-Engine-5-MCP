@@ -1,5 +1,14 @@
 # UE5_MCP — Blueprint Reader MCP
 
+> **Project state.** Repository now ships as a Lyra Starter Game
+> project (`LyraStarterGame.uproject`) on UE 5.7.4. All 302 Lyra
+> blueprints have C++ companion classes under
+> `Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
+> (17 full transpiles + 285 stubs); `LyraEditor` builds clean and
+> `LyraEditor-Cmd.exe` commandlet runs. See
+> [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md)
+> for the recipe + lessons-learned.
+
 A standalone MCP server that lets Claude (or any MCP client) read **and edit**
 Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
 metadata — and **round-trip BPs to/from C++** via 126 tools backed by the
@@ -221,7 +230,7 @@ automatically. The contents:
       "env": {
         "BP_READER_BACKEND":  "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":  "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PROJECT":  "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
         "BP_READER_PREWARM":  "1"
       }
     }
@@ -293,7 +302,7 @@ server) as one unit.
 
 ```
 UE5_MCP\
-├── UE5_MCP.uproject
+├── LyraStarterGame.uproject
 ├── Source\                                project runtime module
 ├── Plugins\BlueprintReader\               plugin (everything ships together)
 │   ├── BlueprintReader.uplugin
@@ -378,7 +387,7 @@ If you have the editor built and the test BPs seeded:
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
-$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\UE5_MCP.uproject"
+$env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 
 Binaries\Win64\BlueprintReaderMcpTests.exe   # all 441 cases (12 live-only auto-skip)
 ```
@@ -392,7 +401,7 @@ ground (and more); for an interactive smoke run, build with
 
 ```pwsh
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
-    UE5_MCP.uproject -run=BPRSeed `
+    LyraStarterGame.uproject -run=BPRSeed `
     -nullrhi -nosplash -unattended -nopause
 ```
 
@@ -405,12 +414,12 @@ pipeline (UBA, ninja, shared compile cache) as the editor target:
 ```
 Build.bat BlueprintReaderMcp     Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcp.exe
 Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcpTests.exe
-Build.bat UE5_MCPEditor          Win64 Development -project=…  →  the editor (independent target)
+Build.bat LyraEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
 The plugin's `BlueprintReader.uplugin` declares a `PreBuildSteps` hook
 that invokes UBT for `BlueprintReaderMcp` before every editor build,
-so `Build.bat UE5_MCPEditor ...` pulls the server along automatically
+so `Build.bat LyraEditor ...` pulls the server along automatically
 — drop the plugin into any project and the convenience just works
 without touching the project's `Target.cs`. The test exe is *not*
 pulled in (heavier, less often needed); use
@@ -426,7 +435,7 @@ or running the live tests:
 
 | Variable | Purpose |
 |---|---|
-| `BP_READER_PROJECT` | Full path to the `.uproject` (replaces the auto-discovered UE5_MCP.uproject). |
+| `BP_READER_PROJECT` | Full path to the `.uproject` (replaces the auto-discovered LyraStarterGame.uproject). |
 | `BP_READER_EDITOR_TARGET` | Editor-target name for projects that use `TargetBuildEnvironment.Unique` (e.g. `LyraEditor`). The plugin looks for `<Project>/Binaries/Win64/<TargetName>-Cmd.exe` before falling back to the engine's `UnrealEditor-Cmd.exe`. |
 | `BP_READER_EDITOR_CMD` | Full path to a `-Cmd.exe` binary that overrides both. |
 
@@ -463,7 +472,7 @@ is 1–3 hours; `Setup.bat` pulls ~70–80 GB of binary dependencies.
 ```pwsh
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
     /switchversionsilent `
-    "D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     "D:\Projects\Unreal Engine 5"
 ```
 
@@ -476,7 +485,7 @@ Generate project files:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" ^
-  -projectfiles -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  -projectfiles -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -game -rocket -progress
 ```
 
@@ -484,8 +493,8 @@ Build the editor target:
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
-  UE5_MCPEditor Win64 Development ^
-  -project="D:\Projects\UE5_MCP\UE5_MCP.uproject" ^
+  LyraEditor Win64 Development ^
+  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4
 ```
 
@@ -522,7 +531,7 @@ the script after a fresh engine clone.
 
 ### Required project target settings
 
-`Source/UE5_MCPEditor.Target.cs` must declare:
+`Source/LyraEditor.Target.cs` must declare:
 
 ```csharp
 DefaultBuildSettings = BuildSettingsVersion.V6;
@@ -539,7 +548,7 @@ can saturate a 20 GB page file even on 64 GB RAM machines).
 
 ```bat
 "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
-  UE5_MCP.uproject ^
+  LyraStarterGame.uproject ^
   -ExecCmds="Automation RunTests BlueprintReader.Editor; Quit" ^
   -TestExit="Automation Test Queue Empty" ^
   -ReportExportPath="Saved\Automation" ^
@@ -561,7 +570,7 @@ For local pre-push verification, run the test target:
 ```pwsh
 "<Engine>\Engine\Build\BatchFiles\Build.bat" `
   BlueprintReaderMcpTests Win64 Development `
-  -project="$PWD\UE5_MCP.uproject"
+  -project="$PWD\LyraStarterGame.uproject"
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 

@@ -90,7 +90,7 @@ Claude Code from the project dir wires bp-reader automatically:
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
         "BP_READER_PREWARM":    "1"
       }
     }
@@ -107,7 +107,7 @@ User scope (available in any directory, not just the project):
 claude mcp add bp-reader --scope user `
     --env BP_READER_BACKEND=commandlet `
     --env "BP_READER_ENGINE_DIR=D:\Projects\Unreal Engine 5" `
-    --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\UE5_MCP.uproject" `
+    --env "BP_READER_PROJECT=D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
     --env BP_READER_PREWARM=1 `
     -- "D:\Projects\UE5_MCP\Binaries\Win64\BlueprintReaderMcp.exe"
 ```
@@ -128,7 +128,7 @@ Same JSON shape as Claude Code, in
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
         "BP_READER_PREWARM":    "1"
       }
     }
@@ -156,7 +156,7 @@ Workspace scope (recommended, travels with the repo): create
       "env": {
         "BP_READER_BACKEND":    "commandlet",
         "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\UE5_MCP.uproject",
+        "BP_READER_PROJECT":    "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
         "BP_READER_PREWARM":    "1"
       }
     }
