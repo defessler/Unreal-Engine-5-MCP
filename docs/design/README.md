@@ -4,7 +4,7 @@ This is the as-built reference for how bp-reader works today.
 
 | # | Topic | What it covers |
 |---|---|---|
-| [01](01-overview.md) | System overview | Two halves (plugin + MCP server), 126 tools, what they do |
+| [01](01-overview.md) | System overview | Two halves (plugin + MCP server), 127 tools, what they do |
 | [02](02-architecture.md) | Architecture | Component boundaries, process model, request flow |
 | [03](03-plugin-internals.md) | UE plugin internals | Editor module structure, commandlet dispatch, K2 schema usage |
 | [04](04-mcp-server.md) | MCP server | JSON-RPC, tool registry, response controls, telemetry |
