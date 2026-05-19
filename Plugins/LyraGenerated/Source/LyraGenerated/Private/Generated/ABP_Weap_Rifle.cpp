@@ -1,0 +1,2 @@
+// AUTO-GENERATED stub by bp-reader.
+#include "ABP_Weap_Rifle.h"

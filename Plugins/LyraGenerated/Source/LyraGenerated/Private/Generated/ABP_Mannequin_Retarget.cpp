@@ -1,0 +1,2 @@
+// AUTO-GENERATED stub by bp-reader.
+#include "ABP_Mannequin_Retarget.h"
