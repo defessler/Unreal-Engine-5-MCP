@@ -118,7 +118,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	// ----- auto-discovery (Tier 1 UX) ---------------------------------
 	//
 	// The exe normally lives at:
-	//   <projectRoot>/Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe
+	//   <projectRoot>/Binaries/Win64/BlueprintReaderMcp.exe
 	//                              ^pluginDir^
 	//                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	//                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -129,7 +129,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	// BP_READER_ENGINE_DIR for users on the standard layout.
 
 	// Plugin dir is 3 levels above exeDir:
-	//   <plugin>/mcp-server/build/Release/bp-reader-mcp.exe
+	//   <projectRoot>/Binaries/Win64/BlueprintReaderMcp.exe
 	//                ^1         ^2     ^3 (== exeDir)
 	//   ^plugin = up 3 from exeDir
 	std::filesystem::path pluginDir;

@@ -29,7 +29,7 @@ int IntOrDefault(const char* key, int fallback);
 // ---------------------------------------------------------------------------
 //
 // On the standard layout, the exe lives at:
-//   <projectRoot>/Plugins/BlueprintReader/mcp-server/build/Release/bp-reader-mcp.exe
+//   <projectRoot>/Binaries/Win64/BlueprintReaderMcp.exe
 //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 // Walking up 5 dirs gets us to <projectRoot>. From there we can find the
 // .uproject and read its EngineAssociation, then resolve the engine path
