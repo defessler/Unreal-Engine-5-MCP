@@ -158,9 +158,20 @@ function Find-LyraInstallPaths {
         throw "LauncherInstalled.dat not found at: $LauncherDatPath"
     }
 
-    $dat = Get-Content -LiteralPath $LauncherDatPath -Raw | ConvertFrom-Json
-    $hits = [System.Collections.Generic.List[string]]::new()
+    $raw = Get-Content -LiteralPath $LauncherDatPath -Raw
+    try {
+        $dat = $raw | ConvertFrom-Json
+    } catch {
+        throw "Failed to parse LauncherInstalled.dat at $($LauncherDatPath): $($_.Exception.Message)"
+    }
 
+    # EGL writes the file as {InstallationList: [...]} but older / unrelated
+    # JSON might not have the key. Treat absent / empty as "no installs".
+    if (-not $dat.PSObject.Properties['InstallationList']) {
+        return @()
+    }
+
+    $hits = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in @($dat.InstallationList)) {
         if (-not $entry.PSObject.Properties['InstallLocation']) { continue }
         $loc = $entry.InstallLocation

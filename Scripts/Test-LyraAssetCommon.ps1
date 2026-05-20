@@ -235,6 +235,25 @@ Test 'Find-LyraInstallPaths: throws when dat file missing' {
     AssertThrows { Find-LyraInstallPaths -LauncherDatPath 'X:\does\not\exist.dat' } 'not found'
 }
 
+Test 'Find-LyraInstallPaths: throws clean message on malformed JSON' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $datPath = Join-Path $tmp.FullName 'LauncherInstalled.dat'
+        Set-Content -Path $datPath -Value '{ not valid json,'
+        AssertThrows { Find-LyraInstallPaths -LauncherDatPath $datPath } 'parse'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Find-LyraInstallPaths: tolerates dat with no InstallationList key' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $datPath = Join-Path $tmp.FullName 'LauncherInstalled.dat'
+        '{}' | Set-Content -Path $datPath -Encoding utf8
+        $found = @(Find-LyraInstallPaths -LauncherDatPath $datPath)
+        AssertEqual 0 $found.Count
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 Test 'Get-RestorePathMap: maps each glob root to identical relative dest' {
     $map = Get-RestorePathMap -LyraInstallRoot 'C:/L' -RepoRoot 'D:/R'
     AssertEqual 'C:/L/Content'                                  $map['Content']
