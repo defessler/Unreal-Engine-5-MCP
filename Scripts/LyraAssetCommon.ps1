@@ -34,7 +34,27 @@ $script:LyraAssetExemptions = @(
 function Get-LyraAssetPaths {
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string] $RepoRoot)
-    throw 'not implemented'
+
+    $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+    $results  = [System.Collections.Generic.List[string]]::new()
+    $exempt   = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]$script:LyraAssetExemptions,
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($glob in $script:LyraAssetGlobs) {
+        $absDir = Join-Path $RepoRoot $glob
+        if (-not (Test-Path -LiteralPath $absDir)) { continue }
+        # Filter by extension after the fact — Get-ChildItem -Include + -Recurse is
+        # slower than a single -Recurse + Where-Object on large trees.
+        Get-ChildItem -LiteralPath $absDir -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in '.uasset','.umap' } |
+            ForEach-Object {
+                $rel = $_.FullName.Substring($RepoRoot.Length).TrimStart('\','/').Replace('\','/')
+                if (-not $exempt.Contains($rel)) { $results.Add($rel) }
+            }
+    }
+
+    return $results.ToArray()
 }
 
 function Get-FileManifestEntries {
