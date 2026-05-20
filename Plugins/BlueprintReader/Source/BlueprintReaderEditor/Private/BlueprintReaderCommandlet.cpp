@@ -86,6 +86,7 @@
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "Engine/Texture.h"
 // UMG widget authoring (Stage 1).
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
