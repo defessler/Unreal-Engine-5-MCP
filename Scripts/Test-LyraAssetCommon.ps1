@@ -181,6 +181,47 @@ Test 'Test-Manifest: detects mismatched hashes' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Find-LyraInstallPaths: returns matching InstallLocation dirs' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $datDir = Join-Path $tmp.FullName 'launcher'
+        New-Item -ItemType Directory -Path $datDir -Force | Out-Null
+        $datPath = Join-Path $datDir 'LauncherInstalled.dat'
+
+        $lyraDir  = Join-Path $tmp.FullName 'EpicGames/Lyra'
+        $otherDir = Join-Path $tmp.FullName 'EpicGames/Fortnite'
+        New-Item -ItemType Directory -Path $lyraDir  -Force | Out-Null
+        New-Item -ItemType Directory -Path $otherDir -Force | Out-Null
+        Set-Content -Path (Join-Path $lyraDir 'LyraStarterGame.uproject') -Value '{}'
+
+        $dat = [pscustomobject]@{
+            InstallationList = @(
+                [pscustomobject]@{ InstallLocation = $lyraDir;  AppName = 'UE_Lyra'; AppVersion = '5.7.4' }
+                [pscustomobject]@{ InstallLocation = $otherDir; AppName = 'Fortnite'; AppVersion = '1.0' }
+            )
+        }
+        $dat | ConvertTo-Json -Depth 10 | Set-Content -Path $datPath -Encoding utf8
+
+        $found = @(Find-LyraInstallPaths -LauncherDatPath $datPath)
+        AssertEqual 1 $found.Count
+        AssertEqual $lyraDir $found[0]
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Find-LyraInstallPaths: returns empty when no Lyra entry' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $datPath = Join-Path $tmp.FullName 'LauncherInstalled.dat'
+        ([pscustomobject]@{ InstallationList = @() }) | ConvertTo-Json | Set-Content -Path $datPath -Encoding utf8
+        $found = @(Find-LyraInstallPaths -LauncherDatPath $datPath)
+        AssertEqual 0 $found.Count
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Find-LyraInstallPaths: throws when dat file missing' {
+    AssertThrows { Find-LyraInstallPaths -LauncherDatPath 'X:\does\not\exist.dat' } 'not found'
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {
