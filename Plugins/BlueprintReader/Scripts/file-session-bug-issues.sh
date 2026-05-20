@@ -109,7 +109,7 @@ file_issue \
 
 # ----- Session script / build fixes -------------------------------------
 file_issue \
-    "bug(scripts): MyGame-style downstream hit 'parameter cannot be found that matches parameter name ProjectDir'" \
+    "bug(scripts): downstream consumer hit 'parameter cannot be found that matches parameter name ProjectDir'" \
     "PR #75 removed the PreBuildStep from BlueprintReader.uplugin, but UBT caches PreBuild invocations as Intermediate/Build/.../PreBuild-N.bat files. Those cached scripts still called Build-MCPServer.ps1 with the pre-UBT contract (-ProjectDir / -PluginDir) until UBT regenerated them. Build broke for users who pulled the plugin without regenerating project files." \
     "de46de2" "session fix (no PR)"
 
