@@ -117,6 +117,31 @@ Test 'Get-FileManifestEntries: handles multiple files in input order' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Build-Manifest: schema_version, tag, sorted files' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content" -Force | Out-Null
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/Z.uasset", [byte[]](122))
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/A.uasset", [byte[]](97))
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        AssertEqual 1                  $m.schema_version
+        AssertEqual 'lyra-assets-v1'   $m.tag
+        AssertEqual 2                  $m.total_files
+        AssertEqual 2                  $m.total_bytes
+        AssertEqual 'Content/A.uasset' $m.files[0].path
+        AssertEqual 'Content/Z.uasset' $m.files[1].path
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Build-Manifest: empty asset set produces valid manifest' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        AssertEqual 0 $m.total_files
+        AssertEqual 0 $m.total_bytes
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {

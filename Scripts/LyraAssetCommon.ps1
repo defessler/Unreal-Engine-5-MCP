@@ -83,7 +83,26 @@ function Build-Manifest {
         [Parameter(Mandatory)] [string] $RepoRoot,
         [Parameter(Mandatory)] [string] $Tag
     )
-    throw 'not implemented'
+
+    $paths   = Get-LyraAssetPaths -RepoRoot $RepoRoot
+    $sorted  = @($paths | Sort-Object -CaseSensitive:$false)
+    $entries = @()
+    if ($sorted.Count -gt 0) {
+        $entries = @(Get-FileManifestEntries -RepoRoot $RepoRoot -RelativePaths $sorted)
+    }
+    # Manual sum: Measure-Object -Sum on empty pipeline returns a result with
+    # no Sum property under StrictMode 3.0.
+    $totalBytes = [int64]0
+    foreach ($e in $entries) { $totalBytes += [int64]$e.size }
+
+    [pscustomobject][ordered]@{
+        schema_version = $script:ManifestSchemaVersion
+        tag            = $Tag
+        generated_at   = (Get-Date).ToUniversalTime().ToString('o')
+        total_files    = $entries.Count
+        total_bytes    = [int64]$totalBytes
+        files          = $entries
+    }
 }
 
 function Test-Manifest {
