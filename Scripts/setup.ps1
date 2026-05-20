@@ -150,18 +150,35 @@ if ($selected -eq 'release') {
     $shaPath    = "$bundlePath.sha256"
 
     if ($DryRun) {
-        Write-Host "    [dry-run] curl -L $bundleUrl -> $bundlePath"
+        Write-Host "    [dry-run] curl -L --continue-at - $bundleUrl -> $bundlePath"
         Write-Host "    [dry-run] verify SHA-256, extract under $RepoRoot"
     } else {
-        & curl --fail --location --silent --show-error --output $bundlePath $bundleUrl
-        if ($LASTEXITCODE -ne 0) { throw "curl failed downloading bundle (exit $LASTEXITCODE)" }
-        & curl --fail --location --silent --show-error --output $shaPath    $shaUrl
+        # Fetch sha256 sidecar first (small, cheap). If a stale partial bundle
+        # already exists in TEMP and its hash matches, skip the bundle download
+        # entirely. Otherwise resume the bundle download (--continue-at -)
+        # so a flaky network doesn't force a 1.7 GB restart.
+        & curl --fail --location --silent --show-error --output $shaPath $shaUrl
         if ($LASTEXITCODE -ne 0) { throw "curl failed downloading sha256 (exit $LASTEXITCODE)" }
-
         $expected = (Get-Content -LiteralPath $shaPath -Raw).Split()[0].ToLowerInvariant()
-        $actual   = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+        $skipDownload = $false
+        if (Test-Path -LiteralPath $bundlePath) {
+            $existingHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($existingHash -eq $expected) {
+                Write-Step "Reusing already-downloaded bundle at $bundlePath (hash matches)"
+                $skipDownload = $true
+            }
+        }
+        if (-not $skipDownload) {
+            & curl --fail --location --show-error --continue-at - --output $bundlePath $bundleUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl failed downloading bundle (exit $LASTEXITCODE)" }
+        }
+
+        $actual = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($expected -ne $actual) {
-            throw "Bundle SHA-256 mismatch. expected=$expected actual=$actual"
+            # Stale partial download from a different release? Delete and retry.
+            Remove-Item -LiteralPath $bundlePath -ErrorAction SilentlyContinue
+            throw "Bundle SHA-256 mismatch. expected=$expected actual=$actual. Stale partial download removed; re-run setup.bat."
         }
         Write-Step "Extracting bundle into $RepoRoot"
         & tar -x --zstd -f $bundlePath -C $RepoRoot
