@@ -194,6 +194,48 @@ Test 'Test-Manifest: detects mismatched hashes' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Test-Manifest: throws on schema_version mismatch' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        # Bump the schema_version on the in-memory manifest to simulate a
+        # newer-format manifest fed into an older script.
+        $m.schema_version = 99
+        AssertThrows { Test-Manifest -RepoRoot $tmp.FullName -Manifest $m } 'schema_version'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Test-Manifest: version-skew — many mismatches, still classified Mismatch (not Missing)' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $repo = $tmp.FullName
+        New-Item -ItemType Directory -Path "$repo/Content/Characters" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$repo/Content/Audio"      -Force | Out-Null
+        New-Item -ItemType Directory -Path "$repo/Content/Effects"    -Force | Out-Null
+        # Five files baseline (simulating one Lyra version)
+        Set-Content -Path "$repo/Content/Characters/A.uasset" -NoNewline -Value 'v1-A'
+        Set-Content -Path "$repo/Content/Characters/B.uasset" -NoNewline -Value 'v1-B'
+        Set-Content -Path "$repo/Content/Audio/C.uasset"      -NoNewline -Value 'v1-C'
+        Set-Content -Path "$repo/Content/Effects/D.uasset"    -NoNewline -Value 'v1-D'
+        Set-Content -Path "$repo/Content/Effects/E.uasset"    -NoNewline -Value 'v1-E'
+        $m = Build-Manifest -RepoRoot $repo -Tag 'lyra-assets-v1'
+        AssertEqual 5 $m.total_files
+
+        # Restore from a "newer Lyra version" — 3 of 5 files changed content,
+        # 2 still match. The semantic: present-but-different = Mismatch
+        # (warning), not Missing (recoverable failure).
+        Set-Content -Path "$repo/Content/Characters/A.uasset" -NoNewline -Value 'v2-A'
+        Set-Content -Path "$repo/Content/Audio/C.uasset"      -NoNewline -Value 'v2-C'
+        Set-Content -Path "$repo/Content/Effects/E.uasset"    -NoNewline -Value 'v2-E'
+        $r = Test-Manifest -RepoRoot $repo -Manifest $m
+        AssertTrue (-not $r.Ok)
+        AssertEqual 0 $r.Missing.Count    'all files exist, just differ'
+        AssertEqual 3 $r.Mismatch.Count   '3 differ, 2 match'
+        $sorted = @($r.Mismatch | Sort-Object)
+        AssertEqual @('Content/Audio/C.uasset','Content/Characters/A.uasset','Content/Effects/E.uasset') $sorted
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 Test 'Find-LyraInstallPaths: returns matching InstallLocation dirs' {
     $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
     try {
