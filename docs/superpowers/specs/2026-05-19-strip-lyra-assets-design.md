@@ -1,7 +1,7 @@
 # Strip Lyra assets, restore via `setup.bat`
 
 **Date:** 2026-05-19
-**Status:** Approved (brainstorming) — pending implementation plan
+**Status:** ✅ EXECUTED 2026-05-19 — origin/main = stripped history, bundle published at [`lyra-assets-v1`](https://github.com/defessler/Unreal-Engine-5-MCP/releases/tag/lyra-assets-v1), `pre-asset-strip` tag + `pre-asset-strip-branch` preserve pre-rewrite state. See plan doc for execution log.
 **Author:** Doug Fessler (via Claude brainstorm)
 
 ## Problem
