@@ -1,5 +1,7 @@
 # Strip Lyra Assets Implementation Plan
 
+> **Status:** ✅ EXECUTED 2026-05-19. Phase A + Phase B both complete. Origin/main rewritten from `b4967cd6` → `5c3f0e0d` (later `a87528a4` after the post-recovery `/MIR` → `/E` robocopy fix). Pack dropped from 1.36 GiB to ~5.24 MiB. Bundle published at [`lyra-assets-v1`](https://github.com/defessler/Unreal-Engine-5-MCP/releases/tag/lyra-assets-v1). Audit follow-ups also landed (CI workflow, `-Clean` teardown, bundle resume, schema-mismatch + version-skew + robocopy regression tests). This document is preserved as the historical procedure; the steps below are no longer to-be-done.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove every Lyra-origin `.uasset` / `.umap` from the repo, ship `setup.bat` to restore them on demand (local Epic install first, GitHub Release fallback), and rewrite git history so the pack actually shrinks.

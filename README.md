@@ -188,6 +188,17 @@ The manifest (`Scripts/lyra-assets-manifest.json`) is the committed
 source of truth for what `setup.bat` expects to restore — 8,686
 entries, ~2 MB JSON, sorted by path, with size + SHA-256 per file.
 
+**Refreshing the manifest** (after pulling a newer Lyra into your
+working tree):
+
+```pwsh
+pwsh -NoProfile -File Scripts/Publish-LyraAssetsRelease.ps1 -BuildManifestOnly
+```
+
+This rebuilds `Scripts/lyra-assets-manifest.json` from the current
+working tree without packing or uploading. Commit + push when ready;
+add `-Upload` to also publish a new `lyra-assets-vN` GitHub Release.
+
 **Windows-only.** `setup.bat` shells out to `robocopy`, `certutil`,
 and `cmd`; the path-detection logic reads Epic Games Launcher's
 `%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`. No
