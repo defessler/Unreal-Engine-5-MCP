@@ -142,7 +142,25 @@ function Test-Manifest {
 function Find-LyraInstallPaths {
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string] $LauncherDatPath)
-    throw 'not implemented'
+
+    if (-not (Test-Path -LiteralPath $LauncherDatPath)) {
+        throw "LauncherInstalled.dat not found at: $LauncherDatPath"
+    }
+
+    $dat = Get-Content -LiteralPath $LauncherDatPath -Raw | ConvertFrom-Json
+    $hits = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($entry in @($dat.InstallationList)) {
+        if (-not $entry.PSObject.Properties['InstallLocation']) { continue }
+        $loc = $entry.InstallLocation
+        if (-not $loc) { continue }
+        $uproject = Join-Path $loc 'LyraStarterGame.uproject'
+        if (Test-Path -LiteralPath $uproject) {
+            $hits.Add($loc)
+        }
+    }
+
+    return $hits.ToArray()
 }
 
 function Get-RestorePathMap {
