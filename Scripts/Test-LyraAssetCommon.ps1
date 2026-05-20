@@ -222,6 +222,15 @@ Test 'Find-LyraInstallPaths: throws when dat file missing' {
     AssertThrows { Find-LyraInstallPaths -LauncherDatPath 'X:\does\not\exist.dat' } 'not found'
 }
 
+Test 'Get-RestorePathMap: maps each glob root to identical relative dest' {
+    $map = Get-RestorePathMap -LyraInstallRoot 'C:/L' -RepoRoot 'D:/R'
+    AssertEqual 'C:/L/Content'                                  $map['Content']
+    AssertEqual 'D:/R/Content'                                  $map['Content_dst']
+    AssertTrue ($map.Contains('Plugins/GameFeatures/ShooterCore/Content'))
+    AssertEqual 'C:/L/Plugins/GameFeatures/ShooterCore/Content' $map['Plugins/GameFeatures/ShooterCore/Content']
+    AssertEqual 'D:/R/Plugins/GameFeatures/ShooterCore/Content' $map['Plugins/GameFeatures/ShooterCore/Content_dst']
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {

@@ -169,5 +169,11 @@ function Get-RestorePathMap {
         [Parameter(Mandatory)] [string] $LyraInstallRoot,
         [Parameter(Mandatory)] [string] $RepoRoot
     )
-    throw 'not implemented'
+
+    $map = [ordered]@{}
+    foreach ($glob in $script:LyraAssetGlobs) {
+        $map[$glob]         = (Join-Path $LyraInstallRoot $glob).Replace('\','/')
+        $map["${glob}_dst"] = (Join-Path $RepoRoot        $glob).Replace('\','/')
+    }
+    return $map
 }
