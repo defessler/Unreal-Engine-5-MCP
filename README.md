@@ -187,7 +187,12 @@ The manifest (`Scripts/lyra-assets-manifest.json`) is the committed
 source of truth for what `setup.bat` expects to restore — 8,686
 entries, ~2 MB JSON, sorted by path, with size + SHA-256 per file.
 
-Requires PowerShell 7+ (`pwsh`) on `PATH`. Install from
+**Windows-only.** `setup.bat` shells out to `robocopy`, `certutil`,
+and `cmd`; the path-detection logic reads Epic Games Launcher's
+`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`. No
+macOS / Linux equivalent ships today — file a request or use Git
+LFS / a separate clone if you need one. Requires PowerShell 7+
+(`pwsh`) on `PATH`; install from
 <https://github.com/PowerShell/PowerShell/releases> if missing.
 
 ## Quick start: hooking it up to Claude
