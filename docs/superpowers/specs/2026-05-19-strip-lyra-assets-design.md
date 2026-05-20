@@ -163,10 +163,12 @@ the Lyra assets — i.e., before the history rewrite. Steps:
 3. **Hash the bundle.** Write `lyra-assets-<tag>.tar.zst.sha256`.
 4. **Publish.** `gh release create <tag> --notes-file release-notes.md
    lyra-assets-<tag>.tar.zst lyra-assets-<tag>.tar.zst.sha256
-   Scripts/lyra-assets-manifest.json`. Manifest is uploaded as a
-   release asset too, so `setup.bat` can download just the manifest
-   (KB-sized) when validating a local install — no need to pull
-   the bundle for hash-checking.
+   Scripts/lyra-assets-manifest.json`. The manifest is uploaded as
+   a release asset for visibility / out-of-band consumers, but
+   `setup.bat` itself only ever reads the committed
+   `Scripts/lyra-assets-manifest.json` — that's the source of truth
+   bundled with every clone, so no network round-trip is needed
+   for validation.
 5. **Tag scheme.** `lyra-assets-v<N>`. Bump N any time the asset
    set changes (e.g., upstream Lyra updates). Initial = `v1`.
    `setup.bat`'s `--release-tag` default and `setup.ps1`'s constant
