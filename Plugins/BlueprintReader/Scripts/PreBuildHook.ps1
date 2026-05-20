@@ -55,6 +55,24 @@ if ($env:BP_READER_SKIP_PREBUILD) {
     exit 0
 }
 
+# Hash a file via .NET so the hook works even on machines where
+# Microsoft.PowerShell.Utility (which ships Get-FileHash) isn't on
+# $PSModulePath or otherwise fails to auto-load. UBT invokes this via
+# `powershell.exe -NoProfile`, which has been seen on some Windows
+# hosts to produce 'Get-FileHash : not recognized as the name of a
+# cmdlet'. Calling [System.Security.Cryptography.SHA1] directly
+# sidesteps the module-loading layer entirely.
+function Get-Sha1Hex {
+    param([Parameter(Mandatory)] [string] $Path)
+    $sha = [System.Security.Cryptography.SHA1]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return [System.BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToUpperInvariant()
+        } finally { $stream.Dispose() }
+    } finally { $sha.Dispose() }
+}
+
 # Function to stage fixture .json files into <ProjectDir>/Binaries/Win64/fixtures/.
 # The mock backend reads from `<exe>/fixtures` (MockBlueprintReader ctor +
 # test_helpers::FixturesDir), and UBT doesn't copy them automatically -- the
@@ -76,8 +94,8 @@ function Stage-Fixtures {
         $dstPath = Join-Path $fixturesDst $f.Name
         $needsCopy = $true
         if (Test-Path -LiteralPath $dstPath) {
-            $srcHash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA1).Hash
-            $dstHash = (Get-FileHash -LiteralPath $dstPath  -Algorithm SHA1).Hash
+            $srcHash = Get-Sha1Hex -Path $f.FullName
+            $dstHash = Get-Sha1Hex -Path $dstPath
             if ($srcHash -eq $dstHash) { $needsCopy = $false }
         }
         if ($needsCopy) {
