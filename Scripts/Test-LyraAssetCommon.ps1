@@ -263,6 +263,31 @@ Test 'Get-RestorePathMap: maps each glob root to identical relative dest' {
     AssertEqual 'D:/R/Plugins/GameFeatures/ShooterCore/Content' $map['Plugins/GameFeatures/ShooterCore/Content_dst']
 }
 
+# Behavioral guard for the contract setup.ps1's robocopy call relies on:
+# /E /XO must copy src-only files in, overwrite shared files where src is newer,
+# AND preserve dest-only files. This is the difference between /E and /MIR (which
+# would PURGE the dest-only file — the bug that almost deleted the test BPs during
+# the Phase B working-tree recovery).
+Test 'robocopy /E /XO contract: copies src-only, preserves dest-only (regression for /MIR-vs-/E)' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $src = Join-Path $tmp.FullName 'src'
+        $dst = Join-Path $tmp.FullName 'dst'
+        New-Item -ItemType Directory -Path $src -Force | Out-Null
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
+        # src has a Lyra-style asset
+        Set-Content -Path "$src/SKM_Manny.uasset"     -NoNewline -Value 'lyra-mesh'
+        # dst has a tracked-but-not-in-Lyra file (the BP_TestEnemy scenario)
+        Set-Content -Path "$dst/BP_TestEnemy.uasset"  -NoNewline -Value 'seed-bp'
+        # Same flag set as Scripts/setup.ps1 uses
+        & robocopy $src $dst /E /XO /NFL /NDL /NJH /NJS /NP /R:1 /W:1 /MT:2 | Out-Null
+        AssertTrue (Test-Path "$dst/SKM_Manny.uasset")     'src-only file should be copied'
+        AssertTrue (Test-Path "$dst/BP_TestEnemy.uasset")  'dst-only file must survive — the /MIR-vs-/E lesson'
+        AssertEqual 'seed-bp' (Get-Content "$dst/BP_TestEnemy.uasset" -Raw)
+        AssertEqual 'lyra-mesh' (Get-Content "$dst/SKM_Manny.uasset" -Raw)
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {
