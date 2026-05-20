@@ -17,9 +17,10 @@
 param(
     [ValidateSet('auto','local','release')]
     [string] $Source = 'auto',
-    [string] $ReleaseTag = 'lyra-assets-v1',
-    [string] $RepoOwner  = 'defessler',
-    [string] $RepoName   = 'Unreal-Engine-5-MCP',
+    [string] $ReleaseTag      = 'lyra-assets-v1',
+    [string] $RepoOwner       = 'defessler',
+    [string] $RepoName        = 'Unreal-Engine-5-MCP',
+    [string] $LyraInstallRoot = '',
     [switch] $Force,
     [switch] $DryRun,
     [switch] $VerifyOnly,
@@ -80,7 +81,22 @@ if ($Clean) {
 $selected = $Source
 $lyraRoot = $null
 
-if ($Source -in @('auto','local')) {
+# -LyraInstallRoot is the explicit-override path. Bypasses EGL detection.
+# Useful when Lyra is installed outside the Launcher (manual download,
+# different drive, etc.) — the Phase B working-tree recovery used exactly
+# this pattern against D:\Projects\LyraStarterGame.
+if ($LyraInstallRoot) {
+    if (-not (Test-Path -LiteralPath $LyraInstallRoot)) {
+        throw "LyraInstallRoot does not exist: $LyraInstallRoot"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $LyraInstallRoot 'LyraStarterGame.uproject'))) {
+        Write-Warn "LyraStarterGame.uproject not found under $LyraInstallRoot — proceeding anyway (-LyraInstallRoot override)"
+    }
+    $lyraRoot = (Resolve-Path -LiteralPath $LyraInstallRoot).Path
+    $selected = 'local'
+    Write-Step "Using explicit -LyraInstallRoot: $lyraRoot"
+}
+elseif ($Source -in @('auto','local')) {
     $datPath = Join-Path $env:ProgramData 'Epic\UnrealEngineLauncher\LauncherInstalled.dat'
     if (Test-Path -LiteralPath $datPath) {
         try {
@@ -95,7 +111,7 @@ if ($Source -in @('auto','local')) {
         Write-Warn "LauncherInstalled.dat not found at $datPath"
     }
     if (-not $lyraRoot -and $Source -eq 'local') {
-        throw 'No local Lyra install found. Re-run with -Source release.'
+        throw 'No local Lyra install found. Re-run with -Source release or pass -LyraInstallRoot <path>.'
     }
     if (-not $lyraRoot) { $selected = 'release' }
 }
@@ -120,16 +136,8 @@ if ($Repair) {
 
     if ($selected -eq 'local') {
         Write-Step "Copying $($broken.Count) files from local Lyra install"
-        $copied = 0; $skipped = 0
-        foreach ($rel in $broken) {
-            $src = Join-Path $lyraRoot $rel
-            $dst = Join-Path $RepoRoot $rel
-            if (-not (Test-Path -LiteralPath $src)) { $skipped++; continue }
-            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
-            Copy-Item -LiteralPath $src -Destination $dst -Force
-            $copied++
-        }
-        Write-Host "    copied: $copied, skipped (not in Lyra install): $skipped"
+        $r2 = Repair-FromLocalInstall -LyraInstallRoot $lyraRoot -RepoRoot $RepoRoot -BrokenPaths $broken
+        Write-Host "    copied: $($r2.Copied.Count), skipped (not in Lyra install): $($r2.Skipped.Count)"
     } else {
         # Release path: download (or reuse cached) bundle, extract just the
         # broken paths via tar -T <file-list>. Avoids re-extracting 8,686
@@ -206,7 +214,7 @@ if ($selected -eq 'local') {
             continue
         }
         if ($DryRun) {
-            Write-Host "    [dry-run] robocopy /MIR $src -> $dst"
+            Write-Host "    [dry-run] robocopy /E $src -> $dst"
             continue
         }
         New-Item -ItemType Directory -Path $dst -Force | Out-Null

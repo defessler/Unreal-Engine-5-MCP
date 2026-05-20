@@ -340,6 +340,43 @@ Test 'Invoke-LyraAssetCleanup: deletes manifest entries, leaves non-manifest fil
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Repair-FromLocalInstall: copies broken files, skips entries missing from install' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $install = Join-Path $tmp.FullName 'lyra-install'
+        $repo    = Join-Path $tmp.FullName 'repo'
+        New-Item -ItemType Directory -Path "$install/Content/Characters" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$repo/Content/Characters"    -Force | Out-Null
+        # install has A + C; broken set asks for A, B (not in install), C
+        Set-Content -Path "$install/Content/Characters/A.uasset" -NoNewline -Value 'lyra-A'
+        Set-Content -Path "$install/Content/Characters/C.uasset" -NoNewline -Value 'lyra-C'
+        # repo starts with A modified + no C
+        Set-Content -Path "$repo/Content/Characters/A.uasset" -NoNewline -Value 'corrupt'
+        $r = Repair-FromLocalInstall -LyraInstallRoot $install -RepoRoot $repo `
+                -BrokenPaths @('Content/Characters/A.uasset','Content/Characters/B.uasset','Content/Characters/C.uasset')
+        AssertEqual 2 $r.Copied.Count
+        AssertEqual 1 $r.Skipped.Count
+        AssertEqual @('Content/Characters/B.uasset') $r.Skipped
+        AssertEqual 'lyra-A' (Get-Content "$repo/Content/Characters/A.uasset" -Raw) 'overwritten'
+        AssertEqual 'lyra-C' (Get-Content "$repo/Content/Characters/C.uasset" -Raw) 'created'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Repair-FromLocalInstall: creates missing parent dirs in repo' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $install = Join-Path $tmp.FullName 'lyra-install'
+        $repo    = Join-Path $tmp.FullName 'repo'
+        New-Item -ItemType Directory -Path "$install/Plugins/GameFeatures/ShooterCore/Content/A" -Force | Out-Null
+        New-Item -ItemType Directory -Path $repo -Force | Out-Null
+        Set-Content -Path "$install/Plugins/GameFeatures/ShooterCore/Content/A/Pawn.uasset" -NoNewline -Value 'x'
+        $r = Repair-FromLocalInstall -LyraInstallRoot $install -RepoRoot $repo `
+                -BrokenPaths @('Plugins/GameFeatures/ShooterCore/Content/A/Pawn.uasset')
+        AssertEqual 1 $r.Copied.Count
+        AssertTrue (Test-Path "$repo/Plugins/GameFeatures/ShooterCore/Content/A/Pawn.uasset")
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 Test 'Invoke-LyraAssetCleanup: idempotent (NotPresent on second run)' {
     $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
     try {

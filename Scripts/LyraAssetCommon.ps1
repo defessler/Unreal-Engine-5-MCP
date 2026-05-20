@@ -200,6 +200,40 @@ function Get-RestorePathMap {
     return $map
 }
 
+# Targeted local restore: given a known-good Lyra install root and a list of
+# broken (missing or hash-mismatched) repo-relative paths, copy each broken
+# file from the install into the repo. Skips entries that don't exist in
+# LyraInstallRoot (common when EGL has a partial install or a different Lyra
+# version). Returns {Copied, Skipped}.
+function Repair-FromLocalInstall {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]   $LyraInstallRoot,
+        [Parameter(Mandatory)] [string]   $RepoRoot,
+        [Parameter(Mandatory)] [string[]] $BrokenPaths
+    )
+
+    $LyraInstallRoot = (Resolve-Path -LiteralPath $LyraInstallRoot).Path
+    $RepoRoot        = (Resolve-Path -LiteralPath $RepoRoot).Path
+
+    $copied  = [System.Collections.Generic.List[string]]::new()
+    $skipped = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($rel in $BrokenPaths) {
+        $src = Join-Path $LyraInstallRoot $rel
+        $dst = Join-Path $RepoRoot $rel
+        if (-not (Test-Path -LiteralPath $src)) { $skipped.Add($rel); continue }
+        New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+        $copied.Add($rel)
+    }
+
+    [pscustomobject][ordered]@{
+        Copied  = $copied.ToArray()
+        Skipped = $skipped.ToArray()
+    }
+}
+
 # Inverse of restore — deletes every file listed in the manifest from RepoRoot,
 # along with any empty parent directories under the configured glob roots.
 # Skips files that don't exist (idempotent). Returns {Deleted, NotPresent}.
