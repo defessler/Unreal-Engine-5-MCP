@@ -110,7 +110,11 @@ if ($selected -eq 'local') {
             continue
         }
         New-Item -ItemType Directory -Path $dst -Force | Out-Null
-        & robocopy $src $dst /MIR /XO /NFL /NDL /NJH /NJS /NP /R:2 /W:5 /MT:8 | Out-Null
+        # /E = recursive copy (including empty dirs); /XO = skip if dest is newer.
+        # NOT /MIR: that would /PURGE files in dest that aren't in src, which would
+        # delete Content/AI/BP_TestEnemy.uasset (tracked, not in Lyra) and
+        # Content/Recreated/.gitkeep (tracked test-output marker).
+        & robocopy $src $dst /E /XO /NFL /NDL /NJH /NJS /NP /R:2 /W:5 /MT:8 | Out-Null
         # robocopy exit codes 0-7 = success (0=no changes, 1-3=copied, 4-7=warnings)
         if ($LASTEXITCODE -ge 8) {
             throw "robocopy failed copying $src -> $dst (exit $LASTEXITCODE)"
