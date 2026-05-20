@@ -179,6 +179,7 @@ compressed), verifies SHA-256, and extracts it.
 |-----------------------|-------------------------------------------------------------------------|
 | `-Source local`       | Force the local Epic install path; fail if not found                    |
 | `-Source release`     | Force the GitHub Release download path                                  |
+| `-LyraInstallRoot <path>` | Bypass Epic Games Launcher detection; mirror from an explicit Lyra checkout (e.g. `D:\Projects\LyraStarterGame`). Implies `-Source local`. |
 | `-DryRun`             | Print the plan; touch nothing                                           |
 | `-VerifyOnly`         | Re-validate the current working tree against `Scripts/lyra-assets-manifest.json` |
 | `-Repair`             | Identify missing/mismatched files via manifest check + restore just those. From `release`, downloads the bundle (or reuses the TEMP cache) then `tar -T` extracts only the broken paths — much cheaper than a full re-run after a partial failure |

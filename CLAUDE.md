@@ -388,6 +388,9 @@ Useful flags:
   instead of doing a full re-run; for the release source, downloads
   the bundle once and uses `tar -T` to extract only the broken
   paths. Cheap after a partial-restore failure.
+- `setup.bat -LyraInstallRoot <path>` — point at an arbitrary
+  Lyra checkout when EGL isn't an option (manual download, separate
+  drive, etc.). Implies `-Source local`.
 - `setup.bat -Clean` — inverse of restore; deletes every manifest
   file (preserves tracked test BPs + `Content/Recreated/`).
 - `setup.bat -DryRun` — print the plan, touch nothing. Composes
