@@ -80,6 +80,19 @@ Test 'Get-LyraAssetPaths: ignores non-asset extensions' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Get-LyraAssetPaths: excludes Content/Recreated subtree (regenerable test output)' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content/Recreated" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content/Real"      -Force | Out-Null
+        Set-Content -Path "$($tmp.FullName)/Content/Recreated/BPIR_Foo.uasset" -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/Real/Bar.uasset"           -Value 'x'
+        $paths = @(Get-LyraAssetPaths -RepoRoot $tmp.FullName)
+        AssertTrue ($paths -notcontains 'Content/Recreated/BPIR_Foo.uasset') 'should exclude Recreated/'
+        AssertTrue ($paths -contains    'Content/Real/Bar.uasset')           'should include real Lyra content'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 Test 'Get-LyraAssetPaths: walks plugin Content/ dirs' {
     $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
     try {

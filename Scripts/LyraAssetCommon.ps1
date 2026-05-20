@@ -31,6 +31,13 @@ $script:LyraAssetExemptions = @(
     'Content/AI/BP_TestPickup.uasset'
 )
 
+# Subtrees that look like Lyra content paths but are regenerable test output —
+# excluded from the bundle and from manifest validation. Forward-slash, no
+# trailing slash. Anything under these paths is filtered out.
+$script:LyraAssetExcludeDirs = @(
+    'Content/Recreated'
+)
+
 function Get-LyraAssetPaths {
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string] $RepoRoot)
@@ -50,7 +57,11 @@ function Get-LyraAssetPaths {
             Where-Object { $_.Extension -in '.uasset','.umap' } |
             ForEach-Object {
                 $rel = $_.FullName.Substring($RepoRoot.Length).TrimStart('\','/').Replace('\','/')
-                if (-not $exempt.Contains($rel)) { $results.Add($rel) }
+                if ($exempt.Contains($rel)) { return }
+                foreach ($ex in $script:LyraAssetExcludeDirs) {
+                    if ($rel -like "$ex/*") { return }
+                }
+                $results.Add($rel)
             }
     }
 
