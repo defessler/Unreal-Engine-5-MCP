@@ -142,6 +142,45 @@ Test 'Build-Manifest: empty asset set produces valid manifest' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Test-Manifest: Ok when all files present and hashes match' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content" -Force | Out-Null
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/A.uasset", [byte[]](97))
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        $r = Test-Manifest  -RepoRoot $tmp.FullName -Manifest $m
+        AssertTrue $r.Ok 'expected Ok'
+        AssertEqual 0 $r.Missing.Count
+        AssertEqual 0 $r.Mismatch.Count
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Test-Manifest: detects missing files' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content" -Force | Out-Null
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/A.uasset", [byte[]](97))
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        Remove-Item "$($tmp.FullName)/Content/A.uasset"
+        $r = Test-Manifest -RepoRoot $tmp.FullName -Manifest $m
+        AssertTrue (-not $r.Ok)
+        AssertEqual @('Content/A.uasset') $r.Missing
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Test-Manifest: detects mismatched hashes' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content" -Force | Out-Null
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/A.uasset", [byte[]](97))
+        $m = Build-Manifest -RepoRoot $tmp.FullName -Tag 'lyra-assets-v1'
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/Content/A.uasset", [byte[]](98))
+        $r = Test-Manifest -RepoRoot $tmp.FullName -Manifest $m
+        AssertTrue (-not $r.Ok)
+        AssertEqual @('Content/A.uasset') $r.Mismatch
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {
