@@ -111,7 +111,32 @@ function Test-Manifest {
         [Parameter(Mandatory)] [string]         $RepoRoot,
         [Parameter(Mandatory)] [PSCustomObject] $Manifest
     )
-    throw 'not implemented'
+
+    if ($Manifest.schema_version -ne $script:ManifestSchemaVersion) {
+        throw "Manifest schema_version $($Manifest.schema_version) does not match expected $($script:ManifestSchemaVersion)"
+    }
+
+    $missing  = [System.Collections.Generic.List[string]]::new()
+    $mismatch = [System.Collections.Generic.List[string]]::new()
+    $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+
+    foreach ($entry in $Manifest.files) {
+        $abs = Join-Path $RepoRoot $entry.path
+        if (-not (Test-Path -LiteralPath $abs)) {
+            $missing.Add($entry.path)
+            continue
+        }
+        $actual = (Get-FileHash -LiteralPath $abs -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $entry.sha256) {
+            $mismatch.Add($entry.path)
+        }
+    }
+
+    [pscustomobject][ordered]@{
+        Ok       = ($missing.Count -eq 0 -and $mismatch.Count -eq 0)
+        Missing  = $missing.ToArray()
+        Mismatch = $mismatch.ToArray()
+    }
 }
 
 function Find-LyraInstallPaths {
