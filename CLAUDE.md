@@ -105,6 +105,9 @@ UE5_MCP/                                      ← project root
 │       └── ThirdParty/                         vendored: nlohmann_json, fmt, doctest
 ├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset
 │                                               (regenerable; see "Reseed test BPs" below)
+│                                               All other Content/ is restored on demand
+│                                               by setup.bat — see "Asset restoration"
+│                                               below for the hybrid local/release flow.
 ├── README.md                                   user-facing setup + tool table
 └── wiki/                                       source of truth for the GitHub Wiki
                                                 (manually pushed to <repo>.wiki.git)
@@ -365,6 +368,27 @@ the discoverability list in lockstep.
 - **Telemetry:** every `tools/call` envelope carries
   `_meta: {elapsed_ms, tool}` per the MCP 2024-11-05 spec extension
   point.
+
+## Asset restoration
+
+Lyra's bundled assets are not tracked in this repo — `setup.bat` at
+the repo root restores them on demand. Defaults to hybrid mode: try
+Epic Games Launcher's installed Lyra (read from
+`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`,
+robocopy mirror) first; fall back to the GitHub Release bundle
+(`lyra-assets-v1.tar.zst`, ~700-900 MB compressed).
+
+`Scripts/lyra-assets-manifest.json` is the committed source of
+truth (8,686 entries, ~2 MB JSON) for what's expected after restore.
+Run `setup.bat -VerifyOnly` to confirm a working tree matches the
+manifest — e.g. after a destructive `git clean -fdx`. Run
+`Scripts/Publish-LyraAssetsRelease.ps1` (operator-only) to rebuild
+and republish the bundle when upstream Lyra content changes.
+
+Stripping the assets in the first place is the procedure in
+[`docs/superpowers/plans/2026-05-19-strip-lyra-assets.md`](docs/superpowers/plans/2026-05-19-strip-lyra-assets.md);
+the rewrite uses `git filter-repo` against
+`Scripts/strip-lyra-paths.txt`.
 
 ## See also
 

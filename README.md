@@ -161,6 +161,35 @@ legacy non-EnhancedInput nodes, raw pointer arithmetic. See
 [Tool Reference → Transpile tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#transpile-tools)
 and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
 
+## First-time setup (after clone)
+
+Lyra's bundled assets (~8,686 `.uasset` / `.umap` files, ~2.4 GB) are
+**not tracked** in this repo — keeping clones fast. After cloning,
+run from the repo root:
+
+    setup.bat
+
+`setup.bat` auto-detects Lyra installed via Epic Games Launcher and
+mirrors its `Content/` and `Plugins/*/Content/` dirs into this repo
+via robocopy. If no local install is found, it downloads a bundle
+from this repo's GitHub Release `lyra-assets-v1` (~700-900 MB
+compressed), verifies SHA-256, and extracts it.
+
+| Flag                  | Effect                                                                  |
+|-----------------------|-------------------------------------------------------------------------|
+| `-Source local`       | Force the local Epic install path; fail if not found                    |
+| `-Source release`     | Force the GitHub Release download path                                  |
+| `-DryRun`             | Print the plan; touch nothing                                           |
+| `-VerifyOnly`         | Re-validate the current working tree against `Scripts/lyra-assets-manifest.json` |
+| `-Force`              | Bypass the uncommitted-changes pre-flight                               |
+
+The manifest (`Scripts/lyra-assets-manifest.json`) is the committed
+source of truth for what `setup.bat` expects to restore — 8,686
+entries, ~2 MB JSON, sorted by path, with size + SHA-256 per file.
+
+Requires PowerShell 7+ (`pwsh`) on `PATH`. Install from
+<https://github.com/PowerShell/PowerShell/releases> if missing.
+
 ## Quick start: hooking it up to Claude
 
 ### 1. Build the MCP server
