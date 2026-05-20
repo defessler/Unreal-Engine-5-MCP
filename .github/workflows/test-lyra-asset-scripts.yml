@@ -1,0 +1,76 @@
+name: Lyra asset scripts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Scripts/LyraAssetCommon.ps1'
+      - 'Scripts/Test-LyraAssetCommon.ps1'
+      - 'Scripts/setup.ps1'
+      - 'Scripts/Publish-LyraAssetsRelease.ps1'
+      - 'Scripts/strip-lyra-paths.txt'
+      - 'Scripts/lyra-assets-manifest.json'
+      - 'setup.bat'
+      - '.github/workflows/test-lyra-asset-scripts.yml'
+  pull_request:
+    paths:
+      - 'Scripts/LyraAssetCommon.ps1'
+      - 'Scripts/Test-LyraAssetCommon.ps1'
+      - 'Scripts/setup.ps1'
+      - 'Scripts/Publish-LyraAssetsRelease.ps1'
+      - 'Scripts/strip-lyra-paths.txt'
+      - 'Scripts/lyra-assets-manifest.json'
+      - 'setup.bat'
+      - '.github/workflows/test-lyra-asset-scripts.yml'
+
+jobs:
+  test:
+    # windows-latest is required: tests exercise robocopy, certutil-style
+    # filesystem semantics, and the Windows-specific LauncherInstalled.dat
+    # path. macOS / Linux runners would skip the OS-coupled tests.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+
+      - name: Run LyraAssetCommon unit tests
+        shell: pwsh
+        run: pwsh -NoProfile -File Scripts/Test-LyraAssetCommon.ps1
+
+      - name: Verify setup.ps1 + Publish-LyraAssetsRelease.ps1 parse cleanly
+        shell: pwsh
+        run: |
+          $errs = $null
+          [System.Management.Automation.PSParser]::Tokenize(
+              (Get-Content -Raw Scripts/setup.ps1), [ref]$errs) | Out-Null
+          if ($errs.Count) { $errs | Format-Table; exit 1 }
+          [System.Management.Automation.PSParser]::Tokenize(
+              (Get-Content -Raw Scripts/Publish-LyraAssetsRelease.ps1), [ref]$errs) | Out-Null
+          if ($errs.Count) { $errs | Format-Table; exit 1 }
+          Write-Host "Both scripts parse without errors."
+
+      - name: Smoke-test setup.ps1 -VerifyOnly (expect Missing — assets not in CI checkout)
+        shell: pwsh
+        # Note: this is a "the script runs end-to-end without crashing" smoke,
+        # not a behavioral assertion. Exit 1 is the *expected* outcome here
+        # because the GitHub clone won't have the 8686 Lyra assets restored.
+        run: |
+          pwsh -NoProfile -File Scripts/setup.ps1 -VerifyOnly
+          if ($LASTEXITCODE -ne 1) {
+              Write-Host "Expected exit 1 (missing assets) but got $LASTEXITCODE"
+              exit 1
+          }
+          Write-Host "setup.ps1 -VerifyOnly exited 1 as expected (assets not restored in CI)."
+
+      - name: Smoke-test setup.ps1 -DryRun -Source release
+        shell: pwsh
+        run: pwsh -NoProfile -File Scripts/setup.ps1 -Source release -DryRun
+
+      - name: Smoke-test setup.ps1 -Clean -DryRun
+        shell: pwsh
+        run: pwsh -NoProfile -File Scripts/setup.ps1 -Clean -DryRun
