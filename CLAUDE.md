@@ -372,18 +372,33 @@ the discoverability list in lockstep.
 ## Asset restoration
 
 Lyra's bundled assets are not tracked in this repo — `setup.bat` at
-the repo root restores them on demand. Defaults to hybrid mode: try
-Epic Games Launcher's installed Lyra (read from
-`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`,
-robocopy mirror) first; fall back to the GitHub Release bundle
-(`lyra-assets-v1.tar.zst`, ~700-900 MB compressed).
+the repo root restores them on demand. **Windows-only** (uses
+robocopy, certutil, and Epic Games Launcher's
+`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`).
+Defaults to hybrid: try the local EGL Lyra install first; fall back
+to the GitHub Release bundle (`lyra-assets-v1.tar.zst`, ~1.7 GB
+compressed). Bundle download is resumable (`curl --continue-at -`)
+and skips entirely if a previous partial in `%TEMP%` already
+matches the published SHA-256.
+
+Useful flags:
+- `setup.bat -VerifyOnly` — re-check the working tree against the
+  committed manifest.
+- `setup.bat -Clean` — inverse of restore; deletes every manifest
+  file (preserves tracked test BPs + `Content/Recreated/`).
+- `setup.bat -DryRun` — print the plan, touch nothing. Composes
+  with any other flag.
 
 `Scripts/lyra-assets-manifest.json` is the committed source of
-truth (8,686 entries, ~2 MB JSON) for what's expected after restore.
-Run `setup.bat -VerifyOnly` to confirm a working tree matches the
-manifest — e.g. after a destructive `git clean -fdx`. Run
-`Scripts/Publish-LyraAssetsRelease.ps1` (operator-only) to rebuild
-and republish the bundle when upstream Lyra content changes.
+truth (8,686 entries, ~2 MB JSON, sorted by path with size +
+SHA-256). Run `Scripts/Publish-LyraAssetsRelease.ps1` (operator-only,
+requires `gh` auth) to rebuild and republish the bundle when upstream
+Lyra content changes.
+
+CI: `.github/workflows/test-lyra-asset-scripts.yml` runs the
+LyraAssetCommon unit tests (21 cases) + parse-check + dry-run
+smoke tests on every push to main and every PR that touches the
+asset scripts. Windows runners only.
 
 Stripping the assets in the first place is the procedure in
 [`docs/superpowers/plans/2026-05-19-strip-lyra-assets.md`](docs/superpowers/plans/2026-05-19-strip-lyra-assets.md);
