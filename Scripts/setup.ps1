@@ -23,7 +23,8 @@ param(
     [switch] $Force,
     [switch] $DryRun,
     [switch] $VerifyOnly,
-    [switch] $Clean
+    [switch] $Clean,
+    [switch] $Repair
 )
 
 Set-StrictMode -Version 3.0
@@ -75,7 +76,7 @@ if ($Clean) {
     exit 0
 }
 
-# --- Source resolution ---
+# --- Source resolution (shared by restore + repair) ---
 $selected = $Source
 $lyraRoot = $null
 
@@ -97,6 +98,87 @@ if ($Source -in @('auto','local')) {
         throw 'No local Lyra install found. Re-run with -Source release.'
     }
     if (-not $lyraRoot) { $selected = 'release' }
+}
+
+# --- Repair mode: targeted restore of just missing/mismatched files.
+# Cheaper than a full re-run after a partial failure or version-skew patch.
+if ($Repair) {
+    Write-Step 'Identifying broken files via manifest check'
+    $check = Test-Manifest -RepoRoot $RepoRoot -Manifest $manifest
+    if ($check.Ok) {
+        Write-Host "  Nothing to repair — manifest verifies clean." -ForegroundColor Green
+        exit 0
+    }
+    $broken = @() + $check.Missing + $check.Mismatch
+    Write-Host "    $($check.Missing.Count) missing + $($check.Mismatch.Count) mismatched = $($broken.Count) files to repair"
+
+    if ($DryRun) {
+        Write-Host "    [dry-run] would repair from source=$selected; first 5 paths:"
+        foreach ($p in ($broken | Select-Object -First 5)) { Write-Host "      $p" }
+        exit 0
+    }
+
+    if ($selected -eq 'local') {
+        Write-Step "Copying $($broken.Count) files from local Lyra install"
+        $copied = 0; $skipped = 0
+        foreach ($rel in $broken) {
+            $src = Join-Path $lyraRoot $rel
+            $dst = Join-Path $RepoRoot $rel
+            if (-not (Test-Path -LiteralPath $src)) { $skipped++; continue }
+            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+            $copied++
+        }
+        Write-Host "    copied: $copied, skipped (not in Lyra install): $skipped"
+    } else {
+        # Release path: download (or reuse cached) bundle, extract just the
+        # broken paths via tar -T <file-list>. Avoids re-extracting 8,686
+        # files when the broken set is small.
+        $bundleName = "${ReleaseTag}.tar.zst"
+        $bundleUrl  = "https://github.com/$RepoOwner/$RepoName/releases/download/$ReleaseTag/$bundleName"
+        $shaUrl     = "$bundleUrl.sha256"
+        $bundlePath = Join-Path $env:TEMP $bundleName
+        $shaPath    = "$bundlePath.sha256"
+
+        Write-Step "Resolving bundle for selective extract"
+        & curl --fail --location --silent --show-error --output $shaPath $shaUrl
+        if ($LASTEXITCODE -ne 0) { throw "curl failed downloading sha256 (exit $LASTEXITCODE)" }
+        $expected = (Get-Content -LiteralPath $shaPath -Raw).Split()[0].ToLowerInvariant()
+
+        $needsDownload = $true
+        if (Test-Path -LiteralPath $bundlePath) {
+            $h = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($h -eq $expected) { $needsDownload = $false; Write-Host "    reusing cached bundle (hash matches)" }
+        }
+        if ($needsDownload) {
+            & curl --fail --location --show-error --continue-at - --output $bundlePath $bundleUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl failed downloading bundle (exit $LASTEXITCODE)" }
+            $actual = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($expected -ne $actual) {
+                Remove-Item -LiteralPath $bundlePath -ErrorAction SilentlyContinue
+                throw "Bundle SHA-256 mismatch. Stale partial removed; re-run setup.bat -Repair."
+            }
+        }
+
+        Write-Step "Extracting $($broken.Count) files from bundle"
+        $listFile = Join-Path $env:TEMP "lyra-repair-$([guid]::NewGuid()).txt"
+        $broken | Set-Content -LiteralPath $listFile -Encoding utf8
+        try {
+            & tar -x --zstd -f $bundlePath -C $RepoRoot -T $listFile
+            if ($LASTEXITCODE -ne 0) { throw "tar extract failed (exit $LASTEXITCODE)" }
+        } finally { Remove-Item -LiteralPath $listFile -ErrorAction SilentlyContinue }
+    }
+
+    Write-Step 'Re-verifying after repair'
+    $after = Test-Manifest -RepoRoot $RepoRoot -Manifest $manifest
+    if ($after.Ok) {
+        Write-Host "  Repair complete — $($manifest.total_files) files present and hashes match." -ForegroundColor Green
+        exit 0
+    }
+    Write-Warn "$($after.Missing.Count) still missing, $($after.Mismatch.Count) still mismatched after repair"
+    foreach ($m in ($after.Missing  | Select-Object -First 5)) { Write-Host "    missing:  $m" }
+    foreach ($m in ($after.Mismatch | Select-Object -First 5)) { Write-Host "    mismatch: $m" }
+    exit 1
 }
 
 # --- Pre-flight: refuse if there are uncommitted asset changes ---

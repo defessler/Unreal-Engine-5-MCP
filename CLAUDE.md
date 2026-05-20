@@ -384,6 +384,10 @@ matches the published SHA-256.
 Useful flags:
 - `setup.bat -VerifyOnly` — re-check the working tree against the
   committed manifest.
+- `setup.bat -Repair` — restore just the missing/mismatched files
+  instead of doing a full re-run; for the release source, downloads
+  the bundle once and uses `tar -T` to extract only the broken
+  paths. Cheap after a partial-restore failure.
 - `setup.bat -Clean` — inverse of restore; deletes every manifest
   file (preserves tracked test BPs + `Content/Recreated/`).
 - `setup.bat -DryRun` — print the plan, touch nothing. Composes
