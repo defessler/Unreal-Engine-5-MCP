@@ -22,7 +22,8 @@ param(
     [string] $RepoName   = 'Unreal-Engine-5-MCP',
     [switch] $Force,
     [switch] $DryRun,
-    [switch] $VerifyOnly
+    [switch] $VerifyOnly,
+    [switch] $Clean
 )
 
 Set-StrictMode -Version 3.0
@@ -55,6 +56,23 @@ if ($VerifyOnly) {
     foreach ($m in ($r.Missing  | Select-Object -First 5)) { Write-Host "    missing:  $m" }
     foreach ($m in ($r.Mismatch | Select-Object -First 5)) { Write-Host "    mismatch: $m" }
     exit 1
+}
+
+# --- Clean mode: inverse of restore. Delete every manifest file from the
+# working tree, leaving exemptions / tracked test BPs in place. Useful for
+# checking what a fresh-clone-without-setup state looks like, or before
+# packaging the project elsewhere.
+if ($Clean) {
+    $totalMb = [math]::Round($manifest.total_bytes / 1MB, 1)
+    Write-Step "Cleaning $($manifest.total_files) manifest files (~$totalMb MB) from $RepoRoot"
+    if ($DryRun) {
+        Write-Host "    [dry-run] would Remove-Item every path in the manifest, then sweep empty dirs"
+        exit 0
+    }
+    $r = Invoke-LyraAssetCleanup -RepoRoot $RepoRoot -Manifest $manifest
+    Write-Host ''
+    Write-Step "Deleted $($r.Deleted.Count) files; $($r.NotPresent.Count) already absent."
+    exit 0
 }
 
 # --- Source resolution ---

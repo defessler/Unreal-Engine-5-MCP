@@ -181,6 +181,7 @@ compressed), verifies SHA-256, and extracts it.
 | `-Source release`     | Force the GitHub Release download path                                  |
 | `-DryRun`             | Print the plan; touch nothing                                           |
 | `-VerifyOnly`         | Re-validate the current working tree against `Scripts/lyra-assets-manifest.json` |
+| `-Clean`              | Inverse of restore — delete every manifest file from the working tree (keeps tracked test BPs); useful before packaging or as a "what does a fresh clone look like" probe |
 | `-Force`              | Bypass the uncommitted-changes pre-flight                               |
 
 The manifest (`Scripts/lyra-assets-manifest.json`) is the committed

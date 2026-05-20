@@ -268,6 +268,50 @@ Test 'Get-RestorePathMap: maps each glob root to identical relative dest' {
 # AND preserve dest-only files. This is the difference between /E and /MIR (which
 # would PURGE the dest-only file — the bug that almost deleted the test BPs during
 # the Phase B working-tree recovery).
+Test 'Invoke-LyraAssetCleanup: deletes manifest entries, leaves non-manifest files alone' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $repo = $tmp.FullName
+        New-Item -ItemType Directory -Path "$repo/Content/Characters" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$repo/Content/AI"         -Force | Out-Null
+        # In-manifest Lyra files (must be deleted)
+        Set-Content -Path "$repo/Content/Characters/Mesh.uasset" -NoNewline -Value 'mesh'
+        Set-Content -Path "$repo/Content/Characters/Tex.uasset"  -NoNewline -Value 'tex'
+        # Out-of-manifest test BP (must survive)
+        Set-Content -Path "$repo/Content/AI/BP_TestEnemy.uasset" -NoNewline -Value 'seed'
+        # Out-of-manifest README (must survive)
+        Set-Content -Path "$repo/README.md" -NoNewline -Value 'readme'
+
+        $m = Build-Manifest -RepoRoot $repo -Tag 'lyra-assets-v1'
+        # Manifest will exclude BP_TestEnemy (exemption); confirm before cleanup
+        AssertEqual 2 $m.total_files
+
+        $r = Invoke-LyraAssetCleanup -RepoRoot $repo -Manifest $m
+        AssertEqual 2 $r.Deleted.Count
+        AssertEqual 0 $r.NotPresent.Count
+        AssertTrue (-not (Test-Path "$repo/Content/Characters/Mesh.uasset")) 'manifest entry should be gone'
+        AssertTrue (-not (Test-Path "$repo/Content/Characters/Tex.uasset"))  'manifest entry should be gone'
+        AssertTrue (Test-Path "$repo/Content/AI/BP_TestEnemy.uasset")        'test BP must survive'
+        AssertTrue (Test-Path "$repo/README.md")                             'README must survive'
+        AssertTrue (-not (Test-Path "$repo/Content/Characters"))             'empty dir should be swept'
+        AssertTrue (Test-Path "$repo/Content/AI")                            'non-empty dir must survive'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Invoke-LyraAssetCleanup: idempotent (NotPresent on second run)' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $repo = $tmp.FullName
+        New-Item -ItemType Directory -Path "$repo/Content" -Force | Out-Null
+        Set-Content -Path "$repo/Content/A.uasset" -NoNewline -Value 'a'
+        $m = Build-Manifest -RepoRoot $repo -Tag 'lyra-assets-v1'
+        Invoke-LyraAssetCleanup -RepoRoot $repo -Manifest $m | Out-Null
+        $r = Invoke-LyraAssetCleanup -RepoRoot $repo -Manifest $m
+        AssertEqual 0 $r.Deleted.Count
+        AssertEqual 1 $r.NotPresent.Count
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 Test 'robocopy /E /XO contract: copies src-only, preserves dest-only (regression for /MIR-vs-/E)' {
     $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
     try {

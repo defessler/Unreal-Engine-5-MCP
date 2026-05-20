@@ -199,3 +199,50 @@ function Get-RestorePathMap {
     }
     return $map
 }
+
+# Inverse of restore — deletes every file listed in the manifest from RepoRoot,
+# along with any empty parent directories under the configured glob roots.
+# Skips files that don't exist (idempotent). Returns {Deleted, NotPresent}.
+function Invoke-LyraAssetCleanup {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]         $RepoRoot,
+        [Parameter(Mandatory)] [PSCustomObject] $Manifest
+    )
+
+    if ($Manifest.schema_version -ne $script:ManifestSchemaVersion) {
+        throw "Manifest schema_version $($Manifest.schema_version) does not match expected $($script:ManifestSchemaVersion)"
+    }
+
+    $RepoRoot   = (Resolve-Path -LiteralPath $RepoRoot).Path
+    $deleted    = [System.Collections.Generic.List[string]]::new()
+    $notPresent = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($entry in $Manifest.files) {
+        $abs = Join-Path $RepoRoot $entry.path
+        if (Test-Path -LiteralPath $abs) {
+            Remove-Item -LiteralPath $abs -Force
+            $deleted.Add($entry.path)
+        } else {
+            $notPresent.Add($entry.path)
+        }
+    }
+
+    # Sweep empty dirs under the glob roots, deepest-first.
+    foreach ($glob in $script:LyraAssetGlobs) {
+        $root = Join-Path $RepoRoot $glob
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        Get-ChildItem -LiteralPath $root -Recurse -Directory -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            ForEach-Object {
+                if (-not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue)) {
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+            }
+    }
+
+    [pscustomobject][ordered]@{
+        Deleted    = $deleted.ToArray()
+        NotPresent = $notPresent.ToArray()
+    }
+}
