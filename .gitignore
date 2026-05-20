@@ -46,9 +46,27 @@ Plugins/BlueprintReader/Source/BPRoundtripModule/Private/*
 !Plugins/BlueprintReader/Source/BPRoundtripModule/Private/.gitkeep
 !Plugins/BlueprintReader/Source/BPRoundtripModule/Private/BPRoundtripModule.cpp
 
-# Large content files unsuitable for direct GitHub hosting (>50MB).
-# Re-fetch from Epic's Lyra distribution or set up Git LFS to track these.
-Content/Effects/Textures/Flipbooks/SmokeSwirl_3_Flipbook_CHANNELPACK.uasset
-Plugins/LyraExampleContent/Content/Materials/Textures/T_Rough_Concrete_Floor_ulmmbiuo_4K_N.uasset
-Plugins/LyraExampleContent/Content/Megascans/Surfaces/Dirty_Painted_Concrete_Wall_vdqfcg3/T_Dirty_Painted_Concrete_Wall_vdqfcg3_4K_D.uasset
-Plugins/LyraExampleContent/Content/Megascans/Surfaces/Dirty_Painted_Concrete_Wall_vdqfcg3/T_DirtyPaintedConcreteWall_vdqfcg3_4K_ORDp.uasset
+# Lyra assets are not tracked in this repo (~2.3 GB working tree, ~1.4 GB
+# pack savings). Run `setup.bat` after cloning to restore them — see
+# docs/superpowers/specs/2026-05-19-strip-lyra-assets-design.md for the
+# design and Scripts/lyra-assets-manifest.json for the file list.
+#
+# Pattern-based: ignore .uasset/.umap anywhere under Content/, then
+# un-ignore the two BPRSeed test BPs that must stay tracked. Plugin
+# Content/ trees have no exemptions, so they ignore by directory.
+Content/**/*.uasset
+Content/**/*.umap
+!Content/AI/BP_TestEnemy.uasset
+!Content/AI/BP_TestPickup.uasset
+Plugins/LyraExampleContent/Content/
+Plugins/LyraExtTool/Content/
+Plugins/PocketWorlds/Content/
+Plugins/GameFeatures/ShooterCore/Content/
+Plugins/GameFeatures/ShooterTests/Content/
+Plugins/GameFeatures/TopDownArena/Content/
+Plugins/GameFeatures/ShooterMaps/Content/
+Plugins/GameFeatures/ShooterExplorer/Content/
+
+# Bundle artifacts produced by Scripts/Publish-LyraAssetsRelease.ps1
+lyra-assets-*.tar.zst
+lyra-assets-*.tar.zst.sha256
