@@ -91,6 +91,32 @@ Test 'Get-LyraAssetPaths: walks plugin Content/ dirs' {
     } finally { Remove-Item -Recurse -Force $tmp.FullName }
 }
 
+Test 'Get-FileManifestEntries: computes SHA-256 and size' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        # SHA-256 of 'hello world' (no trailing newline):
+        # b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
+        $bytes = [System.Text.Encoding]::ASCII.GetBytes('hello world')
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/a.txt", $bytes)
+        $entries = @(Get-FileManifestEntries -RepoRoot $tmp.FullName -RelativePaths @('a.txt'))
+        AssertEqual 1 $entries.Count
+        AssertEqual 'a.txt'                                                              $entries[0].path
+        AssertEqual 11                                                                   $entries[0].size
+        AssertEqual 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'   $entries[0].sha256
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Get-FileManifestEntries: handles multiple files in input order' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/b.txt", [byte[]](98))
+        [System.IO.File]::WriteAllBytes("$($tmp.FullName)/a.txt", [byte[]](97))
+        $entries = @(Get-FileManifestEntries -RepoRoot $tmp.FullName -RelativePaths @('b.txt','a.txt'))
+        AssertEqual 'b.txt' $entries[0].path
+        AssertEqual 'a.txt' $entries[1].path
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {

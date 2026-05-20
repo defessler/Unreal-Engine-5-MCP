@@ -63,7 +63,18 @@ function Get-FileManifestEntries {
         [Parameter(Mandatory)] [string]   $RepoRoot,
         [Parameter(Mandatory)] [string[]] $RelativePaths
     )
-    throw 'not implemented'
+
+    $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+    foreach ($rel in $RelativePaths) {
+        $abs  = Join-Path $RepoRoot $rel
+        $info = Get-Item -LiteralPath $abs
+        $hash = (Get-FileHash -LiteralPath $abs -Algorithm SHA256).Hash.ToLowerInvariant()
+        [pscustomobject][ordered]@{
+            path   = $rel.Replace('\','/')
+            size   = [int64]$info.Length
+            sha256 = $hash
+        }
+    }
 }
 
 function Build-Manifest {
