@@ -1,12 +1,30 @@
 #include "tools/ToolRegistry.h"
 
+#include "tools/ToolAnnotations.h"
 #include "tools/ToolCategories.h"
 
 #include <algorithm>
 
 namespace bpr::tools {
 
+nlohmann::json ToolAnnotations::ToJson() const {
+	nlohmann::json obj = nlohmann::json::object();
+	if (read_only_hint.has_value())   obj["readOnlyHint"]   = *read_only_hint;
+	if (destructive_hint.has_value()) obj["destructiveHint"] = *destructive_hint;
+	if (idempotent_hint.has_value())  obj["idempotentHint"]  = *idempotent_hint;
+	if (open_world_hint.has_value())  obj["openWorldHint"]   = *open_world_hint;
+	return obj;
+}
+
 void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
+	// Auto-classify: if the caller didn't set annotations explicitly,
+	// look up the canonical hints by tool name. Keeps the 100+ existing
+	// registration sites untouched while still emitting readOnlyHint /
+	// destructiveHint etc. on tools/list. Unknown names get nothing
+	// (the lookup returns an all-nullopt ToolAnnotations).
+	if (!desc.annotations.IsSet()) {
+		desc.annotations = AnnotationsFor(desc.name);
+	}
 	// Replace-in-place semantics: if a tool with this name was registered
 	// before, overwrite both the descriptor and the function. Without this,
 	// re-registering the same tool name appended a duplicate descriptor and
@@ -34,11 +52,17 @@ nlohmann::json ToolRegistry::ListSpec() const {
 		{
 			continue;
 		}
-		arr.push_back({
+		nlohmann::json entry = {
 			{"name", d.name},
 			{"description", d.description},
 			{"inputSchema", d.input_schema},
-		});
+		};
+		// MCP 2025-03-26 §tools/annotations. Only emit when at least
+		// one hint is set so clients on older specs don't see noise.
+		if (d.annotations.IsSet()) {
+			entry["annotations"] = d.annotations.ToJson();
+		}
+		arr.push_back(std::move(entry));
 	}
 	return arr;
 }
