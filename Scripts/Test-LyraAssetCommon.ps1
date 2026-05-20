@@ -43,6 +43,54 @@ function AssertThrows ([scriptblock] $Body, [string] $MatchPattern = '') {
 
 # --- TESTS GO HERE (added in subsequent tasks) ---
 
+Test 'Get-LyraAssetPaths: returns array of strings' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content/Foo" -Force | Out-Null
+        Set-Content -Path "$($tmp.FullName)/Content/Foo/Bar.uasset" -Value 'x'
+        $paths = @(Get-LyraAssetPaths -RepoRoot $tmp.FullName)
+        AssertTrue ($paths -contains 'Content/Foo/Bar.uasset') "expected Content/Foo/Bar.uasset, got: $($paths -join ', ')"
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Get-LyraAssetPaths: excludes BP_TestEnemy and BP_TestPickup' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content/AI" -Force | Out-Null
+        Set-Content -Path "$($tmp.FullName)/Content/AI/BP_TestEnemy.uasset"  -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/AI/BP_TestPickup.uasset" -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/AI/BP_OtherLyra.uasset"  -Value 'x'
+        $paths = @(Get-LyraAssetPaths -RepoRoot $tmp.FullName)
+        AssertTrue ($paths -notcontains 'Content/AI/BP_TestEnemy.uasset')  'should exclude BP_TestEnemy'
+        AssertTrue ($paths -notcontains 'Content/AI/BP_TestPickup.uasset') 'should exclude BP_TestPickup'
+        AssertTrue ($paths -contains    'Content/AI/BP_OtherLyra.uasset')  'should include other Lyra BPs'
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Get-LyraAssetPaths: ignores non-asset extensions' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        New-Item -ItemType Directory -Path "$($tmp.FullName)/Content" -Force | Out-Null
+        Set-Content -Path "$($tmp.FullName)/Content/A.uasset" -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/B.umap"   -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/C.txt"    -Value 'x'
+        Set-Content -Path "$($tmp.FullName)/Content/D.cpp"    -Value 'x'
+        $paths = @(Get-LyraAssetPaths -RepoRoot $tmp.FullName) | Sort-Object
+        AssertEqual @('Content/A.uasset', 'Content/B.umap') $paths
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
+Test 'Get-LyraAssetPaths: walks plugin Content/ dirs' {
+    $tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lyra-test-$([guid]::NewGuid())") -Force
+    try {
+        $p = "$($tmp.FullName)/Plugins/GameFeatures/ShooterCore/Content"
+        New-Item -ItemType Directory -Path $p -Force | Out-Null
+        Set-Content -Path "$p/Pawn.uasset" -Value 'x'
+        $paths = @(Get-LyraAssetPaths -RepoRoot $tmp.FullName)
+        AssertTrue ($paths -contains 'Plugins/GameFeatures/ShooterCore/Content/Pawn.uasset') "got: $($paths -join ', ')"
+    } finally { Remove-Item -Recurse -Force $tmp.FullName }
+}
+
 # --- RUN ---
 
 foreach ($t in $script:Tests) {
