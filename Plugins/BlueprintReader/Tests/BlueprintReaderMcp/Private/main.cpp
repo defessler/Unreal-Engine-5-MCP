@@ -298,16 +298,18 @@ int RunServerLoop() {
 	// single daemon over TCP via SocketBlueprintReader — see
 	// feat/multi-session-shared-daemon.
 
-	std::cerr << fmt::format(
-		"[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} "
-		"timeout={}s startupTimeout={}s daemon={} prewarm={} editorConfig={} editorArgs=\"{}\"\n",
-		cfg.backend, cfg.fixturesDir.string(),
-		cfg.engineDir.string(), cfg.uproject.string(),
-		cfg.timeoutSeconds, cfg.startupTimeoutSeconds,
-		cfg.useDaemon ? "true" : "false",
-		cfg.prewarm   ? "true" : "false",
-		cfg.editorConfig.empty() ? "Development" : cfg.editorConfig,
-		cfg.editorExtraArgs);
+	if (env::VerboseLoggingEnabled()) {
+		std::cerr << fmt::format(
+			"[bp-reader-mcp] starting; backend={} fixtures={} engineDir={} uproject={} "
+			"timeout={}s startupTimeout={}s daemon={} prewarm={} editorConfig={} editorArgs=\"{}\"\n",
+			cfg.backend, cfg.fixturesDir.string(),
+			cfg.engineDir.string(), cfg.uproject.string(),
+			cfg.timeoutSeconds, cfg.startupTimeoutSeconds,
+			cfg.useDaemon ? "true" : "false",
+			cfg.prewarm   ? "true" : "false",
+			cfg.editorConfig.empty() ? "Development" : cfg.editorConfig,
+			cfg.editorExtraArgs);
+	}
 
 	// Run setup checks BEFORE we attempt to spin up the daemon. Any
 	// findings get logged immediately so users see the actionable hint
@@ -327,8 +329,10 @@ int RunServerLoop() {
 	}
 
 	if (auto* mock = dynamic_cast<backends::MockBlueprintReader*>(reader.get())) {
-		std::cerr << fmt::format("[bp-reader-mcp] loaded {} fixture(s)\n",
-								 mock->FixtureCount());
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << fmt::format("[bp-reader-mcp] loaded {} fixture(s)\n",
+									 mock->FixtureCount());
+		}
 	}
 
 	tools::ToolRegistry registry;
@@ -381,7 +385,7 @@ int RunServerLoop() {
 	}
 	const size_t before = registry.Size();
 	registry.ApplyFilter(allowSpec, denySpec);
-	if (!allowSpec.empty() || !denySpec.empty()) {
+	if ((!allowSpec.empty() || !denySpec.empty()) && env::VerboseLoggingEnabled()) {
 		std::cerr << "[bp-reader-mcp] tool filter: kept "
 				  << registry.Size() << " of " << before
 				  << " tools";
@@ -405,11 +409,13 @@ int RunServerLoop() {
 		// Clear the list-changed flag set by ActivateToken — there's no
 		// client connected yet to receive a notification.
 		registry.TakeListChangedFlag();
-		std::cerr << "[bp-reader-mcp] progressive disclosure: enabled. "
-				  << "Initial active set is " << registry.Size()
-				  << " tools (of " << registry.TotalRegistered()
-				  << " registered). Agent can widen via "
-					 "`enable_tool_category(<name>)`.\n";
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] progressive disclosure: enabled. "
+					  << "Initial active set is " << registry.Size()
+					  << " tools (of " << registry.TotalRegistered()
+					  << " registered). Agent can widen via "
+						 "`enable_tool_category(<name>)`.\n";
+		}
 	}
 
 	jsonrpc::Server server;
@@ -417,7 +423,9 @@ int RunServerLoop() {
 	mcp::RegisterHandlers(server, registry, info);
 
 	server.Run(std::cin, std::cout, std::cerr);
-	std::cerr << "[bp-reader-mcp] stdin closed; exiting\n";
+	if (env::VerboseLoggingEnabled()) {
+		std::cerr << "[bp-reader-mcp] stdin closed; exiting\n";
+	}
 	return 0;
 }
 

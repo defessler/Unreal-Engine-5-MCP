@@ -24,6 +24,17 @@ bool BoolOrDefault(const char* key, bool fallback, std::ostream& log);
 // Read an int env var, falling back on parse error.
 int IntOrDefault(const char* key, int fallback);
 
+// Whether info-level [bp-reader-mcp] log lines should be emitted to
+// stderr. Off by default — turn on with BP_READER_VERBOSE=1 (or
+// true/yes/on) when triaging. Warnings and errors ignore this gate;
+// only purely informational lines (auto-discovery hits, per-call
+// timing telemetry, startup banners) consult it.
+//
+// Cached on first call: the env var isn't expected to change at
+// runtime, and gating the per-tool-call telemetry on every invocation
+// shouldn't pay an env-var lookup.
+bool VerboseLoggingEnabled();
+
 // ---------------------------------------------------------------------------
 // Auto-discovery
 // ---------------------------------------------------------------------------

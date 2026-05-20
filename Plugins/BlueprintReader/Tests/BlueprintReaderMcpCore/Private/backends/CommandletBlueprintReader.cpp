@@ -1,5 +1,6 @@
 #include "backends/CommandletBlueprintReader.h"
 
+#include "Env.h"
 #include "backends/CommandletArgEncoding.h"
 
 #include <chrono>
@@ -688,10 +689,12 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now() - t0).count();
 
-	std::fprintf(stderr,
-				 "[bp-reader-mcp][commandlet] op-args=%zu exit=%lu timed_out=%d duration=%lldms\n",
-				 opArgs.size(), static_cast<unsigned long>(r.exitCode),
-				 r.timedOut ? 1 : 0, static_cast<long long>(dt));
+	if (env::VerboseLoggingEnabled()) {
+		std::fprintf(stderr,
+					 "[bp-reader-mcp][commandlet] op-args=%zu exit=%lu timed_out=%d duration=%lldms\n",
+					 opArgs.size(), static_cast<unsigned long>(r.exitCode),
+					 r.timedOut ? 1 : 0, static_cast<long long>(dt));
+	}
 
 	auto cleanup = [&]() {
 		std::error_code ec;
@@ -1005,8 +1008,10 @@ void CommandletBlueprintReader::Prewarm() {
 			// hitting EnsureDaemonAttached concurrently will block on
 			// the same mutex and find a hot socket once we're done.
 			(void)EnsureDaemonAttached();
-			std::fprintf(stderr,
-				"[bp-reader-mcp][commandlet][daemon] prewarm complete\n");
+			if (env::VerboseLoggingEnabled()) {
+				std::fprintf(stderr,
+					"[bp-reader-mcp][commandlet][daemon] prewarm complete\n");
+			}
 		} catch (const std::exception& e) {
 			// Swallow: the next real tool call will retry under its own
 			// lock. Logging only — never let the prewarm thread crash main.
@@ -1075,12 +1080,14 @@ void CommandletBlueprintReader::SpawnDaemon() {
 	CloseHandle(pi.hThread);
 	daemonProcess_ = pi.hProcess;
 
-	std::fprintf(stderr,
-		"[bp-reader-mcp][commandlet][daemon] spawned UnrealEditor-Cmd "
-		"(pid=%lu); waiting for handshake at "
-		"<Project>/Saved/bp-reader-cmdlet.json (timeout=%llds)\n",
-		static_cast<unsigned long>(pi.dwProcessId),
-		static_cast<long long>(cfg_.startupTimeout.count()));
+	if (env::VerboseLoggingEnabled()) {
+		std::fprintf(stderr,
+			"[bp-reader-mcp][commandlet][daemon] spawned UnrealEditor-Cmd "
+			"(pid=%lu); waiting for handshake at "
+			"<Project>/Saved/bp-reader-cmdlet.json (timeout=%llds)\n",
+			static_cast<unsigned long>(pi.dwProcessId),
+			static_cast<long long>(cfg_.startupTimeout.count()));
+	}
 }
 
 #else    // !_WIN32

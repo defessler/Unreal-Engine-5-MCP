@@ -86,6 +86,25 @@ int IntOrDefault(const char* key, int fallback) {
 	}
 }
 
+bool VerboseLoggingEnabled() {
+	// Cached on first call. Read directly (don't reuse BoolOrDefault)
+	// because BoolOrDefault writes to an ostream, and we don't have one
+	// — plus this is supposed to stay silent unless explicitly enabled.
+	static const bool kEnabled = [] {
+		auto v = Get("BP_READER_VERBOSE");
+		if (!v) {
+			return false;
+		}
+		std::string lower;
+		lower.reserve(v->size());
+		for (char c : *v) {
+			lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+		}
+		return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+	}();
+	return kEnabled;
+}
+
 // ---------------------------------------------------------------------------
 // Auto-discovery
 // ---------------------------------------------------------------------------

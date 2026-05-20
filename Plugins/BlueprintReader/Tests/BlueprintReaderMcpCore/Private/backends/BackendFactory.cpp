@@ -147,8 +147,10 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 		std::filesystem::path searchStart = pluginDir.parent_path();  // Plugins/
 		if (auto found = env::FindUprojectAbove(searchStart)) {
 			cfg.uproject = *found;
-			log << "[bp-reader-mcp] auto-discovered project: "
-				<< cfg.uproject.string() << "\n";
+			if (env::VerboseLoggingEnabled()) {
+				log << "[bp-reader-mcp] auto-discovered project: "
+					<< cfg.uproject.string() << "\n";
+			}
 		}
 	}
 
@@ -156,9 +158,11 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 		if (auto assoc = env::ReadEngineAssociation(cfg.uproject)) {
 			if (auto root = env::ResolveEngineFromRegistry(*assoc)) {
 				cfg.engineDir = *root;
-				log << "[bp-reader-mcp] auto-discovered engine: "
-					<< cfg.engineDir.string() << " (from EngineAssociation="
-					<< *assoc << ")\n";
+				if (env::VerboseLoggingEnabled()) {
+					log << "[bp-reader-mcp] auto-discovered engine: "
+						<< cfg.engineDir.string() << " (from EngineAssociation="
+						<< *assoc << ")\n";
+				}
 			} else {
 				log << "[bp-reader-mcp] warning: .uproject EngineAssociation='"
 					<< *assoc << "' not found in HKCU\\SOFTWARE\\Epic Games\\"
@@ -174,7 +178,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 			cfg.editorConfig = *detected;
 			// Only emit a log line if it's a non-default config — Development
 			// is the implicit default and worth less log noise.
-			if (cfg.editorConfig != "Development") {
+			if (cfg.editorConfig != "Development" && env::VerboseLoggingEnabled()) {
 				log << "[bp-reader-mcp] auto-detected editor config: "
 					<< cfg.editorConfig
 					<< " (matched plugin DLL suffix; override with "
@@ -199,9 +203,11 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 		{
 			cfg.liveToken = hf->token;
 		}
-		log << "[bp-reader-mcp] discovered live editor on "
-			<< cfg.liveHost << ":" << cfg.liveProcPort
-			<< " (pid=" << hf->pid << ")\n";
+		if (env::VerboseLoggingEnabled()) {
+			log << "[bp-reader-mcp] discovered live editor on "
+				<< cfg.liveHost << ":" << cfg.liveProcPort
+				<< " (pid=" << hf->pid << ")\n";
+		}
 	}
 
 	// Backend default — if we found a uproject, default to `auto` so
