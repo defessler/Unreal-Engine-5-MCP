@@ -1,0 +1,5 @@
+regex:^Content/(?!AI/BP_TestEnemy\.uasset$|AI/BP_TestPickup\.uasset$).*\.(uasset|umap)$
+regex:^Plugins/LyraExampleContent/Content/.*
+regex:^Plugins/LyraExtTool/Content/.*
+regex:^Plugins/PocketWorlds/Content/.*
+regex:^Plugins/GameFeatures/(ShooterCore|ShooterTests|TopDownArena|ShooterMaps|ShooterExplorer)/Content/.*
