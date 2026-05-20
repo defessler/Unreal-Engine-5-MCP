@@ -22,6 +22,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -30,10 +31,49 @@
 
 namespace bpr::tools {
 
+// Per MCP 2025-03-26 §tools/annotations. Hints, not guarantees — a
+// well-behaved client uses these to filter the tool surface (Copilot's
+// "read-only tools only" toggle, Claude Code's permission UI) but
+// MUST NOT rely on them for security decisions if the server is
+// untrusted.
+//
+// All four fields use std::optional<bool> so we can distinguish
+// "not set" from "explicitly false". An emitted annotations object
+// omits any field still in the nullopt state — clients then fall
+// back to the spec defaults (readOnlyHint=false, destructiveHint=true,
+// idempotentHint=false, openWorldHint=true). Because the destructive
+// + openWorld defaults are TRUE, we explicitly set =false on tools
+// that are non-destructive or closed-world so a Copilot user filtering
+// by destructive doesn't see every non-delete write tool flagged.
+struct ToolAnnotations {
+	std::optional<bool> read_only_hint;
+	std::optional<bool> destructive_hint;
+	std::optional<bool> idempotent_hint;
+	std::optional<bool> open_world_hint;
+
+	// True when at least one hint has been assigned (used by Add() to
+	// decide whether to apply the auto-classification table).
+	bool IsSet() const {
+		return read_only_hint.has_value() || destructive_hint.has_value() ||
+			   idempotent_hint.has_value() || open_world_hint.has_value();
+	}
+
+	// Render to the JSON shape advertised on tools/list. Returns an
+	// empty object when IsSet() is false; the caller can drop those
+	// from the descriptor entirely.
+	nlohmann::json ToJson() const;
+};
+
 struct ToolDescriptor {
 	std::string name;
 	std::string description;
 	nlohmann::json input_schema;   // JSON Schema object
+	// Optional. If left in the default (all-nullopt) state at Add()
+	// time, ToolRegistry consults the canonical AnnotationsFor() table
+	// in ToolAnnotations.cpp and populates this — so the 100+ existing
+	// registration sites don't need touching. Explicit values on the
+	// descriptor take precedence (no override).
+	ToolAnnotations annotations;
 };
 
 // Tool handlers receive the `arguments` map from the tools/call request and
