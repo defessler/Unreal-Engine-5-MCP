@@ -439,6 +439,18 @@ nlohmann::json CachingBlueprintReader::StructuralDiff(
 	return inner_->StructuralDiff(a, b, opts);
 }
 
+// ----- Asset-registry queries (pass-through) -----------------------------
+
+IBlueprintReader::AssetRegistryListResult
+CachingBlueprintReader::ListAssets(std::string_view path, bool recursive) {
+	return inner_->ListAssets(path, recursive);
+}
+
+IBlueprintReader::AssetRegistryListResult
+CachingBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
+	return inner_->FindAsset(query, path);
+}
+
 // ----- Project + Content Browser ops (pass-through with invalidation) ----
 
 IBlueprintReader::ProjectMetadata

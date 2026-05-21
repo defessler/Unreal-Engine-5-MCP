@@ -101,7 +101,11 @@ public class BlueprintReaderEditor : ModuleRules
 			// UEditorAssetLibrary (Duplicate/Save/DoesAssetExist) — used by
 			// the BPRoundtripSeed commandlet to import the engine's
 			// ThirdPerson template into /Game/Imported/ThirdPerson/.
-			"EditorScriptingUtilities"
+			"EditorScriptingUtilities",
+			// UDeveloperSettings for the Project Settings → BlueprintReader
+			// MCP page (port, autostart, allow/blocklist patterns, tool
+			// search toggle). Persists to EditorPerProjectUserSettings.ini.
+			"DeveloperSettings"
 		});
 	}
 }

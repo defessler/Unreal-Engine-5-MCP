@@ -430,15 +430,24 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 		const std::string assetPath = ExtractFlag(args, "-Asset=");
 		const auto* info = LookupErrorCode(code);
 		const std::string name = info ? info->name : "UnknownCode";
-		std::string msg;
-		if (info) {
-			msg = fmt::format("{} (code={}): {}", name, code, info->description);
-		} else {
-			msg = fmt::format("UnknownCode (code={}): the editor returned a code "
-							  "this server doesn't have a translation for — see "
-							  "the engine log for context",
-							  code);
+		// Prefer an editor-provided "error" field inside the json body —
+		// the editor knows what actually went wrong (e.g. "asset is a
+		// Blueprint, not a StateTree") with more context than the static
+		// LookupErrorCode description. Fall back to the canned description
+		// when the editor didn't include one.
+		std::string innerError;
+		if (auto jit = j.find("json"); jit != j.end() && jit->is_object()) {
+			if (auto eit = jit->find("error"); eit != jit->end() && eit->is_string()) {
+				innerError = eit->get<std::string>();
+			}
 		}
+		const std::string description = innerError.empty()
+			? (info ? std::string(info->description)
+					: std::string("the editor returned a code "
+								  "this server doesn't have a translation for — "
+								  "see the engine log for context"))
+			: innerError;
+		std::string msg = fmt::format("{} (code={}): {}", name, code, description);
 		if (!assetPath.empty()) {
 			msg = fmt::format("{} [asset={}, op={}]", msg, assetPath, opName);
 		} else {
@@ -893,23 +902,106 @@ nlohmann::json SocketBlueprintReader::StructuralDiff(
 	return RunOp(args);
 }
 
+namespace {
+IBlueprintReader::AssetRegistryListResult
+ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {
+	IBlueprintReader::AssetRegistryListResult out;
+	if (!j.is_object()) {
+		return out;
+	}
+	auto it = j.find(arrayKey);
+	if (it == j.end() || !it->is_array()) {
+		return out;
+	}
+	out.entries.reserve(it->size());
+	for (const auto& row : *it) {
+		if (!row.is_object()) continue;
+		IBlueprintReader::AssetRegistryEntry e;
+		e.assetPath = row.value("asset_path", std::string{});
+		e.name      = row.value("name",       std::string{});
+		e.className = row.value("class_name", std::string{});
+		out.entries.push_back(std::move(e));
+	}
+	return out;
+}
+}    // namespace
+
+IBlueprintReader::AssetRegistryListResult
+SocketBlueprintReader::ListAssets(std::string_view path, bool recursive) {
+	std::vector<std::string> args = {"-Op=ListAssets"};
+	if (!path.empty()) {
+		args.push_back("-Path=" + std::string(path));
+	}
+	if (!recursive) {
+		args.push_back("-NonRecursive");
+	}
+	return ParseAssetRegistryRows(RunOp(args), "assets");
+}
+
+IBlueprintReader::AssetRegistryListResult
+SocketBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
+	std::vector<std::string> args = {
+		"-Op=FindAsset",
+		"-Query=" + std::string(query),
+	};
+	if (!path.empty()) {
+		args.push_back("-Path=" + std::string(path));
+	}
+	return ParseAssetRegistryRows(RunOp(args), "matches");
+}
+
 // ----- batch sentinels ---------------------------------------------------
 // ----- Project + Content Browser ops ---------------------------------
 
 IBlueprintReader::ProjectMetadata
 SocketBlueprintReader::GetProjectMetadata() {
-	auto j = RunOp({"-Op=GetProjectMetadata"});
+	// Project metadata is a pure local file read — same data flow as
+	// CommandletBlueprintReader::GetProjectMetadata. Going over the
+	// wire returns code=1 because the editor side doesn't implement a
+	// `-Op=GetProjectMetadata` handler (see BlueprintReaderCommandlet.cpp
+	// — it would be redundant: GEditor knows the project path, but the
+	// MCP server's cfg already knows it via Config.projectPath, so we
+	// skip the round-trip entirely).
 	ProjectMetadata out;
-	if (j.is_object()) {
-		out.projectName       = j.value("project_name",       std::string{});
-		out.projectPath       = j.value("project_path",       std::string{});
-		out.engineAssociation = j.value("engine_association", std::string{});
-		out.category          = j.value("category",           std::string{});
-		out.description       = j.value("description",        std::string{});
-		if (auto it = j.find("raw"); it != j.end())
-		{
-			out.raw = *it;
-		}
+	if (cfg_.projectPath.empty()) {
+		// Caller never wired projectPath into Config — fall back to
+		// throwing the same shape CommandletBlueprintReader does so
+		// the MCP tool layer surfaces a coherent error.
+		throw BlueprintReaderError(
+			"GetProjectMetadata: SocketBlueprintReader has no projectPath "
+			"configured. Set BP_READER_PROJECT in the MCP server env, "
+			"or use the auto backend (which auto-discovers it).");
+	}
+	out.projectPath = cfg_.projectPath;
+	// Derive name from filename stem (everything after the last / or \
+	// up to the final '.', mirroring std::filesystem::path::stem()).
+	{
+		const auto& p = out.projectPath;
+		auto lastSlash = p.find_last_of("/\\");
+		auto stemStart = (lastSlash == std::string::npos) ? 0 : lastSlash + 1;
+		auto lastDot = p.find_last_of('.');
+		auto stemEnd = (lastDot != std::string::npos && lastDot > stemStart)
+			? lastDot : p.size();
+		out.projectName = p.substr(stemStart, stemEnd - stemStart);
+	}
+	std::ifstream f(out.projectPath);
+	if (!f) {
+		throw BlueprintReaderError(fmt::format(
+			"GetProjectMetadata: cannot read {}", out.projectPath));
+	}
+	std::stringstream ss;
+	ss << f.rdbuf();
+	try {
+		out.raw = nlohmann::json::parse(ss.str());
+	} catch (const std::exception& e) {
+		throw BlueprintReaderError(fmt::format(
+			"GetProjectMetadata: {} is not valid JSON ({})",
+			out.projectPath, e.what()));
+	}
+	if (out.raw.is_object()) {
+		out.engineAssociation = out.raw.value("EngineAssociation", std::string{});
+		out.category          = out.raw.value("Category",          std::string{});
+		out.description       = out.raw.value("Description",       std::string{});
 	}
 	return out;
 }
@@ -2155,17 +2247,19 @@ SocketBlueprintReader::IntrospectClass(std::string_view className) {
 	if (auto it = j.find("properties"); it != j.end() && it->is_array()) {
 		for (const auto& p : *it) {
 			ClassPropertyInfo cp;
-			cp.name     = p.value("name",     std::string{});
-			cp.typeName = p.value("type",     std::string{});
-			cp.category = p.value("category", std::string{});
+			cp.name       = p.value("name",        std::string{});
+			cp.typeName   = p.value("type",        std::string{});
+			cp.category   = p.value("category",    std::string{});
+			cp.declaredOn = p.value("declared_on", std::string{});
 			out.properties.push_back(std::move(cp));
 		}
 	}
 	if (auto it = j.find("functions"); it != j.end() && it->is_array()) {
 		for (const auto& f : *it) {
 			ClassFunctionInfo cf;
-			cf.name     = f.value("name",  std::string{});
-			cf.flagsCsv = f.value("flags", std::string{});
+			cf.name       = f.value("name",        std::string{});
+			cf.flagsCsv   = f.value("flags",       std::string{});
+			cf.declaredOn = f.value("declared_on", std::string{});
 			out.functions.push_back(std::move(cf));
 		}
 	}

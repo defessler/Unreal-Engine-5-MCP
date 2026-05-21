@@ -341,6 +341,8 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
 		if (!formatLocked) {
 			clientFormat = thisFormat;
 			formatLocked = true;
+			// One-shot per session — not info-gated. Always useful to know
+			// which framing the client picked, and tests assert this surfaces.
 			log << "[bp-reader-mcp] framing="
 				<< (clientFormat == FrameFormat::NewlineDelimited ? "newline-delimited"
 																  : "content-length")

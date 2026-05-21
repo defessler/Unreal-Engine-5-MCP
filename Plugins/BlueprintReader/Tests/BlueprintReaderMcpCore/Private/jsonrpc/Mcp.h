@@ -24,7 +24,12 @@ namespace bpr::mcp {
 struct ServerInfo {
     std::string name = "bp-reader-mcp";
     std::string version = "0.1.0";
-    std::string protocolVersion = "2024-11-05"; // MCP spec we target
+    // Latest MCP spec we target by default. Mcp.cpp's initialize handler
+    // performs version negotiation: if the client requests an older known
+    // version (2024-11-05, 2025-03-26, 2025-06-18), the server echoes it
+    // back so older clients keep working. Bump this when adopting a newer
+    // spec's primitives (outputSchema, structuredContent, audience, etc.).
+    std::string protocolVersion = "2025-06-18";
 };
 
 // Registers the MCP method handlers against `server`, wiring them to

@@ -781,6 +781,9 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 	// can self-refresh on connect-refused / auth-fail (issue #9 pattern
 	// — daemon restart with a new port or token).
 	sc.handshakeFilePath = hsPath.string();
+	if (!cfg_.uproject.empty()) {
+		sc.projectPath = cfg_.uproject.string();
+	}
 	sc.connectTimeout    = std::chrono::seconds(5);
 	sc.opTimeout         = cfg_.timeout;
 
@@ -1554,6 +1557,54 @@ nlohmann::json CommandletBlueprintReader::StructuralDiff(
 		args.push_back(L"-IgnoreCommentNodes");
 	}
 	return RunOp(args);
+}
+
+namespace {
+IBlueprintReader::AssetRegistryListResult
+ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {
+	IBlueprintReader::AssetRegistryListResult out;
+	if (!j.is_object()) {
+		return out;
+	}
+	auto it = j.find(arrayKey);
+	if (it == j.end() || !it->is_array()) {
+		return out;
+	}
+	out.entries.reserve(it->size());
+	for (const auto& row : *it) {
+		if (!row.is_object()) continue;
+		IBlueprintReader::AssetRegistryEntry e;
+		e.assetPath = row.value("asset_path", std::string{});
+		e.name      = row.value("name",       std::string{});
+		e.className = row.value("class_name", std::string{});
+		out.entries.push_back(std::move(e));
+	}
+	return out;
+}
+}    // namespace
+
+IBlueprintReader::AssetRegistryListResult
+CommandletBlueprintReader::ListAssets(std::string_view path, bool recursive) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=ListAssets");
+	if (!path.empty()) {
+		args.push_back(L"-Path=" + Widen(path));
+	}
+	if (!recursive) {
+		args.push_back(L"-NonRecursive");
+	}
+	return ParseAssetRegistryRows(RunOp(args), "assets");
+}
+
+IBlueprintReader::AssetRegistryListResult
+CommandletBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=FindAsset");
+	args.push_back(L"-Query=" + Widen(query));
+	if (!path.empty()) {
+		args.push_back(L"-Path=" + Widen(path));
+	}
+	return ParseAssetRegistryRows(RunOp(args), "matches");
 }
 
 // ----- Project + Content Browser ops -------------------------------------
@@ -2477,17 +2528,19 @@ CommandletBlueprintReader::IntrospectClass(std::string_view className) {
 	if (auto it = j.find("properties"); it != j.end() && it->is_array()) {
 		for (const auto& p : *it) {
 			ClassPropertyInfo cp;
-			cp.name     = p.value("name",     std::string{});
-			cp.typeName = p.value("type",     std::string{});
-			cp.category = p.value("category", std::string{});
+			cp.name       = p.value("name",        std::string{});
+			cp.typeName   = p.value("type",        std::string{});
+			cp.category   = p.value("category",    std::string{});
+			cp.declaredOn = p.value("declared_on", std::string{});
 			out.properties.push_back(std::move(cp));
 		}
 	}
 	if (auto it = j.find("functions"); it != j.end() && it->is_array()) {
 		for (const auto& f : *it) {
 			ClassFunctionInfo cf;
-			cf.name     = f.value("name",  std::string{});
-			cf.flagsCsv = f.value("flags", std::string{});
+			cf.name       = f.value("name",        std::string{});
+			cf.flagsCsv   = f.value("flags",       std::string{});
+			cf.declaredOn = f.value("declared_on", std::string{});
 			out.functions.push_back(std::move(cf));
 		}
 	}

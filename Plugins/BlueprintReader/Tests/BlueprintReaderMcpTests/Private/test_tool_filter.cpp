@@ -9,6 +9,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <regex>
+
 using namespace bpr::tools;
 
 namespace test_tool_filter_detail {
@@ -42,6 +44,40 @@ TEST_CASE("ApplyFilter: empty allow + empty deny is a no-op") {
 	REQUIRE(CountSpec(r) == 3);
 	r.ApplyFilter({}, {});
 	CHECK(CountSpec(r) == 3);
+}
+
+TEST_CASE("ApplyFilter: regex-delimited tokens match against tool names") {
+	auto r = MakeWith({"read_blueprint", "list_blueprints", "add_node",
+					   "delete_node", "wire_pins"});
+	r.ApplyFilter({"/^.*_node$/"}, {});  // tools ending in "_node"
+	CHECK(CountSpec(r) == 2);
+	CHECK(r.Find("add_node") != nullptr);
+	CHECK(r.Find("delete_node") != nullptr);
+	CHECK(r.Find("read_blueprint") == nullptr);
+}
+
+TEST_CASE("ApplyFilter: regex deny subtracts after the allow step") {
+	auto r = MakeWith({"read_blueprint", "list_blueprints", "add_node",
+					   "delete_node", "wire_pins"});
+	// Allow everything, deny anything containing "node".
+	r.ApplyFilter({"all"}, {"/node/"});
+	CHECK(r.Find("read_blueprint") != nullptr);
+	CHECK(r.Find("list_blueprints") != nullptr);
+	CHECK(r.Find("wire_pins") != nullptr);
+	CHECK(r.Find("add_node") == nullptr);
+	CHECK(r.Find("delete_node") == nullptr);
+}
+
+TEST_CASE("ApplyFilter: regex matches anywhere in the name (substring semantics)") {
+	auto r = MakeWith({"read_blueprint", "list_blueprints", "compile_function"});
+	r.ApplyFilter({"/blueprint/"}, {});  // matches both BP names
+	CHECK(CountSpec(r) == 2);
+	CHECK(r.Find("compile_function") == nullptr);
+}
+
+TEST_CASE("ApplyFilter: malformed regex token throws at startup") {
+	auto r = MakeWith({"a", "b"});
+	CHECK_THROWS_AS(r.ApplyFilter({"/[/"}, {}), std::regex_error);
 }
 
 TEST_CASE("ApplyFilter: allow-list with literal names keeps only those") {

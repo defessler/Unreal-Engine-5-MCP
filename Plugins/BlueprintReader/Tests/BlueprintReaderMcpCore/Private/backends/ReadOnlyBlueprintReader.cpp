@@ -152,6 +152,18 @@ nlohmann::json ReadOnlyBlueprintReader::ShutdownDaemon() {
 	return inner_->ShutdownDaemon();
 }
 
+// ----- Asset-registry queries --------------------------------------------
+
+IBlueprintReader::AssetRegistryListResult
+ReadOnlyBlueprintReader::ListAssets(std::string_view path, bool recursive) {
+	return inner_->ListAssets(path, recursive);
+}
+
+IBlueprintReader::AssetRegistryListResult
+ReadOnlyBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
+	return inner_->FindAsset(query, path);
+}
+
 // ----- Project + Content Browser ops -------------------------------------
 
 IBlueprintReader::ProjectMetadata

@@ -4,6 +4,8 @@
 #include "tools/ToolCategories.h"
 
 #include <algorithm>
+#include <regex>
+#include <stdexcept>
 
 namespace bpr::tools {
 
@@ -16,7 +18,34 @@ nlohmann::json ToolAnnotations::ToJson() const {
 	return obj;
 }
 
+std::string ValidateToolName(const std::string& name) {
+	if (name.empty()) {
+		return "tool name is empty";
+	}
+	if (name.size() > 128) {
+		return "tool name exceeds 128 chars: " + name.substr(0, 32) + "...";
+	}
+	for (char c : name) {
+		const bool ok =
+			(c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '_' || c == '-' || c == '.';
+		if (!ok) {
+			return "tool name contains invalid character: '" + name +
+				"' (allowed: [A-Za-z0-9_.-])";
+		}
+	}
+	return {};
+}
+
 void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
+	if (const std::string err = ValidateToolName(desc.name); !err.empty()) {
+		// Fail loud at registration so we never advertise a name an
+		// MCP client would reject. Per spec the rule is SHOULD, but
+		// strict clients enforce it — better to find typos at startup.
+		throw std::invalid_argument(err);
+	}
 	// Auto-classify: if the caller didn't set annotations explicitly,
 	// look up the canonical hints by tool name. Keeps the 100+ existing
 	// registration sites untouched while still emitting readOnlyHint /
@@ -57,6 +86,11 @@ nlohmann::json ToolRegistry::ListSpec() const {
 			{"description", d.description},
 			{"inputSchema", d.input_schema},
 		};
+		// MCP 2025-06-18 adds `outputSchema` as an optional advertised
+		// field; surface ours when set. Older clients ignore the extra key.
+		if (!d.output_schema.is_null() && !d.output_schema.empty()) {
+			entry["outputSchema"] = d.output_schema;
+		}
 		// MCP 2025-03-26 §tools/annotations. Only emit when at least
 		// one hint is set so clients on older specs don't see noise.
 		if (d.annotations.IsSet()) {
@@ -76,6 +110,11 @@ const ToolFn* ToolRegistry::Find(const std::string& name) const {
 	return (it == fns_.end()) ? nullptr : &it->second;
 }
 
+const ToolFn* ToolRegistry::FindAny(const std::string& name) const {
+	auto it = fns_.find(name);
+	return (it == fns_.end()) ? nullptr : &it->second;
+}
+
 size_t ToolRegistry::Size() const {
 	if (!filterApplied_)
 	{
@@ -85,8 +124,17 @@ size_t ToolRegistry::Size() const {
 }
 
 namespace tool_registry_detail {
-// Expand a list of tokens (tool names + category names + "all") into a
-// set of concrete tool names. Categories are looked up via
+
+// A token wrapped in /.../ delimiters is treated as an ECMAScript regex
+// matched against every registered tool name. Tokens without the
+// delimiters fall back to the legacy meaning: "all", category name, or
+// literal tool name. Per Epic 5.8's FToolset::SetNameFilters precedent.
+bool IsRegexToken(const std::string& tok) {
+	return tok.size() >= 2 && tok.front() == '/' && tok.back() == '/';
+}
+
+// Expand a list of tokens (tool names + category names + "all" + regex)
+// into a set of concrete tool names. Categories are looked up via
 // ToolCategories.cpp; anything else is treated as a literal tool name
 // (no validation here — a typo in the env var silently does nothing,
 // which we surface to the user via the post-filter log line in main).
@@ -102,6 +150,20 @@ void ExpandTokens(const std::vector<std::string>& tokens,
 			for (const auto& d : all)
 			{
 				out.insert(d.name);
+			}
+			continue;
+		}
+		if (IsRegexToken(tok)) {
+			// Strip the /.../ delimiters and compile. Malformed patterns
+			// throw std::regex_error — let it propagate so a typo in the
+			// env var fails loud at startup rather than silently turning
+			// into "no tools matched".
+			const std::string body = tok.substr(1, tok.size() - 2);
+			const std::regex re(body, std::regex::ECMAScript);
+			for (const auto& d : all) {
+				if (std::regex_search(d.name, re)) {
+					out.insert(d.name);
+				}
 			}
 			continue;
 		}

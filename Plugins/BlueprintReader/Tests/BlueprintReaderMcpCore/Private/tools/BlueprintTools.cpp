@@ -181,10 +181,188 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 	ApplyProjection(body, ctl.fields);
 }
 
+// On AssetNotFound, run a fuzzy basename lookup against the asset
+// registry and return a "did you mean: …" suffix. Empty string when
+// no candidates, when the backend can't do FindAsset, or anything
+// throws — we never let the hint computation mask the original error.
+//
+// The matched scope is /Game; we extract the last `/`-separated
+// segment of the requested path and search by substring against
+// asset names + full package paths. Cap at 3 candidates to keep the
+// error message digestible.
+std::string ComputeDidYouMeanHint(backends::IBlueprintReader& reader,
+								  std::string_view assetPath) {
+	if (assetPath.empty()) {
+		return {};
+	}
+	auto slash = assetPath.find_last_of('/');
+	std::string basename = (slash == std::string_view::npos)
+								  ? std::string(assetPath)
+								  : std::string(assetPath.substr(slash + 1));
+	if (basename.empty()) {
+		return {};
+	}
+	try {
+		auto matches = reader.FindAsset(basename, "/Game");
+		if (matches.entries.empty()) {
+			return {};
+		}
+		std::string list;
+		constexpr std::size_t kMax = 3;
+		std::size_t count = 0;
+		for (const auto& e : matches.entries) {
+			if (count >= kMax) {
+				break;
+			}
+			if (!list.empty()) {
+				list += ", ";
+			}
+			list += e.assetPath;
+			++count;
+		}
+		return fmt::format(" — did you mean: {}?", list);
+	} catch (...) {
+		return {};
+	}
+}
+
+// Wrap a reader call that resolves an asset path; on AssetNotFound,
+// run the did-you-mean lookup and rethrow with the hint appended.
+// Pass-through for any other exception type.
+template <typename Fn>
+auto WithAssetNotFoundHint(backends::IBlueprintReader& reader,
+						   std::string_view assetPath,
+						   Fn&& fn) -> decltype(fn()) {
+	try {
+		return fn();
+	} catch (const backends::AssetNotFound& e) {
+		const std::string hint = ComputeDidYouMeanHint(reader, assetPath);
+		if (hint.empty()) {
+			throw;
+		}
+		throw backends::AssetNotFound(std::string(e.what()) + hint);
+	}
+}
+
 }    // namespace blueprint_tools_detail
 using namespace blueprint_tools_detail;
 
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- list_assets -----------------------------------------------------
+	// General-purpose asset enumeration. The list_blueprints / list_materials
+	// / list_widgets typed family answers "give me every X"; list_assets
+	// answers "give me every asset under this path". Asset-registry-backed,
+	// O(1) per asset.
+	{
+		ToolDescriptor d;
+		d.name = "list_assets";
+		d.description =
+			"[assets] List every asset (any UClass) under `path`. Asset-registry-backed; "
+			"O(1) per asset. Use when you don't know the asset's UClass — "
+			"reach for `list_blueprints` / `list_materials` / etc. instead "
+			"when you know the type up front (less to filter on the agent "
+			"side). Returns `[{asset_path, name, class_name}, ...]`.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"path", {{"type", "string"},
+						  {"description", "Content path filter, e.g. /Game/UI. Defaults to /Game."}}},
+				{"recursive", {{"type", "boolean"},
+							   {"description", "Descend into subfolders. Default true."}}},
+				{"limit",  LimitProperty()},
+				{"offset", OffsetProperty()},
+				{"fields", FieldsProperty()},
+			}},
+		};
+		d.output_schema = {
+			{"type", "array"},
+			{"items", {
+				{"type", "object"},
+				{"properties", {
+					{"asset_path", {{"type", "string"}}},
+					{"name",       {{"type", "string"}}},
+					{"class_name", {{"type", "string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","class_name"})},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = OptString(args, "path", "/Game");
+			const bool recursive = args.value("recursive", true);
+			auto ctl = ParseResponseControls(args);
+			auto res = reader.ListAssets(path, recursive);
+			nlohmann::json body = nlohmann::json::array();
+			for (const auto& e : res.entries) {
+				body.push_back({
+					{"asset_path", e.assetPath},
+					{"name",       e.name},
+					{"class_name", e.className},
+				});
+			}
+			ApplyResponseControls(body, ctl);
+			return body;
+		});
+	}
+
+	// ----- find_asset ------------------------------------------------------
+	// Substring-search the asset registry. Pairs with list_assets but
+	// answers a different question — "I'm looking for an asset with X in
+	// its name, anywhere in /Game (or scoped to a subtree)". Returns the
+	// same row shape as list_assets so the agent can pipe one into the
+	// other.
+	{
+		ToolDescriptor d;
+		d.name = "find_asset";
+		d.description =
+			"[assets] Find assets whose name or package path contains `query` (case-insensitive). "
+			"Scoped to `path` (defaults to /Game). Use this instead of "
+			"shelling out to `Get-ChildItem` / `find` — asset registry is "
+			"O(N) once and lives in memory. Returns "
+			"`[{asset_path, name, class_name}, ...]`.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"query", {{"type", "string"},
+						   {"description", "Substring matched (case-insensitive) against the "
+											"asset's short name or full package path."}}},
+				{"path",  {{"type", "string"},
+						   {"description", "Scope path. Defaults to /Game."}}},
+				{"limit", LimitProperty()},
+				{"offset", OffsetProperty()},
+				{"fields", FieldsProperty()},
+			}},
+			{"required", nlohmann::json::array({"query"})},
+		};
+		d.output_schema = {
+			{"type", "array"},
+			{"items", {
+				{"type", "object"},
+				{"properties", {
+					{"asset_path", {{"type", "string"}}},
+					{"name",       {{"type", "string"}}},
+					{"class_name", {{"type", "string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","class_name"})},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string q = RequireString(args, "query");
+			std::string path = OptString(args, "path", "/Game");
+			auto ctl = ParseResponseControls(args);
+			auto res = reader.FindAsset(q, path);
+			nlohmann::json body = nlohmann::json::array();
+			for (const auto& e : res.entries) {
+				body.push_back({
+					{"asset_path", e.assetPath},
+					{"name",       e.name},
+					{"class_name", e.className},
+				});
+			}
+			ApplyResponseControls(body, ctl);
+			return body;
+		});
+	}
+
 	// ----- list_blueprints -------------------------------------------------
 	{
 		ToolDescriptor d;
@@ -204,6 +382,17 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
 				{"fields", FieldsProperty()},
+			}},
+		};
+		d.output_schema = {
+			{"type", "array"},
+			{"items", {
+				{"type", "object"},
+				{"properties", {
+					{"asset_path",   {{"type", "string"}}},
+					{"parent_class", {{"type", "string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path"})},
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
@@ -244,7 +433,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);
-			nlohmann::json body = reader.ReadBlueprint(asset);
+			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
+				return nlohmann::json(reader.ReadBlueprint(asset));
+			});
 			ApplyResponseControls(body, ctl);
 			return body;
 		});
@@ -687,7 +878,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string graph = OptString(args, "graph_name", "EventGraph");
 			const bool summary = args.value("summary", false);
 			auto ctl = ParseResponseControls(args);
-			nlohmann::json body = reader.GetGraph(asset, graph);
+			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
+				return nlohmann::json(reader.GetGraph(asset, graph));
+			});
 			if (summary) {
 				// Drop pin detail from each node + the global connections
 				// array. Node identity (id, kind, title, comment, position)
@@ -747,7 +940,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string graph = OptString(args, "graph_name", "EventGraph");
-			BPGraph g = reader.GetGraph(asset, graph);
+			BPGraph g = WithAssetNotFoundHint(reader, asset, [&] {
+				return reader.GetGraph(asset, graph);
+			});
 			std::map<std::string, int, std::less<>> byKind;
 			for (const auto& n : g.Nodes) {
 				// Prefer meta.kind (the semantic K2-node kind we emit
@@ -810,7 +1005,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			std::string fn = RequireString(args, "function_name");
 			const bool summary = args.value("summary", false);
 			auto ctl = ParseResponseControls(args);
-			nlohmann::json body = reader.GetFunction(asset, fn);
+			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
+				return nlohmann::json(reader.GetFunction(asset, fn));
+			});
 			if (summary) {
 				if (body.contains("graph") && body["graph"].is_object()) {
 					auto& g = body["graph"];
@@ -947,6 +1144,16 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								  {"description","UClass short name or full path. Example: Actor or /Script/Engine.Actor"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","parent_class"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"asset_path",      {{"type","string"}}},
+				{"parent_class",    {{"type","string"}}},
+				{"already_existed", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset  = RequireString(args, "asset_path");
@@ -2329,6 +2536,15 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"dirty_only", {{"type","boolean"},
 								{"description","Default true. Set false to save every loaded package, dirty or not."}}},
 			}},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"saved",     {{"type","integer"}, {"minimum", 0}}},
+				{"failed",    {{"type","array"},   {"items", {{"type","string"}}}}},
+			}},
+			{"required", nlohmann::json::array({"ok","saved"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			bool dirtyOnly = args.value("dirty_only", true);
@@ -4262,34 +4478,79 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.description = "[class info] Inspect a UClass: parent + ancestor chain + every "
 						"UPROPERTY + UFUNCTION. `class_name` is the short "
 						"class name (e.g. `Actor`, `PlayerController`) or a "
-						"full class path.";
+						"full class path.\n\n"
+						"By default, only members **declared on this class** are returned "
+						"— inherited members are filtered out so the response stays small "
+						"(UCharacter alone inherits ~100+ properties from Actor / Pawn / "
+						"UObject). Pass `include_inherited: true` to get the full "
+						"transitive surface; walk the `ancestors` chain with repeat "
+						"`get_class_info` calls when you want layered detail.";
 		d.input_schema = {
 			{"type","object"},
-			{"properties", {{"class_name", {{"type","string"}}}}},
+			{"properties", {
+				{"class_name", {{"type","string"}}},
+				{"include_inherited", {
+					{"type","boolean"},
+					{"description","Include properties and functions inherited from "
+								   "ancestor classes. Default false (own members only) "
+								   "to keep responses focused; set true for the full "
+								   "transitive surface."},
+				}},
+			}},
 			{"required", nlohmann::json::array({"class_name"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string n = RequireString(args, "class_name");
+			const bool includeInherited = args.value("include_inherited", false);
 			auto ci = reader.IntrospectClass(n);
+			// Filter using declared_on. When the plugin payload omits the
+			// field (older backends, mock fixtures) we keep the row — the
+			// alternative is silently dropping everything.
+			auto keep = [&](const std::string& declaredOn) -> bool {
+				if (includeInherited) {
+					return true;
+				}
+				if (declaredOn.empty()) {
+					return true;
+				}
+				return declaredOn == ci.className;
+			};
 			nlohmann::json props = nlohmann::json::array();
 			for (const auto& p : ci.properties) {
-				props.push_back({
+				if (!keep(p.declaredOn)) {
+					continue;
+				}
+				nlohmann::json row = {
 					{"name",     p.name},
 					{"type",     p.typeName},
 					{"category", p.category},
-				});
+				};
+				if (!p.declaredOn.empty()) {
+					row["declared_on"] = p.declaredOn;
+				}
+				props.push_back(std::move(row));
 			}
 			nlohmann::json fns = nlohmann::json::array();
 			for (const auto& f : ci.functions) {
-				fns.push_back({{"name", f.name}, {"flags", f.flagsCsv}});
+				if (!keep(f.declaredOn)) {
+					continue;
+				}
+				nlohmann::json row = {
+					{"name", f.name}, {"flags", f.flagsCsv}
+				};
+				if (!f.declaredOn.empty()) {
+					row["declared_on"] = f.declaredOn;
+				}
+				fns.push_back(std::move(row));
 			}
 			return nlohmann::json{
 				{"ok", true},
-				{"class",      ci.className},
-				{"parent",     ci.parentClass},
-				{"ancestors",  ci.ancestors},
-				{"properties", props},
-				{"functions",  fns},
+				{"class",             ci.className},
+				{"parent",            ci.parentClass},
+				{"ancestors",         ci.ancestors},
+				{"properties",        props},
+				{"functions",         fns},
+				{"include_inherited", includeInherited},
 			};
 		});
 	}
@@ -4421,6 +4682,15 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			{"properties", {{"dest_path", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"dest_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"captured",    {{"type","boolean"}}},
+				{"output_file", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","captured","output_file"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string dest = RequireString(args, "dest_path");
 			auto r = reader.TakeViewportScreenshot(dest);
@@ -4429,6 +4699,126 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"captured",    r.captured},
 				{"output_file", r.outputFile},
 			};
+		});
+	}
+
+	// ----- take_annotated_screenshot --------------------------------------
+	// Captures the viewport + composes structured spatial metadata in one
+	// call: camera transform, selected actors, optional broader editor
+	// state. The image itself is written to disk (same as
+	// take_viewport_screenshot); the *annotation* is the structured
+	// metadata returned alongside the path, giving a vision agent enough
+	// context to reason about what's in frame without separate calls to
+	// get_camera_transform / get_selected_actors / get_editor_state.
+	//
+	// Matches the metadata shape of Epic 5.8's FViewportCapture struct
+	// (camera + grid + labeled_actors) so a future tool revision can fill
+	// in the per-actor screen positions + drawn-overlay image without
+	// changing the wire schema. Today's response always sets
+	// annotation_overlay_rendered=false to signal that the IMAGE is a raw
+	// viewport capture; metadata is informational.
+	{
+		ToolDescriptor d;
+		d.name = "take_annotated_screenshot";
+		d.description =
+			"[editor] Capture the viewport + return structured spatial metadata "
+			"(camera transform, selected actors, optional editor state) so a "
+			"vision-capable agent can reason about scene contents without "
+			"separate `get_*` calls. The image is written to `dest_path` (same "
+			"as take_viewport_screenshot); the annotation data is the structured "
+			"metadata returned alongside. `annotation_overlay_rendered` is false "
+			"in this version — image is a raw capture, future revisions may add "
+			"a projected 3D grid + actor labels drawn into the image itself.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"dest_path", {{"type","string"},
+							   {"description","Output file path for the captured image."}}},
+				{"include_selected_actors", {{"type","boolean"},
+											 {"description","Include selected actor metadata. Default true."}}},
+				{"include_editor_state",    {{"type","boolean"},
+											 {"description","Include editor state (camera, level, PIE status). Default true."}}},
+			}},
+			{"required", nlohmann::json::array({"dest_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"captured",    {{"type","boolean"}}},
+				{"output_file", {{"type","string"}}},
+				{"annotation_overlay_rendered", {{"type","boolean"}}},
+				{"camera", {
+					{"type","object"},
+					{"properties", {
+						{"location", {{"type","array"},{"items",{{"type","number"}}}, {"description","[x,y,z] cm"}}},
+						{"rotation", {{"type","array"},{"items",{{"type","number"}}}, {"description","[pitch,yaw,roll] deg"}}},
+						{"fov",      {{"type","number"}}},
+					}},
+				}},
+				{"selected_actors", {{"type","array"},
+									 {"items", {{"type","object"},
+												{"properties", {
+													{"name",     {{"type","string"}}},
+													{"label",    {{"type","string"}}},
+													{"class",    {{"type","string"}}},
+													{"location", {{"type","array"},{"items",{{"type","number"}}}}},
+												}}}}}},
+				{"editor_state", {{"type","object"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","captured","output_file","annotation_overlay_rendered"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string dest = RequireString(args, "dest_path");
+			const bool includeSelected = args.value("include_selected_actors", true);
+			const bool includeEditorState = args.value("include_editor_state", true);
+
+			auto cap = reader.TakeViewportScreenshot(dest);
+
+			nlohmann::json out = {
+				{"ok", true},
+				{"captured",    cap.captured},
+				{"output_file", cap.outputFile},
+				// Future revisions can render a 3D grid + actor labels on top
+				// of the image; until then, surface honestly that we didn't.
+				{"annotation_overlay_rendered", false},
+			};
+
+			if (includeEditorState) {
+				try {
+					auto state = reader.GetEditorState();
+					// Surface camera info (when present in the editor-state
+					// payload) as a structured `camera` block; surface the
+					// full editor state as `editor_state` for callers that
+					// want the broader picture (active level, PIE status,
+					// time of day, etc.).
+					if (state.is_object()) {
+						if (auto camIt = state.find("camera"); camIt != state.end()) {
+							out["camera"] = *camIt;
+						}
+					}
+					out["editor_state"] = std::move(state);
+				} catch (const std::exception&) {
+					// Best-effort — if GetEditorState isn't supported by the
+					// active backend (or fails for any reason), the agent
+					// still gets the image path. Don't fail the whole call.
+				}
+			}
+
+			if (includeSelected) {
+				try {
+					auto sel = reader.GetSelectedActors();
+					nlohmann::json actors = nlohmann::json::array();
+					for (const auto& n : sel.actorNames) {
+						actors.push_back(nlohmann::json{{"name", n}});
+					}
+					out["selected_actors"] = std::move(actors);
+				} catch (const std::exception&) {
+					out["selected_actors"] = nlohmann::json::array();
+				}
+			}
+
+			return out;
 		});
 	}
 

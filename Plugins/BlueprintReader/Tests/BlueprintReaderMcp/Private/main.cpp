@@ -23,6 +23,7 @@
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
 #include "tools/ToolRegistry.h"
+#include "tools/ToolsetMeta.h"
 
 #include <cstdio>
 #include <exception>
@@ -426,6 +427,31 @@ int RunServerLoop() {
 					  << " tools (of " << registry.TotalRegistered()
 					  << " registered). Agent can widen via "
 						 "`enable_tool_category(<name>)`.\n";
+		}
+	}
+
+	// Lazy tool discovery (BP_READER_TOOL_SEARCH=1). Trim the advertised
+	// tools/list down to just 3 meta-tools — list_toolsets,
+	// describe_toolset, call_tool — and dispatch everything else through
+	// call_tool. Massive context savings for clients that pay per
+	// tools/list token: agents see 3 schemas up front instead of ~127,
+	// and expand only the toolset they need this turn.
+	//
+	// Mutually exclusive with progressive disclosure — they're competing
+	// models for the same problem. If both are set, tool search wins
+	// because its surface is even narrower.
+	const bool toolSearchMode =
+		env::BoolOrDefault("BP_READER_TOOL_SEARCH", false, std::cerr);
+	if (toolSearchMode) {
+		tools::RegisterToolsetMetaTools(registry);
+		tools::EnableToolSearchMode(registry);
+		registry.TakeListChangedFlag();  // no client connected yet
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] tool search: enabled. "
+					  << "Advertising " << registry.Size()
+					  << " meta-tool(s) (of " << registry.TotalRegistered()
+					  << " registered). Agent dispatches via "
+						 "`call_tool(name, arguments)`.\n";
 		}
 	}
 

@@ -802,10 +802,15 @@ public:
 		std::string name;
 		std::string typeName;
 		std::string category;
+		// The class that originally declared this property. Empty when the
+		// backend doesn't surface it (older plugin payloads). The MCP layer
+		// filters on this when `include_inherited=false`.
+		std::string declaredOn;
 	};
 	struct ClassFunctionInfo {
 		std::string name;
 		std::string flagsCsv;  // e.g. "BlueprintCallable,BlueprintPure"
+		std::string declaredOn;
 	};
 	struct ClassInfo {
 		std::string className;
@@ -1152,6 +1157,31 @@ public:
 	// limited (e.g. mock, which has no editor or asset registry).
 	virtual std::vector<std::string> UnsupportedTools() const {
 		return {};
+	}
+
+	// General-purpose asset enumeration. The list_blueprints /
+	// list_materials / list_data_tables family are typed slices;
+	// FindAsset/ListAssets are the asset-registry-wide queries an
+	// agent reaches for when they don't know the asset's UClass.
+	//
+	// Each row: { asset_path: "/Game/X/Y", name: "Y",
+	//             class_name: "<short UClass name>" }.
+	struct AssetRegistryEntry {
+		std::string assetPath;
+		std::string name;
+		std::string className;
+	};
+	struct AssetRegistryListResult {
+		std::vector<AssetRegistryEntry> entries;
+	};
+	virtual AssetRegistryListResult ListAssets(std::string_view path, bool recursive) {
+		(void)path; (void)recursive;
+		throw BlueprintReaderError("ListAssets not supported by this backend");
+	}
+	virtual AssetRegistryListResult FindAsset(std::string_view query,
+											  std::string_view path) {
+		(void)query; (void)path;
+		throw BlueprintReaderError("FindAsset not supported by this backend");
 	}
 
 	// Read / write a UE config (.ini) value. `file` is one of

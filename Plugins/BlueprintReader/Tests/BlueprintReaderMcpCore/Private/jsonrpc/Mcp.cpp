@@ -1,6 +1,9 @@
 #include "jsonrpc/Mcp.h"
 
+#include "jsonrpc/CallContext.h"
+
 #include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -88,6 +91,28 @@ void RegisterHandlers(jr::Server& server,
 			return jr::Response::Ok(nlohmann::json::object());
 		});
 
+	// -------- notifications/cancelled -------------------------------------
+	// Per MCP 2025-06-18 §utilities/cancellation. Client signals that
+	// a previously-issued requestId should be aborted. In the current
+	// single-threaded dispatch model, by the time we read this
+	// notification any prior tool call has already completed — but the
+	// hook is in place so the future async/HTTP path can honor it.
+	// When a tool IS active on another thread, look up its CallContext
+	// and mark cancelled; the tool polls IsCancelled() at safe points.
+	server.Register("notifications/cancelled",
+		[](const nlohmann::json& /*params*/) -> jr::Response {
+			// Today's behaviour: silent no-op. The single-threaded
+			// dispatcher can't process this notification while a tool
+			// call is in flight, so by the time we get here, the call
+			// is done. Logged at the Server level (via the standard
+			// debug output) for observability.
+			//
+			// Future: when the HTTP/SSE transport lands, a per-server
+			// `inFlightCalls_` registry will be searched here and the
+			// matching CallContext flagged cancelled.
+			return jr::Response::Ok(nlohmann::json::object());
+		});
+
 	// -------- ping ---------------------------------------------------------
 	server.Register("ping", [](const nlohmann::json& /*params*/) -> jr::Response {
 		return jr::Response::Ok(nlohmann::json::object());
@@ -121,6 +146,30 @@ void RegisterHandlers(jr::Server& server,
 			arguments = *argIt;
 		}
 
+		// Extract optional progressToken from _meta per MCP 2025-06-18.
+		// Tools that want to emit progress notifications use
+		// CallContext::Current()->EmitProgress(...). Long-running tools
+		// (cook_content, package_project, run_automation_tests,
+		// build_lighting) are the prime users; others ignore.
+		std::optional<nlohmann::json> progressToken;
+		if (auto metaIt = params.find("_meta"); metaIt != params.end() && metaIt->is_object()) {
+			if (auto ptIt = metaIt->find("progressToken"); ptIt != metaIt->end()) {
+				progressToken = *ptIt;
+			}
+		}
+		// The request id we're handling — set by Server when it called
+		// us. We don't have direct access here (Server::Dispatch passes
+		// only params to the handler), so we pull it from… we don't have
+		// it. Note: id is the JSON-RPC envelope id, not visible at this
+		// layer. We use a null requestId for the call context; tools that
+		// want progress get it via progressToken alone (which is the spec-
+		// correct identifier for progress). Cancellation matching uses
+		// the same token — most clients echo the request id.
+		jr::CallContext callCtx(server,
+								progressToken.value_or(nlohmann::json()),
+								progressToken);
+		jr::CallContext::Scope scope(&callCtx);
+
 		const tools::ToolFn* fn = registry.Find(name);
 		if (fn == nullptr) {
 			// MCP convention: unknown tool — return as MCP tool error
@@ -151,6 +200,28 @@ void RegisterHandlers(jr::Server& server,
 			if (registry.TakeListChangedFlag()) {
 				server.QueueNotification("notifications/tools/list_changed",
 										 nlohmann::json::object());
+			}
+			// Rich-content opt-in: a tool that wants to emit image / audio
+			// / structuredContent / multi-block / audience-annotated
+			// results returns `{"_mcp": {"content": [...],
+			// "structuredContent": ...}}` via tools::content::Envelope().
+			// Detect that sentinel and unpack directly into the spec-shaped
+			// response without going through the dump-to-text path.
+			if (toolResult.is_object()) {
+				if (auto mcpIt = toolResult.find("_mcp"); mcpIt != toolResult.end() && mcpIt->is_object()) {
+					nlohmann::json env;
+					if (auto contentIt = mcpIt->find("content"); contentIt != mcpIt->end()) {
+						env["content"] = *contentIt;
+					} else {
+						env["content"] = nlohmann::json::array();
+					}
+					if (auto scIt = mcpIt->find("structuredContent"); scIt != mcpIt->end()) {
+						env["structuredContent"] = *scIt;
+					}
+					env["isError"] = false;
+					env["_meta"] = std::move(meta);
+					return jr::Response::Ok(std::move(env));
+				}
 			}
 			return jr::Response::Ok(MakeToolTextContent(toolResult.dump(2),
 				/*isError=*/false, std::move(meta)));

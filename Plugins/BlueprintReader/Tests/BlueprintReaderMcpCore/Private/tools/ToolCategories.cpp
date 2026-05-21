@@ -317,4 +317,62 @@ bool IsKnownCategory(const std::string& name) {
 	return CategoryTable().count(name) > 0;
 }
 
+namespace category_description_detail {
+
+// One-line summaries for each category — surfaced by the lazy-discovery
+// `list_toolsets` meta-tool so a client sees enough to choose a toolset
+// without expanding its full tool list. Kept in sync with the entries
+// in CategoryTable above; if you add a category there, add a description
+// here too.
+const std::map<std::string, std::string>& DescriptionTable() {
+	static const std::map<std::string, std::string> kTable = {
+		{"core",          "Minimum viable Blueprint authoring surface: read, write, function/variable/node CRUD, batches, plus discoverability tools."},
+		{"read",          "Every read-only tool — Blueprints, materials, widgets, behavior trees, data assets, state trees, niagara, sequencer, anim BPs, classes, log/output, cvars."},
+		{"write",         "Every mutating tool on a Blueprint or asset: variables, functions, nodes, components, batches."},
+		{"cpp",           "BP↔C++ pipeline: decompile, transpile, parse, compile_function, write_generated_source. Driven by the BPIR JSON AST."},
+		{"editor",        "Live-editor surface: PIE, viewport, console, log, build_lighting, live_coding_compile, screenshots, show flags, python."},
+		{"assets",        "Project-level asset management: move, delete, folders, project metadata, referencers/dependencies, config values."},
+		{"materials",     "Material authoring: list/read, expressions, parameter binding, instance overrides, compile."},
+		{"widgets",       "UMG widget authoring: read widget BPs, add widgets, set props, bind events, compile."},
+		{"behavior-trees","Behavior tree authoring: list/read, add nodes, set props, compile."},
+		{"data-tables",   "Data table CRUD: list/read, add rows, set row values."},
+		{"data-assets",   "Data asset CRUD: list/read, create, set properties."},
+		{"state-trees",   "State tree authoring: list/read, add states, set transitions, compile."},
+		{"niagara",       "Niagara VFX: list/read systems, create, parameter binding."},
+		{"sequencer",     "Level sequencer: list/read, add tracks, set playback range."},
+		{"gameplay-tags", "Gameplay tag taxonomy + ability sets."},
+		{"anim-bp",       "Animation Blueprints: list/read, add states, compile."},
+		{"profiling",     "CPU/GPU profile capture and stats."},
+		{"cook",          "Headless cook + package via UAT."},
+		{"tests",         "Automation test runner."},
+		{"class-info",    "UClass introspection — properties, functions, ancestor chain."},
+		{"discover",      "Self-discovery tools: list_node_kinds, list_pin_categories, shutdown_daemon."},
+		{"bp-authoring",  "Workflow preset: full BP authoring set (= `core` under a task-shaped name)."},
+		{"material-tuning","Workflow preset: locate the material a BP uses, tweak params, compile to apply, verify."},
+		{"cpp-roundtrip", "Workflow preset: decompile BP→BPIR→C++, edit, parse C++ back, compile back to BP."},
+		{"editor-control","Workflow preset: drive the editor like a remote (viewport, PIE, console, log, live coding) without BP authoring."},
+		{"widget-design", "Workflow preset: UMG widget authoring focused — find, edit, compile."},
+		{"gameplay-tuning","Workflow preset: tweak designer-exposed knobs (variable defaults, component props), PIE to verify."},
+	};
+	return kTable;
+}
+
+}    // namespace category_description_detail
+using namespace category_description_detail;
+
+std::string CategoryDescription(const std::string& name) {
+	const auto& table = DescriptionTable();
+	auto it = table.find(name);
+	return (it == table.end()) ? std::string{} : it->second;
+}
+
+std::vector<std::string> AllCategoryNames() {
+	std::vector<std::string> out;
+	out.reserve(CategoryTable().size());
+	for (const auto& [k, _] : CategoryTable()) {
+		out.push_back(k);
+	}
+	return out;
+}
+
 }    // namespace bpr::tools
