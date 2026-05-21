@@ -6,6 +6,7 @@
 #include "tools/codegen/UnsupportedTreatment.h"
 #include "tools/CompileFunction.h"
 #include "tools/ContentBlocks.h"
+#include "tools/Cursor.h"
 #include "tools/Decompile.h"
 #include "tools/ImageReader.h"
 #include "tools/JsonProjection.h"
@@ -209,6 +210,15 @@ nlohmann::json OffsetProperty() {
 						"`limit` for paging through long lists."},
 	};
 }
+nlohmann::json CursorProperty() {
+	return {
+		{"type", "string"},
+		{"description", "Opaque pagination cursor (base64). Alternative to "
+						"`offset` — pass the cursor returned from a previous "
+						"call to advance to the next page. Eventually "
+						"deprecates `offset`. Invalid cursor → -32602."},
+	};
+}
 nlohmann::json SortProperty() {
 	return {
 		{"type", "string"},
@@ -235,6 +245,23 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	ctl.limit  = OptInt(args, "limit", -1);
 	ctl.fields = ParseFieldsArg(args);
 	ctl.sort   = OptString(args, "sort", "natural");
+	// Phase 5: opaque cursors take precedence over `offset`. A client
+	// that walks via cursor doesn't need to know about offsets at all —
+	// they just pass back the next_cursor we returned previously.
+	if (args.is_object()) {
+		if (auto cIt = args.find("cursor"); cIt != args.end() && !cIt->is_null()) {
+			if (!cIt->is_string()) {
+				throw std::invalid_argument(R"(argument "cursor" must be a string)");
+			}
+			auto decoded = DecodeCursor(cIt->get<std::string>());
+			if (!decoded.has_value()) {
+				throw std::invalid_argument(
+					R"(argument "cursor" is malformed — pass a cursor returned )"
+					R"(from a previous list_* call, or omit to start from offset 0)");
+			}
+			ctl.offset = static_cast<int>(*decoded);
+		}
+	}
 	if (ctl.offset < 0)
 	{
 		throw std::invalid_argument(R"(argument "offset" must be >= 0)");
@@ -451,6 +478,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 							   {"description", "Descend into subfolders. Default true."}}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 				{"sort",   SortProperty()},
 			}},
@@ -510,6 +538,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 						   {"description", "Scope path. Defaults to /Game."}}},
 				{"limit", LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"query"})},
@@ -562,6 +591,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 				{"sort",   SortProperty()},
 			}},
@@ -1226,6 +1256,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
@@ -1255,6 +1286,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
@@ -1290,6 +1322,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 							{"description", "Optional. K2 extras `kind` to match exactly (case-insensitive)."}}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path", "query"})},
@@ -1643,6 +1676,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 									{"description","Match BPs that implement this interface (short name)."}}},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
+				{"cursor", CursorProperty()},
 				{"fields", FieldsProperty()},
 			}},
 		};
