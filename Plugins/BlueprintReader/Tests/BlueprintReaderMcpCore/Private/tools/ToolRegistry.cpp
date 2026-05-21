@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iostream>
 #include <regex>
+#include <set>
 #include <stdexcept>
 
 namespace bpr::tools {
@@ -93,7 +94,51 @@ void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
 	// directly — no need to maintain active_ then.)
 }
 
+namespace default_output_schema_detail {
+
+// Tools whose return shape is a top-level JSON array (vs object). The
+// default fallback in OutputSchemaFor uses this set to emit
+// `{type:"array"}` instead of the generic `{type:"object"}`.
+//
+// This is the curated list — anything not here defaults to object.
+// Sourced by inspection of each tool's handler return value.
+bool ReturnsArray(const std::string& name) {
+	static const std::set<std::string> kArr = {
+		// Generic + typed asset listings
+		"list_assets", "find_asset",
+		"list_blueprints", "list_data_tables", "list_materials",
+		"list_widgets", "list_behavior_trees", "list_data_assets",
+		"list_state_trees", "list_niagara_systems", "list_level_sequences",
+		"list_anim_blueprints", "list_gameplay_tags",
+		// BP introspection arrays
+		"list_variables", "list_functions",
+		"get_components",
+		"find_node", "find_overriders", "find_dangling_references",
+		// Discoverability
+		"list_node_kinds",
+		// Class introspection — find returns object {classNames:[]}; not here
+	};
+	return kArr.count(name) > 0;
+}
+
+// Permissive defaults — when a tool doesn't set output_schema
+// explicitly, advertise the broadest valid JSON-Schema shape so older
+// clients have *something* to validate against. Tools that want a
+// tighter contract set d.output_schema themselves.
+nlohmann::json OutputSchemaFor(const std::string& name) {
+	if (ReturnsArray(name)) {
+		return nlohmann::json{
+			{"type", "array"},
+			{"items", {{"type", "object"}}},
+		};
+	}
+	return nlohmann::json{{"type", "object"}};
+}
+
+}    // namespace default_output_schema_detail
+
 nlohmann::json ToolRegistry::ListSpec() const {
+	using default_output_schema_detail::OutputSchemaFor;
 	nlohmann::json arr = nlohmann::json::array();
 	for (const auto& d : descriptors_) {
 		if (filterApplied_ && active_.count(d.name) == 0)
@@ -105,10 +150,15 @@ nlohmann::json ToolRegistry::ListSpec() const {
 			{"description", d.description},
 			{"inputSchema", d.input_schema},
 		};
-		// MCP 2025-06-18 adds `outputSchema` as an optional advertised
-		// field; surface ours when set. Older clients ignore the extra key.
+		// MCP 2025-06-18 §outputSchema. We advertise one for every tool —
+		// explicit when the registration site declared a tight shape, else
+		// a permissive default keyed by tool name (array vs object). Older
+		// clients ignore the extra key; newer ones can use it to validate
+		// structured returns.
 		if (!d.output_schema.is_null() && !d.output_schema.empty()) {
 			entry["outputSchema"] = d.output_schema;
+		} else {
+			entry["outputSchema"] = OutputSchemaFor(d.name);
 		}
 		// MCP 2025-03-26 §tools/annotations. Only emit when at least
 		// one hint is set so clients on older specs don't see noise.

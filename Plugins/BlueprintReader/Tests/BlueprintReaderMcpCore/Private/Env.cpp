@@ -105,6 +105,27 @@ bool VerboseLoggingEnabled() {
 	return kEnabled;
 }
 
+bool NeverInlineImages() {
+	// Phase D kill switch — when set, the screenshot tools ignore the
+	// `return_inline=true` arg and always write to disk only. Lets a
+	// security-conscious deployment force-disable image-in-response paths
+	// without rebuilding. Cached for the same reason as
+	// VerboseLoggingEnabled — env vars don't change at runtime.
+	static const bool kEnabled = [] {
+		auto v = Get("BP_READER_NEVER_INLINE_IMAGES");
+		if (!v) {
+			return false;
+		}
+		std::string lower;
+		lower.reserve(v->size());
+		for (char c : *v) {
+			lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+		}
+		return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+	}();
+	return kEnabled;
+}
+
 // ---------------------------------------------------------------------------
 // Auto-discovery
 // ---------------------------------------------------------------------------
