@@ -53,7 +53,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 4 | **C1** Resources primitive **(SHIPPED locally — pending push)** | — | 0d | — | URI-addressable assets |
 | 5 | **C2** Pagination cursors **(SHIPPED locally — pending push)** | — | 0d | — | Spec-conformant list paging |
 | 6 | **Logging** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Server logs to client |
-| 7 | **E** Analytics + safety | 5–7 | 23d | High — without it, can't measure plan success | Observability + path safety |
+| 7 | **E** Analytics + safety **(SHIPPED locally — pending push; scaffolding only)** | — | 0d | — | Observability + path safety |
 | 8 | **EA-pull Wave 1** Core awareness | 6–8 | 31d | Very High — every reactive agent workflow needs this | Selection, open, compile, modal — the "what's the user doing?" core |
 | 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 46d | Very High — gates Push events entirely | Transport for push events |
 | 10 | **EA-push Wave 1** Core event notifications | 8–10 | 56d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
