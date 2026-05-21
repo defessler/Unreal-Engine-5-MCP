@@ -17,6 +17,7 @@ void RegisterHandlersImpl(jr::Server& server,
 						  tools::ToolRegistry& registry,
 						  tools::prompts::PromptRegistry* prompts,
 						  tools::Logger* logger,
+						  tools::resources::ResourceRegistry* resources,
 						  const ServerInfo& info);
 
 std::string DefaultInstructions() {
@@ -75,14 +76,15 @@ void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,
 					  tools::prompts::PromptRegistry& prompts,
 					  const ServerInfo& info) {
-	RegisterHandlersImpl(server, registry, &prompts, /*logger=*/nullptr, info);
+	RegisterHandlersImpl(server, registry, &prompts, /*logger=*/nullptr,
+						 /*resources=*/nullptr, info);
 }
 
 void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,
 					  const ServerInfo& info) {
 	RegisterHandlersImpl(server, registry, /*prompts=*/nullptr,
-						 /*logger=*/nullptr, info);
+						 /*logger=*/nullptr, /*resources=*/nullptr, info);
 }
 
 void RegisterHandlers(jr::Server& server,
@@ -90,16 +92,27 @@ void RegisterHandlers(jr::Server& server,
 					  tools::prompts::PromptRegistry* prompts,
 					  tools::Logger* logger,
 					  const ServerInfo& info) {
-	RegisterHandlersImpl(server, registry, prompts, logger, info);
+	RegisterHandlersImpl(server, registry, prompts, logger,
+						 /*resources=*/nullptr, info);
+}
+
+void RegisterHandlers(jr::Server& server,
+					  tools::ToolRegistry& registry,
+					  tools::prompts::PromptRegistry* prompts,
+					  tools::Logger* logger,
+					  tools::resources::ResourceRegistry* resources,
+					  const ServerInfo& info) {
+	RegisterHandlersImpl(server, registry, prompts, logger, resources, info);
 }
 
 void RegisterHandlersImpl(jr::Server& server,
 						  tools::ToolRegistry& registry,
 						  tools::prompts::PromptRegistry* prompts,
 						  tools::Logger* logger,
+						  tools::resources::ResourceRegistry* resources,
 						  const ServerInfo& info) {
 	// -------- initialize ---------------------------------------------------
-	server.Register("initialize", [info, prompts, logger](const nlohmann::json& params) -> jr::Response {
+	server.Register("initialize", [info, prompts, logger, resources](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
 		// our default. The MCP spec evolves and clients send a string like
 		// "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
@@ -145,6 +158,12 @@ void RegisterHandlersImpl(jr::Server& server,
 		// https://modelcontextprotocol.io/specification/2025-06-18/server/logging.
 		if (logger != nullptr) {
 			capabilities["logging"] = nlohmann::json::object();
+		}
+		// Phase 4: resources primitive. Spec value is currently an empty
+		// object (the optional `subscribe`/`listChanged` flags default
+		// to false). Suppress when no providers are wired.
+		if (resources != nullptr && resources->ProviderCount() > 0) {
+			capabilities["resources"] = nlohmann::json::object();
 		}
 		nlohmann::json result = {
 			{"protocolVersion", negotiated},
@@ -365,6 +384,48 @@ void RegisterHandlersImpl(jr::Server& server,
 							level));
 				}
 				return jr::Response::Ok(nlohmann::json::object());
+			});
+	}
+
+	// -------- resources/list + resources/read -----------------------------
+	// Phase 4 — MCP 2025-06-18 resources primitive. Only register when
+	// a ResourceRegistry was provided with at least one provider.
+	if (resources != nullptr && resources->ProviderCount() > 0) {
+		server.Register("resources/list",
+			[resources](const nlohmann::json& /*params*/) -> jr::Response {
+				return jr::Response::Ok(nlohmann::json{
+					{"resources", resources->ListAll()},
+				});
+			});
+
+		server.Register("resources/read",
+			[resources](const nlohmann::json& params) -> jr::Response {
+				if (!params.is_object()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						"resources/read params must be an object");
+				}
+				auto uriIt = params.find("uri");
+				if (uriIt == params.end() || !uriIt->is_string()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						R"(resources/read missing string "uri")");
+				}
+				const std::string uri = uriIt->get<std::string>();
+				if (!resources->Handles(uri)) {
+					// MCP spec carves out -32002 ResourceNotFound for
+					// "no provider serves this URI". Use it instead of
+					// the generic InvalidParams.
+					return jr::Response::Fail(/*code=*/-32002,
+						fmt::format(
+							"no resource provider handles URI '{}'; "
+							"call resources/list to see what's available", uri));
+				}
+				try {
+					return jr::Response::Ok(resources->Read(uri));
+				} catch (const std::exception& e) {
+					return jr::Response::Fail(/*code=*/-32002,
+						fmt::format("resources/read failed for '{}': {}",
+									uri, e.what()));
+				}
 			});
 	}
 

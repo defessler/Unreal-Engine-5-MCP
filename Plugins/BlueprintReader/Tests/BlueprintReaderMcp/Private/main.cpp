@@ -24,6 +24,7 @@
 #include "tools/BlueprintTools.h"
 #include "tools/Logger.h"
 #include "tools/Prompts.h"
+#include "tools/Resources.h"
 #include "tools/ToolRegistry.h"
 #include "tools/ToolsetMeta.h"
 
@@ -512,7 +513,21 @@ int RunServerLoop() {
 			logger.SetLevel(tools::LogLevel::Info);
 		}
 	}
-	mcp::RegisterHandlers(server, registry, &promptRegistry, &logger, info);
+	// Phase 4 — Resources primitive. Three bp:// providers wired by
+	// default; BP_READER_RESOURCES=0 suppresses (empty registry →
+	// resources capability not advertised, methods not registered).
+	tools::resources::ResourceRegistry resources;
+	if (env::BoolOrDefault("BP_READER_RESOURCES", true, std::cerr)) {
+		resources.Add(tools::resources::MakeBlueprintAssetProvider(*reader));
+		resources.Add(tools::resources::MakeProjectMetadataProvider(*reader));
+		resources.Add(tools::resources::MakeOutputLogProvider(*reader));
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] resources: registered "
+					  << resources.ProviderCount() << " bp:// providers\n";
+		}
+	}
+	mcp::RegisterHandlers(server, registry, &promptRegistry, &logger,
+						   &resources, info);
 
 	server.Run(std::cin, std::cout, std::cerr);
 	if (env::VerboseLoggingEnabled()) {
