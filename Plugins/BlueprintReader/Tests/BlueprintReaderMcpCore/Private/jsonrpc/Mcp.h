@@ -17,6 +17,7 @@
 #include "jsonrpc/Server.h"
 #include "tools/Logger.h"
 #include "tools/Prompts.h"
+#include "tools/Resources.h"
 #include "tools/ToolRegistry.h"
 
 #include <string>
@@ -75,6 +76,17 @@ void RegisterHandlers(jsonrpc::Server& server,
                       tools::ToolRegistry& registry,
                       tools::prompts::PromptRegistry* prompts,
                       tools::Logger* logger,
+                      const ServerInfo& info);
+
+// Full surface including resources/list + resources/read. Phase 4.
+// Same nullable-pointer pattern: pass nullptr for any of
+// prompts/logger/resources to suppress the matching capability +
+// handlers.
+void RegisterHandlers(jsonrpc::Server& server,
+                      tools::ToolRegistry& registry,
+                      tools::prompts::PromptRegistry* prompts,
+                      tools::Logger* logger,
+                      tools::resources::ResourceRegistry* resources,
                       const ServerInfo& info);
 
 }    // namespace bpr::mcp

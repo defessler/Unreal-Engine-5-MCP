@@ -50,7 +50,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 1 | **B** Hardening + `instructions` + compat matrix **(SHIPPED in `12373937` + `e6f54125` + `1e542220`)** | — | 0d | — | Polish + spec compliance + backwards-compat snapshot guards |
 | 2 | **D** outputSchema + Image rollout **(SHIPPED locally — pending push)** | — | 0d | — | LLM-side response shapes |
 | 3 | **Prompts** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Slash commands (universal client support) |
-| 4 | **C1** Resources primitive | 3–4 | 12d | Med — `bp://` URIs unlock Claude-Code resource panel | URI-addressable assets |
+| 4 | **C1** Resources primitive **(SHIPPED locally — pending push)** | — | 0d | — | URI-addressable assets |
 | 5 | **C2** Pagination cursors **(SHIPPED locally — pending push)** | — | 0d | — | Spec-conformant list paging |
 | 6 | **Logging** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Server logs to client |
 | 7 | **E** Analytics + safety | 5–7 | 23d | High — without it, can't measure plan success | Observability + path safety |
