@@ -140,6 +140,15 @@ namespace
 		Obj->SetStringField(TEXT("class"), N.ClassName);
 		Obj->SetStringField(TEXT("title"), N.Title);
 
+		// Mirror meta.kind to a top-level `kind` field so the obvious
+		// projection path (`fields=["nodes[].kind"]`) works without the
+		// caller having to know it lives under `meta`. Backwards-compatible:
+		// meta.kind still gets emitted below.
+		if (const FString* Kind = N.Extras.Find(TEXT("kind")))
+		{
+			Obj->SetStringField(TEXT("kind"), *Kind);
+		}
+
 		auto Position = MakeShared<FJsonObject>();
 		Position->SetNumberField(TEXT("x"), N.PosX);
 		Position->SetNumberField(TEXT("y"), N.PosY);
@@ -293,12 +302,29 @@ namespace
 		{
 			return true;
 		}
-		const FString* Kind = N.Extras.Find(TEXT("kind"));
-		if (!Kind)
+		// Primary match — the curated kind from ExtractK2Extras (Branch,
+		// CallFunction, Event, etc.).
+		if (const FString* Kind = N.Extras.Find(TEXT("kind")))
 		{
-			return false;
+			if (Kind->ToLower() == LowerKind)
+			{
+				return true;
+			}
 		}
-		return Kind->ToLower() == LowerKind;
+		// Fallback — match the UClass name (with K2Node_ prefix stripped).
+		// Agents sometimes pass the class-derived name ("IfThenElse") when
+		// they don't remember the curated alias ("Branch"); both should
+		// resolve. Also covers niche K2 nodes whose specific cast in
+		// ExtractK2Extras doesn't fire — the default-derived kind now also
+		// goes into Extras["kind"], so this fallback is mostly redundant
+		// for nodes loaded fresh, but stays as a guard for older callers
+		// or cached BPNodeInfo where Extras["kind"] might be absent.
+		FString StrippedClass = N.ClassName;
+		if (StrippedClass.StartsWith(TEXT("K2Node_")))
+		{
+			StrippedClass = StrippedClass.RightChop(7);
+		}
+		return StrippedClass.ToLower() == LowerKind;
 	}
 
 	void GatherNodesMatching(const FBPGraphInfo& Graph,
@@ -620,6 +646,57 @@ bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& J
 	FString SubObjectPath;
 	if (Json->TryGetStringField(TEXT("sub_category_object"), SubObjectPath) && !SubObjectPath.IsEmpty())
 	{
+		// Short-name fallback: when the agent passes "Actor" instead of
+		// "/Script/Engine.Actor", StaticLoadObject can't resolve it
+		// (StaticLoadObject needs a full path) and historically the
+		// chain fell through to `StaticLoadObject(UObject::StaticClass(), ...)`
+		// which silently picked up UObject itself — making
+		// `object:Actor` resolve to /Script/CoreUObject.Object. Catch
+		// that up front: when the path lacks a `.` or `/` prefix, walk
+		// the loaded UClass set looking for an exact short-name match.
+		// UE keeps ~30k classes in memory; this scan is O(N) but
+		// localized to one MCP call. Once we find a matching class we
+		// substitute the full path so StaticLoadObject succeeds below.
+		const bool bLooksLikeShortName =
+			!SubObjectPath.Contains(TEXT(".")) &&
+			!SubObjectPath.Contains(TEXT("/"));
+		if (bLooksLikeShortName)
+		{
+			// First try UClass (most common for object/class pins).
+			for (TObjectIterator<UClass> It; It; ++It)
+			{
+				if (It->GetName().Equals(SubObjectPath, ESearchCase::CaseSensitive))
+				{
+					SubObjectPath = It->GetPathName();
+					break;
+				}
+			}
+			// Then UScriptStruct (struct:FVector style).
+			if (!SubObjectPath.Contains(TEXT(".")))
+			{
+				for (TObjectIterator<UScriptStruct> It; It; ++It)
+				{
+					if (It->GetName().Equals(SubObjectPath, ESearchCase::CaseSensitive))
+					{
+						SubObjectPath = It->GetPathName();
+						break;
+					}
+				}
+			}
+			// Then UEnum (enum:ECollisionChannel etc.).
+			if (!SubObjectPath.Contains(TEXT(".")))
+			{
+				for (TObjectIterator<UEnum> It; It; ++It)
+				{
+					if (It->GetName().Equals(SubObjectPath, ESearchCase::CaseSensitive))
+					{
+						SubObjectPath = It->GetPathName();
+						break;
+					}
+				}
+			}
+		}
+
 		// Try to resolve the path as a UClass first (most common for object/class pins).
 		// Fall back to UScriptStruct / UEnum for struct/enum pins.
 		UObject* Resolved = StaticLoadObject(UClass::StaticClass(), nullptr, *SubObjectPath);
@@ -631,10 +708,11 @@ bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& J
 		{
 			Resolved = StaticLoadObject(UEnum::StaticClass(), nullptr, *SubObjectPath);
 		}
-		if (!IsValid(Resolved))
-		{
-			Resolved = StaticLoadObject(UObject::StaticClass(), nullptr, *SubObjectPath);
-		}
+		// Note: we deliberately do NOT fall back to StaticLoadObject<UObject>
+		// — it silently resolved any unmatched path to /Script/CoreUObject.Object,
+		// which is almost never what the agent meant. Better to leave
+		// PinSubCategoryObject unset and let downstream code fail with a
+		// useful "class not found" error than to materialize a bogus type.
 		if (IsValid(Resolved))
 		{
 			OutType.PinSubCategoryObject = Resolved;

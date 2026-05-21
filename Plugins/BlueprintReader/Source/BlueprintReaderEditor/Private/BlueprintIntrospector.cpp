@@ -503,6 +503,23 @@ namespace
 			Extras.Add(TEXT("kind"), TEXT("FunctionResult"));
 			return;
 		}
+		// Default: derive a kind from the UClass name by stripping the
+		// "K2Node_" prefix. Means every node has *some* kind for find_node
+		// to filter on — without this, niche K2 nodes (UK2Node_PromotableOperator,
+		// UK2Node_GetSubsystem, etc.) returned no Extras["kind"] entry,
+		// so a kind-filter would silently exclude them. Agents reported
+		// `kind=Branch` returning [] even on BPs with Branch nodes when
+		// some specific cast above didn't fire (e.g. plugin-shipped
+		// subclasses); this default backs them all.
+		if (UClass* Cls = Node->GetClass())
+		{
+			FString ClassName = Cls->GetName();
+			if (ClassName.StartsWith(TEXT("K2Node_")))
+			{
+				ClassName = ClassName.RightChop(7);
+			}
+			Extras.Add(TEXT("kind"), ClassName);
+		}
 	}
 }
 
