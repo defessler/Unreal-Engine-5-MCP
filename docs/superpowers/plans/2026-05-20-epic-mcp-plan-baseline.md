@@ -14,10 +14,11 @@ Numbers backing the cumulative-test-count / tool-count / capability claims in `2
 
 ## Measurements
 
-| Field | Measured (2026-05-21 post-Phase-3-Prompts) | Prior baseline (2026-05-21 post-Phase-D) | Delta |
+| Field | Measured (2026-05-21 post-MVP-milestone) | Prior baseline (2026-05-21 post-Phase-D) | Delta |
 |---|---|---|---|
-| Test cases in source (`TEST_CASE(` blocks) | **718** across 40 files | 700 | +18 |
-| Test cases actually executed | **702** (16 filtered/skipped) | 684 | +18 |
+| Test cases in source (`TEST_CASE(` blocks) | **774** across 44 files | 700 | +74 |
+| Test cases actually executed | **758** (16 filtered/skipped) | 684 | +74 |
+| Wire-parity MVP milestone | **SHIPPED** (Phases B+D+3+C1+C2+Logging+E) | not started | **complete** |
 | Prompts advertised on `prompts/list` | **8** (audit_bp, explain_function, suggest_refactor, compare_blueprints, transpile_to_cpp, review_generated_cpp, check_transpile_compat, lyra_gameplay_review) | 0 (capability not advertised) | **new in Phase 3** |
 | Capabilities advertised on initialize | `{tools: {listChanged: true}, prompts: {listChanged: true}}` | `{tools: {listChanged: true}}` | **prompts capability shipped** |
 | Phase 3 status | **shipped locally** — push deferred to user | not started | **shipped** |
