@@ -21,6 +21,7 @@
 #include "Env.h"
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
+#include "tools/Analytics.h"
 #include "tools/BlueprintTools.h"
 #include "tools/Logger.h"
 #include "tools/Prompts.h"
@@ -528,6 +529,24 @@ int RunServerLoop() {
 	}
 	mcp::RegisterHandlers(server, registry, &promptRegistry, &logger,
 						   &resources, info);
+
+	// Phase 7 — Analytics + EULA. Both default to "minimum surface":
+	// the no-op provider does nothing; the EULA notice fires once on
+	// startup so the user has been told what data flows where. The
+	// notice is suppressed under BP_READER_QUIET_STARTUP=1 for CI use.
+	auto analytics = tools::MakeNoOpAnalyticsProvider();
+	analytics->OnSessionStart();
+	if (!env::BoolOrDefault("BP_READER_QUIET_STARTUP", false, std::cerr)) {
+		std::cerr << tools::EulaNotice();
+	}
+	if (tools::AnalyticsEnabled() && env::VerboseLoggingEnabled()) {
+		std::cerr << "[bp-reader-mcp] analytics: enabled (no-op default provider — "
+					 "replace via future BP_READER_ANALYTICS_PROVIDER hook)\n";
+	}
+	struct AnalyticsLifecycle {
+		tools::IAnalyticsProvider* p;
+		~AnalyticsLifecycle() { if (p) p->OnSessionEnd(); }
+	} lifecycle{analytics.get()};
 
 	server.Run(std::cin, std::cout, std::cerr);
 	if (env::VerboseLoggingEnabled()) {
