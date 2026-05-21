@@ -28,6 +28,8 @@
 
 namespace bpr::jsonrpc {
 
+class CallContext;  // forward decl — defined in CallContext.h
+
 // Standard JSON-RPC error codes.
 enum class ErrorCode : int {
 	ParseError     = -32700,
@@ -125,10 +127,29 @@ public:
 	// response; tests can call it directly to assert queued notifs.
 	std::vector<nlohmann::json> TakePendingNotifications();
 
+	// In-flight tool call registry — used by `notifications/cancelled`
+	// to look up the CallContext for a given request id and mark it
+	// cancelled. Registration / deregistration happens around each
+	// tool dispatch in Mcp.cpp; cancellation is a tool-level concern
+	// but the lookup needs to span thread boundaries (HTTP transport).
+	//
+	// In the current single-threaded stdio model the registry is
+	// always empty by the time the next frame is read (a tool call
+	// has either returned or thrown by then). Wiring it now lets the
+	// future async path honor cancellation without refactoring.
+	void RegisterInFlight(CallContext* ctx);
+	void UnregisterInFlight(CallContext* ctx);
+	// Returns the first in-flight context whose requestId matches.
+	// nullptr if none. Caller must NOT retain the pointer past the
+	// dispatch that owns it.
+	CallContext* FindInFlight(const nlohmann::json& requestId);
+
 private:
 	std::map<std::string, Handler> handlers_;
 	mutable std::mutex notifMu_;
 	std::vector<nlohmann::json> pendingNotifications_;
+	mutable std::mutex inFlightMu_;
+	std::vector<CallContext*> inFlight_;
 };
 
 // Helpers for building JSON-RPC envelopes (used by Dispatch and tests).

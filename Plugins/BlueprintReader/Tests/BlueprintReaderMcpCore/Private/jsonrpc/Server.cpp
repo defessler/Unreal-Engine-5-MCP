@@ -1,5 +1,7 @@
 #include "jsonrpc/Server.h"
 
+#include "jsonrpc/CallContext.h"
+
 #include <algorithm>
 #include <cctype>
 #include <iostream>
@@ -216,6 +218,28 @@ void Server::QueueNotification(std::string method, nlohmann::json params) {
 std::vector<nlohmann::json> Server::TakePendingNotifications() {
 	std::lock_guard<std::mutex> lock(notifMu_);
 	return std::exchange(pendingNotifications_, {});
+}
+
+void Server::RegisterInFlight(CallContext* ctx) {
+	if (ctx == nullptr) return;
+	std::lock_guard<std::mutex> lock(inFlightMu_);
+	inFlight_.push_back(ctx);
+}
+
+void Server::UnregisterInFlight(CallContext* ctx) {
+	if (ctx == nullptr) return;
+	std::lock_guard<std::mutex> lock(inFlightMu_);
+	inFlight_.erase(std::remove(inFlight_.begin(), inFlight_.end(), ctx), inFlight_.end());
+}
+
+CallContext* Server::FindInFlight(const nlohmann::json& requestId) {
+	std::lock_guard<std::mutex> lock(inFlightMu_);
+	for (CallContext* ctx : inFlight_) {
+		if (ctx != nullptr && ctx->Matches(requestId)) {
+			return ctx;
+		}
+	}
+	return nullptr;
 }
 
 nlohmann::json MakeResultEnvelope(const nlohmann::json& id, nlohmann::json result) {

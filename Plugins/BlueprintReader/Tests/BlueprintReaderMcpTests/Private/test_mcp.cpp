@@ -46,6 +46,70 @@ std::vector<json> ReadAllFrames(std::istream& in) {
 }    // namespace test_mcp_detail
 using namespace test_mcp_detail;
 
+TEST_CASE("MCP initialize: instructions field shipped when ServerInfo sets it") {
+	// The MCP `instructions` field on the initialize response is optional.
+	// When ServerInfo.instructions is non-empty, the server MUST surface
+	// it on the result so clients can feed it to the LLM as system-prompt
+	// context. When empty, the field is omitted (older clients without
+	// the field stay happy).
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	info.instructions = mcp::DefaultInstructions();
+	mcp::RegisterHandlers(server, registry, info);
+
+	std::string in = Frame(json{
+		{"jsonrpc","2.0"}, {"id",1}, {"method","initialize"},
+		{"params", json{
+			{"protocolVersion","2025-06-18"},
+			{"capabilities", json::object()},
+			{"clientInfo", json{{"name","test"}, {"version","0"}}}
+		}}
+	});
+	std::istringstream is(in);
+	std::ostringstream os, log;
+	server.Run(is, os, log);
+	std::istringstream replay(os.str());
+	auto frames = ReadAllFrames(replay);
+	REQUIRE(frames.size() == 1);
+	REQUIRE(frames[0]["result"].contains("instructions"));
+	const auto txt = frames[0]["result"]["instructions"].get<std::string>();
+	CHECK(!txt.empty());
+	// Should reference our BPIR pivot — the highest-signal hint we want
+	// the LLM to internalize.
+	CHECK(txt.find("BPIR") != std::string::npos);
+}
+
+TEST_CASE("MCP initialize: instructions field omitted when ServerInfo leaves it empty") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	// Deliberately leave info.instructions empty.
+	mcp::RegisterHandlers(server, registry, info);
+
+	std::string in = Frame(json{
+		{"jsonrpc","2.0"}, {"id",1}, {"method","initialize"},
+		{"params", json{
+			{"protocolVersion","2025-06-18"},
+			{"capabilities", json::object()},
+			{"clientInfo", json{{"name","test"}, {"version","0"}}}
+		}}
+	});
+	std::istringstream is(in);
+	std::ostringstream os, log;
+	server.Run(is, os, log);
+	std::istringstream replay(os.str());
+	auto frames = ReadAllFrames(replay);
+	REQUIRE(frames.size() == 1);
+	CHECK_FALSE(frames[0]["result"].contains("instructions"));
+}
+
 TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	auto reader = test::MakeMockReader();
 	tools::ToolRegistry registry;
@@ -331,6 +395,95 @@ TEST_CASE("call_tool rejects unknown tool names with a clear error") {
 	CHECK((*r)["result"]["isError"] == true);
 	auto txt = (*r)["result"]["content"][0]["text"].get<std::string>();
 	CHECK(txt.find("unknown tool") != std::string::npos);
+}
+
+TEST_CASE("Server in-flight registry: register/find/unregister round-trip") {
+	// notifications/cancelled lookup wiring. Today's stdio dispatch is
+	// single-threaded so the registry is always empty when the handler
+	// runs, but the future async/HTTP path consults this directly.
+	jsonrpc::Server server;
+	jsonrpc::CallContext ctx(server, /*requestId=*/json(42), std::nullopt);
+	CHECK(server.FindInFlight(json(42)) == nullptr);
+	server.RegisterInFlight(&ctx);
+	CHECK(server.FindInFlight(json(42)) == &ctx);
+	CHECK(server.FindInFlight(json(99)) == nullptr);
+	server.UnregisterInFlight(&ctx);
+	CHECK(server.FindInFlight(json(42)) == nullptr);
+}
+
+TEST_CASE("notifications/cancelled marks the matching in-flight CallContext") {
+	// Verify the handler path: dispatch a notifications/cancelled for a
+	// requestId we've registered, then check IsCancelled() flipped.
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	jsonrpc::CallContext ctx(server, json(42), std::nullopt);
+	server.RegisterInFlight(&ctx);
+	REQUIRE_FALSE(ctx.IsCancelled());
+
+	json req = {
+		{"jsonrpc","2.0"},
+		{"method","notifications/cancelled"},
+		{"params", json{{"requestId", 42}}}
+	};
+	auto r = server.Dispatch(req);
+	CHECK_FALSE(r.has_value());  // notification — no response body
+	CHECK(ctx.IsCancelled());
+
+	// Non-matching id leaves a different context alone.
+	jsonrpc::CallContext other(server, json(99), std::nullopt);
+	server.RegisterInFlight(&other);
+	json req2 = {
+		{"jsonrpc","2.0"},
+		{"method","notifications/cancelled"},
+		{"params", json{{"requestId", 7}}}
+	};
+	server.Dispatch(req2);
+	CHECK_FALSE(other.IsCancelled());
+
+	server.UnregisterInFlight(&ctx);
+	server.UnregisterInFlight(&other);
+}
+
+TEST_CASE("call_tool refuses to dispatch the meta-tools (recursion guard)") {
+	// An agent that calls call_tool({name: "call_tool", arguments: {...}})
+	// would loop infinitely if we didn't reject it. Same for the other
+	// meta-tools: they're already at the top level under tool-search mode,
+	// so tunneling them through call_tool is always a mistake.
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	tools::RegisterToolsetMetaTools(registry);
+	tools::EnableToolSearchMode(registry);
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	for (const char* metaName : {"call_tool", "list_toolsets", "describe_toolset"}) {
+		json req = {
+			{"jsonrpc","2.0"}, {"id",200}, {"method","tools/call"},
+			{"params", json{
+				{"name", "call_tool"},
+				{"arguments", json{
+					{"name", metaName},
+					{"arguments", json::object()}
+				}}
+			}}
+		};
+		auto r = server.Dispatch(req);
+		REQUIRE(r.has_value());
+		CHECK((*r)["result"]["isError"] == true);
+		auto txt = (*r)["result"]["content"][0]["text"].get<std::string>();
+		// The error message should name the offending meta-tool so the
+		// agent knows what to do instead.
+		CHECK(txt.find(metaName) != std::string::npos);
+		CHECK(txt.find("meta-tool") != std::string::npos);
+	}
 }
 
 TEST_CASE("Long-running tool can emit progress via CallContext, gets queued as notifications/progress") {

@@ -54,6 +54,62 @@ std::string OptString(const nlohmann::json& obj, std::string_view key,
 	return it->get<std::string>();
 }
 
+// Path-traversal guard. Used by file-writing tools (screenshots,
+// write_generated_source) to refuse caller paths that escape the
+// project sandbox. The plugin-side commandlet does its own check (e.g.
+// write_generated_source restricts to <ProjectDir>/Source/) — this is
+// defense in depth at the MCP boundary so an obvious `..` traversal is
+// stopped before the call even leaves the server.
+//
+// What we reject:
+//   * Any segment equal to `..` (after normalizing slashes)
+//   * Bare `~` (home-dir expansion is shell-specific, never wanted here)
+//   * Empty strings (caller almost certainly forgot to set the field)
+//
+// What we allow:
+//   * Absolute Windows paths (`C:\...`) and Unix paths (`/...`)
+//   * Relative paths without `..` (resolved by the receiver against
+//     its own CWD; plugin / backend enforces further restrictions)
+//
+// Pure function — no I/O, no env lookup. Returns empty string on
+// success, error message on rejection.
+std::string ValidateFilePath(const std::string& path) {
+	if (path.empty()) {
+		return "path is empty";
+	}
+	if (path.front() == '~') {
+		return "path uses '~' home-dir expansion (not supported): " + path;
+	}
+	// Normalize separators for scan; doesn't mutate the caller's path.
+	std::string normalized;
+	normalized.reserve(path.size());
+	for (char c : path) {
+		normalized.push_back(c == '\\' ? '/' : c);
+	}
+	// Walk segments, looking for `..` as a standalone segment. `foo..bar`
+	// is fine — only the literal traversal segment is rejected.
+	size_t i = 0;
+	while (i < normalized.size()) {
+		const auto next = normalized.find('/', i);
+		const auto segEnd = (next == std::string::npos) ? normalized.size() : next;
+		if (segEnd - i == 2 &&
+			normalized[i] == '.' && normalized[i + 1] == '.') {
+			return "path contains '..' traversal segment: " + path;
+		}
+		if (next == std::string::npos) break;
+		i = next + 1;
+	}
+	return {};
+}
+
+// Throws std::invalid_argument when ValidateFilePath rejects. Helper
+// for call sites that prefer exceptions to error strings.
+void RequireSafeFilePath(const std::string& path) {
+	if (auto err = ValidateFilePath(path); !err.empty()) {
+		throw std::invalid_argument(err);
+	}
+}
+
 // Transpile gate. The 6 BP-to-C++ tools (decompile_function,
 // decompile_blueprint, transpile_function, transpile_blueprint,
 // write_generated_source, parse_cpp_function) are off by default.
@@ -733,6 +789,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				return TranspileDisabledResponse("write_generated_source");
 			}
 			std::string path    = RequireString(args, "path");
+			RequireSafeFilePath(path);  // refuse `..` traversal early
 			std::string content = RequireString(args, "content");
 			bool createDirs     = args.value("create_dirs", true);
 			auto r = reader.WriteGeneratedSource(path, content, createDirs);
@@ -4404,6 +4461,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string dest = RequireString(args, "dest_path");
+			RequireSafeFilePath(dest);  // refuse `..` traversal early
 			int w = args.value("width",  0);
 			int h = args.value("height", 0);
 			auto r = reader.TakeScreenshot(dest, w, h);
@@ -4693,6 +4751,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string dest = RequireString(args, "dest_path");
+			RequireSafeFilePath(dest);  // refuse `..` traversal early
 			auto r = reader.TakeViewportScreenshot(dest);
 			return nlohmann::json{
 				{"ok", true},
@@ -4770,6 +4829,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			const std::string dest = RequireString(args, "dest_path");
+			RequireSafeFilePath(dest);  // refuse `..` traversal early
 			const bool includeSelected = args.value("include_selected_actors", true);
 			const bool includeEditorState = args.value("include_editor_state", true);
 

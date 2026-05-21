@@ -455,8 +455,30 @@ int RunServerLoop() {
 		}
 	}
 
+	// Pre-flight: refuse to run with an empty advertised tool surface.
+	// If the static filter (BP_READER_TOOLS) was too aggressive — or if
+	// no real tools registered at all (a bug in RegisterBlueprintTools or
+	// a backend rejection that hid all tools) — we'd otherwise present
+	// the client with an empty tools/list and look broken. Fail loud at
+	// startup with an actionable hint instead.
+	if (!registry.HasValidTools()) {
+		std::cerr << "[bp-reader-mcp] startup: no tools are active "
+				  << "(registered=" << registry.TotalRegistered()
+				  << "). Check BP_READER_TOOLS / BP_READER_TOOLS_EXCLUDE "
+					 "env vars — the filter spec may not match any tool. "
+					 "Set BP_READER_TOOLS= (empty) to clear it.\n";
+		return 2;
+	}
+
 	jsonrpc::Server server;
 	mcp::ServerInfo info;
+	// Ship the onboarding `instructions` text by default. Clients on the
+	// MCP spec read this once at session start as system-prompt context.
+	// Set BP_READER_INSTRUCTIONS=0 to suppress when the client supplies
+	// its own system prompt and you don't want to spend tokens on ours.
+	if (env::BoolOrDefault("BP_READER_INSTRUCTIONS", true, std::cerr)) {
+		info.instructions = mcp::DefaultInstructions();
+	}
 	mcp::RegisterHandlers(server, registry, info);
 
 	server.Run(std::cin, std::cout, std::cerr);
