@@ -198,19 +198,32 @@ nlohmann::json OffsetProperty() {
 						"`limit` for paging through long lists."},
 	};
 }
+nlohmann::json SortProperty() {
+	return {
+		{"type", "string"},
+		{"enum", nlohmann::json::array({"natural", "name", "path"})},
+		{"description", "Optional result ordering. `natural` (default) preserves "
+						"the order the backend returned. `name` sorts by the "
+						"`name` field of each entry; `path` sorts by `asset_path`. "
+						"Sort applies BEFORE limit/offset, so paging works against "
+						"the sorted view."},
+	};
+}
 
-// Mutate `body` to apply offset/limit (when body is an array) and
+// Mutate `body` to apply sort + offset/limit (when body is an array) and
 // field projection. Convenience helper called from every read-tool handler.
 struct ResponseControls {
 	int offset = 0;
 	int limit  = -1;  // -1 => no cap
 	std::vector<std::string> fields;
+	std::string sort = "natural";  // "natural" | "name" | "path"
 };
 ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	ResponseControls ctl;
 	ctl.offset = OptInt(args, "offset", 0);
 	ctl.limit  = OptInt(args, "limit", -1);
 	ctl.fields = ParseFieldsArg(args);
+	ctl.sort   = OptString(args, "sort", "natural");
 	if (ctl.offset < 0)
 	{
 		throw std::invalid_argument(R"(argument "offset" must be >= 0)");
@@ -219,9 +232,41 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	{
 		throw std::invalid_argument(R"(argument "limit" must be >= 0)");
 	}
+	if (ctl.sort != "natural" && ctl.sort != "name" && ctl.sort != "path") {
+		throw std::invalid_argument(
+			R"(argument "sort" must be one of: natural, name, path)");
+	}
+	// Per Phase B: BP_READER_SORT_DEFAULT env var can force "natural"
+	// behavior session-wide even when a client sends sort=name. Kill-
+	// switch for clients that misbehave. Default empty = honor the arg.
+	if (const char* envSort = std::getenv("BP_READER_SORT_DEFAULT")) {
+		if (envSort && *envSort) {
+			ctl.sort = envSort;
+		}
+	}
 	return ctl;
 }
 void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
+	// Sort first — page through the sorted view, not the raw view.
+	if (body.is_array() && (ctl.sort == "name" || ctl.sort == "path")) {
+		const std::string key = (ctl.sort == "name") ? "name" : "asset_path";
+		std::stable_sort(body.begin(), body.end(),
+			[&key](const nlohmann::json& a, const nlohmann::json& b) {
+				// Defensive: entries without the key sort to the end so
+				// a heterogeneous response doesn't crash with an
+				// undefined comparison. Bare strings (no object shape)
+				// fall back to direct string compare.
+				if (a.is_string() && b.is_string()) {
+					return a.get<std::string>() < b.get<std::string>();
+				}
+				const bool aHas = a.is_object() && a.contains(key) && a[key].is_string();
+				const bool bHas = b.is_object() && b.contains(key) && b[key].is_string();
+				if (!aHas && !bHas) return false;
+				if (!aHas) return false;  // a goes to end
+				if (!bHas) return true;
+				return a[key].get<std::string>() < b[key].get<std::string>();
+			});
+	}
 	if (body.is_array() && (ctl.offset > 0 || ctl.limit >= 0)) {
 		std::size_t off = std::min<std::size_t>(ctl.offset, body.size());
 		std::size_t end = (ctl.limit < 0)
@@ -317,7 +362,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"O(1) per asset. Use when you don't know the asset's UClass — "
 			"reach for `list_blueprints` / `list_materials` / etc. instead "
 			"when you know the type up front (less to filter on the agent "
-			"side). Returns `[{asset_path, name, class_name}, ...]`.";
+			"side). Returns `[{asset_path, name, class_name}, ...]`. "
+			"`sort=name` or `sort=path` for deterministic ordering.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -328,6 +374,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
 				{"fields", FieldsProperty()},
+				{"sort",   SortProperty()},
 			}},
 		};
 		d.output_schema = {
@@ -427,7 +474,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"[blueprint] List Blueprint assets under a content path. Defaults to /Game. "
 			"On big projects this can return thousands of entries — use "
 			"`limit`/`offset` to page, and `fields` (e.g. [\"asset_path\"]) "
-			"to drop columns you don't need.";
+			"to drop columns you don't need. `sort=path` orders by asset path.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -438,6 +485,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
 				{"fields", FieldsProperty()},
+				{"sort",   SortProperty()},
 			}},
 		};
 		d.output_schema = {
