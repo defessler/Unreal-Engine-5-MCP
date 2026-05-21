@@ -117,6 +117,11 @@ public:
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
 
+	// ----- Asset-registry queries (pass-through) ------------------------
+	// Asset registry is hot in the editor; no TTL caching needed.
+	AssetRegistryListResult ListAssets(std::string_view, bool) override;
+	AssetRegistryListResult FindAsset(std::string_view, std::string_view) override;
+
 	// ----- Project + Content Browser ops (pass-through) -----------------
 	// These are project-level rather than per-Blueprint; caching them
 	// would add complexity without much value. Save/move/delete also

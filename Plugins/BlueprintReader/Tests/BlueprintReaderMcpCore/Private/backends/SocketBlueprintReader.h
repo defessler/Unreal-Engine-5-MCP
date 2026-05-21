@@ -60,6 +60,14 @@ public:
 		// `live` backend wires it whenever BackendFactory could find
 		// the handshake file at construction time.
 		std::string handshakeFilePath;
+
+		// Optional .uproject path. Used by GetProjectMetadata to read
+		// project metadata directly from disk (same as
+		// CommandletBlueprintReader does) — the editor side doesn't
+		// currently implement a GetProjectMetadata op, so going over
+		// the wire returns code=1. Reading the file locally is the
+		// same data anyway. Empty → GetProjectMetadata returns empty.
+		std::string projectPath;
 	};
 
 	explicit SocketBlueprintReader(Config cfg);
@@ -121,6 +129,10 @@ public:
 													bool createDirs) override;
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
+
+	// ----- Asset-registry queries ---------------------------------------
+	AssetRegistryListResult ListAssets(std::string_view path, bool recursive) override;
+	AssetRegistryListResult FindAsset(std::string_view query, std::string_view path) override;
 
 	// ----- Project + Content Browser ops --------------------------------
 	ProjectMetadata GetProjectMetadata() override;

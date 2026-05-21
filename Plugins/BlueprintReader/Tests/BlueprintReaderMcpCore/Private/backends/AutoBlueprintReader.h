@@ -140,6 +140,15 @@ public:
 	nlohmann::json EndBatch(bool skipCompile = false) override;
 	nlohmann::json ShutdownDaemon() override;
 
+	// ----- Project + Asset-registry queries -------------------------
+	// Without these explicit overrides the calls would dispatch to
+	// IBlueprintReader's throwing defaults — vtable for unoverridden
+	// virtuals points at the base class. Forward to Pick() so the
+	// active backend (Socket or Commandlet) handles them.
+	ProjectMetadata GetProjectMetadata() override;
+	AssetRegistryListResult ListAssets(std::string_view path, bool recursive) override;
+	AssetRegistryListResult FindAsset(std::string_view query, std::string_view path) override;
+
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
 	// cache has expired.

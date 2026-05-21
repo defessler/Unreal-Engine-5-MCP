@@ -68,6 +68,11 @@ struct ToolDescriptor {
 	std::string name;
 	std::string description;
 	nlohmann::json input_schema;   // JSON Schema object
+	// Optional. When set, advertised on tools/list per MCP 2025-06-18
+	// `outputSchema` field. Lets clients reason about the response shape
+	// before they parse it. Omit (null/empty) if the tool emits free-form
+	// JSON or its response shape is not yet schematized.
+	nlohmann::json output_schema;
 	// Optional. If left in the default (all-nullopt) state at Add()
 	// time, ToolRegistry consults the canonical AnnotationsFor() table
 	// in ToolAnnotations.cpp and populates this — so the 100+ existing
@@ -75,6 +80,13 @@ struct ToolDescriptor {
 	// descriptor take precedence (no override).
 	ToolAnnotations annotations;
 };
+
+// Tool name validation per MCP 2025-11-25 spec:
+//   * 1 to 128 characters
+//   * only `[A-Za-z0-9_.\-]`
+// Returns a non-empty error string on rejection, empty string on success.
+// Pure function — call from anywhere, no I/O.
+std::string ValidateToolName(const std::string& name);
 
 // Tool handlers receive the `arguments` map from the tools/call request and
 // return arbitrary JSON. They may throw std::exception subclasses; the MCP
@@ -93,6 +105,17 @@ public:
 	// Lookup. Returns nullptr if missing OR if filtered out of the
 	// active set. The dispatcher treats both as "no such tool".
 	const ToolFn* Find(const std::string& name) const;
+
+	// Lookup that ignores the active set. Used by lazy-discovery's
+	// `call_tool` meta-tool: when tools/list is restricted to the 3
+	// meta-tools, agents reach the underlying tool table via this
+	// path instead. Returns nullptr only if the name was never
+	// registered (or didn't pass ValidateToolName, so was rejected).
+	const ToolFn* FindAny(const std::string& name) const;
+
+	// All registered descriptors regardless of filter state. Used by
+	// describe_toolset to look up tools by name even when filtered.
+	const std::vector<ToolDescriptor>& AllDescriptors() const { return descriptors_; }
 
 	// How many tools are currently active.
 	size_t Size() const;

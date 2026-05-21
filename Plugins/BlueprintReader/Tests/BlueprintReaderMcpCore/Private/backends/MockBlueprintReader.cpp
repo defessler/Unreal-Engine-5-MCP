@@ -361,6 +361,8 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"run_automation_tests",
 		// Project metadata
 		"get_project_metadata",
+		// Generic asset registry — fixtures aren't the asset registry
+		"list_assets", "find_asset",
 	};
 }
 

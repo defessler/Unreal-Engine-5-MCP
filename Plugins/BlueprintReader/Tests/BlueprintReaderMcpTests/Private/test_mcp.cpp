@@ -8,10 +8,14 @@
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
+#include "tools/ContentBlocks.h"
 #include "tools/ToolRegistry.h"
+#include "jsonrpc/CallContext.h"
+#include "tools/ToolsetMeta.h"
 
 #include "test_helpers.h"
 
+#include <algorithm>
 #include <sstream>
 #include <vector>
 
@@ -91,7 +95,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(frames[1]["id"] == 2);
 	auto& list = frames[1]["result"]["tools"];
 	REQUIRE(list.is_array());
-	CHECK(list.size() == 129);  // +peek_graph +find_dangling_references
+	CHECK(list.size() == 132);  // +list_assets +find_asset
 	std::vector<std::string> names;
 	for (auto& t : list)
 	{
@@ -175,6 +179,244 @@ TEST_CASE("tools/call propagates handler error as MCP error envelope") {
 	REQUIRE(resp->contains("result"));
 	CHECK((*resp)["result"]["isError"] == true);
 	CHECK_FALSE(resp->contains("error"));
+}
+
+TEST_CASE("tools/call: tool returning content::Envelope unpacks to spec-shaped content array") {
+	// Verifies the rich-content opt-in path: a tool that returns
+	// `{"_mcp": {"content": [...], "structuredContent": ...}}` gets
+	// its content used directly, with structuredContent surfaced as a
+	// sibling of content per MCP 2025-06-18.
+	tools::ToolRegistry registry;
+	tools::ToolDescriptor d;
+	d.name = "fake_screenshot";
+	d.description = "test";
+	d.input_schema = json{{"type","object"}};
+	registry.Add(std::move(d), [](const json&) {
+		return tools::content::Envelope(
+			{
+				tools::content::Text("Captured viewport.", tools::content::Audience::User),
+				tools::content::ImageBase64("ZmFrZQ==", "image/png"),
+			},
+			json{{"width", 1280}, {"height", 720}});
+	});
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	json req = {
+		{"jsonrpc", "2.0"}, {"id", 30}, {"method", "tools/call"},
+		{"params", json{{"name", "fake_screenshot"}, {"arguments", json::object()}}}
+	};
+	auto resp = server.Dispatch(req);
+	REQUIRE(resp.has_value());
+	auto& result = (*resp)["result"];
+	CHECK(result["isError"] == false);
+	REQUIRE(result["content"].is_array());
+	REQUIRE(result["content"].size() == 2);
+	// Block 0: text with explicit User audience
+	CHECK(result["content"][0]["type"] == "text");
+	CHECK(result["content"][0]["text"] == "Captured viewport.");
+	REQUIRE(result["content"][0].contains("annotations"));
+	CHECK(result["content"][0]["annotations"]["audience"] == json::array({"user"}));
+	// Block 1: image (default audience User, also annotation-emitted)
+	CHECK(result["content"][1]["type"] == "image");
+	CHECK(result["content"][1]["data"] == "ZmFrZQ==");
+	CHECK(result["content"][1]["mimeType"] == "image/png");
+	// structuredContent sibling
+	REQUIRE(result.contains("structuredContent"));
+	CHECK(result["structuredContent"]["width"] == 1280);
+	CHECK(result["structuredContent"]["height"] == 720);
+	// _meta still attached
+	CHECK(result["_meta"]["tool"] == "fake_screenshot");
+}
+
+TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_tool reaches all") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	REQUIRE(registry.TotalRegistered() == 132);
+
+	tools::RegisterToolsetMetaTools(registry);
+	REQUIRE(registry.TotalRegistered() == 135);  // +3 meta-tools
+
+	tools::EnableToolSearchMode(registry);
+	// Active set should now be 4: list_toolsets, describe_toolset, call_tool, shutdown_daemon.
+	auto spec = registry.ListSpec();
+	REQUIRE(spec.size() == 4);
+	std::vector<std::string> names;
+	for (auto& t : spec) names.push_back(t["name"].get<std::string>());
+	std::sort(names.begin(), names.end());
+	CHECK(names == std::vector<std::string>{
+		"call_tool", "describe_toolset", "list_toolsets", "shutdown_daemon"});
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	// list_toolsets — should return a non-empty array of {name, description, tool_count}
+	json req1 = {
+		{"jsonrpc", "2.0"}, {"id", 100}, {"method", "tools/call"},
+		{"params", json{{"name", "list_toolsets"}, {"arguments", json::object()}}}
+	};
+	auto r1 = server.Dispatch(req1);
+	REQUIRE(r1.has_value());
+	auto inner1 = json::parse((*r1)["result"]["content"][0]["text"].get<std::string>());
+	REQUIRE(inner1.contains("toolsets"));
+	REQUIRE(inner1["toolsets"].is_array());
+	CHECK(inner1["toolsets"].size() >= 20);  // we have ~26 categories
+	// Each entry has the right shape
+	CHECK(inner1["toolsets"][0].contains("name"));
+	CHECK(inner1["toolsets"][0].contains("description"));
+	CHECK(inner1["toolsets"][0].contains("tool_count"));
+
+	// describe_toolset(name="cpp") — should list the 7 cpp tools
+	json req2 = {
+		{"jsonrpc", "2.0"}, {"id", 101}, {"method", "tools/call"},
+		{"params", json{{"name", "describe_toolset"},
+		                {"arguments", json{{"name", "cpp"}}}}}
+	};
+	auto r2 = server.Dispatch(req2);
+	REQUIRE(r2.has_value());
+	auto inner2 = json::parse((*r2)["result"]["content"][0]["text"].get<std::string>());
+	CHECK(inner2["name"] == "cpp");
+	REQUIRE(inner2["tools"].is_array());
+	CHECK(inner2["tools"].size() == 7);
+	// Each tool entry has inputSchema
+	for (const auto& t : inner2["tools"]) {
+		CHECK(t.contains("name"));
+		CHECK(t.contains("description"));
+		CHECK(t["inputSchema"]["type"] == "object");
+	}
+
+	// call_tool(name="list_blueprints", arguments={path: "/Game"}) — invokes
+	// a tool that's filtered out of tools/list, proving the lazy-discovery
+	// dispatch reaches the underlying registry.
+	json req3 = {
+		{"jsonrpc", "2.0"}, {"id", 102}, {"method", "tools/call"},
+		{"params", json{
+			{"name", "call_tool"},
+			{"arguments", json{
+				{"name", "list_blueprints"},
+				{"arguments", json{{"path", "/Game"}}}
+			}}
+		}}
+	};
+	auto r3 = server.Dispatch(req3);
+	REQUIRE(r3.has_value());
+	auto inner3 = json::parse((*r3)["result"]["content"][0]["text"].get<std::string>());
+	REQUIRE(inner3.is_array());
+	CHECK(inner3.size() == 6);  // same 6 fixtures the direct-call test checks
+}
+
+TEST_CASE("call_tool rejects unknown tool names with a clear error") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	tools::RegisterToolsetMetaTools(registry);
+	tools::EnableToolSearchMode(registry);
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+	json req = {
+		{"jsonrpc", "2.0"}, {"id", 103}, {"method", "tools/call"},
+		{"params", json{
+			{"name", "call_tool"},
+			{"arguments", json{{"name", "no_such_thing"}}}
+		}}
+	};
+	auto r = server.Dispatch(req);
+	REQUIRE(r.has_value());
+	CHECK((*r)["result"]["isError"] == true);
+	auto txt = (*r)["result"]["content"][0]["text"].get<std::string>();
+	CHECK(txt.find("unknown tool") != std::string::npos);
+}
+
+TEST_CASE("Long-running tool can emit progress via CallContext, gets queued as notifications/progress") {
+	tools::ToolRegistry registry;
+	tools::ToolDescriptor d;
+	d.name = "slow_op";
+	d.description = "test";
+	d.input_schema = json{{"type","object"}};
+	registry.Add(std::move(d), [](const json&) {
+		// Simulate progress emission inside the tool.
+		auto* ctx = jsonrpc::CallContext::Current();
+		REQUIRE(ctx != nullptr);
+		ctx->EmitProgress(0.0, 100.0, "starting");
+		ctx->EmitProgress(50.0, 100.0, "halfway");
+		ctx->EmitProgress(100.0, 100.0, "done");
+		return json{{"ok", true}};
+	});
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	json req = {
+		{"jsonrpc", "2.0"}, {"id", 200}, {"method", "tools/call"},
+		{"params", json{
+			{"name", "slow_op"},
+			{"arguments", json::object()},
+			// progressToken in _meta per MCP 2025-06-18.
+			{"_meta", json{{"progressToken", "tok-200"}}}
+		}}
+	};
+	auto resp = server.Dispatch(req);
+	REQUIRE(resp.has_value());
+	CHECK((*resp)["result"]["isError"] == false);
+
+	auto notifs = server.TakePendingNotifications();
+	// Three progress notifications queued — one per EmitProgress call.
+	REQUIRE(notifs.size() == 3);
+	CHECK(notifs[0]["method"] == "notifications/progress");
+	CHECK(notifs[0]["params"]["progressToken"] == "tok-200");
+	CHECK(notifs[0]["params"]["progress"] == 0.0);
+	CHECK(notifs[0]["params"]["total"] == 100.0);
+	CHECK(notifs[0]["params"]["message"] == "starting");
+	CHECK(notifs[2]["params"]["progress"] == 100.0);
+	CHECK(notifs[2]["params"]["message"] == "done");
+}
+
+TEST_CASE("Tool with no progressToken from client gets EmitProgress as no-op") {
+	tools::ToolRegistry registry;
+	tools::ToolDescriptor d;
+	d.name = "slow_op_no_token";
+	d.description = "test";
+	d.input_schema = json{{"type","object"}};
+	registry.Add(std::move(d), [](const json&) {
+		auto* ctx = jsonrpc::CallContext::Current();
+		REQUIRE(ctx != nullptr);
+		ctx->EmitProgress(50.0, 100.0, "no one's listening");
+		return json{{"ok", true}};
+	});
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	json req = {
+		{"jsonrpc", "2.0"}, {"id", 201}, {"method", "tools/call"},
+		{"params", json{{"name", "slow_op_no_token"}, {"arguments", json::object()}}}
+	};
+	(void)server.Dispatch(req);
+	CHECK(server.TakePendingNotifications().empty());
+}
+
+TEST_CASE("CallContext::IsCancelled defaults false, MarkCancelled flips it") {
+	jsonrpc::Server server;
+	jsonrpc::CallContext ctx(server, json("id-1"), std::nullopt);
+	CHECK_FALSE(ctx.IsCancelled());
+	ctx.MarkCancelled();
+	CHECK(ctx.IsCancelled());
+}
+
+TEST_CASE("tools/call: text content with default audience omits annotations object") {
+	// Audience::Both is the implicit MCP default — the helper deliberately
+	// doesn't emit annotations in that case so the JSON stays minimal.
+	auto block = tools::content::Text("hi");  // Audience defaults to Both
+	CHECK(block["type"] == "text");
+	CHECK_FALSE(block.contains("annotations"));
 }
 
 TEST_CASE("tools/call error envelope includes args + tool name in _meta") {

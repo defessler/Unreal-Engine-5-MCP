@@ -75,6 +75,10 @@ public:
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
 
+	// ----- Asset-registry queries (reads) -------------------------------
+	AssetRegistryListResult ListAssets(std::string_view, bool) override;
+	AssetRegistryListResult FindAsset(std::string_view, std::string_view) override;
+
 	// ----- Project + Content Browser ops --------------------------------
 	// Reads pass through; writes (save/move/delete/create) throw the
 	// read-only error.

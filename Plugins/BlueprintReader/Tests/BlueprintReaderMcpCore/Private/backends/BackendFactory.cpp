@@ -253,6 +253,10 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			if (!cfg.uproject.empty()) {
 				lc.handshakeFilePath =
 					(cfg.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
+				// Project path enables GetProjectMetadata (pure local
+				// .uproject read) without depending on the editor
+				// implementing a wire op for it.
+				lc.projectPath = cfg.uproject.string();
 			}
 			return std::make_unique<SocketBlueprintReader>(std::move(lc));
 		}

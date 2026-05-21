@@ -283,6 +283,16 @@ namespace
 		// Structural diff between two BPs (BP roundtrip-capability,
 		// Task 13). Read-only — no compile/save side effects.
 		StructuralDiff,
+		// Asset-registry queries — list/find any asset type, not just
+		// the typed list_* family. Closes the agent-feedback gap where
+		// the catalog has list_blueprints / list_materials / etc. but
+		// no general "what assets are under this path?" probe.
+		ListAssets,
+		FindAsset,
+		// Project metadata — read .uproject + return engine
+		// association etc. Implemented editor-side so the live
+		// backend doesn't need its own .uproject path config.
+		GetProjectMetadata,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -414,6 +424,9 @@ namespace
 		if (OpStr.Equals(TEXT("AddAnimState"), ESearchCase::IgnoreCase))            { OutOp = EOp::AddAnimState; return true; }
 		if (OpStr.Equals(TEXT("CompileAnimBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CompileAnimBlueprint; return true; }
 		if (OpStr.Equals(TEXT("StructuralDiff"), ESearchCase::IgnoreCase))          { OutOp = EOp::StructuralDiff; return true; }
+		if (OpStr.Equals(TEXT("ListAssets"), ESearchCase::IgnoreCase))              { OutOp = EOp::ListAssets; return true; }
+		if (OpStr.Equals(TEXT("FindAsset"), ESearchCase::IgnoreCase))               { OutOp = EOp::FindAsset; return true; }
+		if (OpStr.Equals(TEXT("GetProjectMetadata"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetProjectMetadata; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -628,6 +641,8 @@ namespace
 	// code / EmitOk / AddVariable helpers.
 	UEdGraphPin* FindPinByIdOrName(UEdGraphNode* Node, const FString& Spec);
 	int32 EmitOk(const FString& OutputPath, bool bPretty);
+	int32 EmitError(const FString& OutputPath, bool bPretty,
+					int32 Code, const FString& ErrorMsg);
 	bool BuildPinTypeFromFlags(const FString& Params, FEdGraphPinType& Out);
 
 	// Severity → wire string, matching what the MCP server's tool-result
@@ -4234,6 +4249,29 @@ namespace
 	{
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("read_state_tree requires asset_path"));
+		}
+
+		// Validate: asset exists and is a StateTree. We don't link the
+		// StateTreeModule headers, so check via the class path string.
+		UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath);
+		if (!IsValid(Asset))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("read_state_tree: asset not found: %s"),
+					*AssetPath));
+		}
+		const FString ActualClass = Asset->GetClass()->GetPathName();
+		if (!ActualClass.Contains(TEXT("StateTree")))
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				FString::Printf(TEXT("read_state_tree: %s is %s, not a StateTree — "
+					"call read_blueprint, read_widget_blueprint, or the matching typed reader instead"),
+					*AssetPath, *ActualClass));
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4484,6 +4522,13 @@ namespace
 			P->SetStringField(TEXT("name"),     It->GetName());
 			P->SetStringField(TEXT("type"),     It->GetCPPType());
 			P->SetStringField(TEXT("category"), It->GetMetaData(TEXT("Category")));
+			// declared_on lets the MCP layer filter out inherited members
+			// when include_inherited=false (default). UStruct::GetOwnerClass
+			// returns the class that originally declared this property.
+			if (UClass* Owner = It->GetOwnerClass())
+			{
+				P->SetStringField(TEXT("declared_on"), Owner->GetName());
+			}
 			Props.Add(MakeShared<FJsonValueObject>(P));
 		}
 
@@ -4492,6 +4537,10 @@ namespace
 		{
 			auto F = MakeShared<FJsonObject>();
 			F->SetStringField(TEXT("name"), It->GetName());
+			if (UClass* Owner = It->GetOwnerClass())
+			{
+				F->SetStringField(TEXT("declared_on"), Owner->GetName());
+			}
 			// Emit a small flag CSV that covers the BP-callable surface.
 			TArray<FString> Flags;
 			if (It->HasAnyFunctionFlags(FUNC_BlueprintCallable))
@@ -4764,6 +4813,27 @@ namespace
 	{
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("read_niagara_system requires asset_path"));
+		}
+
+		UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath);
+		if (!IsValid(Asset))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("read_niagara_system: asset not found: %s"),
+					*AssetPath));
+		}
+		const FString ActualClass = Asset->GetClass()->GetPathName();
+		if (!ActualClass.Contains(TEXT("NiagaraSystem")))
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				FString::Printf(TEXT("read_niagara_system: %s is %s, not a NiagaraSystem — "
+					"call read_blueprint or the matching typed reader instead"),
+					*AssetPath, *ActualClass));
+		}
 
 		// We don't link NiagaraEditor; surface the asset shape + a hint.
 		// At runtime UNiagaraSystem exposes emitter handles via reflection
@@ -4938,8 +5008,29 @@ namespace
 	{
 		FString AssetPath;
 		FParse::Value(*Params, TEXT("Asset="), AssetPath);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("read_ability_set requires asset_path"));
+		}
 
-		UDataAsset* DA = LoadObject<UDataAsset>(nullptr, *AssetPath);
+		// Validate: asset exists and is a UDataAsset (AbilitySet is a
+		// project-specific UDataAsset subclass — accept any DataAsset).
+		UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath);
+		if (!IsValid(Asset))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("read_ability_set: asset not found: %s"),
+					*AssetPath));
+		}
+		UDataAsset* DA = Cast<UDataAsset>(Asset);
+		if (!IsValid(DA))
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				FString::Printf(TEXT("read_ability_set: %s is %s, not a DataAsset — "
+					"call read_blueprint or the matching typed reader instead"),
+					*AssetPath, *Asset->GetClass()->GetPathName()));
+		}
 		TArray<TSharedPtr<FJsonValue>> Abilities;
 		// AbilitySet schemas vary across projects. We scan for any array
 		// property containing a "class" + "level" pair via the property
@@ -5312,12 +5403,168 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ----- ListAssets / FindAsset (asset-registry queries) -------------
+	// General-purpose asset enumeration. The list_blueprints / list_materials
+	// / list_widgets family answers type-specific questions; these answer
+	// "what's under this path?" and "find an asset by name fragment". Closes
+	// the agent-feedback gap where the catalog had typed listings but no
+	// way to discover an unknown asset by path or substring.
+	//
+	// Wire shape: array of { asset_path, class_name } objects. asset_path
+	// is the canonical package path (`/Game/UI/WB_X`) and class_name is
+	// the short UClass name (`WidgetBlueprint`, `Texture2D`, …).
+	int32 RunListAssetsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Path;
+		FParse::Value(*Params, TEXT("Path="), Path);
+		if (Path.IsEmpty())
+		{
+			Path = TEXT("/Game");
+		}
+		const bool bRecursive = !FParse::Param(*Params, TEXT("NonRecursive"));
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+
+		TArray<FAssetData> Assets;
+		AR.GetAssetsByPath(FName(*Path), Assets, bRecursive, /*bIncludeOnlyOnDiskAssets=*/false);
+
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		Rows.Reserve(Assets.Num());
+		for (const FAssetData& A : Assets)
+		{
+			auto Row = MakeShared<FJsonObject>();
+			Row->SetStringField(TEXT("asset_path"), A.PackageName.ToString());
+			Row->SetStringField(TEXT("name"),       A.AssetName.ToString());
+			Row->SetStringField(TEXT("class_name"), A.AssetClassPath.GetAssetName().ToString());
+			Rows.Add(MakeShared<FJsonValueObject>(Row));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("assets"), Rows);
+		Out->SetNumberField(TEXT("total"), Rows.Num());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunFindAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Query;
+		FString ScopePath;
+		FParse::Value(*Params, TEXT("Query="), Query);
+		FParse::Value(*Params, TEXT("Path="),  ScopePath);
+		if (Query.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("FindAsset requires -Query=<substring>"));
+			return 1;
+		}
+		if (ScopePath.IsEmpty())
+		{
+			ScopePath = TEXT("/Game");
+		}
+
+		FAssetRegistryModule& ARM =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		IAssetRegistry& AR = ARM.Get();
+
+		TArray<FAssetData> Assets;
+		AR.GetAssetsByPath(FName(*ScopePath), Assets, /*bRecursive=*/true,
+						   /*bIncludeOnlyOnDiskAssets=*/false);
+
+		const FString QueryLower = Query.ToLower();
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		for (const FAssetData& A : Assets)
+		{
+			const FString NameLower = A.AssetName.ToString().ToLower();
+			const FString PathLower = A.PackageName.ToString().ToLower();
+			if (!NameLower.Contains(QueryLower) && !PathLower.Contains(QueryLower))
+			{
+				continue;
+			}
+			auto Row = MakeShared<FJsonObject>();
+			Row->SetStringField(TEXT("asset_path"), A.PackageName.ToString());
+			Row->SetStringField(TEXT("name"),       A.AssetName.ToString());
+			Row->SetStringField(TEXT("class_name"), A.AssetClassPath.GetAssetName().ToString());
+			Rows.Add(MakeShared<FJsonValueObject>(Row));
+		}
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("query"), Query);
+		Out->SetArrayField(TEXT("matches"), Rows);
+		Out->SetNumberField(TEXT("total"), Rows.Num());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// ----- GetProjectMetadata -------------------------------------------
+	// Pure local read of the .uproject — engine association, category,
+	// description. Implemented editor-side so the SocketBlueprintReader
+	// can route the call here even when it doesn't know the project
+	// path locally. (CommandletBlueprintReader still short-circuits and
+	// reads the file itself — see its impl.)
+	int32 RunGetProjectMetadataOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		const FString ProjectPath = FPaths::GetProjectFilePath();
+		const FString ProjectName = FApp::GetProjectName();
+
+		FString Raw;
+		if (!FFileHelper::LoadFileToString(Raw, *ProjectPath))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("GetProjectMetadata: failed to read %s"), *ProjectPath);
+			return 4;
+		}
+
+		TSharedPtr<FJsonObject> RawObj;
+		auto Reader = TJsonReaderFactory<>::Create(Raw);
+		if (!FJsonSerializer::Deserialize(Reader, RawObj) || !RawObj.IsValid())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("GetProjectMetadata: %s is not valid JSON"), *ProjectPath);
+			return 4;
+		}
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("project_name"), ProjectName);
+		Out->SetStringField(TEXT("project_path"), ProjectPath);
+		FString EA, Cat, Desc;
+		if (RawObj->TryGetStringField(TEXT("EngineAssociation"), EA))
+		{
+			Out->SetStringField(TEXT("engine_association"), EA);
+		}
+		if (RawObj->TryGetStringField(TEXT("Category"), Cat))
+		{
+			Out->SetStringField(TEXT("category"), Cat);
+		}
+		if (RawObj->TryGetStringField(TEXT("Description"), Desc))
+		{
+			Out->SetStringField(TEXT("description"), Desc);
+		}
+		Out->SetObjectField(TEXT("raw"), RawObj);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// Emit a structured error response so the live/socket transport can
+	// surface a meaningful message instead of the static LookupErrorCode
+	// description. SocketBlueprintReader reads `json.error` when code != 0.
+	int32 EmitError(const FString& OutputPath, bool bPretty,
+					int32 Code, const FString& ErrorMsg)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("error"), ErrorMsg);
+		(void)EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		return Code;
 	}
 
 	int32 RunAddVariableOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -6482,6 +6729,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::AddAnimState,               &RunAddAnimStateOp },
 		{ EOp::CompileAnimBlueprint,       &RunCompileAnimBlueprintOp },
 		{ EOp::StructuralDiff,             &RunStructuralDiffOp },
+		{ EOp::ListAssets,                 &RunListAssetsOp },
+		{ EOp::FindAsset,                  &RunFindAssetOp },
+		{ EOp::GetProjectMetadata,         &RunGetProjectMetadataOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

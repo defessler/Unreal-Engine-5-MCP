@@ -36,6 +36,8 @@ const std::set<std::string>& ReadOnlySet() {
 		"list_level_sequences", "read_level_sequence",
 		"list_gameplay_tags", "read_ability_set",
 		"list_anim_blueprints", "read_anim_blueprint",
+		// --- Generic asset registry -------------------------------------
+		"list_assets", "find_asset",
 		// --- Class info --------------------------------------------------
 		"find_class", "get_class_info",
 		// --- Discoverability + situational awareness --------------------

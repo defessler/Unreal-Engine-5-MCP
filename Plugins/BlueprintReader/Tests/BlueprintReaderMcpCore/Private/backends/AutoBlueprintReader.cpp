@@ -205,6 +205,7 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildLive() {
 	if (!cfg_.uproject.empty()) {
 		lc.handshakeFilePath =
 			(cfg_.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
+		lc.projectPath = cfg_.uproject.string();
 	}
 	return std::make_unique<SocketBlueprintReader>(std::move(lc));
 }
@@ -231,6 +232,7 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildCmdlet() {
 	if (!cfg_.uproject.empty()) {
 		sc.handshakeFilePath =
 			(cfg_.uproject.parent_path() / "Saved" / "bp-reader-cmdlet.json").string();
+		sc.projectPath = cfg_.uproject.string();
 	}
 	if (sc.port <= 0 || sc.token.empty())
 	{
@@ -461,6 +463,19 @@ void AutoBlueprintReader::BeginBatch() {
 nlohmann::json AutoBlueprintReader::EndBatch(bool skipCompile) {
 	FORWARD(EndBatch, skipCompile);
 }
+IBlueprintReader::ProjectMetadata
+AutoBlueprintReader::GetProjectMetadata() {
+	FORWARD(GetProjectMetadata);
+}
+IBlueprintReader::AssetRegistryListResult
+AutoBlueprintReader::ListAssets(std::string_view path, bool recursive) {
+	FORWARD(ListAssets, path, recursive);
+}
+IBlueprintReader::AssetRegistryListResult
+AutoBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
+	FORWARD(FindAsset, query, path);
+}
+
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
 	// and the user calling shutdown_daemon explicitly wants to release

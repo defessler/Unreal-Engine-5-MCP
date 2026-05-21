@@ -30,13 +30,39 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 129 tools (127 prior + peek_graph + find_dangling_references) with input schemas") {
+TEST_CASE("ToolRegistry exposes 132 tools (130 prior + list_assets + find_asset) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 129);
+	CHECK(spec.size() == 132);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
+}
+
+TEST_CASE("ValidateToolName accepts spec-compliant names, rejects others") {
+	// MCP 2025-11-25 tool name rule: 1-128 chars, [A-Za-z0-9_.-]
+	CHECK(tools::ValidateToolName("read_blueprint").empty());
+	CHECK(tools::ValidateToolName("a").empty());
+	CHECK(tools::ValidateToolName("name-with-hyphen").empty());
+	CHECK(tools::ValidateToolName("name.with.dot").empty());
+	CHECK(tools::ValidateToolName("MixedCase123").empty());
+
+	CHECK_FALSE(tools::ValidateToolName("").empty());          // empty
+	CHECK_FALSE(tools::ValidateToolName("has space").empty()); // space
+	CHECK_FALSE(tools::ValidateToolName("slash/in").empty());  // slash
+	CHECK_FALSE(tools::ValidateToolName(std::string(129, 'x')).empty()); // > 128 chars
+}
+
+TEST_CASE("ToolRegistry::Add throws on malformed tool names") {
+	tools::ToolRegistry r;
+	auto noop = [](const nlohmann::json&) { return nlohmann::json::object(); };
+	CHECK_THROWS_AS(r.Add({"has space", "d", nlohmann::json::object(), nullptr}, noop),
+		std::invalid_argument);
+	CHECK_THROWS_AS(r.Add({"", "d", nlohmann::json::object(), nullptr}, noop),
+		std::invalid_argument);
+	// Valid names succeed
+	CHECK_NOTHROW(r.Add({"valid_name", "d", nlohmann::json::object(), nullptr}, noop));
+	CHECK(r.TotalRegistered() == 1);
 }
 
 TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
@@ -315,6 +341,22 @@ TEST_CASE("get_node: missing node throws AssetNotFound") {
 		{"graph_name","EventGraph"},
 		{"node_id","00000000-0000-0000-0000-deadbeefdead"}}),
 		bpr::backends::AssetNotFound);
+}
+
+TEST_CASE("read_blueprint: AssetNotFound unmodified when FindAsset throws (mock backend)") {
+	// Mock's IBlueprintReader::FindAsset default throws — the hint
+	// computation must swallow that and leave the original AssetNotFound
+	// intact (no "did you mean" suffix appended). Positive-case hint
+	// generation is exercised by live tests against a real asset
+	// registry; here we just verify the failure mode is silent.
+	Fixture f;
+	try {
+		f.Call("read_blueprint", json{{"asset_path","/Game/AI/NoSuchAsset"}});
+		FAIL("expected AssetNotFound");
+	} catch (const bpr::backends::AssetNotFound& e) {
+		const std::string msg = e.what();
+		CHECK(msg.find("did you mean") == std::string::npos);
+	}
 }
 
 TEST_CASE("find_overriders: requires at least one filter") {

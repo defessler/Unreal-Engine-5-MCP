@@ -25,4 +25,13 @@ std::vector<std::string> ExpandCategory(const std::string& name);
 // Whether the given token is a recognized category name.
 bool IsKnownCategory(const std::string& name);
 
+// One-line description for a category, used by the lazy-discovery
+// `list_toolsets` meta-tool. Returns empty for unknown categories.
+std::string CategoryDescription(const std::string& name);
+
+// Names of every category in deterministic iteration order. Used by
+// list_toolsets to enumerate. The list is the union of per-domain
+// categories and workflow presets.
+std::vector<std::string> AllCategoryNames();
+
 }    // namespace bpr::tools
