@@ -15,6 +15,7 @@
 #pragma once
 
 #include "jsonrpc/Server.h"
+#include "tools/Logger.h"
 #include "tools/Prompts.h"
 #include "tools/ToolRegistry.h"
 
@@ -65,6 +66,15 @@ void RegisterHandlers(jsonrpc::Server& server,
 void RegisterHandlers(jsonrpc::Server& server,
                       tools::ToolRegistry& registry,
                       tools::prompts::PromptRegistry& prompts,
+                      const ServerInfo& info);
+
+// Full surface — also wires `logging/setLevel` against `logger`, and
+// advertises `logging: {}` on initialize. Pass nullptr for prompts or
+// logger to skip those capabilities independently. Phase 6.
+void RegisterHandlers(jsonrpc::Server& server,
+                      tools::ToolRegistry& registry,
+                      tools::prompts::PromptRegistry* prompts,
+                      tools::Logger* logger,
                       const ServerInfo& info);
 
 }    // namespace bpr::mcp
