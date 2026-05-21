@@ -22,6 +22,7 @@
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
+#include "tools/Logger.h"
 #include "tools/Prompts.h"
 #include "tools/ToolRegistry.h"
 #include "tools/ToolsetMeta.h"
@@ -493,7 +494,25 @@ int RunServerLoop() {
 					  << promptRegistry.Size() << " built-in slash commands\n";
 		}
 	}
-	mcp::RegisterHandlers(server, registry, promptRegistry, info);
+
+	// Phase 6 — Logger advertises `logging` capability + wires the
+	// `logging/setLevel` handler. Default level is `info`. Set
+	// BP_READER_LOG_LEVEL to override at startup (debug/info/notice/
+	// warning/error/critical/alert/emergency/off). Setting to `off`
+	// suppresses notifications/message entirely; stderr stays
+	// unaffected.
+	tools::Logger logger(&server);
+	{
+		const std::string startupLevel =
+			env::GetOrDefault("BP_READER_LOG_LEVEL", "info");
+		if (!logger.SetLevelFromString(startupLevel)) {
+			std::cerr << "[bp-reader-mcp] warning: BP_READER_LOG_LEVEL='"
+					  << startupLevel
+					  << "' is not recognized; defaulting to info\n";
+			logger.SetLevel(tools::LogLevel::Info);
+		}
+	}
+	mcp::RegisterHandlers(server, registry, &promptRegistry, &logger, info);
 
 	server.Run(std::cin, std::cout, std::cerr);
 	if (env::VerboseLoggingEnabled()) {

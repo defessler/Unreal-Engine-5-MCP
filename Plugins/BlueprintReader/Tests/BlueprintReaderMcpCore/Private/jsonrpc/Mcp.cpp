@@ -16,6 +16,7 @@ namespace jr = bpr::jsonrpc;
 void RegisterHandlersImpl(jr::Server& server,
 						  tools::ToolRegistry& registry,
 						  tools::prompts::PromptRegistry* prompts,
+						  tools::Logger* logger,
 						  const ServerInfo& info);
 
 std::string DefaultInstructions() {
@@ -74,21 +75,31 @@ void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,
 					  tools::prompts::PromptRegistry& prompts,
 					  const ServerInfo& info) {
-	RegisterHandlersImpl(server, registry, &prompts, info);
+	RegisterHandlersImpl(server, registry, &prompts, /*logger=*/nullptr, info);
 }
 
 void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,
 					  const ServerInfo& info) {
-	RegisterHandlersImpl(server, registry, /*prompts=*/nullptr, info);
+	RegisterHandlersImpl(server, registry, /*prompts=*/nullptr,
+						 /*logger=*/nullptr, info);
+}
+
+void RegisterHandlers(jr::Server& server,
+					  tools::ToolRegistry& registry,
+					  tools::prompts::PromptRegistry* prompts,
+					  tools::Logger* logger,
+					  const ServerInfo& info) {
+	RegisterHandlersImpl(server, registry, prompts, logger, info);
 }
 
 void RegisterHandlersImpl(jr::Server& server,
 						  tools::ToolRegistry& registry,
 						  tools::prompts::PromptRegistry* prompts,
+						  tools::Logger* logger,
 						  const ServerInfo& info) {
 	// -------- initialize ---------------------------------------------------
-	server.Register("initialize", [info, prompts](const nlohmann::json& params) -> jr::Response {
+	server.Register("initialize", [info, prompts, logger](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
 		// our default. The MCP spec evolves and clients send a string like
 		// "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
@@ -127,6 +138,13 @@ void RegisterHandlersImpl(jr::Server& server,
 		// that responds with an empty list (some clients are picky).
 		if (prompts && prompts->Size() > 0) {
 			capabilities["prompts"] = {{"listChanged", true}};
+		}
+		// Phase 6: logging primitive — advertised when a Logger is
+		// wired in. The spec's logging capability object is currently
+		// empty (no sub-flags), per
+		// https://modelcontextprotocol.io/specification/2025-06-18/server/logging.
+		if (logger != nullptr) {
+			capabilities["logging"] = nlohmann::json::object();
 		}
 		nlohmann::json result = {
 			{"protocolVersion", negotiated},
@@ -318,6 +336,37 @@ void RegisterHandlersImpl(jr::Server& server,
 				fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
 		}
 	});
+
+	// -------- logging/setLevel --------------------------------------------
+	// Phase 6 — MCP 2025-06-18 logging primitive. Only register when a
+	// Logger was provided. Adjusts which severity reaches the wire as
+	// `notifications/message`. Default level (set in Logger ctor) is
+	// info; clients downgrade to debug for triage or upgrade to error
+	// for noise reduction.
+	if (logger != nullptr) {
+		server.Register("logging/setLevel",
+			[logger](const nlohmann::json& params) -> jr::Response {
+				if (!params.is_object()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						"logging/setLevel params must be an object");
+				}
+				auto levelIt = params.find("level");
+				if (levelIt == params.end() || !levelIt->is_string()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						R"(logging/setLevel missing string "level")");
+				}
+				const std::string level = levelIt->get<std::string>();
+				if (!logger->SetLevelFromString(level)) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						fmt::format(
+							"unknown log level '{}' — expected one of "
+							"debug, info, notice, warning, error, "
+							"critical, alert, emergency, off",
+							level));
+				}
+				return jr::Response::Ok(nlohmann::json::object());
+			});
+	}
 
 	// -------- prompts/list + prompts/get ----------------------------------
 	// Phase 3 — slash-command UX. Only register when a non-null

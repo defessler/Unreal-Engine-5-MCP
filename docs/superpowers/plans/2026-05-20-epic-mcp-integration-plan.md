@@ -52,7 +52,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 3 | **Prompts** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Slash commands (universal client support) |
 | 4 | **C1** Resources primitive | 3–4 | 12d | Med — `bp://` URIs unlock Claude-Code resource panel | URI-addressable assets |
 | 5 | **C2** Pagination cursors | 1–2 | 14d | Low — small projects fit existing limits | Spec-conformant list paging |
-| 6 | **Logging** primitive | 1–2 | 16d | Low — stderr already exists for ops | Server logs to client |
+| 6 | **Logging** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Server logs to client |
 | 7 | **E** Analytics + safety | 5–7 | 23d | High — without it, can't measure plan success | Observability + path safety |
 | 8 | **EA-pull Wave 1** Core awareness | 6–8 | 31d | Very High — every reactive agent workflow needs this | Selection, open, compile, modal — the "what's the user doing?" core |
 | 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 46d | Very High — gates Push events entirely | Transport for push events |
