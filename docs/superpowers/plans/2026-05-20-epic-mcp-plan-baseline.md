@@ -14,16 +14,27 @@ Numbers backing the cumulative-test-count / tool-count / capability claims in `2
 
 ## Measurements
 
-| Field | Measured (2026-05-21) | Prior baseline (2026-05-20) | Delta |
+| Field | Measured (2026-05-21 post-Phase-B) | Prior baseline (2026-05-21 post-Phase-A) | Delta |
 |---|---|---|---|
-| Test cases in source (`TEST_CASE(` blocks) | **636** across 37 files | 635 | +1 |
-| Test cases actually executed | **620** (16 filtered/skipped) | 619 | +1 |
-| Tools advertised on `tools/list` (commandlet/live) | **132** (commit msg of 66954afd) | 127 | +5 (`list_assets`, `find_asset`, `get_project_metadata`, plus did-you-mean + UClass-validation refactors didn't add tools) |
-| Tools advertised on `tools/list` (mock backend) | **47** | (not measured) | mock declares many ops unsupported |
-| Tool `.Add(` registration sites | (re-measure deferred — not on critical path) | 134 | TBD |
+| Test cases in source (`TEST_CASE(` blocks) | **671** across 38 files | 636 | +35 |
+| Test cases actually executed | **655** (16 filtered/skipped) | 620 | +35 |
+| Tools advertised on `tools/list` (commandlet/live) | **132** | 132 | ✓ (Phase B is purely hardening, no new tools) |
+| Tools advertised on `tools/list` (mock backend) | **47** | 47 | ✓ |
 | Server default `protocolVersion` | **2025-06-18** | 2025-06-18 | ✓ |
-| Capabilities advertised on initialize | `{tools: {listChanged: true}}` only | same | confirms prompts / resources / logging NOT yet shipped |
-| Phase A status | **landed on `origin/main`** as `66954afd` | uncommitted | **resolved** |
+| Capabilities advertised on initialize | `{tools: {listChanged: true}}` only | same | Phase B doesn't claim new capabilities (Prompts / Resources / Logging still pending) |
+| Phase A status | **landed on `origin/main`** as `66954afd` + `3e107c65` | same | ✓ |
+| Phase B status | **landed on `origin/main`** as `12373937`, `e6f54125`, `1e542220` | not started | **shipped** |
+| Initialize `instructions` field | shipped (DefaultInstructions text, env BP_READER_INSTRUCTIONS gate) | absent | **new in Phase B** |
+| HttpTransport GET | **405 + Allow: POST, DELETE** | 501 | corrected per Epic 5.8 |
+| ToolRegistry::Add | warn-not-throw on length/char violations | hard reject | corrected per Epic 5.8 |
+| ToolRegistry::HasValidTools() | shipped (main.cpp fail-fast on empty) | absent | **new in Phase B** |
+| `call_tool` recursion guard | rejects 3 meta-tool targets | unguarded | **new in Phase B** |
+| Dotted alias fallback | `<prefix>.<tool>` resolves to flat name | unsupported | **new in Phase B** |
+| In-flight call registry | shipped on Server (3 methods) + notifications/cancelled wired | absent | **new in Phase B** |
+| Path-traversal helper | shipped (applied to 3 screenshot tools + write_generated_source) | plugin-side only | **new in Phase B (defense in depth)** |
+| `sort` opt-in on list_* | shipped on list_blueprints + list_assets (more to follow) | absent | **new in Phase B** |
+| Backwards-compat test matrix | shipped (5 protocol pins + tools/list inventory hash + structural asserts) | absent | **new in Phase B** |
+| tools/list inventory hash anchor | `0x0A155550DA73E1F3` (Phase B baseline, 132 tools) | n/a | **new in Phase B** |
 
 ## Phase A actual state (2026-05-21, post-merge)
 
@@ -102,4 +113,5 @@ Re-run the measurement commands and update this file when:
 ## Revision log
 
 - **2026-05-20** — initial baseline; Phase A measured as uncommitted in working tree (25 modified + 12 new files).
-- **2026-05-21** — Phase A landed as commit `66954afd` on `origin/main`. Re-measured: 620 tests, 132 tools (commandlet/live), 47 tools (mock). Capabilities unchanged. Phase A-merge gate satisfied — downstream phases can start.
+- **2026-05-21 morning** — Phase A landed as commit `66954afd` on `origin/main`. Re-measured: 620 tests, 132 tools (commandlet/live), 47 tools (mock). Capabilities unchanged. Phase A-merge gate satisfied — downstream phases can start.
+- **2026-05-21 mid-day** — Phase B shipped across 3 commits: `12373937` (8 hardening items + 23 tests), `e6f54125` (backwards-compat matrix + 8 tests), `1e542220` (sort opt-in + 4 tests). Re-measured: 655 tests, 132 tools (same — Phase B is purely hardening), capabilities still `{tools:{listChanged:true}}`. Phase B success metric (kill-switch + zero-break) verified.

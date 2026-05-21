@@ -1,7 +1,7 @@
-# Epic MCP Integration Plan (v9)
+# Epic MCP Integration Plan (v10)
 
 **Status:** Active plan. Supersedes all prior versions.
-**Last revised:** 2026-05-21 (Phase A landed in `66954afd`)
+**Last revised:** 2026-05-21 (Phase B landed in `12373937` + `e6f54125` + `1e542220`)
 **Scope:** Multi-month integration of Epic UE 5.8 ModelContextProtocol plugin patterns into our BlueprintReader MCP server, plus Lyra value-add toolsets, plus editor user-state awareness surface.
 
 Built from:
@@ -47,26 +47,26 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | # | Phase | Days | Cumulative | Cost of delay | Strategic role |
 |---|---|---|---|---|---|
 | 0 | **A** Foundation **(SHIPPED in `66954afd` + `3e107c65`)** | — | 0d | — | Tool registration, lazy discovery, content blocks, regex filter, CallContext, HttpTransport frame layer, UDeveloperSettings |
-| 1 | **B** Hardening + `instructions` + compat matrix | 2–3 | 3d | Med — wire compliance bug risk grows daily | Polish what we have + spec compliance |
-| 2 | **D** outputSchema + Image rollout | 3–5 | 8d | Low — additive only, no client breaks | LLM-side response shapes |
-| 3 | **Prompts** primitive | 2–3 | 11d | Med — slash-command UX defines first impression | Slash commands (universal client support) |
-| 4 | **C1** Resources primitive | 3–4 | 15d | Med — `bp://` URIs unlock Claude-Code resource panel | URI-addressable assets |
-| 5 | **C2** Pagination cursors | 1–2 | 17d | Low — small projects fit existing limits | Spec-conformant list paging |
-| 6 | **Logging** primitive | 1–2 | 19d | Low — stderr already exists for ops | Server logs to client |
-| 7 | **E** Analytics + safety | 5–7 | 26d | High — without it, can't measure plan success | Observability + path safety |
-| 8 | **EA-pull Wave 1** Core awareness | 6–8 | 34d | Very High — every reactive agent workflow needs this | Selection, open, compile, modal — the "what's the user doing?" core |
-| 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 49d | Very High — gates Push events entirely | Transport for push events |
-| 10 | **EA-push Wave 1** Core event notifications | 8–10 | 59d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
-| 11 | **H Tier 1** PluginToolset + GameFeatures + GAS | 10–12 | 71d | Med (High for Lyra users) | Lyra value-add |
-| | **— wire parity + core differentiation: ~14 weeks —** | | | | |
-| 12 | **EA-pull Wave 2** Per-asset-editor selection | 6–8 | 79d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
-| 13 | **EA-pull Wave 3** Viewport + visibility | 5–7 | 86d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
-| 14 | **EA-pull Wave 4** World + SCC + system state | 6–8 | 94d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
-| 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 101d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
-| 16 | **H Tier 2** ConfigSettings + Automation | 6–8 | 109d | Low (Med for Lyra) | More Lyra value-add |
-| | **— feature-complete EA + H: ~22 weeks —** | | | | |
-| 17 | **EA-pull Wave 5** Advanced + niche | 5–7 | 116d | Very Low — demand-driven | BP debug, takes, render queue, modeling tools, console history |
-| | **— full plan execution: ~23 weeks —** | | | | |
+| 1 | **B** Hardening + `instructions` + compat matrix **(SHIPPED in `12373937` + `e6f54125` + `1e542220`)** | — | 0d | — | Polish + spec compliance + backwards-compat snapshot guards |
+| 2 | **D** outputSchema + Image rollout | 3–5 | 5d | Low — additive only, no client breaks | LLM-side response shapes |
+| 3 | **Prompts** primitive | 2–3 | 8d | Med — slash-command UX defines first impression | Slash commands (universal client support) |
+| 4 | **C1** Resources primitive | 3–4 | 12d | Med — `bp://` URIs unlock Claude-Code resource panel | URI-addressable assets |
+| 5 | **C2** Pagination cursors | 1–2 | 14d | Low — small projects fit existing limits | Spec-conformant list paging |
+| 6 | **Logging** primitive | 1–2 | 16d | Low — stderr already exists for ops | Server logs to client |
+| 7 | **E** Analytics + safety | 5–7 | 23d | High — without it, can't measure plan success | Observability + path safety |
+| 8 | **EA-pull Wave 1** Core awareness | 6–8 | 31d | Very High — every reactive agent workflow needs this | Selection, open, compile, modal — the "what's the user doing?" core |
+| 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 46d | Very High — gates Push events entirely | Transport for push events |
+| 10 | **EA-push Wave 1** Core event notifications | 8–10 | 56d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
+| 11 | **H Tier 1** PluginToolset + GameFeatures + GAS | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |
+| | **— wire parity + core differentiation: ~13.5 weeks —** | | | | |
+| 12 | **EA-pull Wave 2** Per-asset-editor selection | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
+| 13 | **EA-pull Wave 3** Viewport + visibility | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
+| 14 | **EA-pull Wave 4** World + SCC + system state | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
+| 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
+| 16 | **H Tier 2** ConfigSettings + Automation | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |
+| | **— feature-complete EA + H: ~21 weeks —** | | | | |
+| 17 | **EA-pull Wave 5** Advanced + niche | 5–7 | 113d | Very Low — demand-driven | BP debug, takes, render queue, modeling tools, console history |
+| | **— full plan execution: ~22.5 weeks —** | | | | |
 | — | Deferred / demand-driven | — | — | (see Decision log) | G visual annotation, J cancellation, K MCP-as-client, L file sandbox, M reflection, EU Slate write-control, multi-user concert, Live Link |
 
 ---
@@ -78,7 +78,7 @@ Reveals which phases can be parallelized vs which must wait.
 ```
 A (SHIPPED — 66954afd + 3e107c65)
   │
-  ├──> B Hardening (independent)
+  ├──> B Hardening (SHIPPED — 12373937 + e6f54125 + 1e542220)
   │      │
   │      └──> D outputSchema (uses output_schema field added in B's hardening)
   │
@@ -114,7 +114,7 @@ A (SHIPPED — 66954afd + 3e107c65)
 ```
 
 **Parallelism windows:**
-- A is shipped; {B, Prompts, C1, Logging, EA-pull Wave 1, C3-C5} can all start now. If solo, sequence by cost-of-delay. If two parallel tracks: track 1 = {B → D → Prompts}; track 2 = {C3-C5 (longest) → EA-push Wave 1}.
+- A + B are shipped; {D, Prompts, C1, Logging, EA-pull Wave 1, C3-C5} can all start now. If solo, sequence by cost-of-delay. If two parallel tracks: track 1 = {D → Prompts}; track 2 = {C3-C5 (longest) → EA-push Wave 1}.
 - Once C2 + Logging ship: E unblocks.
 - Once Wave 1 ships: {H Tier 1, EA-pull Wave 2, EA-push Wave 1 (if C3-C5 done)} can run in parallel.
 
@@ -783,17 +783,17 @@ Per-tool: # of unique sessions using it within 90 days of ship. Tools <5 session
 
 ## Cumulative milestone table
 
-Re-baselined to measured 620 starting tests post-Phase-A (see baseline doc).
+Re-baselined to measured 655 starting tests post-Phase-B (see baseline doc).
 
 | Milestone | Phases | Weeks | Tests (cumulative) |
 |---|---|---|---|
-| **MVP — wire parity** | B + D + Prompts + C1 + C2 + Logging + E | 4 | +175 → ~795 |
-| **+ Core agent awareness** | + EA-pull Wave 1 | 5.5 | +60 → ~855 |
-| **+ Push events (transport + core)** | + C3–C5 + EA-push Wave 1 | 10 | +90 → ~945 |
-| **+ Lyra Tier 1 toolsets** | + H Tier 1 | 13 | +90 → ~1035 |
-| **+ Per-asset selection + viewport** | + EA-pull Wave 2 + Wave 3 | 16 | +95 → ~1130 |
-| **+ World/SCC + extended events** | + EA-pull Wave 4 + EA-push Wave 2 + H Tier 2 | 21 | +140 → ~1270 |
-| **+ Advanced surface** | + EA-pull Wave 5 | 23 | +40 → ~1310 |
+| **MVP — wire parity** | D + Prompts + C1 + C2 + Logging + E | 3.5 | +155 → ~810 |
+| **+ Core agent awareness** | + EA-pull Wave 1 | 5 | +60 → ~870 |
+| **+ Push events (transport + core)** | + C3–C5 + EA-push Wave 1 | 9.5 | +90 → ~960 |
+| **+ Lyra Tier 1 toolsets** | + H Tier 1 | 12.5 | +90 → ~1050 |
+| **+ Per-asset selection + viewport** | + EA-pull Wave 2 + Wave 3 | 15.5 | +95 → ~1145 |
+| **+ World/SCC + extended events** | + EA-pull Wave 4 + EA-push Wave 2 + H Tier 2 | 20.5 | +140 → ~1285 |
+| **+ Advanced surface** | + EA-pull Wave 5 | 22.5 | +40 → ~1325 |
 
 ---
 
@@ -932,7 +932,7 @@ For "must-have" tools (~50): full backend coverage = ~150 tests
 For "should-have" tools (~80): live backend only, mock throws = ~80 tests
 For "nice-to-have" tools (~70): deferred or live-only minimal coverage
 
-Template-based testing keeps marginal cost low: ~3 tests per simple read tool. Total growth target: from **620 today** (post-Phase-A) to ~1310 after full plan = +690 tests (+111%).
+Template-based testing keeps marginal cost low: ~3 tests per simple read tool. Total growth target: from **655 today** (post-Phase-B) to ~1325 after full plan = +670 tests (+102%).
 
 ---
 
@@ -1107,6 +1107,7 @@ Captures what was considered AND rejected, with reasoning. Prevents re-litigatio
 - **v6**: Expanded EA-pull/push with comprehensive user-state coverage (200 iterations)
 - **v7**: Split EA-pull into 5 waves organized by value priority; ordered critical path; cumulative milestones
 - **v8**: Hardening pass — measured baseline (619 tests / 127 tools / Phase A uncommitted), explicit dependency DAG, velocity calibration, pre-phase spike timeboxes, exit-criteria + kill-switch + success-metric per phase, cost-of-delay column, north-star metric, MCP spec watch + re-baseline triggers, EA-push edge cases under load, security review, external dependency audit, decision log, backwards-compat test matrix as Phase B deliverable
-- **v9** (this doc): Phase A landed in `66954afd` + `3e107c65` on `origin/main` 2026-05-20. Re-baselined to 620 tests / 132 tools (commandlet+live) / 47 tools (mock). Dropped A-merge precondition row (gate satisfied); downstream phases unblocked. All cumulative columns shifted -1d.
+- **v9**: Phase A landed in `66954afd` + `3e107c65` on `origin/main` 2026-05-20. Re-baselined to 620 tests / 132 tools (commandlet+live) / 47 tools (mock). Dropped A-merge precondition row (gate satisfied); downstream phases unblocked. All cumulative columns shifted -1d.
+- **v10** (this doc): Phase B shipped in 3 commits on 2026-05-21 — `12373937` (8 hardening items: HttpTransport GET 405, `instructions` field, call_tool recursion guard, HasValidTools preflight, ToolRegistry::Add warn-not-throw, JSON-RPC strict version validation, dotted alias fallback, in-flight call registry + notifications/cancelled wiring), `e6f54125` (backwards-compat test matrix: 3 protocol pins + tools/list inventory hash anchor `0x0A155550DA73E1F3` + structural asserts), `1e542220` (sort opt-in for list_* tools with `SortProperty()` helper + env BP_READER_SORT_DEFAULT kill-switch). Re-baselined to 655 tests / 132 tools. Cumulative columns shifted -3d.
 
-**Plan v9 is the definitive consolidated roadmap.** All prior versions superseded.
+**Plan v10 is the definitive consolidated roadmap.** All prior versions superseded.
