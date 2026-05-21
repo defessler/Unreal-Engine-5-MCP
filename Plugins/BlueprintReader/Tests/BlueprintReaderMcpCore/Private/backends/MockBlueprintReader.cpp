@@ -303,6 +303,67 @@ nlohmann::json MockBlueprintReader::StructuralDiff(
 		"(needs UBlueprint reflection that mock fixtures don't provide)");
 }
 
+std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
+	// Tools the mock backend doesn't implement and would otherwise
+	// throw "not supported by this backend" for. Main.cpp deny-filters
+	// these from the registry at startup so the catalog only advertises
+	// what's actually callable on the active backend.
+	//
+	// Write tools that mock overrides to throw a clear "mock backend
+	// is read-only" error are NOT included here — that error is
+	// actionable, the agent learns the right env var to set, so we
+	// keep them visible.
+	return {
+		// Editor live state — no editor to query
+		"get_editor_state",
+		"get_selected_actors", "set_selection",
+		"spawn_actor", "set_actor_transform", "delete_actor",
+		"focus_actor", "set_camera_transform",
+		"take_screenshot", "take_viewport_screenshot",
+		"take_annotated_screenshot", "set_show_flag",
+		"pie_start", "pie_stop", "live_coding_compile",
+		"build_lighting",
+		"console_command", "get_cvar", "set_cvar",
+		"read_output_log", "run_python_script",
+		// Asset registry — no registry without editor
+		"get_referencers", "get_dependencies",
+		// Per-asset-type readers — fixtures are blueprints only
+		"list_data_tables", "read_data_table", "add_data_row", "set_data_row_value",
+		"list_materials", "read_material",
+		"add_material_expression", "connect_material_expressions",
+		"set_material_parameter", "set_material_instance_parameter",
+		"compile_material",
+		"read_widget_blueprint", "add_widget", "set_widget_property",
+		"bind_widget_event", "compile_widget_blueprint",
+		"list_behavior_trees", "read_behavior_tree",
+		"add_bt_node", "set_bt_node_property", "compile_behavior_tree",
+		"list_data_assets", "read_data_asset",
+		"create_data_asset", "set_data_asset_property",
+		"list_state_trees", "read_state_tree",
+		"add_state_tree_state", "set_state_tree_transition", "compile_state_tree",
+		"list_niagara_systems", "read_niagara_system",
+		"create_niagara_system", "set_niagara_parameter",
+		"list_level_sequences", "read_level_sequence",
+		"add_sequence_track", "set_sequence_playback_range",
+		"list_gameplay_tags", "add_gameplay_tag", "read_ability_set",
+		"list_anim_blueprints", "read_anim_blueprint",
+		"add_anim_state", "compile_anim_blueprint",
+		// Class info — fixtures don't include the UClass registry
+		"find_class", "get_class_info", "list_functions",
+		// Asset management
+		"move_asset", "delete_asset", "create_folder",
+		"read_config_value", "set_config_value",
+		// Profiling
+		"start_profile", "stop_profile", "get_stats",
+		// Cook + package
+		"cook_content", "package_project",
+		// Tests
+		"run_automation_tests",
+		// Project metadata
+		"get_project_metadata",
+	};
+}
+
 std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 												  std::string_view query,
 												  std::string_view kind) {

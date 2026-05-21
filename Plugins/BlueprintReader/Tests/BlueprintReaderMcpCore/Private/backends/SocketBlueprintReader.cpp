@@ -29,6 +29,67 @@ namespace bpr::backends {
 
 namespace socket_blueprint_reader_detail {
 
+// Translation table for the per-op `code` field the editor returns on
+// the wire (see Plugins/BlueprintReader/Source/BlueprintReaderEditor/
+// Private/BlueprintReaderCommandlet.cpp — every Run*Op handler uses
+// the same code vocabulary). The numeric codes are stable across ops;
+// the *meaning* varies slightly per op (code 4 is "BP not found" for
+// some, "graph/node/pin not found" for others), so we surface a name
+// + general description rather than guessing one specific cause.
+//
+// Without this translation, the agent gets `live op ... returned
+// code=4` and has to guess. With it, they get `NotFound (code=4):
+// asset, graph, node, pin, ...` which is enough to know what kind of
+// thing went wrong and what to check.
+struct ErrorCodeInfo {
+	const char* name;
+	const char* description;
+};
+const ErrorCodeInfo* LookupErrorCode(int code) {
+	switch (code) {
+		case 1: { static const ErrorCodeInfo i = {
+			"BadRequest",
+			"the editor op rejected the arguments — a required field "
+			"(-Asset, -Graph, etc.) was missing or malformed"
+		}; return &i; }
+		case 2: { static const ErrorCodeInfo i = {
+			"BlueprintNotFound",
+			"LoadObject<UBlueprint> returned null — the path didn't "
+			"resolve, the asset isn't loaded, or it isn't a Blueprint"
+		}; return &i; }
+		case 3: { static const ErrorCodeInfo i = {
+			"WriteFailed",
+			"the editor couldn't write the response JSON to disk"
+		}; return &i; }
+		case 4: { static const ErrorCodeInfo i = {
+			"NotFound",
+			"a referenced sub-resource wasn't located — asset, graph, "
+			"node, pin, class, or (for typed-BP read ops) a required "
+			"attribute like WidgetTree was missing"
+		}; return &i; }
+		case 5: { static const ErrorCodeInfo i = {
+			"CompileSaveFailed",
+			"the BP was modified successfully but the recompile or "
+			"save step failed — check the engine log for the compile "
+			"errors that surfaced"
+		}; return &i; }
+		default: return nullptr;
+	}
+}
+
+// Pull `-Asset=` (or any single -Key=value flag) out of the op args
+// for inclusion in error messages — gives the agent the specific
+// path that failed without their having to recall the call site.
+std::string ExtractFlag(const std::vector<std::string>& args, std::string_view flag) {
+	const std::string prefix(flag);
+	for (const auto& a : args) {
+		if (a.size() > prefix.size() && a.compare(0, prefix.size(), prefix) == 0) {
+			return a.substr(prefix.size());
+		}
+	}
+	return {};
+}
+
 // On Windows, WSAStartup is required before any socket call. We refcount
 // across SocketBlueprintReader instances so the startup/cleanup pair is
 // balanced even if multiple readers exist (rare, but cheap to be right).
@@ -365,9 +426,33 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	}
 	int code = j.value("code", -1);
 	if (code != 0) {
-		throw BlueprintReaderError(fmt::format(
-			"live op '{}' returned code={} (response: {})",
-			args.empty() ? "<unknown>" : args[0], code, response));
+		const std::string opName = args.empty() ? "<unknown>" : args[0];
+		const std::string assetPath = ExtractFlag(args, "-Asset=");
+		const auto* info = LookupErrorCode(code);
+		const std::string name = info ? info->name : "UnknownCode";
+		std::string msg;
+		if (info) {
+			msg = fmt::format("{} (code={}): {}", name, code, info->description);
+		} else {
+			msg = fmt::format("UnknownCode (code={}): the editor returned a code "
+							  "this server doesn't have a translation for — see "
+							  "the engine log for context",
+							  code);
+		}
+		if (!assetPath.empty()) {
+			msg = fmt::format("{} [asset={}, op={}]", msg, assetPath, opName);
+		} else {
+			msg = fmt::format("{} [op={}]", msg, opName);
+		}
+		// Throw AssetNotFound for code 2 specifically (definitively a
+		// missing blueprint) so the MCP tool layer can offer "did you
+		// mean" candidates from the asset registry. Code 4 is more
+		// ambiguous — could be sub-resource — so it stays a generic
+		// BlueprintReaderError.
+		if (code == 2) {
+			throw AssetNotFound(msg);
+		}
+		throw BlueprintReaderError(msg);
 	}
 	auto jit = j.find("json");
 	if (jit == j.end())

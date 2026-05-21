@@ -91,7 +91,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(frames[1]["id"] == 2);
 	auto& list = frames[1]["result"]["tools"];
 	REQUIRE(list.is_array());
-	CHECK(list.size() == 127);
+	CHECK(list.size() == 129);  // +peek_graph +find_dangling_references
 	std::vector<std::string> names;
 	for (auto& t : list)
 	{
