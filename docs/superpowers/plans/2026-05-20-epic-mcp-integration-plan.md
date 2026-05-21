@@ -48,7 +48,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 |---|---|---|---|---|---|
 | 0 | **A** Foundation **(SHIPPED in `66954afd` + `3e107c65`)** | — | 0d | — | Tool registration, lazy discovery, content blocks, regex filter, CallContext, HttpTransport frame layer, UDeveloperSettings |
 | 1 | **B** Hardening + `instructions` + compat matrix **(SHIPPED in `12373937` + `e6f54125` + `1e542220`)** | — | 0d | — | Polish + spec compliance + backwards-compat snapshot guards |
-| 2 | **D** outputSchema + Image rollout | 3–5 | 5d | Low — additive only, no client breaks | LLM-side response shapes |
+| 2 | **D** outputSchema + Image rollout **(SHIPPED locally — pending push)** | — | 0d | — | LLM-side response shapes |
 | 3 | **Prompts** primitive | 2–3 | 8d | Med — slash-command UX defines first impression | Slash commands (universal client support) |
 | 4 | **C1** Resources primitive | 3–4 | 12d | Med — `bp://` URIs unlock Claude-Code resource panel | URI-addressable assets |
 | 5 | **C2** Pagination cursors | 1–2 | 14d | Low — small projects fit existing limits | Spec-conformant list paging |

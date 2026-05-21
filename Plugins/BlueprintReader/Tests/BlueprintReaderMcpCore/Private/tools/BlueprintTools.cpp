@@ -5,12 +5,18 @@
 #include "tools/codegen/CppEmit.h"
 #include "tools/codegen/UnsupportedTreatment.h"
 #include "tools/CompileFunction.h"
+#include "tools/ContentBlocks.h"
 #include "tools/Decompile.h"
+#include "tools/ImageReader.h"
 #include "tools/JsonProjection.h"
 #include "tools/parse/CppParse.h"
 #include "tools/TypeShorthand.h"
 
+#include "Env.h"
 #include "backends/IBlueprintReader.h"
+
+#include <filesystem>
+#include <fstream>
 
 #include <algorithm>
 #include <cctype>
@@ -109,6 +115,11 @@ void RequireSafeFilePath(const std::string& path) {
 		throw std::invalid_argument(err);
 	}
 }
+
+// Phase D's inline-image cap. Captures over this max-dim are refused
+// at inline-emit time so we don't ship multi-MB base64 over the wire.
+// 1280px tracks the LLM-vision sweet spot for 2025-2026 frontier models.
+constexpr uint32_t kInlineImageMaxDim = 1280;
 
 // Transpile gate. The 6 BP-to-C++ tools (decompile_function,
 // decompile_blueprint, transpile_function, transpile_blueprint,
@@ -347,6 +358,73 @@ auto WithAssetNotFoundHint(backends::IBlueprintReader& reader,
 
 }    // namespace blueprint_tools_detail
 using namespace blueprint_tools_detail;
+
+// Phase D — assemble the response for a screenshot tool, optionally
+// inlining the captured PNG as a content block. The classic shape is
+// `{ok, captured, output_file}`; when `returnInline` is true AND the
+// file exists AND its dimensions are within `kInlineImageMaxDim`, we
+// wrap that JSON as structuredContent next to an Image content block
+// so the client can render the capture without a follow-up tool call.
+//
+// Kill-switch + safety:
+//   - BP_READER_NEVER_INLINE_IMAGES=1 forces classic shape regardless of arg
+//   - Image dimensions > 1280px max-dim → throw invalid_argument
+//     (helpful hint: pass width/height to the capture call instead)
+//   - File-not-found → throw with the path so the agent can retry
+nlohmann::json BuildScreenshotResponse(
+	const std::string& destPath,
+	bool captured,
+	const std::string& outputFile,
+	bool returnInline) {
+	nlohmann::json structured = {
+		{"ok", true},
+		{"captured", captured},
+		{"output_file", outputFile},
+	};
+	const bool wantInline = returnInline && !env::NeverInlineImages();
+	if (!wantInline || !captured) {
+		return structured;
+	}
+	// Resolve the path the tool actually wrote — outputFile from the
+	// reader is authoritative if non-empty; fall back to dest_path.
+	std::filesystem::path resolved = outputFile.empty()
+		? std::filesystem::path(destPath)
+		: std::filesystem::path(outputFile);
+	std::error_code ec;
+	if (!std::filesystem::exists(resolved, ec)) {
+		throw std::invalid_argument(fmt::format(
+			"return_inline=true requested but capture file not found: {}",
+			resolved.string()));
+	}
+	const auto dims = imageio::ReadPngDimensions(resolved);
+	if (!dims) {
+		throw std::invalid_argument(fmt::format(
+			"return_inline=true requires a valid PNG at {} "
+			"(IHDR parse failed — was the file actually written?)",
+			resolved.string()));
+	}
+	const uint32_t maxDim = std::max(dims->width, dims->height);
+	if (maxDim > kInlineImageMaxDim) {
+		throw std::invalid_argument(fmt::format(
+			"return_inline=true refused: capture is {}x{}, max-dim {} > {}px cap. "
+			"Re-capture at a smaller size (pass width/height args) or omit "
+			"return_inline to keep the disk-only path.",
+			dims->width, dims->height, maxDim, kInlineImageMaxDim));
+	}
+	// Read the bytes; nlohmann's binary type isn't suitable for the JSON
+	// emission path, so we build the base64 explicitly via ContentBlocks.
+	std::ifstream in(resolved, std::ios::binary);
+	std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+								std::istreambuf_iterator<char>());
+	structured["image_width"]  = dims->width;
+	structured["image_height"] = dims->height;
+	return content::Envelope(
+		{
+			content::Image(bytes, "image/png", content::Audience::User),
+			content::Text(structured.dump(), content::Audience::Assistant),
+		},
+		std::move(structured));
+}
 
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- list_assets -----------------------------------------------------
@@ -4497,27 +4575,44 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.description = "[editor] Capture a high-res screenshot to disk. `dest_path` "
 						"is the output file; `width`/`height` default to the "
 						"current viewport size if omitted. Routed via UE's "
-						"`HighResShot` exec command.";
+						"`HighResShot` exec command.\n\n"
+						"Pass `return_inline: true` (default false) to also "
+						"receive the PNG as an MCP Image content block — "
+						"capped at 1280px max-dim; larger captures are rejected "
+						"with a hint to re-capture smaller. "
+						"BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only "
+						"behaviour regardless of the arg.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
-				{"dest_path", {{"type","string"}}},
-				{"width",     {{"type","integer"}}},
-				{"height",    {{"type","integer"}}},
+				{"dest_path",     {{"type","string"}}},
+				{"width",         {{"type","integer"}}},
+				{"height",        {{"type","integer"}}},
+				{"return_inline", {{"type","boolean"},
+								   {"description","Emit the captured PNG as an Image content block "
+													"(<=1280px max-dim). Default false."}}},
 			}},
 			{"required", nlohmann::json::array({"dest_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"captured",    {{"type","boolean"}}},
+				{"output_file", {{"type","string"}}},
+				{"image_width",  {{"type","integer"}}},
+				{"image_height", {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","captured","output_file"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string dest = RequireString(args, "dest_path");
 			RequireSafeFilePath(dest);  // refuse `..` traversal early
 			int w = args.value("width",  0);
 			int h = args.value("height", 0);
+			const bool returnInline = args.value("return_inline", false);
 			auto r = reader.TakeScreenshot(dest, w, h);
-			return nlohmann::json{
-				{"ok", true},
-				{"captured",    r.captured},
-				{"output_file", r.outputFile},
-			};
+			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline);
 		});
 	}
 
@@ -4782,10 +4877,21 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.name = "take_viewport_screenshot";
 		d.description = "[editor] Quick capture of the active editor viewport to "
 						"disk (vs `take_screenshot` which uses HighResShot "
-						"for offline-quality output).";
+						"for offline-quality output).\n\n"
+						"Pass `return_inline: true` (default false) to also "
+						"receive the PNG as an MCP Image content block — "
+						"capped at 1280px max-dim; larger captures are rejected "
+						"with a hint to re-capture smaller. "
+						"BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only "
+						"behaviour.";
 		d.input_schema = {
 			{"type","object"},
-			{"properties", {{"dest_path", {{"type","string"}}}}},
+			{"properties", {
+				{"dest_path",     {{"type","string"}}},
+				{"return_inline", {{"type","boolean"},
+								   {"description","Emit the captured PNG as an Image content block "
+													"(<=1280px max-dim). Default false."}}},
+			}},
 			{"required", nlohmann::json::array({"dest_path"})},
 		};
 		d.output_schema = {
@@ -4794,18 +4900,17 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"ok",          {{"type","boolean"}}},
 				{"captured",    {{"type","boolean"}}},
 				{"output_file", {{"type","string"}}},
+				{"image_width",  {{"type","integer"}}},
+				{"image_height", {{"type","integer"}}},
 			}},
 			{"required", nlohmann::json::array({"ok","captured","output_file"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string dest = RequireString(args, "dest_path");
 			RequireSafeFilePath(dest);  // refuse `..` traversal early
+			const bool returnInline = args.value("return_inline", false);
 			auto r = reader.TakeViewportScreenshot(dest);
-			return nlohmann::json{
-				{"ok", true},
-				{"captured",    r.captured},
-				{"output_file", r.outputFile},
-			};
+			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline);
 		});
 	}
 

@@ -14,27 +14,32 @@ Numbers backing the cumulative-test-count / tool-count / capability claims in `2
 
 ## Measurements
 
-| Field | Measured (2026-05-21 post-Phase-B) | Prior baseline (2026-05-21 post-Phase-A) | Delta |
+| Field | Measured (2026-05-21 post-Phase-D) | Prior baseline (2026-05-21 post-Phase-B) | Delta |
 |---|---|---|---|
-| Test cases in source (`TEST_CASE(` blocks) | **671** across 38 files | 636 | +35 |
-| Test cases actually executed | **655** (16 filtered/skipped) | 620 | +35 |
-| Tools advertised on `tools/list` (commandlet/live) | **132** | 132 | ✓ (Phase B is purely hardening, no new tools) |
+| Test cases in source (`TEST_CASE(` blocks) | **700** across 39 files | 671 | +29 |
+| Test cases actually executed | **684** (16 filtered/skipped) | 655 | +29 |
+| Tools advertised on `tools/list` (commandlet/live) | **132** | 132 | ✓ (Phase D is shape-only, no new tools) |
+| Tools advertising `outputSchema` on `tools/list` | **132 / 132 (100%)** | 9 / 132 | **all tools now declare a shape (Phase D)** |
+| Screenshot tools accept `return_inline` | **2** (take_screenshot, take_viewport_screenshot) | 0 | **new in Phase D** |
+| Inline-image 1280px cap | enforced via `ImageReader::ReadPngDimensions` + `BuildScreenshotResponse` rejection | n/a | **new in Phase D** |
+| `BP_READER_NEVER_INLINE_IMAGES` kill switch | shipped (Env::NeverInlineImages, cached) | n/a | **new in Phase D** |
 | Tools advertised on `tools/list` (mock backend) | **47** | 47 | ✓ |
 | Server default `protocolVersion` | **2025-06-18** | 2025-06-18 | ✓ |
-| Capabilities advertised on initialize | `{tools: {listChanged: true}}` only | same | Phase B doesn't claim new capabilities (Prompts / Resources / Logging still pending) |
+| Capabilities advertised on initialize | `{tools: {listChanged: true}}` only | same | Phase D doesn't claim new capabilities (Prompts / Resources / Logging still pending) |
 | Phase A status | **landed on `origin/main`** as `66954afd` + `3e107c65` | same | ✓ |
-| Phase B status | **landed on `origin/main`** as `12373937`, `e6f54125`, `1e542220` | not started | **shipped** |
-| Initialize `instructions` field | shipped (DefaultInstructions text, env BP_READER_INSTRUCTIONS gate) | absent | **new in Phase B** |
-| HttpTransport GET | **405 + Allow: POST, DELETE** | 501 | corrected per Epic 5.8 |
-| ToolRegistry::Add | warn-not-throw on length/char violations | hard reject | corrected per Epic 5.8 |
-| ToolRegistry::HasValidTools() | shipped (main.cpp fail-fast on empty) | absent | **new in Phase B** |
-| `call_tool` recursion guard | rejects 3 meta-tool targets | unguarded | **new in Phase B** |
-| Dotted alias fallback | `<prefix>.<tool>` resolves to flat name | unsupported | **new in Phase B** |
-| In-flight call registry | shipped on Server (3 methods) + notifications/cancelled wired | absent | **new in Phase B** |
-| Path-traversal helper | shipped (applied to 3 screenshot tools + write_generated_source) | plugin-side only | **new in Phase B (defense in depth)** |
-| `sort` opt-in on list_* | shipped on list_blueprints + list_assets (more to follow) | absent | **new in Phase B** |
-| Backwards-compat test matrix | shipped (5 protocol pins + tools/list inventory hash + structural asserts) | absent | **new in Phase B** |
-| tools/list inventory hash anchor | `0x0A155550DA73E1F3` (Phase B baseline, 132 tools) | n/a | **new in Phase B** |
+| Phase B status | **landed on `origin/main`** as `12373937`, `e6f54125`, `1e542220` | same | ✓ |
+| Phase D status | **shipped locally** — push deferred to user | not started | **shipped** |
+| Initialize `instructions` field | shipped (DefaultInstructions text, env BP_READER_INSTRUCTIONS gate) | same | ✓ |
+| HttpTransport GET | **405 + Allow: POST, DELETE** | same | ✓ |
+| ToolRegistry::Add | warn-not-throw on length/char violations | same | ✓ |
+| ToolRegistry::HasValidTools() | shipped (main.cpp fail-fast on empty) | same | ✓ |
+| `call_tool` recursion guard | rejects 3 meta-tool targets | same | ✓ |
+| Dotted alias fallback | `<prefix>.<tool>` resolves to flat name | same | ✓ |
+| In-flight call registry | shipped on Server (3 methods) + notifications/cancelled wired | same | ✓ |
+| Path-traversal helper | shipped (applied to 3 screenshot tools + write_generated_source) | same | ✓ |
+| `sort` opt-in on list_* | shipped on list_blueprints + list_assets | same | ✓ |
+| Backwards-compat test matrix | shipped (5 protocol pins + tools/list inventory hash + structural asserts) | same | ✓ |
+| tools/list inventory hash anchor | `0x0A155550DA73E1F3` (Phase B baseline, 132 tools) | same | ✓ — Phase D's outputSchema additions are NOT included in the hash (it covers name+desc-prefix+inputSchema.type only) |
 
 ## Phase A actual state (2026-05-21, post-merge)
 

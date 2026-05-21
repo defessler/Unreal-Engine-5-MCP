@@ -35,6 +35,13 @@ int IntOrDefault(const char* key, int fallback);
 // shouldn't pay an env-var lookup.
 bool VerboseLoggingEnabled();
 
+// Phase D kill switch — when set, screenshot tools that accept
+// `return_inline=true` ignore that arg and always emit a path-only
+// response. Lets a security-conscious deployment force-disable
+// image-in-response without rebuilding. Reads
+// BP_READER_NEVER_INLINE_IMAGES; cached.
+bool NeverInlineImages();
+
 // ---------------------------------------------------------------------------
 // Auto-discovery
 // ---------------------------------------------------------------------------

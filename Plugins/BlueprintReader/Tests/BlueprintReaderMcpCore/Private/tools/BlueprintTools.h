@@ -22,4 +22,23 @@ void RegisterBlueprintTools(ToolRegistry& registry,
 // `enable_tool_category("editor")` to incrementally widen the surface.
 void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry);
 
+// Phase D — build the response shape for a screenshot tool, optionally
+// embedding the captured PNG as a base64-encoded Image content block.
+// Exposed here so tests can exercise the cap rejection + Envelope shape
+// without needing a fully-fledged IBlueprintReader stub.
+//
+//   destPath      — input dest_path arg (used as a fallback when
+//                   outputFile is empty)
+//   captured      — whether the underlying tool reported success
+//   outputFile    — authoritative file path the reader wrote
+//   returnInline  — caller's return_inline arg (false → classic shape)
+//
+// Throws std::invalid_argument when return_inline is true and the
+// captured PNG fails the 1280px max-dim cap, the file is missing, or
+// the file isn't a valid PNG.
+nlohmann::json BuildScreenshotResponse(const std::string& destPath,
+                                       bool captured,
+                                       const std::string& outputFile,
+                                       bool returnInline);
+
 }    // namespace bpr::tools
