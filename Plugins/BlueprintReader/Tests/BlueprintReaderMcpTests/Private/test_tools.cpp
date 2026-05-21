@@ -53,16 +53,42 @@ TEST_CASE("ValidateToolName accepts spec-compliant names, rejects others") {
 	CHECK_FALSE(tools::ValidateToolName(std::string(129, 'x')).empty()); // > 128 chars
 }
 
-TEST_CASE("ToolRegistry::Add throws on malformed tool names") {
+TEST_CASE("ToolRegistry::Add only HARD-rejects empty names; soft-warns on others") {
+	// Per Epic 5.8: only empty names are unrecoverable. Length / invalid
+	// chars warn but accept — strict MCP clients may reject downstream,
+	// but other registrations stay healthy.
 	tools::ToolRegistry r;
 	auto noop = [](const nlohmann::json&) { return nlohmann::json::object(); };
-	CHECK_THROWS_AS(r.Add({"has space", "d", nlohmann::json::object(), nullptr}, noop),
-		std::invalid_argument);
+	// Empty name still throws (no key to dispatch on).
 	CHECK_THROWS_AS(r.Add({"", "d", nlohmann::json::object(), nullptr}, noop),
 		std::invalid_argument);
-	// Valid names succeed
+	// Space and slash now warn-not-throw — registration succeeds.
+	CHECK_NOTHROW(r.Add({"has space", "d", nlohmann::json::object(), nullptr}, noop));
+	CHECK_NOTHROW(r.Add({"slash/in", "d", nlohmann::json::object(), nullptr}, noop));
 	CHECK_NOTHROW(r.Add({"valid_name", "d", nlohmann::json::object(), nullptr}, noop));
-	CHECK(r.TotalRegistered() == 1);
+	CHECK(r.TotalRegistered() == 3);
+}
+
+TEST_CASE("take_screenshot rejects path-traversal in dest_path") {
+	Fixture f;
+	// Mock backend doesn't actually take a screenshot — but the path
+	// validation runs in the tool handler BEFORE hitting the backend.
+	// A traversal arg should surface as an MCP-level exception thrown
+	// from the lambda; CHECK_THROWS catches that.
+	CHECK_THROWS_AS(f.Call("take_screenshot",
+		json{{"dest_path", "../escape.png"}}), std::invalid_argument);
+}
+
+TEST_CASE("take_viewport_screenshot rejects path-traversal in dest_path") {
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("take_viewport_screenshot",
+		json{{"dest_path", "/safe/../escape.png"}}), std::invalid_argument);
+}
+
+TEST_CASE("take_annotated_screenshot rejects path-traversal in dest_path") {
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("take_annotated_screenshot",
+		json{{"dest_path", "C:\\foo\\..\\escape.png"}}), std::invalid_argument);
 }
 
 TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {

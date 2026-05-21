@@ -220,14 +220,17 @@ HttpResponse Handle(const HttpRequest& req, Server& server, const std::string& m
 
 	if (req.method == "GET") {
 		// SSE long-poll is the spec-correct path for server→client
-		// notifications. The minimal POST-only transport returns 501
-		// here so clients fall back to polling via tools/list /
-		// resources/list. Plumbing SSE requires a persistent socket +
-		// the existing Server::TakePendingNotifications drain — future
-		// work tracked separately.
-		resp.statusCode = 501;
-		resp.statusText = StatusTextDefault(501);
-		resp.body = R"({"error":"SSE not yet implemented; use POST for request/response"})";
+		// notifications, but it's OPTIONAL — the spec requires POST,
+		// makes GET-for-SSE elective. Until C3-C5 ship the SSE socket
+		// loop, return 405 Method Not Allowed (matching Epic 5.8's
+		// transport) instead of 501. 501 = "we don't implement this
+		// method ever" semantics, while GET-for-SSE may ship later;
+		// 405 is the right code for "this endpoint doesn't accept this
+		// method right now."
+		resp.statusCode = 405;
+		resp.statusText = StatusTextDefault(405);
+		resp.headers["Allow"] = "POST, DELETE";
+		resp.body = R"({"error":"GET not supported (SSE not implemented); use POST for request/response"})";
 		return resp;
 	}
 

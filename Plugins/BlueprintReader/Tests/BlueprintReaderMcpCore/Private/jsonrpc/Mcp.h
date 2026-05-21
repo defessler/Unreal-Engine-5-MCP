@@ -30,7 +30,22 @@ struct ServerInfo {
     // back so older clients keep working. Bump this when adopting a newer
     // spec's primitives (outputSchema, structuredContent, audience, etc.).
     std::string protocolVersion = "2025-06-18";
+
+    // Free-form context shipped on the initialize response per MCP
+    // spec `instructions` field. The LLM consumes this once at session
+    // start as system-prompt context — explains what the server is for,
+    // calls out our BPIR pivot, points at where docs live. Empty means
+    // omit the field. Default is the multi-paragraph onboarding text
+    // from DefaultInstructions(); main.cpp suppresses it when env var
+    // BP_READER_INSTRUCTIONS=0.
+    std::string instructions;
 };
+
+// Returns the canonical onboarding text for the `instructions` field
+// on the initialize response. Pure function — same output every call.
+// Exported so main.cpp can decide whether to set it on the ServerInfo
+// (gated by env var) without duplicating the literal.
+std::string DefaultInstructions();
 
 // Registers the MCP method handlers against `server`, wiring them to
 // `registry`. `registry` is non-const because progressive-disclosure

@@ -385,3 +385,110 @@ TEST_CASE("TakeListChangedFlag: ActivateToken sets the flag, take clears it") {
 	CHECK(r.TakeListChangedFlag());
 	CHECK(!r.TakeListChangedFlag());               // taking clears it
 }
+
+// ===== HasValidTools pre-flight =========================================
+// Used by main.cpp at startup so a too-aggressive BP_READER_TOOLS filter
+// surfaces immediately instead of presenting an empty tools/list.
+
+TEST_CASE("HasValidTools: empty registry returns false") {
+	ToolRegistry r;
+	CHECK_FALSE(r.HasValidTools());
+}
+
+TEST_CASE("HasValidTools: registered tool returns true") {
+	auto r = MakeWith({"read_blueprint"});
+	CHECK(r.HasValidTools());
+}
+
+TEST_CASE("HasValidTools: over-aggressive filter reduces to false") {
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	// Typo'd allow-list — silently keeps nothing.
+	r.ApplyFilter({"reed_blueprint"}, {});
+	CHECK_FALSE(r.HasValidTools());
+}
+
+TEST_CASE("HasValidTools: deny-list that nukes everything reduces to false") {
+	auto r = MakeWith({"read_blueprint"});
+	r.ApplyFilter({}, {"read_blueprint"});
+	CHECK_FALSE(r.HasValidTools());
+}
+
+// ===== ToolRegistry::Add validation =====================================
+// Per Epic 5.8: only empty names are HARD rejections (no key to dispatch on).
+// Length / invalid-char violations warn-not-throw — strict MCP clients
+// may reject the tool downstream but other tools in the registry stay
+// healthy.
+
+TEST_CASE("ToolRegistry::Add throws on empty tool name (hard rejection)") {
+	ToolRegistry r;
+	ToolDescriptor d;
+	d.name = "";  // hard reject
+	d.description = "stub";
+	d.input_schema = nlohmann::json::object();
+	CHECK_THROWS_AS(r.Add(std::move(d), StubFn()), std::invalid_argument);
+}
+
+TEST_CASE("ToolRegistry::Add accepts overlong tool name with a warning (soft violation)") {
+	ToolRegistry r;
+	ToolDescriptor d;
+	d.name = std::string(200, 'x');  // > 128 chars
+	d.description = "stub";
+	d.input_schema = nlohmann::json::object();
+	// Does NOT throw. Warning is written to stderr (not asserted here —
+	// doctest captures stderr but we don't want to bake the exact text
+	// into the test).
+	r.Add(std::move(d), StubFn());
+	CHECK(r.Find(std::string(200, 'x')) != nullptr);
+}
+
+TEST_CASE("ToolRegistry::Add accepts invalid-char tool name with a warning (soft violation)") {
+	ToolRegistry r;
+	ToolDescriptor d;
+	d.name = "foo/bar";  // slash not in [A-Za-z0-9_.-]
+	d.description = "stub";
+	d.input_schema = nlohmann::json::object();
+	r.Add(std::move(d), StubFn());
+	CHECK(r.Find("foo/bar") != nullptr);
+}
+
+// ===== Dotted alias fallback ============================================
+// Epic 5.8 MCP clients address tools by `<toolset>.<name>` (e.g.
+// `blueprint.read_blueprint`). We register flat names only, but Find /
+// FindAny accept dotted lookups so an Epic-style client interoperates
+// without our spec doubling tools/list with duplicate dotted entries.
+
+TEST_CASE("Find accepts dotted alias and resolves to the flat-registered tool") {
+	auto r = MakeWith({"read_blueprint"});
+	CHECK(r.Find("read_blueprint") != nullptr);
+	CHECK(r.Find("blueprint.read_blueprint") != nullptr);
+	CHECK(r.Find("anyprefix.read_blueprint") != nullptr);  // prefix not validated
+}
+
+TEST_CASE("Find with dotted alias still honors filter") {
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	r.ApplyFilter({"read_blueprint"}, {});  // active = {read_blueprint}
+	CHECK(r.Find("blueprint.read_blueprint") != nullptr);  // allowed
+	CHECK(r.Find("blueprint.add_node") == nullptr);        // filtered out
+}
+
+TEST_CASE("Find rejects dotted name when the bare last segment doesn't match anything") {
+	auto r = MakeWith({"read_blueprint"});
+	CHECK(r.Find("blueprint.no_such_tool") == nullptr);
+}
+
+TEST_CASE("FindAny accepts dotted alias (lazy-discovery path)") {
+	auto r = MakeWith({"read_blueprint"});
+	r.ApplyFilter({}, {"read_blueprint"});  // filtered out for Find
+	CHECK(r.Find("blueprint.read_blueprint") == nullptr);    // gated
+	CHECK(r.FindAny("blueprint.read_blueprint") != nullptr); // ungated
+}
+
+TEST_CASE("ListSpec does NOT advertise dotted alias entries") {
+	// The fallback is dispatch-only — tools/list still shows the flat
+	// name as the single canonical form.
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	auto names = SpecNames(r);
+	CHECK(names.size() == 2);
+	CHECK(std::find(names.begin(), names.end(), "blueprint.read_blueprint") == names.end());
+	CHECK(std::find(names.begin(), names.end(), "blueprint.add_node") == names.end());
+}

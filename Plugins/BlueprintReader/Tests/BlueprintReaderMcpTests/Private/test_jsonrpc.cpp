@@ -181,6 +181,38 @@ TEST_CASE("Dispatch rejects missing jsonrpc version") {
 	CHECK((*resp)["error"]["code"] == static_cast<int>(ErrorCode::InvalidRequest));
 }
 
+TEST_CASE("Dispatch rejects jsonrpc version != 2.0 (strict)") {
+	// MCP requires JSON-RPC 2.0. Older versions (1.x) and wishful
+	// future versions (2.1, 3.0) get InvalidRequest. The handler
+	// must not just look at presence — it has to verify the exact
+	// string.
+	Server s;
+	for (const char* badVersion : {"1.0", "1.1", "2.1", "3.0", ""}) {
+		json req = {{"jsonrpc", badVersion}, {"method","foo"}, {"id", 1}};
+		CAPTURE(badVersion);
+		auto resp = s.Dispatch(req);
+		REQUIRE(resp.has_value());
+		CHECK((*resp)["error"]["code"] == static_cast<int>(ErrorCode::InvalidRequest));
+	}
+}
+
+TEST_CASE("Dispatch rejects non-string jsonrpc field (defensive)") {
+	Server s;
+	json req = {{"jsonrpc", 2.0}, {"method","foo"}, {"id", 1}};  // number, not string
+	auto resp = s.Dispatch(req);
+	REQUIRE(resp.has_value());
+	CHECK((*resp)["error"]["code"] == static_cast<int>(ErrorCode::InvalidRequest));
+}
+
+TEST_CASE("Dispatch silently drops malformed-jsonrpc notifications") {
+	// Notifications (no id) with bad jsonrpc shouldn't elicit a response —
+	// per JSON-RPC 2.0, notifications never get responses.
+	Server s;
+	json req = {{"jsonrpc", "1.0"}, {"method","foo"}};  // no id → notification
+	auto resp = s.Dispatch(req);
+	CHECK_FALSE(resp.has_value());
+}
+
 // ===== Server-initiated notifications (progressive disclosure path) =====
 
 TEST_CASE("QueueNotification + TakePendingNotifications round-trip") {

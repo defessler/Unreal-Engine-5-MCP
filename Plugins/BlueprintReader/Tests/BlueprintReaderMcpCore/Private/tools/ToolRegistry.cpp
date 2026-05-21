@@ -4,6 +4,7 @@
 #include "tools/ToolCategories.h"
 
 #include <algorithm>
+#include <iostream>
 #include <regex>
 #include <stdexcept>
 
@@ -39,12 +40,30 @@ std::string ValidateToolName(const std::string& name) {
 	return {};
 }
 
+bool IsHardRejection(const std::string& name) {
+	// Empty name is the only hard rejection. Everything else (length,
+	// invalid chars) is a warn-not-throw soft violation per Epic 5.8's
+	// permissive registration model — strict-mode clients will reject
+	// the tool on their end, but a single tool's name typo shouldn't
+	// kill startup for all of them.
+	return name.empty();
+}
+
 void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
+	if (IsHardRejection(desc.name)) {
+		// Empty name is unrecoverable: there's no key to dispatch on,
+		// and no human-meaningful identity for the diagnostic. Hard fail.
+		throw std::invalid_argument("ToolRegistry::Add: tool name is empty");
+	}
 	if (const std::string err = ValidateToolName(desc.name); !err.empty()) {
-		// Fail loud at registration so we never advertise a name an
-		// MCP client would reject. Per spec the rule is SHOULD, but
-		// strict clients enforce it — better to find typos at startup.
-		throw std::invalid_argument(err);
+		// Soft violation — log to stderr but accept the registration.
+		// Matches Epic 5.8's permissive model: strict MCP clients will
+		// reject the tool on their end if it's malformed, but other
+		// tools in the registry stay healthy. The MCP spec's character
+		// + length rules are MUST-respect for clients, SHOULD-respect
+		// for servers.
+		std::cerr << "[bp-reader-mcp] ToolRegistry::Add: warning: " << err
+				  << " — registration permitted; strict MCP clients may reject this tool.\n";
 	}
 	// Auto-classify: if the caller didn't set annotations explicitly,
 	// look up the canonical hints by tool name. Keeps the 100+ existing
@@ -101,18 +120,56 @@ nlohmann::json ToolRegistry::ListSpec() const {
 	return arr;
 }
 
+namespace dotted_alias_detail {
+// Epic 5.8 MCP clients can address tools by `<toolset>.<tool>` (e.g.
+// `blueprint.read_blueprint`). Our internal registration uses flat names
+// only, so the dispatcher needs a fallback: when a lookup misses, strip
+// everything up to and including the last '.' and retry. The dotted form
+// is NOT advertised on tools/list — only the flat name appears — so we
+// don't double the surface, but inbound calls from Epic-style clients
+// still resolve. Pure last-segment strip: anything before the last dot
+// is treated as an opaque prefix, not validated as a category name.
+std::string StripDottedPrefix(const std::string& name) {
+	const auto dot = name.find_last_of('.');
+	if (dot == std::string::npos || dot + 1 >= name.size()) {
+		return name;
+	}
+	return name.substr(dot + 1);
+}
+}  // namespace dotted_alias_detail
+using namespace dotted_alias_detail;
+
 const ToolFn* ToolRegistry::Find(const std::string& name) const {
+	auto it = fns_.find(name);
+	if (it == fns_.end()) {
+		// Epic-interop fallback: try the un-prefixed last segment.
+		if (name.find('.') != std::string::npos) {
+			const auto bare = StripDottedPrefix(name);
+			if (bare != name) {
+				return Find(bare);
+			}
+		}
+		return nullptr;
+	}
 	if (filterApplied_ && active_.count(name) == 0)
 	{
 		return nullptr;
 	}
-	auto it = fns_.find(name);
-	return (it == fns_.end()) ? nullptr : &it->second;
+	return &it->second;
 }
 
 const ToolFn* ToolRegistry::FindAny(const std::string& name) const {
 	auto it = fns_.find(name);
-	return (it == fns_.end()) ? nullptr : &it->second;
+	if (it == fns_.end()) {
+		if (name.find('.') != std::string::npos) {
+			const auto bare = StripDottedPrefix(name);
+			if (bare != name) {
+				return FindAny(bare);
+			}
+		}
+		return nullptr;
+	}
+	return &it->second;
 }
 
 size_t ToolRegistry::Size() const {

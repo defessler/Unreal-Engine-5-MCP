@@ -109,13 +109,18 @@ TEST_CASE("HTTP: disallowed Origin returns 403") {
 	CHECK(resp.statusCode == 403);
 }
 
-TEST_CASE("HTTP: GET returns 501 (SSE not implemented in minimal transport)") {
+TEST_CASE("HTTP: GET returns 405 with Allow header (SSE optional, not implemented)") {
+	// Per MCP spec, GET-for-SSE is optional; until C3-C5 ship SSE we
+	// return 405 (matching Epic 5.8) rather than 501, since SSE may
+	// land later and 501 implies "never." Header lists the methods
+	// the endpoint actually accepts right now.
 	jsonrpc::Server server;
 	jsonrpc::http::HttpRequest req;
 	req.method = "GET";
 	req.path = "/mcp";
 	auto resp = jsonrpc::http::Handle(req, server, "/mcp");
-	CHECK(resp.statusCode == 501);
+	CHECK(resp.statusCode == 405);
+	CHECK(resp.headers.at("Allow") == "POST, DELETE");
 }
 
 TEST_CASE("HTTP: DELETE returns 204 (session ack)") {

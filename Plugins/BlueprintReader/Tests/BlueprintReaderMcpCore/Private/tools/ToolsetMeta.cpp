@@ -151,6 +151,20 @@ void RegisterToolsetMetaTools(ToolRegistry& registry) {
 				throw std::invalid_argument("call_tool requires a string `name`");
 			}
 			const std::string targetName = nameIt->get<std::string>();
+			// Self-dispatch recursion guard: an agent (or a buggy client)
+			// can issue `call_tool({name: "call_tool", arguments: {...}})`,
+			// which would otherwise loop until stack overflow. Reject the
+			// three meta-tool names — they're already top-level for the
+			// agent to invoke directly; tunneling them through call_tool
+			// is never necessary and is always indistinguishable from a
+			// mistake.
+			if (targetName == "call_tool" ||
+				targetName == "list_toolsets" ||
+				targetName == "describe_toolset") {
+				throw std::invalid_argument(
+					"call_tool cannot dispatch the meta-tool '" + targetName +
+					"' — invoke it directly instead.");
+			}
 			nlohmann::json subArgs = nlohmann::json::object();
 			if (auto argsIt = args.find("arguments"); argsIt != args.end()) {
 				if (!argsIt->is_object()) {

@@ -13,6 +13,33 @@ namespace bpr::mcp {
 
 namespace jr = bpr::jsonrpc;
 
+std::string DefaultInstructions() {
+	// Onboarding text the LLM sees as system-prompt context at session
+	// start. Keep tight — clients pay tokens for this. Reference the
+	// `bp-reader` skill (deployed under `.claude/skills/bp-reader/`) for
+	// detailed patterns instead of inlining them here.
+	return
+		"bp-reader-mcp exposes UE5 Blueprint introspection, mutation, "
+		"BP<->C++ transpile, and editor-control tools. Conventions:\n"
+		"\n"
+		"- Asset paths use the package form: `/Game/AI/BP_Foo` (NOT "
+		"`/Game/AI/BP_Foo.BP_Foo`).\n"
+		"- BP<->C++ uses BPIR as the pivot: a versioned JSON AST. See "
+		"`decompile_function`, `transpile_function`, `parse_cpp_function`, "
+		"`write_generated_source`.\n"
+		"- Backends: `mock` (no UE, fixtures only), `commandlet` (spawns "
+		"editor headlessly), `live` (talks to running editor over TCP), "
+		"`auto` (default — picks live if editor is open, else commandlet).\n"
+		"- Multi-step writes against the same BP should go through "
+		"`apply_ops` / `preview_ops` / `compile_function` for atomicity. "
+		"See the `bp-batches` skill.\n"
+		"- Write tools are blocked on the mock backend (read-only). "
+		"Mutation requires a real editor.\n"
+		"- The transpile family (`transpile_blueprint`, "
+		"`write_generated_source`, etc.) is gated by env var "
+		"`BP_READER_ALLOW_TRANSPILE=1`. Off by default.\n";
+}
+
 namespace mcp_detail {
 
 nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
@@ -81,6 +108,11 @@ void RegisterHandlers(jr::Server& server,
 				{"version", info.version},
 			}},
 		};
+		// MCP `instructions` is optional. Ship only when ServerInfo has
+		// a non-empty value (main.cpp sets the default; env var can clear).
+		if (!info.instructions.empty()) {
+			result["instructions"] = info.instructions;
+		}
 		return jr::Response::Ok(std::move(result));
 	});
 
@@ -93,23 +125,25 @@ void RegisterHandlers(jr::Server& server,
 
 	// -------- notifications/cancelled -------------------------------------
 	// Per MCP 2025-06-18 §utilities/cancellation. Client signals that
-	// a previously-issued requestId should be aborted. In the current
-	// single-threaded dispatch model, by the time we read this
-	// notification any prior tool call has already completed — but the
-	// hook is in place so the future async/HTTP path can honor it.
-	// When a tool IS active on another thread, look up its CallContext
-	// and mark cancelled; the tool polls IsCancelled() at safe points.
+	// a previously-issued requestId should be aborted. Look up the
+	// in-flight CallContext for that id and mark it cancelled; the
+	// tool polls IsCancelled() at safe points.
+	//
+	// In the current single-threaded stdio model the in-flight
+	// registry is always empty when this handler runs (a tool call
+	// either returned or threw before we got to read the next frame),
+	// so the lookup is a no-op — same observable behaviour as before.
+	// The wiring is now in place so the future async/HTTP path honors
+	// cancellation without further refactoring.
 	server.Register("notifications/cancelled",
-		[](const nlohmann::json& /*params*/) -> jr::Response {
-			// Today's behaviour: silent no-op. The single-threaded
-			// dispatcher can't process this notification while a tool
-			// call is in flight, so by the time we get here, the call
-			// is done. Logged at the Server level (via the standard
-			// debug output) for observability.
-			//
-			// Future: when the HTTP/SSE transport lands, a per-server
-			// `inFlightCalls_` registry will be searched here and the
-			// matching CallContext flagged cancelled.
+		[&server](const nlohmann::json& params) -> jr::Response {
+			if (params.is_object()) {
+				if (auto idIt = params.find("requestId"); idIt != params.end()) {
+					if (auto* ctx = server.FindInFlight(*idIt)) {
+						ctx->MarkCancelled();
+					}
+				}
+			}
 			return jr::Response::Ok(nlohmann::json::object());
 		});
 
@@ -169,6 +203,16 @@ void RegisterHandlers(jr::Server& server,
 								progressToken.value_or(nlohmann::json()),
 								progressToken);
 		jr::CallContext::Scope scope(&callCtx);
+		// Register in the server's in-flight registry so
+		// notifications/cancelled can find this context by requestId.
+		// Today's single-threaded dispatch means we're already past the
+		// cancellation window by the time the registry would be consulted,
+		// but the future async/HTTP path needs this hook.
+		server.RegisterInFlight(&callCtx);
+		struct UnregisterOnExit {
+			jr::Server& s; jr::CallContext* c;
+			~UnregisterOnExit() { s.UnregisterInFlight(c); }
+		} unreg{server, &callCtx};
 
 		const tools::ToolFn* fn = registry.Find(name);
 		if (fn == nullptr) {

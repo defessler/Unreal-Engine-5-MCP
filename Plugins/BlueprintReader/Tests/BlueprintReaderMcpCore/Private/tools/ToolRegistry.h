@@ -124,6 +124,14 @@ public:
 	// log line + the progressive-disclosure meta-tool's response.
 	size_t TotalRegistered() const { return descriptors_.size(); }
 
+	// Pre-flight check: returns true when the registry has at least one
+	// tool active (so `tools/list` won't return an empty array). Used by
+	// main.cpp to fail-fast when an over-aggressive BP_READER_TOOLS filter
+	// or a never-called-RegisterBlueprintTools bug leaves the server with
+	// nothing to advertise. Cheaper than waiting for a tools/list call to
+	// surface the misconfiguration.
+	bool HasValidTools() const { return Size() > 0; }
+
 	// Trim the active subset.
 	//
 	// `allowSpec`: if non-empty, only tools matching at least one of these
