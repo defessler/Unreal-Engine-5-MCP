@@ -43,7 +43,7 @@ TEST_CASE("AnnotationsFor: read-only tools advertise readOnlyHint=true with cons
 			"read_anim_blueprint", "read_ability_set",
 			"find_class", "get_class_info",
 			"list_node_kinds", "list_pin_categories",
-			"read_output_log", "get_cvar", "get_stats",
+			"read_output_log", "get_cvar",
 			"get_selected_actors", "get_editor_state",
 			"get_referencers", "get_dependencies",
 			"read_config_value",

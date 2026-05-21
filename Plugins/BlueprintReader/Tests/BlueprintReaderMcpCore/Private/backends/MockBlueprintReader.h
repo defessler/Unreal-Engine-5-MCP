@@ -70,6 +70,13 @@ public:
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
 
+	// Capability advertisement — the mock backend has no editor and no
+	// asset registry, so a long tail of tools the catalog otherwise
+	// advertises just throws "not supported by this backend" when
+	// called. Main filters these out at startup so agents don't burn
+	// turns discovering capability gaps.
+	std::vector<std::string> UnsupportedTools() const override;
+
 	// Number of loaded fixtures — for diagnostics + tests.
 	std::size_t FixtureCount() const { return assets_.size(); }
 

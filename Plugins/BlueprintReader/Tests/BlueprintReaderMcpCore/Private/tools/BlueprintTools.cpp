@@ -224,7 +224,14 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"[blueprint] Read top-level metadata for a Blueprint: parent class, interfaces, "
 			"variables, function/graph summaries, macros. "
 			"Pass `fields` (e.g. [\"parent_class\", \"variables[].name\"]) to "
-			"project just what you need — full payloads can be many KB on busy BPs.";
+			"project just what you need — full payloads can be many KB on busy BPs.\n\n"
+			"**Typed-BP hint:** this tool reads the BP layer common to every "
+			"asset type, but specialized assets carry extra structure not "
+			"surfaced here. Prefer the typed reader when you need it: "
+			"`read_widget_blueprint` (UMG widget tree), `read_anim_blueprint` "
+			"(state machines + anim graph), `read_behavior_tree` (BT node "
+			"hierarchy). `read_blueprint` still works on those assets — just "
+			"returns the union without the asset-specific structure.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -658,7 +665,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.description =
 			"[blueprint] Fetch a Blueprint graph (nodes + connections) by name. Defaults to EventGraph. "
 			"Big graphs are big — pass `fields` (e.g. [\"nodes[].title\", \"nodes[].kind\"]) "
-			"to drop fields you don't need.";
+			"to drop fields you don't need, or `summary: true` to drop "
+			"per-node pin arrays and the connections list in one shot.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -666,6 +674,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
 				{"graph_name", {{"type", "string"},
 								{"description", "Graph name. Defaults to \"EventGraph\"."}}},
+				{"summary", {{"type", "boolean"},
+							 {"description", "When true, omits per-node pin arrays and the "
+							  "top-level connections array. Keeps {id, kind, title, "
+							  "comment, position} per node. Default false."}}},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
@@ -673,10 +685,97 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string graph = OptString(args, "graph_name", "EventGraph");
+			const bool summary = args.value("summary", false);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = reader.GetGraph(asset, graph);
+			if (summary) {
+				// Drop pin detail from each node + the global connections
+				// array. Node identity (id, kind, title, comment, position)
+				// is preserved — enough to map the graph's structure
+				// without paying for tens of KB of pin metadata.
+				if (body.contains("nodes") && body["nodes"].is_array()) {
+					for (auto& n : body["nodes"]) {
+						if (n.is_object()) {
+							n.erase("pins");
+						}
+					}
+				}
+				body.erase("connections");
+				body["_summary"] = true;
+			}
 			ApplyResponseControls(body, ctl);
 			return body;
+		});
+	}
+
+	// ----- peek_graph ------------------------------------------------------
+	// Cheap "is this worth pulling in full?" probe. Returns node count +
+	// kind histogram + connection count without any node/pin/connection
+	// detail. ~50 bytes per response regardless of graph size — vs
+	// get_graph's tens of KB for a busy EventGraph.
+	{
+		ToolDescriptor d;
+		d.name = "peek_graph";
+		d.description =
+			"[blueprint] Lightweight probe for a Blueprint graph — returns node count + "
+			"kind histogram + connection count without any node/pin/connection "
+			"detail. Use before `get_graph` to decide whether a graph is worth "
+			"reading in full (event graphs on busy BPs can be tens of KB). "
+			"Defaults to EventGraph.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path", {{"type", "string"},
+								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"graph_name", {{"type", "string"},
+								{"description", "Graph name. Defaults to \"EventGraph\"."}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"name",              {{"type", "string"}}},
+				{"type",              {{"type", "string"}}},
+				{"nodes_count",       {{"type", "integer"}, {"minimum", 0}}},
+				{"connections_count", {{"type", "integer"}, {"minimum", 0}}},
+				{"by_kind",           {{"type", "object"},
+									   {"additionalProperties", {{"type", "integer"}}}}},
+			}},
+			{"required", nlohmann::json::array({"name","nodes_count","by_kind"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			std::string graph = OptString(args, "graph_name", "EventGraph");
+			BPGraph g = reader.GetGraph(asset, graph);
+			std::map<std::string, int, std::less<>> byKind;
+			for (const auto& n : g.Nodes) {
+				// Prefer meta.kind (the semantic K2-node kind we emit
+				// in the wire) over the raw UClass. Falls back to the
+				// class name when meta is absent (older fixtures).
+				std::string kind;
+				if (n.Meta.is_object()) {
+					auto it = n.Meta.find("kind");
+					if (it != n.Meta.end() && it->is_string()) {
+						kind = it->get<std::string>();
+					}
+				}
+				if (kind.empty()) {
+					kind = n.Class;
+				}
+				++byKind[kind];
+			}
+			nlohmann::json kindJson = nlohmann::json::object();
+			for (const auto& [k, v] : byKind) {
+				kindJson[k] = v;
+			}
+			return nlohmann::json{
+				{"name",              g.Name},
+				{"type",              g.Type},
+				{"nodes_count",       static_cast<int>(g.Nodes.size())},
+				{"connections_count", static_cast<int>(g.Connections.size())},
+				{"by_kind",           std::move(kindJson)},
+			};
 		});
 	}
 
@@ -687,7 +786,9 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.description =
 			"[blueprint] Fetch a Blueprint function: signature (inputs/outputs), locals, "
 			"and body graph. Use `fields` to project (e.g. "
-			"[\"inputs[].name\", \"outputs[].name\"] for just the signature).";
+			"[\"inputs[].name\", \"outputs[].name\"] for just the signature), "
+			"or `summary: true` to drop per-node pin arrays and the graph's "
+			"connections list.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -695,6 +796,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
 				{"function_name", {{"type", "string"},
 								   {"description", "Function name as it appears in the blueprint."}}},
+				{"summary", {{"type", "boolean"},
+							 {"description", "When true, the body graph's nodes drop their "
+							  "pin arrays and the graph's connections list is omitted. "
+							  "Function signature (inputs/outputs/locals) is unchanged. "
+							  "Default false."}}},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path", "function_name"})},
@@ -702,8 +808,23 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string fn = RequireString(args, "function_name");
+			const bool summary = args.value("summary", false);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = reader.GetFunction(asset, fn);
+			if (summary) {
+				if (body.contains("graph") && body["graph"].is_object()) {
+					auto& g = body["graph"];
+					if (g.contains("nodes") && g["nodes"].is_array()) {
+						for (auto& n : g["nodes"]) {
+							if (n.is_object()) {
+								n.erase("pins");
+							}
+						}
+					}
+					g.erase("connections");
+				}
+				body["_summary"] = true;
+			}
 			ApplyResponseControls(body, ctl);
 			return body;
 		});
@@ -1112,7 +1233,13 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"`interface`. All filters are optional but at least one must be "
 			"set. Returns a list of `{asset_path, parent_class, matched: [...]}` "
 			"entries. Replaces the manual `list_blueprints` + N×`read_blueprint` "
-			"loop the agent would otherwise walk.";
+			"loop the agent would otherwise walk.\n\n"
+			"**Performance:** `parent_class` is cheap (matches against the "
+			"asset summary). `function_name` and `interface` each require a "
+			"full read of every candidate BP, so on a large project they "
+			"can time out. When either is set, also pass `parent_class` "
+			"to narrow the candidate set first — the request will be "
+			"rejected otherwise.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -1138,6 +1265,22 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				throw std::invalid_argument(
 					"find_overriders requires at least one of "
 					"parent_class / function_name / interface");
+			}
+			// Reject the unscoped slow path. Function-name / interface
+			// filters need a full ReadBlueprint per candidate, which on
+			// projects with hundreds of BPs blows past the per-call
+			// timeout (~60s). Force the agent to narrow with
+			// parent_class — they get predictable performance and the
+			// query is still expressive enough for every realistic
+			// "find BPs that override X" question.
+			if ((!fn.empty() || !iface.empty()) && parent.empty()) {
+				throw std::invalid_argument(
+					"find_overriders: when filtering by function_name or "
+					"interface, you must also provide parent_class to "
+					"narrow the candidate set. Unscoped scans read every "
+					"BP in the project and time out at ~60s. For a true "
+					"unscoped scan, use list_blueprints + N×read_blueprint "
+					"with your own batching.");
 			}
 			auto ctl = ParseResponseControls(args);
 
@@ -1195,6 +1338,194 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			}
 			ApplyResponseControls(out, ctl);
 			return out;
+		});
+	}
+
+	// ----- find_dangling_references ---------------------------------------
+	// Walk a Blueprint's function bodies (and optionally top-level graphs)
+	// looking for nodes that reference variables / functions which no
+	// longer exist on the BP. Catches the post-refactor "renamed the
+	// variable but kept the getter" scenario without forcing the agent to
+	// enumerate every node by hand.
+	//
+	// Limitations of the MCP-side implementation:
+	//   - External (cross-BP) function calls aren't validated. We can
+	//     only confirm calls to functions declared on THIS BP.
+	//   - Widget-binding references (UMG `bind_widget`) need typed-asset
+	//     introspection we don't have access to from read_blueprint;
+	//     left for a future plugin-side `validate_blueprint` op that
+	//     can look at the full UClass + WidgetTree.
+	//   - Component-reference nodes (variables typed as components)
+	//     show up as plain VariableGet/Set nodes and ARE covered.
+	{
+		ToolDescriptor d;
+		d.name = "find_dangling_references";
+		d.description =
+			"[blueprint] Walk a Blueprint's function bodies (and optionally top-level "
+			"graphs) for nodes referencing variables / intra-BP functions that "
+			"no longer exist on the BP. Catches the renamed-or-deleted-but-"
+			"node-still-references scenario.\n\nReturns "
+			"`{asset_path, dangling: [...], total}`. Each dangling entry is "
+			"`{graph, node_id, node_class, title, missing, symbol_type}`. "
+			"Empty `dangling` array means clean.\n\nCoverage limits: external "
+			"(cross-BP) function calls aren't validated — we can only "
+			"confirm intra-BP calls. UMG bind_widget references need a "
+			"future plugin-side validator.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"},
+								{"description","UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"include_top_level", {{"type","boolean"},
+									   {"description","Also fetch + scan top-level graphs "
+										"(EventGraph, ConstructionScript). Costs N×get_graph "
+										"on the wire. Default true."}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+				{"total",      {{"type","integer"},{"minimum",0}}},
+				{"dangling", {
+					{"type","array"},
+					{"items", {
+						{"type","object"},
+						{"properties", {
+							{"graph",       {{"type","string"}}},
+							{"node_id",     {{"type","string"}}},
+							{"node_class",  {{"type","string"}}},
+							{"title",       {{"type","string"}}},
+							{"missing",     {{"type","string"}}},
+							{"symbol_type", {{"type","string"},
+											 {"enum", nlohmann::json::array({"variable","function"})}}},
+						}},
+					}},
+				}},
+			}},
+			{"required", nlohmann::json::array({"asset_path","dangling","total"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			const bool includeTopLevel = args.value("include_top_level", true);
+
+			BPMetadata meta = reader.ReadBlueprint(asset);
+
+			std::set<std::string, std::less<>> knownVars;
+			for (const auto& v : meta.Variables) {
+				knownVars.insert(v.Name);
+			}
+			std::set<std::string, std::less<>> knownFns;
+			for (const auto& f : meta.Functions) {
+				knownFns.insert(f.Name);
+			}
+
+			// Pull a string value out of node Meta accepting either
+			// camelCase or snake_case — node Meta keys aren't fully
+			// normalized across the plugin emitter vs mock fixtures.
+			auto getMetaString = [](const nlohmann::json& meta,
+									std::initializer_list<const char*> keys) -> std::string {
+				if (!meta.is_object()) {
+					return {};
+				}
+				for (const char* k : keys) {
+					auto it = meta.find(k);
+					if (it != meta.end() && it->is_string()) {
+						return it->get<std::string>();
+					}
+				}
+				return {};
+			};
+
+			nlohmann::json dangling = nlohmann::json::array();
+			auto addEntry = [&](const std::string& graphName, const BPNode& n,
+								const std::string& missing, const char* type) {
+				dangling.push_back({
+					{"graph",       graphName},
+					{"node_id",     n.Id},
+					{"node_class",  n.Class},
+					{"title",       n.Title},
+					{"missing",     missing},
+					{"symbol_type", type},
+				});
+			};
+
+			auto scanGraph = [&](const BPGraph& g) {
+				for (const auto& n : g.Nodes) {
+					// Variable references. K2 emits VariableGet/Set classes
+					// (sometimes K2Node_VariableGet, sometimes shorter forms
+					// in fixtures — match on substring).
+					const bool isVarRef =
+						n.Class.find("VariableGet") != std::string::npos ||
+						n.Class.find("VariableSet") != std::string::npos;
+					if (isVarRef) {
+						std::string varName = getMetaString(n.Meta,
+							{"variable_name", "variableName", "var_name", "VarName"});
+						if (!varName.empty() && knownVars.find(varName) == knownVars.end()) {
+							addEntry(g.Name, n, varName, "variable");
+						}
+						continue;
+					}
+					// Intra-BP function calls. Only flag calls whose
+					// target_class is this BP (or empty, meaning "self") —
+					// external calls (Engine APIs, other BPs) need a
+					// project-wide registry we don't have MCP-side.
+					if (n.Class.find("CallFunction") != std::string::npos) {
+						std::string fnName = getMetaString(n.Meta,
+							{"function_name", "functionName"});
+						std::string targetClass = getMetaString(n.Meta,
+							{"target_class", "targetClass"});
+						if (fnName.empty()) {
+							continue;
+						}
+						// Treat empty target_class as a self-call. If
+						// target_class is set, treat as intra-BP only when
+						// it matches the BP's class (heuristic: short name
+						// or full path containing the BP's name).
+						const bool isSelfCall = targetClass.empty() ||
+							targetClass == meta.Name ||
+							targetClass.find(meta.Name) != std::string::npos;
+						if (isSelfCall && knownFns.find(fnName) == knownFns.end()) {
+							addEntry(g.Name, n, fnName, "function");
+						}
+					}
+				}
+			};
+
+			// BPMetadata only has function summaries. Pull each function's
+			// full body graph one at a time. (Plugin-side may consolidate
+			// this in a future find_dangling_references op.)
+			for (const auto& fnSummary : meta.Functions) {
+				try {
+					BPFunction fn = reader.GetFunction(asset, fnSummary.Name);
+					scanGraph(fn.Graph);
+				} catch (...) {
+					// Skip functions we can't fetch — interface stubs,
+					// inherited UE base functions, etc.
+				}
+			}
+
+			// Top-level graphs (EventGraph, UserConstructionScript, etc.)
+			// need a separate fetch since BPMetadata.Graphs is summary-only.
+			if (includeTopLevel) {
+				for (const auto& gs : meta.Graphs) {
+					try {
+						BPGraph g = reader.GetGraph(asset, gs.Name);
+						scanGraph(g);
+					} catch (...) {
+						// Skip graphs we can't fetch — animation state
+						// machines, delegate graphs, etc. may need typed
+						// readers that don't apply here.
+					}
+				}
+			}
+
+			return nlohmann::json{
+				{"asset_path", asset},
+				{"dangling",   dangling},
+				{"total",      static_cast<int>(dangling.size())},
+			};
 		});
 	}
 
@@ -3812,10 +4143,17 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 	{
 		ToolDescriptor d;
 		d.name = "get_stats";
-		d.description = "[profiling] Snapshot a stat group's current values. `group` "
+		d.description = "[profiling] Toggle a stat group overlay in the editor. `group` "
 						"is the name passed to UE's `stat` command "
-						"(`Unit`, `Game`, `GPU`, `Memory`). Returns the "
-						"text snapshot the stat system produces.";
+						"(`Unit`, `Game`, `GPU`, `Memory`). The name reads like "
+						"a getter but this is actually a stateful TOGGLE — "
+						"first call enables the overlay, second call with the "
+						"same `group` disables it. The numeric snapshot is "
+						"NOT returned; `stat <group>` writes to the engine "
+						"log overlay, and you need to capture it via "
+						"`read_output_log` (or screenshot the viewport) after "
+						"the toggle. Treat as a side-effecting probe, not a "
+						"read.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {{"group", {{"type","string"}}}}},
@@ -3961,15 +4299,41 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.name = "find_class";
 		d.description = "[class info] Search the UClass registry by substring. Returns "
 						"an array of class names matching `query` "
-						"(case-insensitive).";
+						"(case-insensitive). Compiler-generated companion classes "
+						"(`SKEL_*`, `REINST_*`, `TRASHCLASS_*`) are filtered by "
+						"default — pass `include_skeleton: true` to include them.";
 		d.input_schema = {
 			{"type","object"},
-			{"properties", {{"query", {{"type","string"}}}}},
+			{"properties", {
+				{"query", {{"type","string"}}},
+				{"include_skeleton", {
+					{"type","boolean"},
+					{"description","Include compiler-generated companion classes "
+								   "(SKEL_*, REINST_*, TRASHCLASS_*). Default false."},
+				}},
+			}},
 			{"required", nlohmann::json::array({"query"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string q = RequireString(args, "query");
+			const bool includeSkeleton = args.value("include_skeleton", false);
 			auto r = reader.FindClass(q);
+			if (!includeSkeleton) {
+				// SKEL_*: UBlueprint::SkeletonGeneratedClass — a "skeleton"
+				// UClass the editor keeps for compilation. REINST_*:
+				// reinstancer classes left behind by hot reload.
+				// TRASHCLASS_*: trash bins for renamed classes pending GC.
+				// Agents searching by class name almost never want these.
+				auto isCompilerCompanion = [](std::string_view n) {
+					return n.rfind("SKEL_", 0) == 0 ||
+						   n.rfind("REINST_", 0) == 0 ||
+						   n.rfind("TRASHCLASS_", 0) == 0;
+				};
+				r.classNames.erase(
+					std::remove_if(r.classNames.begin(), r.classNames.end(),
+								   isCompilerCompanion),
+					r.classNames.end());
+			}
 			return nlohmann::json{{"ok", true}, {"classes", r.classNames}};
 		});
 	}

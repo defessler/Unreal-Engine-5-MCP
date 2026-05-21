@@ -18,8 +18,10 @@ const std::set<std::string>& ReadOnlySet() {
 	static const std::set<std::string> kSet = {
 		// --- Blueprint introspection -----------------------------------
 		"list_blueprints", "read_blueprint", "summarize_blueprint",
-		"get_graph", "get_function", "get_node", "get_components",
+		"get_graph", "peek_graph",
+		"get_function", "get_node", "get_components",
 		"find_node", "find_overriders",
+		"find_dangling_references",
 		"list_variables", "list_functions",
 		"get_project_metadata",
 		"bp_structural_diff",
@@ -38,7 +40,9 @@ const std::set<std::string>& ReadOnlySet() {
 		"find_class", "get_class_info",
 		// --- Discoverability + situational awareness --------------------
 		"list_node_kinds", "list_pin_categories",
-		"read_output_log", "get_cvar", "get_stats",
+		"read_output_log", "get_cvar",
+		// NOTE: get_stats is NOT here — despite the name, it's a
+		// stateful toggle (see its tool description). Moved to WriteSet.
 		"get_selected_actors", "get_editor_state",
 		"get_referencers", "get_dependencies",
 		"read_config_value",
@@ -107,6 +111,9 @@ const std::set<std::string>& WriteSet() {
 		"write_generated_source",
 		// Profiling
 		"start_profile", "stop_profile",
+		// get_stats: stateful toggle of an editor overlay (see its
+		// tool description). Not read-only despite the name.
+		"get_stats",
 		// Console + cvar
 		"console_command", "set_cvar",
 		// Editor / PIE / viewport / screenshots

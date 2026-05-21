@@ -269,6 +269,12 @@ public:
 
 	const Stats& GetStats() const { return stats_; }
 
+	// Forward to inner. Caching doesn't change which tools are
+	// reachable, only how fast they respond.
+	std::vector<std::string> UnsupportedTools() const override {
+		return inner_->UnsupportedTools();
+	}
+
 private:
 	struct Entry {
 		std::chrono::steady_clock::time_point inserted;

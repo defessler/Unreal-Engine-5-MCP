@@ -376,12 +376,23 @@ int RunServerLoop() {
 		env::BoolOrDefault("BP_READER_PROGRESSIVE", false, std::cerr);
 	std::vector<std::string> allowSpec =
 		splitCSV(env::GetOrDefault("BP_READER_TOOLS"));
-	const std::vector<std::string> denySpec =
+	std::vector<std::string> denySpec =
 		splitCSV(env::GetOrDefault("BP_READER_TOOLS_EXCLUDE"));
 	if (progressiveMode && allowSpec.empty()) {
 		// No explicit BP_READER_TOOLS — use the progressive initial set.
 		allowSpec = splitCSV(
 			env::GetOrDefault("BP_READER_TOOLS_INITIAL", "core"));
+	}
+	// Per-backend capability filter — drop tools the active backend
+	// can't fulfill so the catalog doesn't advertise dead surface.
+	// Mock backend in particular has no editor / asset registry and
+	// throws "not supported by this backend" for a long tail of ops;
+	// hiding those means agents don't burn turns discovering the gap.
+	auto backendDeny = reader->UnsupportedTools();
+	if (!backendDeny.empty()) {
+		denySpec.insert(denySpec.end(),
+						std::make_move_iterator(backendDeny.begin()),
+						std::make_move_iterator(backendDeny.end()));
 	}
 	const size_t before = registry.Size();
 	registry.ApplyFilter(allowSpec, denySpec);

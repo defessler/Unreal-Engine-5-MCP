@@ -1144,6 +1144,16 @@ public:
 		throw BlueprintReaderError("GetDependencies not supported by this backend");
 	}
 
+	// Tools this backend cannot fulfill. Main.cpp consults this at
+	// startup to deny-filter the registry, so the catalog only
+	// advertises tools that will actually work — agents don't burn
+	// turns discovering capability gaps. Default returns empty (all
+	// supported); concrete backends override when they're known to be
+	// limited (e.g. mock, which has no editor or asset registry).
+	virtual std::vector<std::string> UnsupportedTools() const {
+		return {};
+	}
+
 	// Read / write a UE config (.ini) value. `file` is one of
 	// "Engine" (default), "Game", "Input", "Editor",
 	// "EditorPerProjectIni", or a full path. Reads return {exists,

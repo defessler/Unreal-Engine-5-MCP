@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 127 tools (126 prior + bp_structural_diff for the BP roundtrip pipeline) with input schemas") {
+TEST_CASE("ToolRegistry exposes 129 tools (127 prior + peek_graph + find_dangling_references) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 127);
+	CHECK(spec.size() == 129);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -342,10 +342,14 @@ TEST_CASE("find_overriders: parent_class filter (short name match)") {
 	CHECK(foundEnemy);
 }
 
-TEST_CASE("find_overriders: function_name filter") {
+TEST_CASE("find_overriders: function_name filter requires parent_class") {
+	// Unscoped function_name scans were timing out on real projects
+	// (every BP needs a full ReadBlueprint). Tool now rejects the
+	// unscoped path — pair with parent_class to narrow.
 	Fixture f;
 	auto out = f.Call("find_overriders", json{
 		{"path", "/Game"},
+		{"parent_class", "PlayerController"},  // narrows the candidate set
 		{"function_name", "AddScore"}});
 	REQUIRE(out.is_array());
 	// BP_PlayerController has AddScore in fixtures.
@@ -353,7 +357,6 @@ TEST_CASE("find_overriders: function_name filter") {
 	for (auto& el : out) {
 		if (el["asset_path"] == "/Game/Player/BP_PlayerController") {
 			found = true;
-			// matched array should contain the filter that matched.
 			REQUIRE(el["matched"].is_array());
 			bool sawFn = false;
 			for (auto& m : el["matched"])
@@ -364,6 +367,14 @@ TEST_CASE("find_overriders: function_name filter") {
 		}
 	}
 	CHECK(found);
+}
+
+TEST_CASE("find_overriders: function_name without parent_class is rejected") {
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("find_overriders", json{
+		{"path", "/Game"},
+		{"function_name", "AddScore"}}),
+		std::invalid_argument);
 }
 
 // ===== Idempotency =========================================================

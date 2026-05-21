@@ -511,7 +511,14 @@ inline void from_json(const nlohmann::json& j, BPAssetSummary& v)
 	j.at("asset_path").get_to(v.AssetPath);
 	j.at("name").get_to(v.Name);
 	j.at("parent_class").get_to(v.ParentClass);
-	j.at("modified_iso").get_to(v.ModifiedIso);
+	// `modified_iso` is editor-only (file mtime). Cooked-runtime backends
+	// and data-asset / data-table listings legitimately omit it — see
+	// BlueprintReaderCommandlet.cpp:1588 ("DataTables don't carry a
+	// reliable mtime"). Tolerate missing rather than throwing
+	// nlohmann::json::out_of_range from inside from_json, which surfaced
+	// to MCP callers as a bare `[json.exception.out_of_range.403] key
+	// 'modified_iso' not found` with no context.
+	v.ModifiedIso = j.value("modified_iso", "");
 }
 
 inline void to_json(nlohmann::json& j, const BPMetadata& v)

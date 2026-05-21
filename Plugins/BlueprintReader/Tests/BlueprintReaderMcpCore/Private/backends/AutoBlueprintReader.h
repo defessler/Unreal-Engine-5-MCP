@@ -145,6 +145,13 @@ public:
 	// cache has expired.
 	std::string SelectBackendForTesting();
 
+	// Auto wraps live + commandlet; both implement the full op surface,
+	// so neither has unsupported tools to report. Return empty rather
+	// than probing — the call should not depend on a live editor.
+	std::vector<std::string> UnsupportedTools() const override {
+		return {};
+	}
+
 private:
 	// Probe → returns the reader to route this call to. Caller holds
 	// mu_; we may block briefly on a TCP connect.

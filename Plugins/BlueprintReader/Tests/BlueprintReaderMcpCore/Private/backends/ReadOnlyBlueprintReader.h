@@ -230,6 +230,15 @@ public:
 	// without daemon contention").
 	nlohmann::json ShutdownDaemon() override;
 
+	// Forward to inner. The read-only decorator doesn't change what the
+	// underlying backend can or can't do — it just rejects writes — so
+	// the unsupported-tools list is inner's responsibility. Without
+	// this forward, a ReadOnly(Mock) chain would advertise the mock's
+	// long list of unsupported tools as if they worked.
+	std::vector<std::string> UnsupportedTools() const override {
+		return inner_->UnsupportedTools();
+	}
+
 private:
 	std::unique_ptr<IBlueprintReader> inner_;
 };
