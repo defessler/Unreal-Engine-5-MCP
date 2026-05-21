@@ -22,6 +22,7 @@
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "tools/BlueprintTools.h"
+#include "tools/Prompts.h"
 #include "tools/ToolRegistry.h"
 #include "tools/ToolsetMeta.h"
 
@@ -479,7 +480,20 @@ int RunServerLoop() {
 	if (env::BoolOrDefault("BP_READER_INSTRUCTIONS", true, std::cerr)) {
 		info.instructions = mcp::DefaultInstructions();
 	}
-	mcp::RegisterHandlers(server, registry, info);
+
+	// Phase 3 — register the 8 built-in slash-command prompts unless
+	// the user opted out. Empty registry → prompts capability is NOT
+	// advertised on initialize, so older clients see the same surface
+	// as before this commit.
+	tools::prompts::PromptRegistry promptRegistry;
+	if (env::BoolOrDefault("BP_READER_PROMPTS", true, std::cerr)) {
+		tools::prompts::RegisterBuiltinPrompts(promptRegistry);
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] prompts: registered "
+					  << promptRegistry.Size() << " built-in slash commands\n";
+		}
+	}
+	mcp::RegisterHandlers(server, registry, promptRegistry, info);
 
 	server.Run(std::cin, std::cout, std::cerr);
 	if (env::VerboseLoggingEnabled()) {
