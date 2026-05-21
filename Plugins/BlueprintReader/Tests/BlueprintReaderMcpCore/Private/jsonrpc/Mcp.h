@@ -15,6 +15,7 @@
 #pragma once
 
 #include "jsonrpc/Server.h"
+#include "tools/Prompts.h"
 #include "tools/ToolRegistry.h"
 
 #include <string>
@@ -55,6 +56,15 @@ std::string DefaultInstructions();
 // notification on the server when set.
 void RegisterHandlers(jsonrpc::Server& server,
                       tools::ToolRegistry& registry,
+                      const ServerInfo& info);
+
+// Same shape but also wires the prompts/list + prompts/get handlers
+// against `prompts`. When `prompts` is empty (no slash commands
+// registered), the `prompts` capability is omitted from the initialize
+// response — older clients see the same surface as before. Phase 3.
+void RegisterHandlers(jsonrpc::Server& server,
+                      tools::ToolRegistry& registry,
+                      tools::prompts::PromptRegistry& prompts,
                       const ServerInfo& info);
 
 }    // namespace bpr::mcp

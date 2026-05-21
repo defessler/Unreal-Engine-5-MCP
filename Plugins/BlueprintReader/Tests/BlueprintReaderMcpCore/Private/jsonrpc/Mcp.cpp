@@ -13,6 +13,11 @@ namespace bpr::mcp {
 
 namespace jr = bpr::jsonrpc;
 
+void RegisterHandlersImpl(jr::Server& server,
+						  tools::ToolRegistry& registry,
+						  tools::prompts::PromptRegistry* prompts,
+						  const ServerInfo& info);
+
 std::string DefaultInstructions() {
 	// Onboarding text the LLM sees as system-prompt context at session
 	// start. Keep tight — clients pay tokens for this. Reference the
@@ -67,9 +72,23 @@ using namespace mcp_detail;
 
 void RegisterHandlers(jr::Server& server,
 					  tools::ToolRegistry& registry,
+					  tools::prompts::PromptRegistry& prompts,
 					  const ServerInfo& info) {
+	RegisterHandlersImpl(server, registry, &prompts, info);
+}
+
+void RegisterHandlers(jr::Server& server,
+					  tools::ToolRegistry& registry,
+					  const ServerInfo& info) {
+	RegisterHandlersImpl(server, registry, /*prompts=*/nullptr, info);
+}
+
+void RegisterHandlersImpl(jr::Server& server,
+						  tools::ToolRegistry& registry,
+						  tools::prompts::PromptRegistry* prompts,
+						  const ServerInfo& info) {
 	// -------- initialize ---------------------------------------------------
-	server.Register("initialize", [info](const nlohmann::json& params) -> jr::Response {
+	server.Register("initialize", [info, prompts](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
 		// our default. The MCP spec evolves and clients send a string like
 		// "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
@@ -98,11 +117,20 @@ void RegisterHandlers(jr::Server& server,
 		// unconditionally is fine: in non-progressive sessions the
 		// notification simply never fires, so well-behaved clients
 		// don't pay any cost.
+		nlohmann::json capabilities = {
+			{"tools", {{"listChanged", true}}},
+		};
+		// Phase 3: advertise the prompts primitive when the host wired
+		// a non-empty registry. Older clients ignore the field; new
+		// ones know to fetch prompts/list. Suppress the capability
+		// when no prompts are registered so we don't claim a primitive
+		// that responds with an empty list (some clients are picky).
+		if (prompts && prompts->Size() > 0) {
+			capabilities["prompts"] = {{"listChanged", true}};
+		}
 		nlohmann::json result = {
 			{"protocolVersion", negotiated},
-			{"capabilities", {
-				{"tools", {{"listChanged", true}}},
-			}},
+			{"capabilities", capabilities},
 			{"serverInfo", {
 				{"name", info.name},
 				{"version", info.version},
@@ -290,6 +318,61 @@ void RegisterHandlers(jr::Server& server,
 				fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
 		}
 	});
+
+	// -------- prompts/list + prompts/get ----------------------------------
+	// Phase 3 — slash-command UX. Only register when a non-null
+	// PromptRegistry was provided AND it has at least one prompt;
+	// otherwise these methods stay unregistered and clients see a
+	// JSON-RPC method-not-found if they try (consistent with the
+	// capability not being advertised on initialize).
+	if (prompts && prompts->Size() > 0) {
+		// `prompts` is captured by pointer (the registry outlives the
+		// server in main.cpp's setup). PromptRegistry isn't const-safe
+		// — Render is logically const but uses the descriptors_ map,
+		// so we capture as a non-const pointer.
+		server.Register("prompts/list",
+			[prompts](const nlohmann::json& /*params*/) -> jr::Response {
+				return jr::Response::Ok(nlohmann::json{
+					{"prompts", prompts->ListSpec()},
+				});
+			});
+
+		server.Register("prompts/get",
+			[prompts](const nlohmann::json& params) -> jr::Response {
+				if (!params.is_object()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						"prompts/get params must be an object");
+				}
+				auto nameIt = params.find("name");
+				if (nameIt == params.end() || !nameIt->is_string()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						R"(prompts/get missing string "name")");
+				}
+				const std::string name = nameIt->get<std::string>();
+				nlohmann::json arguments = nlohmann::json::object();
+				if (auto argIt = params.find("arguments"); argIt != params.end()) {
+					if (argIt->is_object()) {
+						arguments = *argIt;
+					} else if (!argIt->is_null()) {
+						return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+							R"(prompts/get "arguments" must be an object)");
+					}
+				}
+				if (!prompts->Has(name)) {
+					// MCP spec doesn't carve out a `prompt_not_found` error
+					// code, so use the standard MethodNotFound — clients
+					// recognize that as "the named primitive doesn't exist."
+					return jr::Response::Fail(jr::ErrorCode::MethodNotFound,
+						fmt::format("unknown prompt: {}", name));
+				}
+				try {
+					return jr::Response::Ok(prompts->Render(name, arguments));
+				} catch (const std::exception& e) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						fmt::format("prompts/get failed: {}", e.what()));
+				}
+			});
+	}
 }
 
 }    // namespace bpr::mcp

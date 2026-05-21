@@ -14,10 +14,14 @@ Numbers backing the cumulative-test-count / tool-count / capability claims in `2
 
 ## Measurements
 
-| Field | Measured (2026-05-21 post-Phase-D) | Prior baseline (2026-05-21 post-Phase-B) | Delta |
+| Field | Measured (2026-05-21 post-Phase-3-Prompts) | Prior baseline (2026-05-21 post-Phase-D) | Delta |
 |---|---|---|---|
-| Test cases in source (`TEST_CASE(` blocks) | **700** across 39 files | 671 | +29 |
-| Test cases actually executed | **684** (16 filtered/skipped) | 655 | +29 |
+| Test cases in source (`TEST_CASE(` blocks) | **718** across 40 files | 700 | +18 |
+| Test cases actually executed | **702** (16 filtered/skipped) | 684 | +18 |
+| Prompts advertised on `prompts/list` | **8** (audit_bp, explain_function, suggest_refactor, compare_blueprints, transpile_to_cpp, review_generated_cpp, check_transpile_compat, lyra_gameplay_review) | 0 (capability not advertised) | **new in Phase 3** |
+| Capabilities advertised on initialize | `{tools: {listChanged: true}, prompts: {listChanged: true}}` | `{tools: {listChanged: true}}` | **prompts capability shipped** |
+| Phase 3 status | **shipped locally** — push deferred to user | not started | **shipped** |
+| `BP_READER_PROMPTS` kill switch | shipped (default on; empty registry → capability suppressed) | n/a | **new in Phase 3** |
 | Tools advertised on `tools/list` (commandlet/live) | **132** | 132 | ✓ (Phase D is shape-only, no new tools) |
 | Tools advertising `outputSchema` on `tools/list` | **132 / 132 (100%)** | 9 / 132 | **all tools now declare a shape (Phase D)** |
 | Screenshot tools accept `return_inline` | **2** (take_screenshot, take_viewport_screenshot) | 0 | **new in Phase D** |
