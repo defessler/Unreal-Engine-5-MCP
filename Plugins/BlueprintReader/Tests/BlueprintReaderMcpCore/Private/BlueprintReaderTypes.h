@@ -331,6 +331,19 @@ inline void to_json(nlohmann::json& j, const BPNode& v)
 		{"pins",     v.Pins},
 		{"meta",     v.Meta},
 	};
+	// Mirror meta.kind to a top-level `kind` field so the obvious
+	// projection path (`fields=["nodes[].kind"]`) works without the agent
+	// having to know it lives under `meta`. meta.kind stays for callers
+	// that read the full meta blob. Plugin already emits top-level kind
+	// in its JSON; this mirrors that for any path that serializes BPNode
+	// from its typed struct (mock fixtures, server-side composed
+	// responses, etc.).
+	if (v.Meta.is_object()) {
+		auto kit = v.Meta.find("kind");
+		if (kit != v.Meta.end() && kit->is_string()) {
+			j["kind"] = *kit;
+		}
+	}
 	// GraphName/GraphType only appear on find_node hits — emit only when
 	// populated so get_node / graph payloads stay unchanged.
 	if (v.GraphName.has_value())

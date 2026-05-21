@@ -6279,6 +6279,27 @@ namespace
 	}
 
 	// ----- AddFunctionInput / AddFunctionOutput -----------------------------
+	// Idempotency helper: return true if `Node` already has a user-defined
+	// pin with this name. Used by AddFunctionInput / AddFunctionOutput
+	// before calling CreateUserDefinedPin — otherwise repeated calls
+	// duplicate pins on the underlying FunctionEntry / FunctionResult
+	// node (caught by bp_structural_diff in agent sessions).
+	bool HasUserDefinedPinNamed(UK2Node_EditablePinBase* Node, FName PinName)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+		for (const TSharedPtr<FUserPinInfo>& Info : Node->UserDefinedPins)
+		{
+			if (Info.IsValid() && Info->PinName == PinName)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	int32 RunAddFunctionInputOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -6312,7 +6333,13 @@ namespace
 			UE_LOG(LogBlueprintReader, Error, TEXT("AddFunctionInput: no FunctionEntry node"));
 			return 5;
 		}
-		Entry->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output, /*bUseUniqueName=*/false);
+		// Idempotency: skip when a pin with the same name already exists.
+		// Without this, repeated AddFunctionInput on the same name
+		// duplicates pins on the FunctionEntry node.
+		if (!HasUserDefinedPinNamed(Entry, FName(*ParamName)))
+		{
+			Entry->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output, /*bUseUniqueName=*/false);
+		}
 
 		if (!MaybeCompileAndSave(BP))
 		{
@@ -6349,7 +6376,14 @@ namespace
 			return 4;
 		}
 		UK2Node_FunctionResult* Result = FindOrCreateFunctionResult(Graph);
-		Result->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Input, /*bUseUniqueName=*/false);
+		// Idempotency: skip when an output pin with the same name already
+		// exists. Without this, repeated AddFunctionOutput duplicates pins
+		// on the FunctionResult node — caught by bp_structural_diff in
+		// agent sessions.
+		if (!HasUserDefinedPinNamed(Result, FName(*ParamName)))
+		{
+			Result->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Input, /*bUseUniqueName=*/false);
+		}
 
 		if (!MaybeCompileAndSave(BP))
 		{

@@ -146,6 +146,33 @@ nlohmann::json OpAddVariable(backends::IBlueprintReader& reader,
 	return {{"ok", true}, {"already_existed", false}};
 }
 
+// Helper: look up the FunctionEntry node's GUID for an existing
+// function so the slot map can still resolve `$<slotId>` to the entry
+// when add_function reports already_existed. Returns empty string when
+// the function exists but its entry node isn't discoverable (the
+// caller falls back to the historical behavior of not binding).
+std::string FindEntryNodeForExistingFunction(backends::IBlueprintReader& reader,
+											  const std::string& asset,
+											  const std::string& fname) {
+	try {
+		auto fn = reader.GetFunction(asset, fname);
+		for (const auto& n : fn.Graph.Nodes) {
+			if (n.Meta.is_object()) {
+				auto kit = n.Meta.find("kind");
+				if (kit != n.Meta.end() && kit->is_string() &&
+					kit->get<std::string>() == "FunctionEntry") {
+					return n.Id;
+				}
+			}
+		}
+	} catch (...) {
+		// GetFunction may throw if the backend can't introspect this
+		// function (e.g. mock fixtures without graph data). The caller
+		// then proceeds without slot binding — degraded but not fatal.
+	}
+	return {};
+}
+
 nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
 							 const nlohmann::json& op, SlotMap& slots) {
 	std::string asset = GetString(op, "asset_path");
@@ -154,7 +181,25 @@ nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
 		auto meta = reader.ReadBlueprint(asset);
 		for (const auto& fn : meta.Functions) {
 			if (fn.Name == name) {
-				return {{"ok", true}, {"function_name", name}, {"already_existed", true}};
+				// Bind the slot to the existing function's entry node
+				// GUID so subsequent ops in the same batch (notably
+				// compile_function's wire_pins from `$__entry`) still
+				// resolve. Without this, a re-run on an existing
+				// function fails with code=4 at wire-time.
+				nlohmann::json result = {
+					{"ok", true},
+					{"function_name", name},
+					{"already_existed", true},
+				};
+				if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
+					const std::string entry =
+						FindEntryNodeForExistingFunction(reader, asset, name);
+					if (!entry.empty()) {
+						slots[idIt->get<std::string>()] = entry;
+						result["entry_node_id"] = entry;
+					}
+				}
+				return result;
 			}
 		}
 	} catch (...) { /* fall through */ }

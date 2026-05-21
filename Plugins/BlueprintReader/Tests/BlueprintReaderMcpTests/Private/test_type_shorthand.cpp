@@ -70,6 +70,22 @@ TEST_CASE("Shorthand: array container") {
 	CHECK(u.IsArray);
 	CHECK(u.Category == "object");
 	CHECK(*u.SubCategoryObject == "Actor");
+
+	// `[]string` reported as code=1 in user session. Direct shorthand
+	// parse succeeds — the issue had to be downstream. Lock in the
+	// expected parse so any regression here gets caught early.
+	auto s = ParseTypeShorthand("[]string");
+	CHECK(s.IsArray);
+	CHECK(s.Category == "string");
+	CHECK_FALSE(s.SubCategory.has_value());
+
+	auto i = ParseTypeShorthand("[]int");
+	CHECK(i.IsArray);
+	CHECK(i.Category == "int");
+
+	auto b = ParseTypeShorthand("[]bool");
+	CHECK(b.IsArray);
+	CHECK(b.Category == "bool");
 }
 
 TEST_CASE("Shorthand: set container") {

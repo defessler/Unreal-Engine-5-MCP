@@ -74,7 +74,7 @@ const std::set<std::string>& WriteSet() {
 		"add_function", "add_function_input", "add_function_output",
 		"delete_function",
 		// Graph CRUD
-		"add_node", "delete_node", "set_node_position", "wire_pins",
+		"add_node", "delete_node", "set_node_position", "wire_pins", "set_pin_default",
 		"auto_layout_graph",
 		// BP-level
 		"create_blueprint", "duplicate_blueprint", "save_all",

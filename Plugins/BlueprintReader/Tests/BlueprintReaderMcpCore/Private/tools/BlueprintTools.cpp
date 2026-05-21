@@ -1674,6 +1674,17 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			}
 			auto ctl = ParseResponseControls(args);
 
+			// Hard cap on per-BP reads so even a broad parent_class
+			// (e.g. parent_class="Actor" on a Lyra-size project) can't
+			// blow past the daemon timeout. When function_name or
+			// interface forces full reads on every matching candidate,
+			// stop after kMaxFullReads and surface a `truncated` marker.
+			// `parent_class` alone uses cheap summary-only matching and
+			// isn't capped — only the read path is.
+			constexpr int kMaxFullReads = 200;
+			int fullReads = 0;
+			bool truncated = false;
+
 			// Helper: short-name vs full-path equality (UE parent_class fields
 			// can be either depending on engine version + how the BP was saved).
 			auto matchesClass = [](std::string_view candidate,
@@ -1704,6 +1715,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 					matched.push_back("parent_class");
 				}
 				if (needFullRead) {
+					if (fullReads >= kMaxFullReads) {
+						truncated = true;
+						break;
+					}
+					++fullReads;
 					try { meta = reader.ReadBlueprint(s.AssetPath); }
 					catch (...) { continue; }
 					if (!fn.empty()) {
@@ -1727,6 +1743,21 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				}
 			}
 			ApplyResponseControls(out, ctl);
+			if (truncated) {
+				// Append a sentinel object so the agent sees the scan was
+				// capped mid-flight. Same shape as a normal row plus a
+				// `_truncated` flag for easy detection.
+				out.push_back({
+					{"_truncated",      true},
+					{"_scanned_reads",  fullReads},
+					{"_cap",            kMaxFullReads},
+					{"_hint", fmt::format(
+						"find_overriders stopped after {} full BP reads. "
+						"Re-run with a narrower `path` (e.g. /Game/AI) or a "
+						"more specific `parent_class` to scan fewer candidates.",
+						kMaxFullReads)},
+				});
+			}
 			return out;
 		});
 	}
@@ -2008,6 +2039,51 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				}
 				throw bpr::backends::BlueprintReaderError(msg);
 			}
+		});
+	}
+
+	// ----- set_pin_default -------------------------------------------------
+	// Sets the literal default on a pin. UE doesn't have a first-class
+	// literal node, so the value is materialized as the consumer pin's
+	// default — same backing op apply_ops uses and the same code path
+	// compile_function's `{lit: value}` emits internally. Surfaced as a
+	// standalone tool because README/SKILL.md advertise it.
+	{
+		ToolDescriptor d;
+		d.name = "set_pin_default";
+		d.description =
+			"[blueprint] Set the literal default value on a node's input pin. UE has no "
+			"first-class literal node — values flow in as the consumer pin's "
+			"default. `pin` accepts a pin GUID (preferred — get_graph) or a "
+			"pin name. `value` is the literal as a string (the editor parses "
+			"it per the pin's type: numbers, bool true/false, strings raw, "
+			"vectors as `(X=...,Y=...,Z=...)`). This is what "
+			"`compile_function`'s `{lit: ...}` expression emits under the "
+			"hood; reach for `set_pin_default` directly when you already "
+			"have the node + pin and just want the default set.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+				{"graph_name", {{"type","string"},
+								{"description","Graph holding the node. EventGraph if omitted."}}},
+				{"node_id",    {{"type","string"},
+								{"description","Target node's GUID."}}},
+				{"pin",        {{"type","string"},
+								{"description","Pin GUID (preferred) or pin name."}}},
+				{"value",      {{"type","string"},
+								{"description","Literal value as a string; editor parses per pin type."}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path","node_id","pin","value"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string asset = RequireString(args, "asset_path");
+			const std::string graph = OptString(args, "graph_name", "EventGraph");
+			const std::string node  = RequireString(args, "node_id");
+			const std::string pin   = RequireString(args, "pin");
+			const std::string value = RequireString(args, "value");
+			reader.SetPinDefault(asset, graph, node, pin, value);
+			return nlohmann::json{{"ok", true}};
 		});
 	}
 
@@ -2967,7 +3043,30 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string code = RequireString(args, "code");
-			auto r = reader.RunPythonScript(code);
+			// Catch the "not supported by this backend" path (mock,
+			// or any Auto/Caching/ReadOnly chain that doesn't override
+			// RunPythonScript) and present it as the documented
+			// `python_disabled` envelope. Agents reading the README expect
+			// this shape; the raw exception text leaks an
+			// implementation detail.
+			bpr::backends::IBlueprintReader::PythonResult r;
+			try {
+				r = reader.RunPythonScript(code);
+			} catch (const bpr::backends::BlueprintReaderError& e) {
+				return nlohmann::json{
+					{"ok", false},
+					{"error", "python_disabled"},
+					{"hint",
+					 "Editor side rejected the request — either the Python "
+					 "plugin isn't loaded in this editor build, or "
+					 "BP_READER_ALLOW_PYTHON isn't set on the MCP server. "
+					 "Set BP_READER_ALLOW_PYTHON=1 and launch an editor "
+					 "with the Python Editor Script Plugin enabled."},
+					{"backend_message", std::string(e.what())},
+					{"command_result", ""},
+					{"log", nlohmann::json::array()},
+				};
+			}
 			nlohmann::json out = {
 				{"ok", r.ok},
 				{"command_result", r.commandResult},
