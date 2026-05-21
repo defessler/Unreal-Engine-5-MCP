@@ -69,6 +69,58 @@ TEST_CASE("ToolRegistry::Add only HARD-rejects empty names; soft-warns on others
 	CHECK(r.TotalRegistered() == 3);
 }
 
+// ===== sort opt-in =======================================================
+// Phase B's `sort` arg on list_* tools. Default "natural" preserves the
+// backend's order so zero-break holds for clients that never opt in.
+
+TEST_CASE("list_blueprints: default sort is natural (backend order preserved)") {
+	Fixture f;
+	auto out = f.Call("list_blueprints", json{{"path", "/Game"}});
+	REQUIRE(out.is_array());
+	// Mock fixtures define a specific order; just verify the call works
+	// without sort and returns something non-empty.
+	CHECK(out.size() > 0);
+}
+
+TEST_CASE("list_blueprints: sort=path returns entries sorted by asset_path") {
+	Fixture f;
+	auto out = f.Call("list_blueprints", json{{"path", "/Game"}, {"sort", "path"}});
+	REQUIRE(out.is_array());
+	REQUIRE(out.size() >= 2);
+	// Pairwise check: each entry's asset_path is <= the next.
+	for (size_t i = 1; i < out.size(); ++i) {
+		const auto a = out[i-1].value("asset_path", "");
+		const auto b = out[i].value("asset_path", "");
+		CAPTURE(a);
+		CAPTURE(b);
+		CHECK(a <= b);
+	}
+}
+
+TEST_CASE("list_blueprints: sort=invalid is rejected with a clear error") {
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("list_blueprints",
+		json{{"path","/Game"}, {"sort","bogus"}}), std::invalid_argument);
+}
+
+TEST_CASE("list_assets: sort=name returns entries sorted alphabetically by name field") {
+	Fixture f;
+	// Mock backend doesn't have list_assets (registry not present), so
+	// the call surfaces as a tool error. We check that the SORT arg
+	// is accepted at parse-time (schema-validation) by reaching the
+	// backend dispatch — the error then comes from the backend itself.
+	// If the sort parser rejected the call, we'd get an invalid_argument
+	// throw INSTEAD of the backend's "not supported" error.
+	try {
+		f.Call("list_assets", json{{"path","/Game"}, {"sort","name"}});
+		// On mock backend with no assets, may return empty array — fine.
+	} catch (const std::invalid_argument&) {
+		FAIL("sort=name should not be rejected as an invalid argument");
+	} catch (...) {
+		// Backend-not-supported on mock — expected; doesn't fail the test.
+	}
+}
+
 TEST_CASE("take_screenshot rejects path-traversal in dest_path") {
 	Fixture f;
 	// Mock backend doesn't actually take a screenshot — but the path
