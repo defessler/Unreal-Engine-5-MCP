@@ -3693,6 +3693,44 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_cinematic_camera (Phase 12 Wave 2) ----------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_cinematic_camera";
+		d.description =
+			"[editor] Currently-active camera in PIE — reads "
+			"`APlayerCameraManager::GetViewTarget()` from the first PIE "
+			"player controller. Returns `{valid, actor_name, loc_x/y/z, "
+			"pitch/yaw/roll, fov}`. `valid:false` when PIE isn't running or "
+			"no view target is set. Useful for inspecting what a cinematic "
+			"sequence is showing the player right now.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"loc_x",      {{"type","number"}}},
+				{"loc_y",      {{"type","number"}}},
+				{"loc_z",      {{"type","number"}}},
+				{"pitch",      {{"type","number"}}},
+				{"yaw",        {{"type","number"}}},
+				{"roll",       {{"type","number"}}},
+				{"fov",        {{"type","number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetCinematicCamera();
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"actor_name", r.actorName},
+				{"loc_x", r.locX}, {"loc_y", r.locY}, {"loc_z", r.locZ},
+				{"pitch", r.pitch},{"yaw",   r.yaw},  {"roll",  r.roll},
+				{"fov",   r.fov},
+			};
+		});
+	}
+
 	// ----- get_mesh_preview_state (Phase 12 Wave 2) --------------------
 	{
 		ToolDescriptor d;

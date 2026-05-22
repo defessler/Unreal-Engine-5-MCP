@@ -620,6 +620,10 @@ IBlueprintReader::MeshPreviewStateResult
 AutoBlueprintReader::GetMeshPreviewState(std::string_view a) {
 	FORWARD(GetMeshPreviewState, a);
 }
+IBlueprintReader::CinematicCameraResult
+AutoBlueprintReader::GetCinematicCamera() {
+	FORWARD(GetCinematicCamera);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

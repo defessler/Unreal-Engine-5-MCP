@@ -214,6 +214,7 @@ public:
 	UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) override;
 	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
+	CinematicCameraResult GetCinematicCamera() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

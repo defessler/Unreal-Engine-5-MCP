@@ -2055,6 +2055,24 @@ SocketBlueprintReader::GetMeshPreviewState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::CinematicCameraResult
+SocketBlueprintReader::GetCinematicCamera() {
+	auto j = RunOp({"-Op=GetCinematicCamera"});
+	CinematicCameraResult out;
+	if (j.is_object()) {
+		out.valid     = j.value("valid",      false);
+		out.actorName = j.value("actor_name", std::string{});
+		out.locX  = j.value("loc_x", 0.0);
+		out.locY  = j.value("loc_y", 0.0);
+		out.locZ  = j.value("loc_z", 0.0);
+		out.pitch = j.value("pitch", 0.0);
+		out.yaw   = j.value("yaw",   0.0);
+		out.roll  = j.value("roll",  0.0);
+		out.fov   = j.value("fov",   0.0);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

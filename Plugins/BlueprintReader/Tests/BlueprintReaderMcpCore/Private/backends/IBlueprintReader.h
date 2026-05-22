@@ -1704,6 +1704,22 @@ public:
 		throw BlueprintReaderError("GetMeshPreviewState not supported by this backend");
 	}
 
+	// Currently-active camera in the PIE world. Reads
+	// `APlayerCameraManager::GetViewTarget()` of the first player
+	// controller. When PIE isn't running or no view target is set,
+	// returns `valid:false`. Useful for inspecting what a cinematic
+	// sequence is showing the player right now.
+	struct CinematicCameraResult {
+		bool valid = false;
+		std::string actorName;        // view target's name
+		double locX = 0.0, locY = 0.0, locZ = 0.0;
+		double pitch = 0.0, yaw = 0.0, roll = 0.0;
+		double fov = 0.0;
+	};
+	virtual CinematicCameraResult GetCinematicCamera() {
+		throw BlueprintReaderError("GetCinematicCamera not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
