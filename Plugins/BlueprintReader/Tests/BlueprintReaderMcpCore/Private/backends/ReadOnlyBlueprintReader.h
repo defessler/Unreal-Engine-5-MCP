@@ -163,6 +163,8 @@ public:
 	PluginListResult ListPlugins() override;
 	PluginDescriptorResult GetPluginDescriptor(std::string_view pluginName) override;
 	PluginDependenciesResult GetPluginDependencies(std::string_view pluginName) override;
+	ActorAbilitiesResult ListActorAbilities(std::string_view actorName) override;
+	ActorTagsResult ListActorGameplayTags(std::string_view actorName) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

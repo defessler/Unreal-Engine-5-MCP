@@ -1831,6 +1831,46 @@ SocketBlueprintReader::GetPluginDependencies(std::string_view pluginName) {
 	return out;
 }
 
+IBlueprintReader::ActorAbilitiesResult
+SocketBlueprintReader::ListActorAbilities(std::string_view actorName) {
+	auto j = RunOp({"-Op=ListActorAbilities",
+					"-Actor=" + std::string(actorName)});
+	ActorAbilitiesResult out;
+	out.actorName = std::string(actorName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("abilities"); it != j.end() && it->is_array()) {
+			for (const auto& a : *it) {
+				if (!a.is_object()) continue;
+				ActorAbilityInfo info;
+				info.abilityClass    = a.value("ability_class",   std::string{});
+				info.isActive        = a.value("is_active",       false);
+				info.level           = a.value("level",           1);
+				info.instancedCount  = a.value("instanced_count", 0);
+				out.abilities.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::ActorTagsResult
+SocketBlueprintReader::ListActorGameplayTags(std::string_view actorName) {
+	auto j = RunOp({"-Op=ListActorGameplayTags",
+					"-Actor=" + std::string(actorName)});
+	ActorTagsResult out;
+	out.actorName = std::string(actorName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("tags"); it != j.end() && it->is_array()) {
+			for (const auto& t : *it) {
+				if (t.is_string()) out.tags.push_back(t.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

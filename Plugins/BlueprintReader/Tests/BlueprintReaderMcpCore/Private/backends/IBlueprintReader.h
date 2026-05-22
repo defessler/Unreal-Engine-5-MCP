@@ -1515,6 +1515,43 @@ public:
 		throw BlueprintReaderError("GetPluginDependencies not supported by this backend");
 	}
 
+	// ===== Phase 11 H Tier 1 — AbilitySystemInspectorToolset =============
+	// Introspection against an actor's `UAbilitySystemComponent`. Lyra
+	// uses GAS heavily; these let an agent see what abilities/tags are
+	// granted to a given actor at runtime.
+
+	// Abilities currently granted to the actor. `instanced_count`
+	// reports how many instances of each ability are spawned (relevant
+	// for abilities marked InstancedPerExecution / InstancedPerActor).
+	struct ActorAbilityInfo {
+		std::string abilityClass;        // UGameplayAbility class path
+		bool isActive = false;
+		int  level = 1;
+		int  instancedCount = 0;
+	};
+	struct ActorAbilitiesResult {
+		bool valid = false;              // false when actor has no ASC
+		std::string actorName;
+		std::vector<ActorAbilityInfo> abilities;
+	};
+	virtual ActorAbilitiesResult ListActorAbilities(std::string_view actorName) {
+		(void)actorName;
+		throw BlueprintReaderError("ListActorAbilities not supported by this backend");
+	}
+
+	// Owned gameplay tags on the actor (the union of all tag containers
+	// the ASC is tracking: granted-by-abilities, granted-by-effects,
+	// loose tags). Returned as flat string list.
+	struct ActorTagsResult {
+		bool valid = false;
+		std::string actorName;
+		std::vector<std::string> tags;
+	};
+	virtual ActorTagsResult ListActorGameplayTags(std::string_view actorName) {
+		(void)actorName;
+		throw BlueprintReaderError("ListActorGameplayTags not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
