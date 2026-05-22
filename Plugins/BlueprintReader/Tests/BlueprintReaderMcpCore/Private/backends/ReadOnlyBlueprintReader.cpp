@@ -404,6 +404,10 @@ IBlueprintReader::MaterialInstanceParamsResult
 ReadOnlyBlueprintReader::GetMaterialInstanceParams(std::string_view a) {
 	return inner_->GetMaterialInstanceParams(a);
 }
+IBlueprintReader::StaticMeshInfoResult
+ReadOnlyBlueprintReader::GetStaticMeshInfo(std::string_view a) {
+	return inner_->GetStaticMeshInfo(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

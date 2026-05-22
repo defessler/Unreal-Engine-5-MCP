@@ -37,6 +37,7 @@
 #include "BlueprintEditor.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Materials/MaterialInterface.h"
+#include "Engine/StaticMesh.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -359,6 +360,7 @@ namespace
 		ListActorGameplayEffects,
 		GetBlueprintEditorState,
 		GetMaterialInstanceParams,
+		GetStaticMeshInfo,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -530,6 +532,7 @@ namespace
 		if (OpStr.Equals(TEXT("ListActorGameplayEffects"), ESearchCase::IgnoreCase)){ OutOp = EOp::ListActorGameplayEffects; return true; }
 		if (OpStr.Equals(TEXT("GetBlueprintEditorState"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetBlueprintEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetMaterialInstanceParams"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetMaterialInstanceParams; return true; }
+		if (OpStr.Equals(TEXT("GetStaticMeshInfo"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetStaticMeshInfo; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6362,6 +6365,46 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetStaticMeshInfoOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("lod_count"), 0);
+		Out->SetBoolField(TEXT("is_nanite_enabled"), false);
+		TArray<TSharedPtr<FJsonValue>> Lods;
+
+		if (!AssetPath.IsEmpty())
+		{
+			if (UStaticMesh* SM = LoadObject<UStaticMesh>(nullptr, *AssetPath))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				const int32 LODCount = SM->GetNumLODs();
+				Out->SetNumberField(TEXT("lod_count"), LODCount);
+				Out->SetBoolField(TEXT("is_nanite_enabled"),
+					SM->NaniteSettings.bEnabled);
+				for (int32 i = 0; i < LODCount; ++i)
+				{
+					const FStaticMeshLODResources* LOD = &SM->GetRenderData()->LODResources[i];
+					auto L = MakeShared<FJsonObject>();
+					L->SetNumberField(TEXT("triangle_count"), LOD->GetNumTriangles());
+					L->SetNumberField(TEXT("vertex_count"),   LOD->GetNumVertices());
+					double ScreenSize = 0.0;
+					if (i < SM->GetNumSourceModels())
+					{
+						ScreenSize = SM->GetSourceModel(i).ScreenSize.Default;
+					}
+					L->SetNumberField(TEXT("screen_size"), ScreenSize);
+					Lods.Add(MakeShared<FJsonValueObject>(L));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("lods"), Lods);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetMaterialInstanceParamsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8331,6 +8374,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListActorGameplayEffects,   &RunListActorGameplayEffectsOp },
 		{ EOp::GetBlueprintEditorState,    &RunGetBlueprintEditorStateOp },
 		{ EOp::GetMaterialInstanceParams,  &RunGetMaterialInstanceParamsOp },
+		{ EOp::GetStaticMeshInfo,          &RunGetStaticMeshInfoOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

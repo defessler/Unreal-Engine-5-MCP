@@ -210,6 +210,7 @@ public:
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
 	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 	MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) override;
+	StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

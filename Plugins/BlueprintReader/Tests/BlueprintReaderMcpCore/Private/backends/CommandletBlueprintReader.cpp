@@ -3614,6 +3614,30 @@ CommandletBlueprintReader::GetMaterialInstanceParams(std::string_view assetPath)
 	return out;
 }
 
+IBlueprintReader::StaticMeshInfoResult
+CommandletBlueprintReader::GetStaticMeshInfo(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetStaticMeshInfo",
+					L"-Asset=" + Widen(assetPath)});
+	StaticMeshInfoResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid           = j.value("valid",            false);
+		out.lodCount        = j.value("lod_count",        0);
+		out.isNaniteEnabled = j.value("is_nanite_enabled", false);
+		if (auto it = j.find("lods"); it != j.end() && it->is_array()) {
+			for (const auto& l : *it) {
+				if (!l.is_object()) continue;
+				StaticMeshLODInfo info;
+				info.triangleCount = l.value("triangle_count", 0);
+				info.vertexCount   = l.value("vertex_count",   0);
+				info.screenSize    = l.value("screen_size",    0.0);
+				out.lods.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

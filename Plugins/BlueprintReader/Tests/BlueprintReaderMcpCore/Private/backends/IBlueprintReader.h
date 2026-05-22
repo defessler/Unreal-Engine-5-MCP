@@ -1642,6 +1642,25 @@ public:
 		throw BlueprintReaderError("GetMaterialInstanceParams not supported by this backend");
 	}
 
+	// Static-mesh asset-direct info — LOD count, triangle / vertex counts
+	// per LOD. No editor instance required (reads from the loaded asset).
+	struct StaticMeshLODInfo {
+		int triangleCount = 0;
+		int vertexCount = 0;
+		double screenSize = 0.0;        // for LOD streaming threshold
+	};
+	struct StaticMeshInfoResult {
+		bool valid = false;
+		std::string assetPath;
+		int lodCount = 0;
+		bool isNaniteEnabled = false;
+		std::vector<StaticMeshLODInfo> lods;
+	};
+	virtual StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetStaticMeshInfo not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
