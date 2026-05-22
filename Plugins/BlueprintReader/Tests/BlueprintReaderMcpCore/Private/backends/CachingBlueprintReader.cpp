@@ -760,6 +760,18 @@ IBlueprintReader::CurveEditorSelectionResult
 CachingBlueprintReader::GetCurveEditorSelection(std::string_view a) {
 	return inner_->GetCurveEditorSelection(a);
 }
+IBlueprintReader::BufferVizModeResult CachingBlueprintReader::GetBufferVisualizationMode() {
+	return inner_->GetBufferVisualizationMode();
+}
+IBlueprintReader::GizmoStateResult CachingBlueprintReader::GetGizmoState() {
+	return inner_->GetGizmoState();
+}
+IBlueprintReader::ViewportRealtimeResult CachingBlueprintReader::GetViewportRealtime() {
+	return inner_->GetViewportRealtime();
+}
+IBlueprintReader::ViewportCameraSettingsResult CachingBlueprintReader::GetViewportCameraSettings() {
+	return inner_->GetViewportCameraSettings();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

@@ -640,6 +640,18 @@ IBlueprintReader::CurveEditorSelectionResult
 AutoBlueprintReader::GetCurveEditorSelection(std::string_view a) {
 	FORWARD(GetCurveEditorSelection, a);
 }
+IBlueprintReader::BufferVizModeResult AutoBlueprintReader::GetBufferVisualizationMode() {
+	FORWARD(GetBufferVisualizationMode);
+}
+IBlueprintReader::GizmoStateResult AutoBlueprintReader::GetGizmoState() {
+	FORWARD(GetGizmoState);
+}
+IBlueprintReader::ViewportRealtimeResult AutoBlueprintReader::GetViewportRealtime() {
+	FORWARD(GetViewportRealtime);
+}
+IBlueprintReader::ViewportCameraSettingsResult AutoBlueprintReader::GetViewportCameraSettings() {
+	FORWARD(GetViewportCameraSettings);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

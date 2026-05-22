@@ -1788,6 +1788,53 @@ public:
 		throw BlueprintReaderError("GetCurveEditorSelection not supported by this backend");
 	}
 
+	// ===== Phase 13 EA-pull Wave 3 — Viewport + visibility ===============
+
+	// Buffer-visualization mode (base_color/roughness/normals/etc.) on the
+	// active level viewport. Empty string when no override is set (default
+	// Lit/etc. rendering).
+	struct BufferVizModeResult {
+		bool valid = false;
+		std::string mode;
+	};
+	virtual BufferVizModeResult GetBufferVisualizationMode() {
+		throw BlueprintReaderError("GetBufferVisualizationMode not supported by this backend");
+	}
+
+	// Gizmo state — translate/rotate/scale + world/local coord space.
+	// Reads `FEditorViewportClient::GetWidgetMode` + `GetWidgetCoordSystemSpace`.
+	struct GizmoStateResult {
+		bool valid = false;
+		std::string mode;       // "translate" / "rotate" / "scale" / "translaterotatez" / "none"
+		std::string coordSpace; // "world" / "local"
+	};
+	virtual GizmoStateResult GetGizmoState() {
+		throw BlueprintReaderError("GetGizmoState not supported by this backend");
+	}
+
+	// Active level viewport's realtime flag — whether it's rendering
+	// every frame (or only on user interaction). `valid:false` when no
+	// viewport is available.
+	struct ViewportRealtimeResult {
+		bool valid = false;
+		bool isRealtime = false;
+	};
+	virtual ViewportRealtimeResult GetViewportRealtime() {
+		throw BlueprintReaderError("GetViewportRealtime not supported by this backend");
+	}
+
+	// Active viewport's camera settings: FOV, speed, near/far clip.
+	struct ViewportCameraSettingsResult {
+		bool valid = false;
+		double fov = 0.0;
+		double cameraSpeed = 0.0;
+		double nearClip = 0.0;
+		double farClip = 0.0;
+	};
+	virtual ViewportCameraSettingsResult GetViewportCameraSettings() {
+		throw BlueprintReaderError("GetViewportCameraSettings not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

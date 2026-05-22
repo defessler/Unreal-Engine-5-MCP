@@ -219,6 +219,10 @@ public:
 	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
 	NiagaraModuleSelectionResult GetNiagaraModuleSelection(std::string_view assetPath) override;
 	CurveEditorSelectionResult GetCurveEditorSelection(std::string_view assetPath) override;
+	BufferVizModeResult GetBufferVisualizationMode() override;
+	GizmoStateResult GetGizmoState() override;
+	ViewportRealtimeResult GetViewportRealtime() override;
+	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

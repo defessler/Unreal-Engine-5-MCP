@@ -440,6 +440,18 @@ IBlueprintReader::CurveEditorSelectionResult
 ReadOnlyBlueprintReader::GetCurveEditorSelection(std::string_view a) {
 	return inner_->GetCurveEditorSelection(a);
 }
+IBlueprintReader::BufferVizModeResult ReadOnlyBlueprintReader::GetBufferVisualizationMode() {
+	return inner_->GetBufferVisualizationMode();
+}
+IBlueprintReader::GizmoStateResult ReadOnlyBlueprintReader::GetGizmoState() {
+	return inner_->GetGizmoState();
+}
+IBlueprintReader::ViewportRealtimeResult ReadOnlyBlueprintReader::GetViewportRealtime() {
+	return inner_->GetViewportRealtime();
+}
+IBlueprintReader::ViewportCameraSettingsResult ReadOnlyBlueprintReader::GetViewportCameraSettings() {
+	return inner_->GetViewportCameraSettings();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
