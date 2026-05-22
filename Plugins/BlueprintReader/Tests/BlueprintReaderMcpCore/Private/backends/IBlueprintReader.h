@@ -1281,6 +1281,25 @@ public:
 		throw BlueprintReaderError("GetShowFlags not supported by this backend");
 	}
 
+	// Components of currently-selected actors. Returns nested
+	// `[{actor_name, components: [{name, component_class}]}]`. Useful when
+	// an agent wants to operate on a specific component without first asking
+	// the user to drill into the actor.
+	struct SelectedComponentInfo {
+		std::string name;
+		std::string componentClass;
+	};
+	struct SelectedActorComponents {
+		std::string actorName;
+		std::vector<SelectedComponentInfo> components;
+	};
+	struct SelectedComponentsResult {
+		std::vector<SelectedActorComponents> actors;
+	};
+	virtual SelectedComponentsResult GetSelectedComponents() {
+		throw BlueprintReaderError("GetSelectedComponents not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

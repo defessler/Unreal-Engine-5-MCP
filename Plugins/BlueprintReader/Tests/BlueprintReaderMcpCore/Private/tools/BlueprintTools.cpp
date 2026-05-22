@@ -3693,6 +3693,61 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_selected_components ---------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_selected_components";
+		d.description =
+			"[editor] Components owned by each currently-selected actor. "
+			"Returns `[{actor_name, components: [{name, component_class}]}]`. "
+			"Empty actors array when nothing is selected. Useful when an "
+			"agent wants to operate on a specific component (mesh, collision, "
+			"trigger) without first asking the user to drill into the actor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"actors", {
+					{"type", "array"},
+					{"items", {
+						{"type", "object"},
+						{"properties", {
+							{"actor_name", {{"type","string"}}},
+							{"components", {
+								{"type","array"},
+								{"items", {
+									{"type","object"},
+									{"properties", {
+										{"name",            {{"type","string"}}},
+										{"component_class", {{"type","string"}}},
+									}},
+								}},
+							}},
+						}},
+					}},
+				}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetSelectedComponents();
+			nlohmann::json actors = nlohmann::json::array();
+			for (const auto& a : r.actors) {
+				nlohmann::json comps = nlohmann::json::array();
+				for (const auto& c : a.components) {
+					comps.push_back({
+						{"name",            c.name},
+						{"component_class", c.componentClass},
+					});
+				}
+				actors.push_back({
+					{"actor_name", a.actorName},
+					{"components", comps},
+				});
+			}
+			return nlohmann::json{{"actors", actors}};
+		});
+	}
+
 	// ----- get_camera_transform ------------------------------------------
 	{
 		ToolDescriptor d;

@@ -147,6 +147,7 @@ public:
 	CameraTransformResult GetCameraTransform() override;
 	ViewModeResult GetViewMode() override;
 	ShowFlagsResult GetShowFlags() override;
+	SelectedComponentsResult GetSelectedComponents() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

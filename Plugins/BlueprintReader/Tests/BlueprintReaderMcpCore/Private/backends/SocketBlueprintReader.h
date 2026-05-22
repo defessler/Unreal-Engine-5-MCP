@@ -190,6 +190,7 @@ public:
 	CameraTransformResult GetCameraTransform() override;
 	ViewModeResult GetViewMode() override;
 	ShowFlagsResult GetShowFlags() override;
+	SelectedComponentsResult GetSelectedComponents() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

@@ -320,6 +320,9 @@ IBlueprintReader::ViewModeResult ReadOnlyBlueprintReader::GetViewMode() {
 IBlueprintReader::ShowFlagsResult ReadOnlyBlueprintReader::GetShowFlags() {
 	return inner_->GetShowFlags();
 }
+IBlueprintReader::SelectedComponentsResult ReadOnlyBlueprintReader::GetSelectedComponents() {
+	return inner_->GetSelectedComponents();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

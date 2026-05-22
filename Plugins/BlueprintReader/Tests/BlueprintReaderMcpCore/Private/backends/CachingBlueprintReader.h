@@ -188,6 +188,7 @@ public:
 	CameraTransformResult GetCameraTransform() override;
 	ViewModeResult GetViewMode() override;
 	ShowFlagsResult GetShowFlags() override;
+	SelectedComponentsResult GetSelectedComponents() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

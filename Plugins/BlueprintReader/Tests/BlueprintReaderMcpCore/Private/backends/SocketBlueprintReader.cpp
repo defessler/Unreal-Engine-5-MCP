@@ -1556,6 +1556,32 @@ SocketBlueprintReader::GetShowFlags() {
 	return out;
 }
 
+IBlueprintReader::SelectedComponentsResult
+SocketBlueprintReader::GetSelectedComponents() {
+	auto j = RunOp({"-Op=GetSelectedComponents"});
+	SelectedComponentsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("actors"); it != j.end() && it->is_array()) {
+			for (const auto& a : *it) {
+				if (!a.is_object()) continue;
+				SelectedActorComponents ac;
+				ac.actorName = a.value("actor_name", std::string{});
+				if (auto cIt = a.find("components"); cIt != a.end() && cIt->is_array()) {
+					for (const auto& c : *cIt) {
+						if (!c.is_object()) continue;
+						SelectedComponentInfo info;
+						info.name           = c.value("name",            std::string{});
+						info.componentClass = c.value("component_class", std::string{});
+						ac.components.push_back(std::move(info));
+					}
+				}
+				out.actors.push_back(std::move(ac));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

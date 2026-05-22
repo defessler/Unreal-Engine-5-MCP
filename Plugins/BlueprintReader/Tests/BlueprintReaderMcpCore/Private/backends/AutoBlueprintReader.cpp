@@ -523,6 +523,9 @@ IBlueprintReader::ViewModeResult AutoBlueprintReader::GetViewMode() {
 IBlueprintReader::ShowFlagsResult AutoBlueprintReader::GetShowFlags() {
 	FORWARD(GetShowFlags);
 }
+IBlueprintReader::SelectedComponentsResult AutoBlueprintReader::GetSelectedComponents() {
+	FORWARD(GetSelectedComponents);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
