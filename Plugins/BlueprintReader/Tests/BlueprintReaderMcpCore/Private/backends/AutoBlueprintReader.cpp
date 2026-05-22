@@ -604,6 +604,10 @@ IBlueprintReader::MaterialInstanceParamsResult
 AutoBlueprintReader::GetMaterialInstanceParams(std::string_view a) {
 	FORWARD(GetMaterialInstanceParams, a);
 }
+IBlueprintReader::StaticMeshInfoResult
+AutoBlueprintReader::GetStaticMeshInfo(std::string_view a) {
+	FORWARD(GetStaticMeshInfo, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

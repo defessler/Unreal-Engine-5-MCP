@@ -59,7 +59,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 10 | **EA-push Wave 1** Core event notifications | 8–10 | 56d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
 | 11 | **H Tier 1** PluginToolset + GameFeatures + GAS **(reads COMPLETE for all 3 toolsets — 9 of 12 in scope; write ops + GFP activate/deactivate pending)** | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |
 | | **— wire parity + core differentiation: ~13.5 weeks —** | | | | |
-| 12 | **EA-pull Wave 2** Per-asset-editor selection **(2 of ~15 SHIPPED — bp_editor_state, mi_params)** | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
+| 12 | **EA-pull Wave 2** Per-asset-editor selection **(3 of ~15 SHIPPED — bp_editor_state, mi_params, static_mesh_info)** | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
 | 13 | **EA-pull Wave 3** Viewport + visibility | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
 | 14 | **EA-pull Wave 4** World + SCC + system state | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
 | 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |

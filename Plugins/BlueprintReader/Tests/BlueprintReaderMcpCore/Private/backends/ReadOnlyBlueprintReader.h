@@ -169,6 +169,7 @@ public:
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
 	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 	MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) override;
+	StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

@@ -3693,6 +3693,55 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_static_mesh_info (Phase 12 Wave 2 — asset-direct) ------
+	{
+		ToolDescriptor d;
+		d.name = "get_static_mesh_info";
+		d.description =
+			"[editor] Static mesh LOD / triangle / vertex info. Reads "
+			"directly from the UStaticMesh asset — no editor instance "
+			"needed. Returns `{valid, asset_path, lod_count, "
+			"is_nanite_enabled, lods: [{triangle_count, vertex_count, "
+			"screen_size}]}`. `screen_size` is the LOD-streaming "
+			"threshold (0.0 when not set on the source model).";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",             {{"type","boolean"}}},
+				{"asset_path",        {{"type","string"}}},
+				{"lod_count",         {{"type","integer"}}},
+				{"is_nanite_enabled", {{"type","boolean"}}},
+				{"lods",              {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetStaticMeshInfo(asset);
+			nlohmann::json lods = nlohmann::json::array();
+			for (const auto& l : r.lods) {
+				lods.push_back({
+					{"triangle_count", l.triangleCount},
+					{"vertex_count",   l.vertexCount},
+					{"screen_size",    l.screenSize},
+				});
+			}
+			return nlohmann::json{
+				{"valid",             r.valid},
+				{"asset_path",        r.assetPath},
+				{"lod_count",         r.lodCount},
+				{"is_nanite_enabled", r.isNaniteEnabled},
+				{"lods",              lods},
+			};
+		});
+	}
+
 	// ----- get_material_instance_params (Phase 12 Wave 2) -------------
 	{
 		ToolDescriptor d;

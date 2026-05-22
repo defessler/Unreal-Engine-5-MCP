@@ -724,6 +724,10 @@ IBlueprintReader::MaterialInstanceParamsResult
 CachingBlueprintReader::GetMaterialInstanceParams(std::string_view a) {
 	return inner_->GetMaterialInstanceParams(a);
 }
+IBlueprintReader::StaticMeshInfoResult
+CachingBlueprintReader::GetStaticMeshInfo(std::string_view a) {
+	return inner_->GetStaticMeshInfo(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 
