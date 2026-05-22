@@ -33,6 +33,8 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayEffect.h"
 #include "AttributeSet.h"
+// Phase 12 Wave 2 — FBlueprintEditor (BlueprintEditor module / Kismet).
+#include "BlueprintEditor.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -353,6 +355,7 @@ namespace
 		ListActorGameplayTags,
 		ListActorAttributes,
 		ListActorGameplayEffects,
+		GetBlueprintEditorState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -522,6 +525,7 @@ namespace
 		if (OpStr.Equals(TEXT("ListActorGameplayTags"), ESearchCase::IgnoreCase))   { OutOp = EOp::ListActorGameplayTags; return true; }
 		if (OpStr.Equals(TEXT("ListActorAttributes"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListActorAttributes; return true; }
 		if (OpStr.Equals(TEXT("ListActorGameplayEffects"), ESearchCase::IgnoreCase)){ OutOp = EOp::ListActorGameplayEffects; return true; }
+		if (OpStr.Equals(TEXT("GetBlueprintEditorState"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetBlueprintEditorState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6354,6 +6358,79 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetBlueprintEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetStringField(TEXT("current_graph_name"), FString());
+		Out->SetStringField(TEXT("compile_status"), FString());
+		TArray<TSharedPtr<FJsonValue>> SelectedIds;
+
+		if (AssetPath.IsEmpty())
+		{
+			Out->SetArrayField(TEXT("selected_node_ids"), SelectedIds);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (!IsValid(BP))
+		{
+			Out->SetArrayField(TEXT("selected_node_ids"), SelectedIds);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		// Compile status is cheap; populate even when editor isn't open.
+		const TCHAR* StatusStr = TEXT("unknown");
+		switch (BP->Status)
+		{
+			case BS_Dirty:                  StatusStr = TEXT("dirty"); break;
+			case BS_Error:                  StatusStr = TEXT("error"); break;
+			case BS_UpToDate:               StatusStr = TEXT("good"); break;
+			case BS_UpToDateWithWarnings:   StatusStr = TEXT("warning"); break;
+			case BS_BeingCreated:           StatusStr = TEXT("compiling"); break;
+			default:                        StatusStr = TEXT("unknown"); break;
+		}
+		Out->SetStringField(TEXT("compile_status"), StatusStr);
+
+		if (GEditor != nullptr)
+		{
+			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				IAssetEditorInstance* Editor = AES->FindEditorForAsset(BP, /*bFocusIfOpen=*/false);
+				if (Editor != nullptr)
+				{
+					// IAssetEditorInstance for a Blueprint is a FBlueprintEditor.
+					// The class hierarchy uses multiple inheritance so a
+					// reinterpret-style cast isn't safe; do a name check.
+					if (FCString::Stricmp(Editor->GetEditorName().ToString().GetCharArray().GetData(), TEXT("Kismet")) == 0 ||
+						FCString::Stricmp(Editor->GetEditorName().ToString().GetCharArray().GetData(), TEXT("BlueprintEditor")) == 0)
+					{
+						Out->SetBoolField(TEXT("valid"), true);
+						FBlueprintEditor* BPEditor = static_cast<FBlueprintEditor*>(Editor);
+						const FGraphPanelSelectionSet Selected = BPEditor->GetSelectedNodes();
+						for (UObject* Obj : Selected)
+						{
+							if (UEdGraphNode* Node = Cast<UEdGraphNode>(Obj))
+							{
+								SelectedIds.Add(MakeShared<FJsonValueString>(
+									Node->NodeGuid.ToString()));
+							}
+						}
+						if (UEdGraph* Graph = BPEditor->GetFocusedGraph())
+						{
+							Out->SetStringField(TEXT("current_graph_name"),
+								Graph->GetName());
+						}
+					}
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("selected_node_ids"), SelectedIds);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListActorAttributesOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString ActorName;
@@ -8195,6 +8272,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListActorGameplayTags,      &RunListActorGameplayTagsOp },
 		{ EOp::ListActorAttributes,        &RunListActorAttributesOp },
 		{ EOp::ListActorGameplayEffects,   &RunListActorGameplayEffectsOp },
+		{ EOp::GetBlueprintEditorState,    &RunGetBlueprintEditorStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

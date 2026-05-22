@@ -129,7 +129,11 @@ public class BlueprintReaderEditor : ModuleRules
 			// projects with the plugin disabled will load the editor
 			// fine but the GAS tools return empties / "not available".
 			"GameplayAbilities",
-			"GameplayTags"
+			"GameplayTags",
+			// Phase 12 Wave 2 — FBlueprintEditor for get_blueprint_editor_state.
+			// `Kismet` is the module name (despite the legacy class
+			// naming); IBlueprintEditor lives here.
+			"Kismet"
 		});
 	}
 }

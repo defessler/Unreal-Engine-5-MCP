@@ -1921,6 +1921,25 @@ SocketBlueprintReader::ListActorGameplayEffects(std::string_view actorName) {
 	return out;
 }
 
+IBlueprintReader::BlueprintEditorStateResult
+SocketBlueprintReader::GetBlueprintEditorState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetBlueprintEditorState",
+					"-Asset=" + std::string(assetPath)});
+	BlueprintEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid             = j.value("valid",              false);
+		out.currentGraphName  = j.value("current_graph_name", std::string{});
+		out.compileStatus     = j.value("compile_status",     std::string{});
+		if (auto it = j.find("selected_node_ids"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedNodeIds.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

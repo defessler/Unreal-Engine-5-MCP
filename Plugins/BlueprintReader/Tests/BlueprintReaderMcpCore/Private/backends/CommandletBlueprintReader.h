@@ -292,6 +292,7 @@ public:
 	ActorTagsResult ListActorGameplayTags(std::string_view actorName) override;
 	ActorAttributesResult ListActorAttributes(std::string_view actorName) override;
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
+	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
