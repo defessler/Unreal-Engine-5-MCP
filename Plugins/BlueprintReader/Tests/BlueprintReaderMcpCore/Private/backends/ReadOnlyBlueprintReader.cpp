@@ -458,6 +458,9 @@ IBlueprintReader::SnappingSettingsResult ReadOnlyBlueprintReader::GetSnappingSet
 IBlueprintReader::ActiveViewportResult ReadOnlyBlueprintReader::GetActiveViewport() {
 	return inner_->GetActiveViewport();
 }
+IBlueprintReader::HiddenActorsResult ReadOnlyBlueprintReader::GetHiddenActors() {
+	return inner_->GetHiddenActors();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

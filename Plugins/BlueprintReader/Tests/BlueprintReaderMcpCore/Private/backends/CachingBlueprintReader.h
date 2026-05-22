@@ -225,6 +225,7 @@ public:
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
+	HiddenActorsResult GetHiddenActors() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

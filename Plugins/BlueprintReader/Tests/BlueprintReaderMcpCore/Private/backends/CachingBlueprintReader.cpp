@@ -778,6 +778,9 @@ IBlueprintReader::SnappingSettingsResult CachingBlueprintReader::GetSnappingSett
 IBlueprintReader::ActiveViewportResult CachingBlueprintReader::GetActiveViewport() {
 	return inner_->GetActiveViewport();
 }
+IBlueprintReader::HiddenActorsResult CachingBlueprintReader::GetHiddenActors() {
+	return inner_->GetHiddenActors();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

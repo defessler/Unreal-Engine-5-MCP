@@ -2217,6 +2217,21 @@ SocketBlueprintReader::GetActiveViewport() {
 	return out;
 }
 
+IBlueprintReader::HiddenActorsResult
+SocketBlueprintReader::GetHiddenActors() {
+	auto j = RunOp({"-Op=GetHiddenActors"});
+	HiddenActorsResult out;
+	if (j.is_object()) {
+		out.truncated = j.value("truncated", false);
+		if (auto it = j.find("actor_names"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.actorNames.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

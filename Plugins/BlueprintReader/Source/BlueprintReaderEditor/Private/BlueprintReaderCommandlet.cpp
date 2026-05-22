@@ -389,6 +389,7 @@ namespace
 		GetViewportCameraSettings,
 		GetSnappingSettings,
 		GetActiveViewport,
+		GetHiddenActors,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -575,6 +576,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetViewportCameraSettings"), ESearchCase::IgnoreCase)){OutOp = EOp::GetViewportCameraSettings; return true; }
 		if (OpStr.Equals(TEXT("GetSnappingSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetSnappingSettings; return true; }
 		if (OpStr.Equals(TEXT("GetActiveViewport"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetActiveViewport; return true; }
+		if (OpStr.Equals(TEXT("GetHiddenActors"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetHiddenActors; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6407,6 +6409,36 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetHiddenActorsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		constexpr int32 kMaxActors = 500;
+		TArray<TSharedPtr<FJsonValue>> Names;
+		bool bTruncated = false;
+		if (UWorld* W = GetEditorWorldOrNull())
+		{
+			for (TActorIterator<AActor> It(W); It; ++It)
+			{
+				AActor* Actor = *It;
+				if (!IsValid(Actor)) continue;
+				if (!Actor->IsTemporarilyHiddenInEditor() && !Actor->IsHiddenEd())
+				{
+					continue;
+				}
+				if (Names.Num() >= kMaxActors)
+				{
+					bTruncated = true;
+					break;
+				}
+				Names.Add(MakeShared<FJsonValueString>(Actor->GetName()));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("actor_names"), Names);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -8854,6 +8886,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetViewportCameraSettings,  &RunGetViewportCameraSettingsOp },
 		{ EOp::GetSnappingSettings,        &RunGetSnappingSettingsOp },
 		{ EOp::GetActiveViewport,          &RunGetActiveViewportOp },
+		{ EOp::GetHiddenActors,            &RunGetHiddenActorsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

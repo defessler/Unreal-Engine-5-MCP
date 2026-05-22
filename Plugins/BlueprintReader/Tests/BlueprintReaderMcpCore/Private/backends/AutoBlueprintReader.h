@@ -204,6 +204,7 @@ public:
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
+	HiddenActorsResult GetHiddenActors() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

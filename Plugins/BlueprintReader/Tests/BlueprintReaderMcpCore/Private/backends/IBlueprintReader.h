@@ -1867,6 +1867,19 @@ public:
 		throw BlueprintReaderError("GetActiveViewport not supported by this backend");
 	}
 
+	// List actors hidden in the editor viewport (bHiddenEdTemporary or
+	// bHiddenEdLevel from FActorVisibilityChange). Returns actor names
+	// only (lookup transforms via get_selected_actors / spawn_actor
+	// response shapes). Capped at 500 actors to avoid blowing up on
+	// large worlds.
+	struct HiddenActorsResult {
+		std::vector<std::string> actorNames;
+		bool truncated = false;
+	};
+	virtual HiddenActorsResult GetHiddenActors() {
+		throw BlueprintReaderError("GetHiddenActors not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

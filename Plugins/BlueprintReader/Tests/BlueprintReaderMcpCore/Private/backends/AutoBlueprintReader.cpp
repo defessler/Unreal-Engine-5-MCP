@@ -658,6 +658,9 @@ IBlueprintReader::SnappingSettingsResult AutoBlueprintReader::GetSnappingSetting
 IBlueprintReader::ActiveViewportResult AutoBlueprintReader::GetActiveViewport() {
 	FORWARD(GetActiveViewport);
 }
+IBlueprintReader::HiddenActorsResult AutoBlueprintReader::GetHiddenActors() {
+	FORWARD(GetHiddenActors);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

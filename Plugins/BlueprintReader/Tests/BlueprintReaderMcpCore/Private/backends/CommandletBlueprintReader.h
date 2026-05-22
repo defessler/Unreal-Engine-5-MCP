@@ -309,6 +309,7 @@ public:
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
+	HiddenActorsResult GetHiddenActors() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
