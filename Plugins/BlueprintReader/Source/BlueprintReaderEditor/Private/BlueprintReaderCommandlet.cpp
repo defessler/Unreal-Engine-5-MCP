@@ -21,6 +21,9 @@
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
+// Phase 11 H Tier 1 — GameFeaturesToolset.
+#include "GameFeaturesSubsystem.h"
+#include "Interfaces/IPluginManager.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -332,6 +335,8 @@ namespace
 		UiSnapshot,
 		UiFind,
 		ListDesktopWindows,
+		ListGameFeatures,
+		GetGameFeatureState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -492,6 +497,8 @@ namespace
 		if (OpStr.Equals(TEXT("UiSnapshot"), ESearchCase::IgnoreCase))              { OutOp = EOp::UiSnapshot; return true; }
 		if (OpStr.Equals(TEXT("UiFind"), ESearchCase::IgnoreCase))                  { OutOp = EOp::UiFind; return true; }
 		if (OpStr.Equals(TEXT("ListDesktopWindows"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListDesktopWindows; return true; }
+		if (OpStr.Equals(TEXT("ListGameFeatures"), ESearchCase::IgnoreCase))        { OutOp = EOp::ListGameFeatures; return true; }
+		if (OpStr.Equals(TEXT("GetGameFeatureState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetGameFeatureState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6221,6 +6228,117 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Compute the simplified 6-string state by probing the subsystem's
+	// state-bool API in priority order. The public API exposes binary
+	// "is X" queries (registered / loaded / active) and doesn't have a
+	// public enum dump, so we synthesize the agent-facing label here.
+	FString ComputeGameFeatureState(UGameFeaturesSubsystem& GFS, const FString& Url)
+	{
+		if (GFS.IsGameFeaturePluginActive(Url, /*bCheckForActivating=*/false))
+		{
+			return TEXT("active");
+		}
+		if (GFS.IsGameFeaturePluginActive(Url, /*bCheckForActivating=*/true))
+		{
+			return TEXT("loading");      // activating → bucketed as transitional
+		}
+		if (GFS.IsGameFeaturePluginLoaded(Url))
+		{
+			return TEXT("loaded");
+		}
+		if (GFS.IsGameFeaturePluginRegistered(Url, /*bCheckForRegistering=*/true))
+		{
+			return TEXT("registered");
+		}
+		if (GFS.IsGameFeaturePluginInstalled(Url))
+		{
+			return TEXT("registered");   // installed-but-not-yet-registered
+		}
+		return TEXT("unknown");
+	}
+
+	// Collect all candidate (URL, plugin name) pairs by walking the
+	// plugin manager. Lyra-style GFPs live under `Plugins/GameFeatures/`
+	// and ship a `.uplugin` whose `EditorCustomVirtualPath` or the path
+	// itself indicates a GFP. We accept any plugin whose descriptor has
+	// "GameFeature" in its tags or whose path is under `GameFeatures/`.
+	void CollectGameFeaturePluginUrls(TArray<TPair<FString, FString>>& OutPairs)
+	{
+		IPluginManager& PM = IPluginManager::Get();
+		for (const TSharedRef<IPlugin>& Plugin : PM.GetEnabledPlugins())
+		{
+			const FString BaseDir = Plugin->GetBaseDir();
+			const bool bLooksLikeGFP =
+				BaseDir.Contains(TEXT("GameFeatures/")) ||
+				BaseDir.Contains(TEXT("GameFeatures\\"));
+			if (!bLooksLikeGFP)
+			{
+				continue;
+			}
+			const FString DescriptorPath = Plugin->GetDescriptorFileName();
+			const FString Url = UGameFeaturesSubsystem::GetPluginURL_FileProtocol(DescriptorPath);
+			OutPairs.Add({Url, Plugin->GetName()});
+		}
+	}
+
+	int32 RunListGameFeaturesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Features;
+		if (GEngine != nullptr)
+		{
+			UGameFeaturesSubsystem& GFS = UGameFeaturesSubsystem::Get();
+			TArray<TPair<FString, FString>> UrlPairs;
+			CollectGameFeaturePluginUrls(UrlPairs);
+			for (const TPair<FString, FString>& Pair : UrlPairs)
+			{
+				const FString& Url        = Pair.Key;
+				const FString& PluginName = Pair.Value;
+				auto F = MakeShared<FJsonObject>();
+				F->SetStringField(TEXT("plugin_name"), PluginName);
+				F->SetStringField(TEXT("plugin_url"),  Url);
+				F->SetStringField(TEXT("state"),       ComputeGameFeatureState(GFS, Url));
+				Features.Add(MakeShared<FJsonValueObject>(F));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("features"), Features);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetGameFeatureStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Plugin;
+		FParse::Value(*Params, TEXT("Plugin="), Plugin);
+
+		bool bValid = false;
+		FString StateStr;
+		FString MatchedUrl;
+		if (GEngine != nullptr && !Plugin.IsEmpty())
+		{
+			UGameFeaturesSubsystem& GFS = UGameFeaturesSubsystem::Get();
+			TArray<TPair<FString, FString>> UrlPairs;
+			CollectGameFeaturePluginUrls(UrlPairs);
+			for (const TPair<FString, FString>& Pair : UrlPairs)
+			{
+				if (Pair.Value.Equals(Plugin, ESearchCase::IgnoreCase))
+				{
+					MatchedUrl = Pair.Key;
+					StateStr   = ComputeGameFeatureState(GFS, MatchedUrl);
+					bValid     = true;
+					break;
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("plugin_name"), Plugin);
+		Out->SetStringField(TEXT("plugin_url"),  MatchedUrl);
+		Out->SetStringField(TEXT("state"),       StateStr);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListDesktopWindowsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Wins;
@@ -7799,6 +7917,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::UiSnapshot,                 &RunUiSnapshotOp },
 		{ EOp::UiFind,                     &RunUiFindOp },
 		{ EOp::ListDesktopWindows,         &RunListDesktopWindowsOp },
+		{ EOp::ListGameFeatures,           &RunListGameFeaturesOp },
+		{ EOp::GetGameFeatureState,        &RunGetGameFeatureStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

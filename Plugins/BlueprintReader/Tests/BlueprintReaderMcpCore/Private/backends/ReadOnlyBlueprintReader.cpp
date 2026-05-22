@@ -362,6 +362,13 @@ ReadOnlyBlueprintReader::UiFind(std::string_view t, std::string_view r) {
 IBlueprintReader::DesktopWindowsResult ReadOnlyBlueprintReader::ListDesktopWindows() {
 	return inner_->ListDesktopWindows();
 }
+IBlueprintReader::GameFeaturesListResult ReadOnlyBlueprintReader::ListGameFeatures() {
+	return inner_->ListGameFeatures();
+}
+IBlueprintReader::GameFeatureStateResult
+ReadOnlyBlueprintReader::GetGameFeatureState(std::string_view p) {
+	return inner_->GetGameFeatureState(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

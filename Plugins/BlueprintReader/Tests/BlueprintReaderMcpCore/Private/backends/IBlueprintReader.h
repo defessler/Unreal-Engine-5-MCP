@@ -1431,6 +1431,43 @@ public:
 		throw BlueprintReaderError("ListDesktopWindows not supported by this backend");
 	}
 
+	// ===== Phase 11 H Tier 1 — GameFeaturesToolset (read ops) ============
+	// Reads against UGameFeaturesSubsystem. Game-feature plugins (GFPs)
+	// are the modular content distribution mechanism Lyra uses heavily;
+	// these tools let an agent see what's loaded/active and (later) toggle.
+	//
+	// State strings (simplified from Epic's 34 internal states to 6):
+	//   "unknown"      — not yet discovered or unmapped
+	//   "registered"   — plugin discovered, not loaded
+	//   "loading"      — in-flight transition (any *ing state)
+	//   "loaded"       — assets loaded into memory, gameplay actions not active
+	//   "active"       — fully running (assets loaded + actions applied)
+	//   "deactivating" — in-flight teardown
+	struct GameFeatureInfo {
+		std::string pluginName;
+		std::string pluginUrl;            // e.g. "/Game/Features/Foo/Foo.uplugin"
+		std::string state;                // simplified 6-state string
+	};
+	struct GameFeaturesListResult {
+		std::vector<GameFeatureInfo> features;
+	};
+	virtual GameFeaturesListResult ListGameFeatures() {
+		throw BlueprintReaderError("ListGameFeatures not supported by this backend");
+	}
+
+	// Single GFP state lookup. `valid` false when the plugin name doesn't
+	// resolve to a registered GFP.
+	struct GameFeatureStateResult {
+		bool valid = false;
+		std::string pluginName;
+		std::string state;
+		std::string pluginUrl;
+	};
+	virtual GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) {
+		(void)pluginName;
+		throw BlueprintReaderError("GetGameFeatureState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

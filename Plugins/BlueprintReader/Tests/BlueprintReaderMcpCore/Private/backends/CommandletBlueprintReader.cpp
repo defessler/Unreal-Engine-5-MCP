@@ -3379,6 +3379,39 @@ CommandletBlueprintReader::ListDesktopWindows() {
 	return out;
 }
 
+IBlueprintReader::GameFeaturesListResult
+CommandletBlueprintReader::ListGameFeatures() {
+	auto j = RunOp({L"-Op=ListGameFeatures"});
+	GameFeaturesListResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("features"); it != j.end() && it->is_array()) {
+			for (const auto& f : *it) {
+				if (!f.is_object()) continue;
+				GameFeatureInfo info;
+				info.pluginName = f.value("plugin_name", std::string{});
+				info.pluginUrl  = f.value("plugin_url",  std::string{});
+				info.state      = f.value("state",       std::string{});
+				out.features.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::GameFeatureStateResult
+CommandletBlueprintReader::GetGameFeatureState(std::string_view pluginName) {
+	auto j = RunOp({L"-Op=GetGameFeatureState",
+					L"-Plugin=" + Widen(pluginName)});
+	GameFeatureStateResult out;
+	out.pluginName = std::string(pluginName);
+	if (j.is_object()) {
+		out.valid     = j.value("valid",      false);
+		out.state     = j.value("state",      std::string{});
+		out.pluginUrl = j.value("plugin_url", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

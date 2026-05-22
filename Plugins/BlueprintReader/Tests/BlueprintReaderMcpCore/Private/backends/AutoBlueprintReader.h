@@ -178,6 +178,8 @@ public:
 	UiSnapshotResult UiSnapshot(std::string_view windowFilter, int maxDepth) override;
 	UiSnapshotResult UiFind(std::string_view text, std::string_view roleFilter) override;
 	DesktopWindowsResult ListDesktopWindows() override;
+	GameFeaturesListResult ListGameFeatures() override;
+	GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

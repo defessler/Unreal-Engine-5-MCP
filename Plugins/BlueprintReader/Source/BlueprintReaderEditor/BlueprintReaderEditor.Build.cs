@@ -113,7 +113,16 @@ public class BlueprintReaderEditor : ModuleRules
 			// Phase 8 — content browser selection tools
 			// (get/set_selected_assets, get_selected_folders, etc.) hit
 			// IContentBrowserSingleton via FContentBrowserModule.
-			"ContentBrowser"
+			"ContentBrowser",
+			// Phase 11 H Tier 1 — GameFeaturesToolset reads via
+			// UGameFeaturesSubsystem. Loads via the GameFeatures plugin
+			// when present (always present in Lyra). Optional at runtime;
+			// the toolset surfaces empty state when the subsystem is null.
+			"GameFeatures",
+			// IPluginManager — used to enumerate GFPs by scanning the
+			// enabled plugin list (subsystem doesn't expose a public URL
+			// dump in 5.7).
+			"Projects"
 		});
 	}
 }

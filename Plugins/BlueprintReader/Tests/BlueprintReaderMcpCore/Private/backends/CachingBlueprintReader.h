@@ -199,6 +199,8 @@ public:
 	UiSnapshotResult UiSnapshot(std::string_view windowFilter, int maxDepth) override;
 	UiSnapshotResult UiFind(std::string_view text, std::string_view roleFilter) override;
 	DesktopWindowsResult ListDesktopWindows() override;
+	GameFeaturesListResult ListGameFeatures() override;
+	GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------
