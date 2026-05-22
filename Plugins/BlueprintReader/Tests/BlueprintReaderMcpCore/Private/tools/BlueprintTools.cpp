@@ -3540,6 +3540,89 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_pie_state ---------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_pie_state";
+		d.description =
+			"[editor] Is Play-In-Editor running right now? Returns "
+			"`{is_playing, mode, instance_count}`. `mode` is the PIE mode "
+			"string (selected_viewport / new_editor_window / standalone / "
+			"vr_preview) or empty when not playing. instance_count >= 2 for "
+			"multi-PIE (Client/Server split). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"is_playing",     {{"type", "boolean"}}},
+				{"mode",           {{"type", "string"}}},
+				{"instance_count", {{"type", "integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetPieState();
+			return nlohmann::json{
+				{"is_playing",     r.isPlaying},
+				{"mode",           r.mode},
+				{"instance_count", r.instanceCount},
+			};
+		});
+	}
+
+	// ----- get_modal_state -------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_modal_state";
+		d.description =
+			"[editor] Is a modal Slate window blocking input right now? "
+			"Returns `{is_open, title}`. Common modals: confirm-deletion, "
+			"asset-picker, save-as. Agents should refuse mutation ops when "
+			"is_open=true — the editor is gated on user input. Requires a "
+			"live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"is_open", {{"type", "boolean"}}},
+				{"title",   {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetModalState();
+			return nlohmann::json{
+				{"is_open", r.isOpen},
+				{"title",   r.title},
+			};
+		});
+	}
+
+	// ----- get_active_editor_mode -----------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_active_editor_mode";
+		d.description =
+			"[editor] Active level-editor mode(s) — what tool is the user "
+			"working in? Returns `{active_modes: [...]}`. Common modes: "
+			"`EM_Default` (selection), `EM_Placement`, `EM_Landscape`, "
+			"`EM_Foliage`, `EM_MeshPaint`, `EM_ModelingMode`. Multi-mode "
+			"is possible (UE supports concurrent modes); primary is "
+			"element [0]. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"active_modes", {
+					{"type", "array"},
+					{"items", {{"type", "string"}}},
+				}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveEditorMode();
+			return nlohmann::json{{"active_modes", r.activeModes}};
+		});
+	}
+
 	// ----- live_coding_compile -------------------------------------------
 	{
 		ToolDescriptor d;

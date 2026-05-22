@@ -3054,6 +3054,43 @@ CommandletBlueprintReader::GetFocusedWindow() {
 	return out;
 }
 
+IBlueprintReader::PieStateResult CommandletBlueprintReader::GetPieState() {
+	auto j = RunOp({L"-Op=GetPieState"});
+	PieStateResult out;
+	if (j.is_object()) {
+		out.isPlaying     = j.value("is_playing",     false);
+		out.mode          = j.value("mode",           std::string{});
+		out.instanceCount = j.value("instance_count", 0);
+	}
+	return out;
+}
+
+IBlueprintReader::ModalStateResult CommandletBlueprintReader::GetModalState() {
+	auto j = RunOp({L"-Op=GetModalState"});
+	ModalStateResult out;
+	if (j.is_object()) {
+		out.isOpen = j.value("is_open", false);
+		out.title  = j.value("title",   std::string{});
+	}
+	return out;
+}
+
+IBlueprintReader::EditorModesResult
+CommandletBlueprintReader::GetActiveEditorMode() {
+	auto j = RunOp({L"-Op=GetActiveEditorMode"});
+	EditorModesResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("active_modes"); it != j.end() && it->is_array()) {
+			for (const auto& m : *it) {
+				if (m.is_string()) {
+					out.activeModes.push_back(m.get<std::string>());
+				}
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 CommandletBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({L"-Op=LiveCodingCompile"});

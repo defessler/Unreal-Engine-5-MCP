@@ -366,6 +366,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		// Phase 8 EA-pull Wave 1 (partial) — all require a live editor
 		"list_open_assets", "get_active_asset", "get_compile_status",
 		"get_dirty_packages", "get_focused_window",
+		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 	};
 }
 
