@@ -562,6 +562,13 @@ AutoBlueprintReader::UiFind(std::string_view t, std::string_view r) {
 IBlueprintReader::DesktopWindowsResult AutoBlueprintReader::ListDesktopWindows() {
 	FORWARD(ListDesktopWindows);
 }
+IBlueprintReader::GameFeaturesListResult AutoBlueprintReader::ListGameFeatures() {
+	FORWARD(ListGameFeatures);
+}
+IBlueprintReader::GameFeatureStateResult
+AutoBlueprintReader::GetGameFeatureState(std::string_view p) {
+	FORWARD(GetGameFeatureState, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

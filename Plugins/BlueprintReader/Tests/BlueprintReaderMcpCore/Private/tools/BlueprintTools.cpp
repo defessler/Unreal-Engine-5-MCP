@@ -3693,6 +3693,76 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- list_game_features (Phase 11 H Tier 1) ----------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_game_features";
+		d.description =
+			"[editor] List all known Game Feature Plugins (GFPs) and their "
+			"simplified state. Lyra uses GFPs extensively as its modular "
+			"content mechanism. Returns `{features: [{plugin_name, "
+			"plugin_url, state}]}`. `state` is one of: `unknown`, "
+			"`registered`, `loading`, `loaded`, `active`, `deactivating`. "
+			"Requires a live editor (GameFeaturesSubsystem only lives in a "
+			"running engine context).";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"features", {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListGameFeatures();
+			nlohmann::json feats = nlohmann::json::array();
+			for (const auto& f : r.features) {
+				feats.push_back({
+					{"plugin_name", f.pluginName},
+					{"plugin_url",  f.pluginUrl},
+					{"state",       f.state},
+				});
+			}
+			return nlohmann::json{{"features", feats}};
+		});
+	}
+
+	// ----- get_game_feature_state ---------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_game_feature_state";
+		d.description =
+			"[editor] Look up a single Game Feature Plugin's state by name "
+			"(case-insensitive match against `plugin_name`). Returns "
+			"`{valid, plugin_name, plugin_url, state}`. `valid:false` when "
+			"the plugin name doesn't resolve. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"plugin_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"plugin_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",       {{"type","boolean"}}},
+				{"plugin_name", {{"type","string"}}},
+				{"plugin_url",  {{"type","string"}}},
+				{"state",       {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string name = RequireString(args, "plugin_name");
+			auto r = reader.GetGameFeatureState(name);
+			return nlohmann::json{
+				{"valid",       r.valid},
+				{"plugin_name", r.pluginName},
+				{"plugin_url",  r.pluginUrl},
+				{"state",       r.state},
+			};
+		});
+	}
+
 	// ----- ui_snapshot ----------------------------------------------------
 	{
 		ToolDescriptor d;

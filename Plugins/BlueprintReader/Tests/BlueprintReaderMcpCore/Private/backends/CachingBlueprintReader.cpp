@@ -682,6 +682,13 @@ CachingBlueprintReader::UiFind(std::string_view t, std::string_view r) {
 IBlueprintReader::DesktopWindowsResult CachingBlueprintReader::ListDesktopWindows() {
 	return inner_->ListDesktopWindows();
 }
+IBlueprintReader::GameFeaturesListResult CachingBlueprintReader::ListGameFeatures() {
+	return inner_->ListGameFeatures();
+}
+IBlueprintReader::GameFeatureStateResult
+CachingBlueprintReader::GetGameFeatureState(std::string_view p) {
+	return inner_->GetGameFeatureState(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

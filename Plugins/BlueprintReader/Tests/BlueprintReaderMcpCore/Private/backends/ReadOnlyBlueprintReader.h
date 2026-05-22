@@ -158,6 +158,8 @@ public:
 	UiSnapshotResult UiSnapshot(std::string_view windowFilter, int maxDepth) override;
 	UiSnapshotResult UiFind(std::string_view text, std::string_view roleFilter) override;
 	DesktopWindowsResult ListDesktopWindows() override;
+	GameFeaturesListResult ListGameFeatures() override;
+	GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,
