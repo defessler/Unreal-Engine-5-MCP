@@ -3638,6 +3638,24 @@ CommandletBlueprintReader::GetStaticMeshInfo(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::UmgEditorStateResult
+CommandletBlueprintReader::GetUmgEditorState(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetUmgEditorState",
+					L"-Asset=" + Widen(assetPath)});
+	UmgEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                false);
+		out.currentDesignerTab = j.value("current_designer_tab", std::string{});
+		if (auto it = j.find("selected_widget_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedWidgetNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

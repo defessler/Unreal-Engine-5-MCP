@@ -728,6 +728,10 @@ IBlueprintReader::StaticMeshInfoResult
 CachingBlueprintReader::GetStaticMeshInfo(std::string_view a) {
 	return inner_->GetStaticMeshInfo(a);
 }
+IBlueprintReader::UmgEditorStateResult
+CachingBlueprintReader::GetUmgEditorState(std::string_view a) {
+	return inner_->GetUmgEditorState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

@@ -1661,6 +1661,20 @@ public:
 		throw BlueprintReaderError("GetStaticMeshInfo not supported by this backend");
 	}
 
+	// UMG widget-blueprint editor state. `selected_widget_names` are
+	// FWidgetReference template names (matches the names in the widget
+	// hierarchy panel). `valid` false when UMG editor isn't open.
+	struct UmgEditorStateResult {
+		bool valid = false;
+		std::string assetPath;
+		std::vector<std::string> selectedWidgetNames;
+		std::string currentDesignerTab;
+	};
+	virtual UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetUmgEditorState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

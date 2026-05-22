@@ -3693,6 +3693,45 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_umg_editor_state (Phase 12 Wave 2) ---------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_umg_editor_state";
+		d.description =
+			"[editor] Selection state for a UMG Widget Blueprint editor. "
+			"Returns `{valid, asset_path, selected_widget_names, "
+			"current_designer_tab}`. `selected_widget_names` are the "
+			"template-side widget names (matching the widget hierarchy "
+			"panel). `valid:false` when the UMG editor for the asset isn't "
+			"open. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                  {{"type","boolean"}}},
+				{"asset_path",             {{"type","string"}}},
+				{"selected_widget_names",  {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"current_designer_tab",   {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetUmgEditorState(asset);
+			return nlohmann::json{
+				{"valid",                 r.valid},
+				{"asset_path",            r.assetPath},
+				{"selected_widget_names", r.selectedWidgetNames},
+				{"current_designer_tab",  r.currentDesignerTab},
+			};
+		});
+	}
+
 	// ----- get_static_mesh_info (Phase 12 Wave 2 — asset-direct) ------
 	{
 		ToolDescriptor d;

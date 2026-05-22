@@ -408,6 +408,10 @@ IBlueprintReader::StaticMeshInfoResult
 ReadOnlyBlueprintReader::GetStaticMeshInfo(std::string_view a) {
 	return inner_->GetStaticMeshInfo(a);
 }
+IBlueprintReader::UmgEditorStateResult
+ReadOnlyBlueprintReader::GetUmgEditorState(std::string_view a) {
+	return inner_->GetUmgEditorState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

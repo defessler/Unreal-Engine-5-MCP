@@ -2005,6 +2005,24 @@ SocketBlueprintReader::GetStaticMeshInfo(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::UmgEditorStateResult
+SocketBlueprintReader::GetUmgEditorState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetUmgEditorState",
+					"-Asset=" + std::string(assetPath)});
+	UmgEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                false);
+		out.currentDesignerTab = j.value("current_designer_tab", std::string{});
+		if (auto it = j.find("selected_widget_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedWidgetNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});
