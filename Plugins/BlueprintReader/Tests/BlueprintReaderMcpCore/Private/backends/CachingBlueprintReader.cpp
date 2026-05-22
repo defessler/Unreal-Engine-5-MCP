@@ -643,6 +643,9 @@ IBlueprintReader::ViewModeResult CachingBlueprintReader::GetViewMode() {
 IBlueprintReader::ShowFlagsResult CachingBlueprintReader::GetShowFlags() {
 	return inner_->GetShowFlags();
 }
+IBlueprintReader::SelectedComponentsResult CachingBlueprintReader::GetSelectedComponents() {
+	return inner_->GetSelectedComponents();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

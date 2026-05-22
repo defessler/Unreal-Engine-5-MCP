@@ -314,6 +314,7 @@ namespace
 		GetCameraTransform,
 		GetViewMode,
 		GetShowFlags,
+		GetSelectedComponents,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -463,6 +464,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetCameraTransform"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCameraTransform; return true; }
 		if (OpStr.Equals(TEXT("GetViewMode"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetViewMode; return true; }
 		if (OpStr.Equals(TEXT("GetShowFlags"), ESearchCase::IgnoreCase))            { OutOp = EOp::GetShowFlags; return true; }
+		if (OpStr.Equals(TEXT("GetSelectedComponents"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetSelectedComponents; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6035,6 +6037,50 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetSelectedComponentsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> ActorJsonArr;
+		if (IsValid(GEditor))
+		{
+			if (USelection* Selection = GEditor->GetSelectedActors())
+			{
+				for (FSelectionIterator It(*Selection); It; ++It)
+				{
+					AActor* Actor = Cast<AActor>(*It);
+					if (!IsValid(Actor))
+					{
+						continue;
+					}
+					auto ActorJson = MakeShared<FJsonObject>();
+					ActorJson->SetStringField(TEXT("actor_name"), Actor->GetName());
+
+					TArray<TSharedPtr<FJsonValue>> CompJsonArr;
+					TArray<UActorComponent*> Components;
+					Actor->GetComponents(Components);
+					for (UActorComponent* Comp : Components)
+					{
+						if (!IsValid(Comp))
+						{
+							continue;
+						}
+						auto CompJson = MakeShared<FJsonObject>();
+						CompJson->SetStringField(TEXT("name"),
+							Comp->GetName());
+						CompJson->SetStringField(TEXT("component_class"),
+							Comp->GetClass() ? Comp->GetClass()->GetName() : FString());
+						CompJsonArr.Add(MakeShared<FJsonValueObject>(CompJson));
+					}
+					ActorJson->SetArrayField(TEXT("components"), CompJsonArr);
+					ActorJsonArr.Add(MakeShared<FJsonValueObject>(ActorJson));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("actors"), ActorJsonArr);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetShowFlagsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -7308,6 +7354,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetCameraTransform,         &RunGetCameraTransformOp },
 		{ EOp::GetViewMode,                &RunGetViewModeOp },
 		{ EOp::GetShowFlags,               &RunGetShowFlagsOp },
+		{ EOp::GetSelectedComponents,      &RunGetSelectedComponentsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
