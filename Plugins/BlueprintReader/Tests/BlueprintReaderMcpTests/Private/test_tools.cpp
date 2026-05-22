@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 138 tools (133 prior + 5 Phase-8 EA-pull tools) with input schemas") {
+TEST_CASE("ToolRegistry exposes 141 tools (133 prior + 8 Phase-8 EA-pull tools) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 138);
+	CHECK(spec.size() == 141);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

@@ -51,6 +51,7 @@ const std::set<std::string>& ReadOnlySet() {
 		// Phase 8 EA-pull Wave 1 (partial)
 		"list_open_assets", "get_active_asset", "get_compile_status",
 		"get_dirty_packages", "get_focused_window",
+		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 		// --- BP↔C++ pure compute (no write) -----------------------------
 		"decompile_function", "decompile_blueprint",
 		"transpile_function", "transpile_blueprint",

@@ -40,7 +40,7 @@ using namespace test_ea_pull_detail;
 // Registration + schema declarations
 // =====================================================================
 
-TEST_CASE("Phase 8: all 5 EA-pull tools register with the registry") {
+TEST_CASE("Phase 8: all 8 EA-pull tools register with the registry") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
 	std::vector<std::string> names;
@@ -52,7 +52,8 @@ TEST_CASE("Phase 8: all 5 EA-pull tools register with the registry") {
 	};
 	for (const char* n : {"list_open_assets", "get_active_asset",
 						  "get_compile_status", "get_dirty_packages",
-						  "get_focused_window"}) {
+						  "get_focused_window", "get_pie_state",
+						  "get_modal_state", "get_active_editor_mode"}) {
 		CAPTURE(n);
 		CHECK(has(n));
 	}
@@ -77,7 +78,7 @@ TEST_CASE("Phase 8: get_compile_status declares asset_path required") {
 	FAIL("get_compile_status not found");
 }
 
-TEST_CASE("Phase 8: all 5 tools advertise outputSchema") {
+TEST_CASE("Phase 8: all 8 tools advertise outputSchema") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
 	int matched = 0;
@@ -85,14 +86,15 @@ TEST_CASE("Phase 8: all 5 tools advertise outputSchema") {
 		const std::string n = t["name"].get<std::string>();
 		if (n == "list_open_assets" || n == "get_active_asset" ||
 			n == "get_compile_status" || n == "get_dirty_packages" ||
-			n == "get_focused_window") {
+			n == "get_focused_window" || n == "get_pie_state" ||
+			n == "get_modal_state" || n == "get_active_editor_mode") {
 			++matched;
 			CAPTURE(n);
 			REQUIRE(t.contains("outputSchema"));
 			REQUIRE(t["outputSchema"].contains("type"));
 		}
 	}
-	CHECK(matched == 5);
+	CHECK(matched == 8);
 }
 
 TEST_CASE("Phase 8: 4 collection tools have type=object|array outputSchema") {
@@ -148,11 +150,26 @@ TEST_CASE("Phase 8: mock backend rejects get_focused_window") {
 	CHECK_THROWS(f.Call("get_focused_window", json::object()));
 }
 
+TEST_CASE("Phase 8: mock backend rejects get_pie_state") {
+	Fixture f;
+	CHECK_THROWS(f.Call("get_pie_state", json::object()));
+}
+
+TEST_CASE("Phase 8: mock backend rejects get_modal_state") {
+	Fixture f;
+	CHECK_THROWS(f.Call("get_modal_state", json::object()));
+}
+
+TEST_CASE("Phase 8: mock backend rejects get_active_editor_mode") {
+	Fixture f;
+	CHECK_THROWS(f.Call("get_active_editor_mode", json::object()));
+}
+
 // =====================================================================
 // Mock backend declares them in UnsupportedTools()
 // =====================================================================
 
-TEST_CASE("Phase 8: mock UnsupportedTools includes all 5 EA-pull tools") {
+TEST_CASE("Phase 8: mock UnsupportedTools includes all 8 EA-pull tools") {
 	backends::MockBlueprintReader r(test::FixturesDir());
 	auto unsupported = r.UnsupportedTools();
 	auto has = [&](const std::string& n) {
@@ -161,7 +178,8 @@ TEST_CASE("Phase 8: mock UnsupportedTools includes all 5 EA-pull tools") {
 	};
 	for (const char* n : {"list_open_assets", "get_active_asset",
 						  "get_compile_status", "get_dirty_packages",
-						  "get_focused_window"}) {
+						  "get_focused_window", "get_pie_state",
+						  "get_modal_state", "get_active_editor_mode"}) {
 		CAPTURE(n);
 		CHECK(has(n));
 	}
@@ -171,14 +189,15 @@ TEST_CASE("Phase 8: mock UnsupportedTools includes all 5 EA-pull tools") {
 // Annotations — these tools are read-only
 // =====================================================================
 
-TEST_CASE("Phase 8: all 5 EA-pull tools advertise readOnlyHint=true") {
+TEST_CASE("Phase 8: all 8 EA-pull tools advertise readOnlyHint=true") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
 	for (const auto& t : spec) {
 		const std::string n = t["name"].get<std::string>();
 		if (n == "list_open_assets" || n == "get_active_asset" ||
 			n == "get_compile_status" || n == "get_dirty_packages" ||
-			n == "get_focused_window") {
+			n == "get_focused_window" || n == "get_pie_state" ||
+			n == "get_modal_state" || n == "get_active_editor_mode") {
 			CAPTURE(n);
 			REQUIRE(t.contains("annotations"));
 			CHECK(t["annotations"]["readOnlyHint"] == true);

@@ -263,6 +263,9 @@ public:
 	CompileStatusResult GetCompileStatus(std::string_view assetPath) override;
 	DirtyPackagesResult GetDirtyPackages() override;
 	FocusedWindowResult GetFocusedWindow() override;
+	PieStateResult GetPieState() override;
+	ModalStateResult GetModalState() override;
+	EditorModesResult GetActiveEditorMode() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

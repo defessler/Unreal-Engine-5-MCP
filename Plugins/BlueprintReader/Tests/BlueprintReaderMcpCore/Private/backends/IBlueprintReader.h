@@ -1161,6 +1161,42 @@ public:
 		throw BlueprintReaderError("GetFocusedWindow not supported by this backend");
 	}
 
+	// PIE state — is Play-In-Editor active right now? Mirrors what
+	// PieStart/PieStop manage from the write side. `mode` is the mode
+	// string PIE was started with (when known). Multi-instance PIE
+	// (Client/Server world split) returns instance_count >= 2.
+	struct PieStateResult {
+		bool isPlaying = false;
+		std::string mode;           // "" when not playing
+		int  instanceCount = 0;     // number of PIE worlds
+	};
+	virtual PieStateResult GetPieState() {
+		throw BlueprintReaderError("GetPieState not supported by this backend");
+	}
+
+	// Modal state — is a modal Slate window blocking input right now?
+	// Common cause: a confirm-deletion dialog, asset-picker, save-as.
+	// Agents should refuse mutation ops while modal — the editor is
+	// gated waiting for user confirmation.
+	struct ModalStateResult {
+		bool isOpen = false;
+		std::string title;          // "" when no modal
+	};
+	virtual ModalStateResult GetModalState() {
+		throw BlueprintReaderError("GetModalState not supported by this backend");
+	}
+
+	// Active editor mode — what mode is the level editor in
+	// (Selection / Placement / Landscape / Foliage / Modeling / etc.).
+	// Returns a vector because the level editor supports multiple
+	// concurrent modes; the primary is element [0].
+	struct EditorModesResult {
+		std::vector<std::string> activeModes;  // mode IDs (FName strings)
+	};
+	virtual EditorModesResult GetActiveEditorMode() {
+		throw BlueprintReaderError("GetActiveEditorMode not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

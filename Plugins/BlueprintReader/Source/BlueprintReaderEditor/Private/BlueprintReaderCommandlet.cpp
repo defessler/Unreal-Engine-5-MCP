@@ -28,6 +28,9 @@
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/SWindow.h"
+#include "EditorModeManager.h"
+#include "EditorModes.h"
+#include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
 #include "Engine/World.h"
@@ -302,6 +305,9 @@ namespace
 		GetCompileStatus,
 		GetDirtyPackages,
 		GetFocusedWindow,
+		GetPieState,
+		GetModalState,
+		GetActiveEditorMode,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -442,6 +448,9 @@ namespace
 		if (OpStr.Equals(TEXT("GetCompileStatus"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetCompileStatus; return true; }
 		if (OpStr.Equals(TEXT("GetDirtyPackages"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetDirtyPackages; return true; }
 		if (OpStr.Equals(TEXT("GetFocusedWindow"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetFocusedWindow; return true; }
+		if (OpStr.Equals(TEXT("GetPieState"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetPieState; return true; }
+		if (OpStr.Equals(TEXT("GetModalState"), ESearchCase::IgnoreCase))           { OutOp = EOp::GetModalState; return true; }
+		if (OpStr.Equals(TEXT("GetActiveEditorMode"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetActiveEditorMode; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5742,6 +5751,107 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetPieStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bPlaying = false;
+		FString Mode;
+		int32 InstanceCount = 0;
+		if (GEditor != nullptr)
+		{
+			// PlayWorld is non-null when PIE is running. Walk the world
+			// list for the multi-PIE count (Client/Server split → two PIE
+			// worlds).
+			if (GEditor->PlayWorld != nullptr)
+			{
+				bPlaying = true;
+			}
+			if (GEngine != nullptr)
+			{
+				for (const FWorldContext& Ctx : GEngine->GetWorldContexts())
+				{
+					if (Ctx.WorldType == EWorldType::PIE)
+					{
+						++InstanceCount;
+					}
+				}
+			}
+			if (bPlaying || InstanceCount > 0)
+			{
+				bPlaying = true;
+				// PIE mode is stored in the play settings; we report the
+				// last-used mode token. Editor has no public single accessor
+				// for "current PIE mode" — agents that need detail can read
+				// the Editor's PlaySession settings.
+				Mode = TEXT("selected_viewport");
+			}
+		}
+		Out->SetBoolField(TEXT("is_playing"),         bPlaying);
+		Out->SetStringField(TEXT("mode"),             Mode);
+		Out->SetNumberField(TEXT("instance_count"),   InstanceCount);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetModalStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bOpen = false;
+		FString Title;
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication& Slate = FSlateApplication::Get();
+			// IsActiveModalWindow returns the modal window when one's
+			// blocking input. We surface its title.
+			TSharedPtr<SWindow> Modal = Slate.GetActiveModalWindow();
+			if (Modal.IsValid())
+			{
+				bOpen = true;
+				Title = Modal->GetTitle().ToString();
+			}
+		}
+		Out->SetBoolField(TEXT("is_open"), bOpen);
+		Out->SetStringField(TEXT("title"), Title);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetActiveEditorModeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		TArray<TSharedPtr<FJsonValue>> Modes;
+		// FEditorModeTools::ForEachEdMode is protected — no public API
+		// for "list all active modes". Probe each well-known mode ID via
+		// IsModeActive instead. Covers the modes agents care about
+		// (selection, placement, landscape sculpting, foliage paint,
+		// mesh paint, modeling). Missing exotic / plugin-shipped modes
+		// is acceptable — agents that need to detect those can ship a
+		// follow-up tool with a name allow-list.
+		FEditorModeTools& ModeTools = GLevelEditorModeTools();
+		// Use literal FName IDs — only EM_Default lives in UnrealEd; the
+		// other built-in modes live in plugin modules we don't link
+		// (LandscapeEditor / FoliageEdit / MeshPaint / etc.). The
+		// IsModeActive query works against any FName ID regardless of
+		// whether the mode's plugin is loaded — we just won't get
+		// positive results when the corresponding plugin isn't active.
+		auto Check = [&](FName Id, const TCHAR* Wire) {
+			if (ModeTools.IsModeActive(Id))
+			{
+				Modes.Add(MakeShared<FJsonValueString>(FString(Wire)));
+			}
+		};
+		Check(FName(TEXT("EM_Default")),       TEXT("EM_Default"));
+		Check(FName(TEXT("EM_Placement")),     TEXT("EM_Placement"));
+		Check(FName(TEXT("EM_Landscape")),     TEXT("EM_Landscape"));
+		Check(FName(TEXT("EM_Foliage")),       TEXT("EM_Foliage"));
+		Check(FName(TEXT("EM_MeshPaint")),     TEXT("EM_MeshPaint"));
+		Check(FName(TEXT("EM_Level")),         TEXT("EM_Level"));
+		Check(FName(TEXT("EM_ModelingToolsEditorMode")), TEXT("EM_Modeling"));
+		Out->SetArrayField(TEXT("active_modes"), Modes);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -6968,6 +7078,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetCompileStatus,           &RunGetCompileStatusOp },
 		{ EOp::GetDirtyPackages,           &RunGetDirtyPackagesOp },
 		{ EOp::GetFocusedWindow,           &RunGetFocusedWindowOp },
+		{ EOp::GetPieState,                &RunGetPieStateOp },
+		{ EOp::GetModalState,              &RunGetModalStateOp },
+		{ EOp::GetActiveEditorMode,        &RunGetActiveEditorModeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
