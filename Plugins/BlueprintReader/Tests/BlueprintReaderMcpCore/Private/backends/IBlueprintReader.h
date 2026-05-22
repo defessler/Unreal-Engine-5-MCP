@@ -1197,6 +1197,19 @@ public:
 		throw BlueprintReaderError("GetActiveEditorMode not supported by this backend");
 	}
 
+	// Slate widget the user is currently typing into / focused on.
+	// Finer-grained than get_focused_window: tells you "the user is in
+	// the BP graph search box" vs "the user is on the BP editor window".
+	// `widget_type` is the Slate widget class (SEditableTextBox, etc.).
+	// Empty when no widget has focus.
+	struct FocusedWidgetResult {
+		std::string widgetType;
+		std::string parentWindowTitle;  // title of the window the widget lives in
+	};
+	virtual FocusedWidgetResult GetFocusedWidget() {
+		throw BlueprintReaderError("GetFocusedWidget not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

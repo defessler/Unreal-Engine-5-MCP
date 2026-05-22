@@ -52,6 +52,7 @@ const std::set<std::string>& ReadOnlySet() {
 		"list_open_assets", "get_active_asset", "get_compile_status",
 		"get_dirty_packages", "get_focused_window",
 		"get_pie_state", "get_modal_state", "get_active_editor_mode",
+		"get_focused_widget",
 		// --- BP↔C++ pure compute (no write) -----------------------------
 		"decompile_function", "decompile_blueprint",
 		"transpile_function", "transpile_blueprint",
