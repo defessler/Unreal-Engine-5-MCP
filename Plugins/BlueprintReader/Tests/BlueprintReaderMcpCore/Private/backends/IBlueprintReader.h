@@ -1675,6 +1675,21 @@ public:
 		throw BlueprintReaderError("GetUmgEditorState not supported by this backend");
 	}
 
+	// Material editor selection. `selected_expression_classes` lists the
+	// short class names of currently-selected material expressions
+	// (e.g. "MaterialExpressionAdd", "MaterialExpressionTextureSample").
+	// `valid:false` when material editor isn't open for the asset.
+	struct MaterialEditorStateResult {
+		bool valid = false;
+		std::string assetPath;
+		int selectedNodeCount = 0;
+		std::vector<std::string> selectedExpressionClasses;
+	};
+	virtual MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetMaterialEditorState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

@@ -171,6 +171,7 @@ public:
 	MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) override;
 	StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) override;
 	UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) override;
+	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

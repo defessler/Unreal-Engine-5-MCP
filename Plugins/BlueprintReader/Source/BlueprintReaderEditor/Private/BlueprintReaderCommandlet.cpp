@@ -40,6 +40,8 @@
 #include "Engine/StaticMesh.h"
 #include "WidgetBlueprintEditor.h"
 #include "WidgetBlueprint.h"
+#include "IMaterialEditor.h"
+#include "Materials/Material.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -364,6 +366,7 @@ namespace
 		GetMaterialInstanceParams,
 		GetStaticMeshInfo,
 		GetUmgEditorState,
+		GetMaterialEditorState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -537,6 +540,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetMaterialInstanceParams"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetMaterialInstanceParams; return true; }
 		if (OpStr.Equals(TEXT("GetStaticMeshInfo"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetStaticMeshInfo; return true; }
 		if (OpStr.Equals(TEXT("GetUmgEditorState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetUmgEditorState; return true; }
+		if (OpStr.Equals(TEXT("GetMaterialEditorState"), ESearchCase::IgnoreCase))  { OutOp = EOp::GetMaterialEditorState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6369,6 +6373,48 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetMaterialEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("selected_node_count"), 0);
+		TArray<TSharedPtr<FJsonValue>> Classes;
+
+		if (!AssetPath.IsEmpty() && GEditor != nullptr)
+		{
+			if (UMaterial* Mat = LoadObject<UMaterial>(nullptr, *AssetPath))
+			{
+				if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+				{
+					if (IAssetEditorInstance* Editor = AES->FindEditorForAsset(Mat, /*bFocusIfOpen=*/false))
+					{
+						const FName EditorId = Editor->GetEditorName();
+						if (EditorId == FName(TEXT("MaterialEditor")))
+						{
+							Out->SetBoolField(TEXT("valid"), true);
+							IMaterialEditor* ME = static_cast<IMaterialEditor*>(Editor);
+							TSet<UObject*> SelSet = ME->GetSelectedNodes();
+							Out->SetNumberField(TEXT("selected_node_count"), SelSet.Num());
+							for (UObject* Obj : SelSet)
+							{
+								if (IsValid(Obj) && Obj->GetClass())
+								{
+									Classes.Add(MakeShared<FJsonValueString>(
+										Obj->GetClass()->GetName()));
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("selected_expression_classes"), Classes);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetUmgEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8421,6 +8467,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetMaterialInstanceParams,  &RunGetMaterialInstanceParamsOp },
 		{ EOp::GetStaticMeshInfo,          &RunGetStaticMeshInfoOp },
 		{ EOp::GetUmgEditorState,          &RunGetUmgEditorStateOp },
+		{ EOp::GetMaterialEditorState,     &RunGetMaterialEditorStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
