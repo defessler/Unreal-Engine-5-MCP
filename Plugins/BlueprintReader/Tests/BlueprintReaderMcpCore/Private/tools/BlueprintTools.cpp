@@ -3372,6 +3372,174 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ===== Phase 8 EA-pull Wave 1 (partial) =================================
+	// Editor-awareness reads. Reactive-workflow foundation —
+	// "what is the user doing right now?" without polling individual ops.
+	// All require a live editor; commandlet/mock backends throw a clean
+	// "not supported by this backend" error.
+
+	// ----- list_open_assets -----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_open_assets";
+		d.description =
+			"[editor] List every asset the user currently has open in some asset "
+			"editor (one entry per editor window). Returns "
+			"`[{asset_path, asset_class, last_activation_seconds}, ...]`. "
+			"Sort by `last_activation_seconds` to see most-recently-used first. "
+			"Requires a live editor — commandlet mode throws.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "array"},
+			{"items", {
+				{"type", "object"},
+				{"properties", {
+					{"asset_path",                 {{"type", "string"}}},
+					{"asset_class",                {{"type", "string"}}},
+					{"last_activation_seconds",    {{"type", "number"}}},
+				}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListOpenAssets();
+			nlohmann::json body = nlohmann::json::array();
+			for (const auto& e : r.entries) {
+				body.push_back({
+					{"asset_path",                 e.assetPath},
+					{"asset_class",                e.assetClass},
+					{"last_activation_seconds",    e.lastActivationSeconds},
+				});
+			}
+			return body;
+		});
+	}
+
+	// ----- get_active_asset -----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_active_asset";
+		d.description =
+			"[editor] Asset whose editor was most recently activated — the one the "
+			"user is most likely focused on. Returns "
+			"`{asset_path, asset_class, last_activation_seconds}`. "
+			"`asset_path` is empty when no asset editor is open. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path",                 {{"type", "string"}}},
+				{"asset_class",                {{"type", "string"}}},
+				{"last_activation_seconds",    {{"type", "number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveAsset();
+			return nlohmann::json{
+				{"asset_path",                 r.assetPath},
+				{"asset_class",                r.assetClass},
+				{"last_activation_seconds",    r.lastActivationSeconds},
+			};
+		});
+	}
+
+	// ----- get_compile_status ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_compile_status";
+		d.description =
+			"[editor] Blueprint compile status — wraps `UBlueprint::Status` into a "
+			"stable string. Useful after a write op to confirm the BP is "
+			"compile-clean before further mutations. Values: \"uncompiled\", "
+			"\"dirty\", \"good\", \"warning\", \"error\", \"compiling\", "
+			"\"unknown\". Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path",         {{"type","string"}}},
+				{"status",             {{"type","string"}}},
+				{"last_compile_error", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetCompileStatus(asset);
+			nlohmann::json body = {
+				{"asset_path", r.assetPath},
+				{"status",     r.status},
+			};
+			if (!r.lastCompileError.empty()) {
+				body["last_compile_error"] = r.lastCompileError;
+			}
+			return body;
+		});
+	}
+
+	// ----- get_dirty_packages ----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_dirty_packages";
+		d.description =
+			"[editor] List loaded packages with unsaved changes. Pairs with "
+			"`save_all` — agents that just mutated multiple BPs use this to "
+			"confirm there's nothing unsaved before disconnecting. Each entry "
+			"flags `is_content` so the agent can ignore editor-only / engine "
+			"packages. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "array"},
+			{"items", {
+				{"type", "object"},
+				{"properties", {
+					{"package_name", {{"type","string"}}},
+					{"is_content",   {{"type","boolean"}}},
+				}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetDirtyPackages();
+			nlohmann::json body = nlohmann::json::array();
+			for (const auto& p : r.packages) {
+				body.push_back({
+					{"package_name", p.packageName},
+					{"is_content",   p.isContentPackage},
+				});
+			}
+			return body;
+		});
+	}
+
+	// ----- get_focused_window ----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_focused_window";
+		d.description =
+			"[editor] Title + Slate widget-class of the currently-focused top-level "
+			"window. Useful for \"is the user in the BP editor right now?\" "
+			"routing. Returns `{title, class_name}`. Both empty when no Slate "
+			"window has focus. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"title",      {{"type", "string"}}},
+				{"class_name", {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetFocusedWindow();
+			return nlohmann::json{
+				{"title",      r.title},
+				{"class_name", r.className},
+			};
+		});
+	}
+
 	// ----- live_coding_compile -------------------------------------------
 	{
 		ToolDescriptor d;

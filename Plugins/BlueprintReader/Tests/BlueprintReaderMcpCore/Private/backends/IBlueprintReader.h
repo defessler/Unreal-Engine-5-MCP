@@ -1088,6 +1088,79 @@ public:
 		throw BlueprintReaderError("PieStop not supported by this backend");
 	}
 
+	// ===== Phase 8 (EA-pull Wave 1, partial) ============================
+	// Editor-awareness reads. "What is the user doing right now?" — the
+	// reactive-workflow foundation. All require a live editor; commandlet
+	// mode throws "live editor required" by default. Mock throws
+	// "not supported by this backend" so apply_ops can plan against them.
+
+	// Asset opened in some asset editor right now (one entry per editor
+	// window). Sourced from `UAssetEditorSubsystem::GetAllEditedAssets`.
+	struct OpenAssetInfo {
+		std::string assetPath;          // /Game/...
+		std::string assetClass;         // short UClass name (Blueprint, Material, ...)
+		double      lastActivationSeconds = 0.0;  // GetLastActivationTime — seconds since boot
+	};
+	struct OpenAssetsResult {
+		std::vector<OpenAssetInfo> entries;
+	};
+	virtual OpenAssetsResult ListOpenAssets() {
+		throw BlueprintReaderError("ListOpenAssets not supported by this backend");
+	}
+
+	// The asset whose editor was most recently activated. Mirrors what
+	// the editor UI considers "in focus". `assetPath` is empty when no
+	// asset editor is open.
+	struct ActiveAssetResult {
+		std::string assetPath;
+		std::string assetClass;
+		double      lastActivationSeconds = 0.0;
+	};
+	virtual ActiveAssetResult GetActiveAsset() {
+		throw BlueprintReaderError("GetActiveAsset not supported by this backend");
+	}
+
+	// Blueprint compile status — wraps the `UBlueprint::Status` enum into
+	// a stable string. Useful after a write op to verify the BP is in a
+	// healthy state before further mutations. Status strings:
+	// "uncompiled", "dirty", "good", "warning", "error", "compiling",
+	// "unknown".
+	struct CompileStatusResult {
+		std::string assetPath;
+		std::string status;
+		std::string lastCompileError;     // empty when status != "error"
+	};
+	virtual CompileStatusResult GetCompileStatus(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetCompileStatus not supported by this backend");
+	}
+
+	// Walk loaded UPackages, return those whose IsDirty flag is set.
+	// Pairs with `save_all` — agents that just mutated multiple BPs use
+	// this to confirm there's nothing unsaved before walking away.
+	struct DirtyPackageInfo {
+		std::string packageName;          // /Game/...
+		bool isContentPackage = false;    // true for /Game/... false for editor / engine packages
+	};
+	struct DirtyPackagesResult {
+		std::vector<DirtyPackageInfo> packages;
+	};
+	virtual DirtyPackagesResult GetDirtyPackages() {
+		throw BlueprintReaderError("GetDirtyPackages not supported by this backend");
+	}
+
+	// Title + class name of the currently-focused top-level window.
+	// Empty when no Slate window has focus (rare — usually the active
+	// editor or one of its tabs). Useful for "is the user in the BP
+	// editor right now?" routing.
+	struct FocusedWindowResult {
+		std::string title;
+		std::string className;            // Slate widget class — e.g. "SLevelEditor"
+	};
+	virtual FocusedWindowResult GetFocusedWindow() {
+		throw BlueprintReaderError("GetFocusedWindow not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

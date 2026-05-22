@@ -203,14 +203,17 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 133);
+	REQUIRE(spec.size() == 138);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
 	// Re-baselined 2026-05-21 at 133 tools after exposing
 	// `set_pin_default` as a standalone tool (was previously only
 	// reachable inside apply_ops batches).
-	constexpr uint64_t kCurrentToolsHash = 0x33FBF7FF3883AB3CULL;
+	// Re-baselined 2026-05-21 at 138 tools after Phase 8 EA-pull
+	// Wave 1 (partial): list_open_assets, get_active_asset,
+	// get_compile_status, get_dirty_packages, get_focused_window.
+	constexpr uint64_t kCurrentToolsHash = 0x9BC6D34A4C62072BULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the
