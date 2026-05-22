@@ -420,6 +420,10 @@ IBlueprintReader::MeshPreviewStateResult
 ReadOnlyBlueprintReader::GetMeshPreviewState(std::string_view a) {
 	return inner_->GetMeshPreviewState(a);
 }
+IBlueprintReader::CinematicCameraResult
+ReadOnlyBlueprintReader::GetCinematicCamera() {
+	return inner_->GetCinematicCamera();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

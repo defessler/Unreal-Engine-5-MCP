@@ -740,6 +740,10 @@ IBlueprintReader::MeshPreviewStateResult
 CachingBlueprintReader::GetMeshPreviewState(std::string_view a) {
 	return inner_->GetMeshPreviewState(a);
 }
+IBlueprintReader::CinematicCameraResult
+CachingBlueprintReader::GetCinematicCamera() {
+	return inner_->GetCinematicCamera();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

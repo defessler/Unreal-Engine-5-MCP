@@ -216,6 +216,7 @@ public:
 	UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) override;
 	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
+	CinematicCameraResult GetCinematicCamera() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

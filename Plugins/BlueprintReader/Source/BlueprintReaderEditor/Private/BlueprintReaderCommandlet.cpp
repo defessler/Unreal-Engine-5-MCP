@@ -43,6 +43,8 @@
 #include "IMaterialEditor.h"
 #include "Materials/Material.h"
 #include "IStaticMeshEditor.h"
+#include "Camera/PlayerCameraManager.h"
+#include "GameFramework/PlayerController.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -369,6 +371,7 @@ namespace
 		GetUmgEditorState,
 		GetMaterialEditorState,
 		GetMeshPreviewState,
+		GetCinematicCamera,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -544,6 +547,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetUmgEditorState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetUmgEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetMaterialEditorState"), ESearchCase::IgnoreCase))  { OutOp = EOp::GetMaterialEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetMeshPreviewState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetMeshPreviewState; return true; }
+		if (OpStr.Equals(TEXT("GetCinematicCamera"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCinematicCamera; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6376,6 +6380,48 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetCinematicCameraOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		FString ActorName;
+		double LX=0, LY=0, LZ=0, Pitch=0, Yaw=0, Roll=0, Fov=0;
+
+		// Walk PIE world contexts to find a player controller.
+		if (GEngine != nullptr)
+		{
+			for (const FWorldContext& Ctx : GEngine->GetWorldContexts())
+			{
+				if (Ctx.WorldType != EWorldType::PIE) continue;
+				UWorld* W = Ctx.World();
+				if (!IsValid(W)) continue;
+				APlayerController* PC = W->GetFirstPlayerController();
+				if (!IsValid(PC) || !IsValid(PC->PlayerCameraManager)) continue;
+				AActor* ViewTarget = PC->PlayerCameraManager->GetViewTarget();
+				if (!IsValid(ViewTarget)) continue;
+				bValid = true;
+				ActorName = ViewTarget->GetName();
+				const FVector L = ViewTarget->GetActorLocation();
+				const FRotator R = ViewTarget->GetActorRotation();
+				LX = L.X; LY = L.Y; LZ = L.Z;
+				Pitch = R.Pitch; Yaw = R.Yaw; Roll = R.Roll;
+				Fov = PC->PlayerCameraManager->GetFOVAngle();
+				break;
+			}
+		}
+		Out->SetBoolField(TEXT("valid"),     bValid);
+		Out->SetStringField(TEXT("actor_name"), ActorName);
+		Out->SetNumberField(TEXT("loc_x"),  LX);
+		Out->SetNumberField(TEXT("loc_y"),  LY);
+		Out->SetNumberField(TEXT("loc_z"),  LZ);
+		Out->SetNumberField(TEXT("pitch"),  Pitch);
+		Out->SetNumberField(TEXT("yaw"),    Yaw);
+		Out->SetNumberField(TEXT("roll"),   Roll);
+		Out->SetNumberField(TEXT("fov"),    Fov);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetMeshPreviewStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8505,6 +8551,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetUmgEditorState,          &RunGetUmgEditorStateOp },
 		{ EOp::GetMaterialEditorState,     &RunGetMaterialEditorStateOp },
 		{ EOp::GetMeshPreviewState,        &RunGetMeshPreviewStateOp },
+		{ EOp::GetCinematicCamera,         &RunGetCinematicCameraOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
