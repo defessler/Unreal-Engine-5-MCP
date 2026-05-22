@@ -736,6 +736,10 @@ IBlueprintReader::MaterialEditorStateResult
 CachingBlueprintReader::GetMaterialEditorState(std::string_view a) {
 	return inner_->GetMaterialEditorState(a);
 }
+IBlueprintReader::MeshPreviewStateResult
+CachingBlueprintReader::GetMeshPreviewState(std::string_view a) {
+	return inner_->GetMeshPreviewState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

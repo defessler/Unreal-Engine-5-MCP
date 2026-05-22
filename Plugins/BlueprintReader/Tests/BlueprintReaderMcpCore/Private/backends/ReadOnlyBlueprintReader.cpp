@@ -416,6 +416,10 @@ IBlueprintReader::MaterialEditorStateResult
 ReadOnlyBlueprintReader::GetMaterialEditorState(std::string_view a) {
 	return inner_->GetMaterialEditorState(a);
 }
+IBlueprintReader::MeshPreviewStateResult
+ReadOnlyBlueprintReader::GetMeshPreviewState(std::string_view a) {
+	return inner_->GetMeshPreviewState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

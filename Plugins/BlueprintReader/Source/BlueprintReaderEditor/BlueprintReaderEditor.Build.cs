@@ -133,7 +133,9 @@ public class BlueprintReaderEditor : ModuleRules
 			// Phase 12 Wave 2 — FBlueprintEditor for get_blueprint_editor_state.
 			// `Kismet` is the module name (despite the legacy class
 			// naming); IBlueprintEditor lives here.
-			"Kismet"
+			"Kismet",
+			// Phase 12 Wave 2 — IStaticMeshEditor for get_mesh_preview_state.
+			"StaticMeshEditor"
 		});
 	}
 }

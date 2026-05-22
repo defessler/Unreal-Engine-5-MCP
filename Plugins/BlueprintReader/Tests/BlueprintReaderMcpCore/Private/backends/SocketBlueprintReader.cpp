@@ -2041,6 +2041,20 @@ SocketBlueprintReader::GetMaterialEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::MeshPreviewStateResult
+SocketBlueprintReader::GetMeshPreviewState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetMeshPreviewState",
+					"-Asset=" + std::string(assetPath)});
+	MeshPreviewStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid             = j.value("valid",              false);
+		out.currentLODLevel   = j.value("current_lod_level",  -1);
+		out.currentLODIndex   = j.value("current_lod_index",  0);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

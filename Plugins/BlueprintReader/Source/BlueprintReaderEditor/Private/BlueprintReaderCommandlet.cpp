@@ -42,6 +42,7 @@
 #include "WidgetBlueprint.h"
 #include "IMaterialEditor.h"
 #include "Materials/Material.h"
+#include "IStaticMeshEditor.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -367,6 +368,7 @@ namespace
 		GetStaticMeshInfo,
 		GetUmgEditorState,
 		GetMaterialEditorState,
+		GetMeshPreviewState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -541,6 +543,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetStaticMeshInfo"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetStaticMeshInfo; return true; }
 		if (OpStr.Equals(TEXT("GetUmgEditorState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetUmgEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetMaterialEditorState"), ESearchCase::IgnoreCase))  { OutOp = EOp::GetMaterialEditorState; return true; }
+		if (OpStr.Equals(TEXT("GetMeshPreviewState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetMeshPreviewState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6373,6 +6376,39 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetMeshPreviewStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("current_lod_level"), -1);
+		Out->SetNumberField(TEXT("current_lod_index"),  0);
+
+		if (!AssetPath.IsEmpty() && GEditor != nullptr)
+		{
+			if (UStaticMesh* SM = LoadObject<UStaticMesh>(nullptr, *AssetPath))
+			{
+				if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+				{
+					if (IAssetEditorInstance* Editor = AES->FindEditorForAsset(SM, /*bFocusIfOpen=*/false))
+					{
+						const FName EditorId = Editor->GetEditorName();
+						if (EditorId == FName(TEXT("StaticMeshEditor")))
+						{
+							Out->SetBoolField(TEXT("valid"), true);
+							IStaticMeshEditor* SME = static_cast<IStaticMeshEditor*>(Editor);
+							Out->SetNumberField(TEXT("current_lod_level"), SME->GetCurrentLODLevel());
+							Out->SetNumberField(TEXT("current_lod_index"), SME->GetCurrentLODIndex());
+						}
+					}
+				}
+			}
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetMaterialEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8468,6 +8504,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetStaticMeshInfo,          &RunGetStaticMeshInfoOp },
 		{ EOp::GetUmgEditorState,          &RunGetUmgEditorStateOp },
 		{ EOp::GetMaterialEditorState,     &RunGetMaterialEditorStateOp },
+		{ EOp::GetMeshPreviewState,        &RunGetMeshPreviewStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

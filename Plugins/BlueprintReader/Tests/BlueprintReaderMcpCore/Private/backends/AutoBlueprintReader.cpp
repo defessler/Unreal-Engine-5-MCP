@@ -616,6 +616,10 @@ IBlueprintReader::MaterialEditorStateResult
 AutoBlueprintReader::GetMaterialEditorState(std::string_view a) {
 	FORWARD(GetMaterialEditorState, a);
 }
+IBlueprintReader::MeshPreviewStateResult
+AutoBlueprintReader::GetMeshPreviewState(std::string_view a) {
+	FORWARD(GetMeshPreviewState, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
