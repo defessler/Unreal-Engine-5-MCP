@@ -3693,6 +3693,90 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- list_actor_abilities (Phase 11 H Tier 1 — GAS) -------------
+	{
+		ToolDescriptor d;
+		d.name = "list_actor_abilities";
+		d.description =
+			"[editor] Abilities granted to the named actor's "
+			"`UAbilitySystemComponent`. Returns `{valid, actor_name, "
+			"abilities: [{ability_class, is_active, level, "
+			"instanced_count}]}`. `valid:false` when actor doesn't exist "
+			"or has no ASC. `actor_name` matches the names from "
+			"`get_selected_actors`. Looks at PIE world first, then editor. "
+			"Lyra: useful for inspecting a pawn's runtime ability set. "
+			"Requires a live editor + GAS plugin (always present in Lyra).";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actor_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"actor_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"abilities",  {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string actor = RequireString(args, "actor_name");
+			auto r = reader.ListActorAbilities(actor);
+			nlohmann::json abs = nlohmann::json::array();
+			for (const auto& a : r.abilities) {
+				abs.push_back({
+					{"ability_class",   a.abilityClass},
+					{"is_active",       a.isActive},
+					{"level",           a.level},
+					{"instanced_count", a.instancedCount},
+				});
+			}
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"actor_name", r.actorName},
+				{"abilities",  abs},
+			};
+		});
+	}
+
+	// ----- list_actor_gameplay_tags -------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_actor_gameplay_tags";
+		d.description =
+			"[editor] Owned gameplay tags on the named actor's "
+			"`UAbilitySystemComponent`. Union of tags granted by abilities, "
+			"by effects, and loose tags. Returns `{valid, actor_name, tags: "
+			"['Status.Buffed', ...]}`. `valid:false` when actor doesn't "
+			"exist or has no ASC. Requires a live editor + GAS plugin.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actor_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"actor_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"tags",       {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string actor = RequireString(args, "actor_name");
+			auto r = reader.ListActorGameplayTags(actor);
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"actor_name", r.actorName},
+				{"tags",       r.tags},
+			};
+		});
+	}
+
 	// ----- list_plugins (Phase 11 H Tier 1) ----------------------------
 	{
 		ToolDescriptor d;

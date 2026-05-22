@@ -24,6 +24,13 @@
 // Phase 11 H Tier 1 — GameFeaturesToolset.
 #include "GameFeaturesSubsystem.h"
 #include "Interfaces/IPluginManager.h"
+// Phase 11 H Tier 1 — AbilitySystemInspectorToolset.
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
+#include "GameplayAbilitySpec.h"
+#include "Abilities/GameplayAbility.h"
+#include "GameplayTagContainer.h"
+#include "AbilitySystemInterface.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -340,6 +347,8 @@ namespace
 		ListPlugins,
 		GetPluginDescriptor,
 		GetPluginDependencies,
+		ListActorAbilities,
+		ListActorGameplayTags,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -505,6 +514,8 @@ namespace
 		if (OpStr.Equals(TEXT("ListPlugins"), ESearchCase::IgnoreCase))             { OutOp = EOp::ListPlugins; return true; }
 		if (OpStr.Equals(TEXT("GetPluginDescriptor"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetPluginDescriptor; return true; }
 		if (OpStr.Equals(TEXT("GetPluginDependencies"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetPluginDependencies; return true; }
+		if (OpStr.Equals(TEXT("ListActorAbilities"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListActorAbilities; return true; }
+		if (OpStr.Equals(TEXT("ListActorGameplayTags"), ESearchCase::IgnoreCase))   { OutOp = EOp::ListActorGameplayTags; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6287,6 +6298,84 @@ namespace
 		}
 	}
 
+	// Extract the UAbilitySystemComponent from an actor — either via
+	// the IAbilitySystemInterface (Lyra pattern) or by direct FindComponent
+	// as a fallback.
+	UAbilitySystemComponent* GetActorASC(AActor* Actor)
+	{
+		if (!IsValid(Actor))
+		{
+			return nullptr;
+		}
+		if (IAbilitySystemInterface* IFace = Cast<IAbilitySystemInterface>(Actor))
+		{
+			return IFace->GetAbilitySystemComponent();
+		}
+		return Actor->FindComponentByClass<UAbilitySystemComponent>();
+	}
+
+	int32 RunListActorAbilitiesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ActorName;
+		FParse::Value(*Params, TEXT("Actor="), ActorName);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("actor_name"), ActorName);
+		TArray<TSharedPtr<FJsonValue>> Abilities;
+
+		if (AActor* Actor = FindActorByName(ActorName))
+		{
+			if (UAbilitySystemComponent* ASC = GetActorASC(Actor))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				const TArray<FGameplayAbilitySpec>& Specs = ASC->GetActivatableAbilities();
+				for (const FGameplayAbilitySpec& Spec : Specs)
+				{
+					auto A = MakeShared<FJsonObject>();
+					A->SetStringField(TEXT("ability_class"),
+						Spec.Ability ? Spec.Ability->GetClass()->GetPathName() : FString());
+					A->SetBoolField(TEXT("is_active"),       Spec.IsActive());
+					A->SetNumberField(TEXT("level"),         Spec.Level);
+					A->SetNumberField(TEXT("instanced_count"),
+						Spec.GetAbilityInstances().Num());
+					Abilities.Add(MakeShared<FJsonValueObject>(A));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("abilities"), Abilities);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunListActorGameplayTagsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ActorName;
+		FParse::Value(*Params, TEXT("Actor="), ActorName);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("actor_name"), ActorName);
+		TArray<TSharedPtr<FJsonValue>> Tags;
+
+		if (AActor* Actor = FindActorByName(ActorName))
+		{
+			if (UAbilitySystemComponent* ASC = GetActorASC(Actor))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				FGameplayTagContainer Owned;
+				ASC->GetOwnedGameplayTags(Owned);
+				for (auto It = Owned.CreateConstIterator(); It; ++It)
+				{
+					Tags.Add(MakeShared<FJsonValueString>(It->ToString()));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("tags"), Tags);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListPluginsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Plugins;
@@ -8015,6 +8104,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListPlugins,                &RunListPluginsOp },
 		{ EOp::GetPluginDescriptor,        &RunGetPluginDescriptorOp },
 		{ EOp::GetPluginDependencies,      &RunGetPluginDependenciesOp },
+		{ EOp::ListActorAbilities,         &RunListActorAbilitiesOp },
+		{ EOp::ListActorGameplayTags,      &RunListActorGameplayTagsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

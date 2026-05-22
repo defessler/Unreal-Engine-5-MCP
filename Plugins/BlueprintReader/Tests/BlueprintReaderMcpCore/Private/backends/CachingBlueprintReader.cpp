@@ -700,6 +700,14 @@ IBlueprintReader::PluginDependenciesResult
 CachingBlueprintReader::GetPluginDependencies(std::string_view p) {
 	return inner_->GetPluginDependencies(p);
 }
+IBlueprintReader::ActorAbilitiesResult
+CachingBlueprintReader::ListActorAbilities(std::string_view a) {
+	return inner_->ListActorAbilities(a);
+}
+IBlueprintReader::ActorTagsResult
+CachingBlueprintReader::ListActorGameplayTags(std::string_view a) {
+	return inner_->ListActorGameplayTags(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

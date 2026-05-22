@@ -122,7 +122,14 @@ public class BlueprintReaderEditor : ModuleRules
 			// IPluginManager — used to enumerate GFPs by scanning the
 			// enabled plugin list (subsystem doesn't expose a public URL
 			// dump in 5.7).
-			"Projects"
+			"Projects",
+			// Phase 11 H Tier 1 — AbilitySystemInspectorToolset.
+			// UAbilitySystemComponent + UGameplayAbility live in the
+			// GameplayAbilities plugin. Lyra always has it; non-Lyra
+			// projects with the plugin disabled will load the editor
+			// fine but the GAS tools return empties / "not available".
+			"GameplayAbilities",
+			"GameplayTags"
 		});
 	}
 }

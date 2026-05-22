@@ -380,6 +380,14 @@ IBlueprintReader::PluginDependenciesResult
 ReadOnlyBlueprintReader::GetPluginDependencies(std::string_view p) {
 	return inner_->GetPluginDependencies(p);
 }
+IBlueprintReader::ActorAbilitiesResult
+ReadOnlyBlueprintReader::ListActorAbilities(std::string_view a) {
+	return inner_->ListActorAbilities(a);
+}
+IBlueprintReader::ActorTagsResult
+ReadOnlyBlueprintReader::ListActorGameplayTags(std::string_view a) {
+	return inner_->ListActorGameplayTags(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

@@ -580,6 +580,14 @@ IBlueprintReader::PluginDependenciesResult
 AutoBlueprintReader::GetPluginDependencies(std::string_view p) {
 	FORWARD(GetPluginDependencies, p);
 }
+IBlueprintReader::ActorAbilitiesResult
+AutoBlueprintReader::ListActorAbilities(std::string_view a) {
+	FORWARD(ListActorAbilities, a);
+}
+IBlueprintReader::ActorTagsResult
+AutoBlueprintReader::ListActorGameplayTags(std::string_view a) {
+	FORWARD(ListActorGameplayTags, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
