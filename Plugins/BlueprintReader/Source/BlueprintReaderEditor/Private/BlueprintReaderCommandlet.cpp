@@ -45,6 +45,7 @@
 #include "IStaticMeshEditor.h"
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
+#include "Settings/LevelEditorViewportSettings.h"
 #include "LevelSequence.h"
 #include "ILevelSequenceEditorToolkit.h"
 #include "ISequencer.h"
@@ -386,6 +387,8 @@ namespace
 		GetGizmoState,
 		GetViewportRealtime,
 		GetViewportCameraSettings,
+		GetSnappingSettings,
+		GetActiveViewport,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -570,6 +573,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetGizmoState"), ESearchCase::IgnoreCase))           { OutOp = EOp::GetGizmoState; return true; }
 		if (OpStr.Equals(TEXT("GetViewportRealtime"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetViewportRealtime; return true; }
 		if (OpStr.Equals(TEXT("GetViewportCameraSettings"), ESearchCase::IgnoreCase)){OutOp = EOp::GetViewportCameraSettings; return true; }
+		if (OpStr.Equals(TEXT("GetSnappingSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetSnappingSettings; return true; }
+		if (OpStr.Equals(TEXT("GetActiveViewport"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetActiveViewport; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6402,6 +6407,60 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		const ULevelEditorViewportSettings* S = GetDefault<ULevelEditorViewportSettings>();
+		const bool bValid = (S != nullptr);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("grid_enabled"),         bValid ? (bool)S->GridEnabled    : false);
+		Out->SetBoolField(TEXT("rot_grid_enabled"),     bValid ? (bool)S->RotGridEnabled : false);
+		Out->SetBoolField(TEXT("snap_vertices"),        bValid ? S->bSnapVertices         : false);
+		Out->SetNumberField(TEXT("current_pos_grid_size"), bValid ? S->CurrentPosGridSize : 0);
+		Out->SetNumberField(TEXT("current_rot_grid_size"), bValid ? S->CurrentRotGridSize : 0);
+		Out->SetNumberField(TEXT("actor_snap_distance"),   bValid ? S->ActorSnapDistance  : 0.0f);
+		Out->SetNumberField(TEXT("snap_distance"),         bValid ? S->SnapDistance       : 0.0f);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetActiveViewportOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		int32 Idx = -1;
+		bool bPersp = false;
+		int32 SX = 0, SY = 0;
+		if (IsValid(GEditor))
+		{
+			int32 ScanIdx = 0;
+			for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
+			{
+				if (!VC || !VC->IsLevelEditorClient())
+				{
+					continue;
+				}
+				if (VC->Viewport && VC->Viewport->HasFocus())
+				{
+					bValid = true;
+					Idx = ScanIdx;
+					bPersp = VC->IsPerspective();
+					const FIntPoint Size = VC->Viewport->GetSizeXY();
+					SX = Size.X; SY = Size.Y;
+					break;
+				}
+				++ScanIdx;
+			}
+		}
+		Out->SetBoolField(TEXT("valid"),         bValid);
+		Out->SetNumberField(TEXT("viewport_index"), Idx);
+		Out->SetBoolField(TEXT("is_perspective"), bPersp);
+		Out->SetNumberField(TEXT("size_x"),       SX);
+		Out->SetNumberField(TEXT("size_y"),       SY);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetBufferVisualizationModeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -8793,6 +8852,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetGizmoState,              &RunGetGizmoStateOp },
 		{ EOp::GetViewportRealtime,        &RunGetViewportRealtimeOp },
 		{ EOp::GetViewportCameraSettings,  &RunGetViewportCameraSettingsOp },
+		{ EOp::GetSnappingSettings,        &RunGetSnappingSettingsOp },
+		{ EOp::GetActiveViewport,          &RunGetActiveViewportOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

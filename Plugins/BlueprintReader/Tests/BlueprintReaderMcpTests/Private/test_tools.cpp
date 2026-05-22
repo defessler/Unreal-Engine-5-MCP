@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 182 tools (178 prior + Phase 13 Wave 3 batch 1 — buffer_viz/gizmo/realtime/cam_settings) with input schemas") {
+TEST_CASE("ToolRegistry exposes 184 tools (182 prior + Phase 13 Wave 3 batch 2 — snapping_settings + active_viewport) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 182);
+	CHECK(spec.size() == 184);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

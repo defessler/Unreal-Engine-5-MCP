@@ -2186,6 +2186,37 @@ SocketBlueprintReader::GetViewportCameraSettings() {
 	return out;
 }
 
+IBlueprintReader::SnappingSettingsResult
+SocketBlueprintReader::GetSnappingSettings() {
+	auto j = RunOp({"-Op=GetSnappingSettings"});
+	SnappingSettingsResult out;
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                 false);
+		out.gridEnabled        = j.value("grid_enabled",          false);
+		out.rotGridEnabled     = j.value("rot_grid_enabled",      false);
+		out.snapVertices       = j.value("snap_vertices",         false);
+		out.currentPosGridSize = j.value("current_pos_grid_size", 0);
+		out.currentRotGridSize = j.value("current_rot_grid_size", 0);
+		out.actorSnapDistance  = j.value("actor_snap_distance",   0.0);
+		out.snapDistance       = j.value("snap_distance",         0.0);
+	}
+	return out;
+}
+
+IBlueprintReader::ActiveViewportResult
+SocketBlueprintReader::GetActiveViewport() {
+	auto j = RunOp({"-Op=GetActiveViewport"});
+	ActiveViewportResult out;
+	if (j.is_object()) {
+		out.valid          = j.value("valid",           false);
+		out.viewportIndex  = j.value("viewport_index",  -1);
+		out.isPerspective  = j.value("is_perspective",  false);
+		out.sizeX          = j.value("size_x",          0);
+		out.sizeY          = j.value("size_y",          0);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

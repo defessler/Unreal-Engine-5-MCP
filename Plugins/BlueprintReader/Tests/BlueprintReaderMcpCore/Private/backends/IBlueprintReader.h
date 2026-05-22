@@ -1835,6 +1835,38 @@ public:
 		throw BlueprintReaderError("GetViewportCameraSettings not supported by this backend");
 	}
 
+	// Snapping settings from ULevelEditorViewportSettings: whether
+	// grid/rot snap is on, current grid sizes (position + rotation),
+	// vertex snapping toggle, and snap-to-actor distance.
+	struct SnappingSettingsResult {
+		bool valid = false;
+		bool gridEnabled = false;
+		bool rotGridEnabled = false;
+		bool snapVertices = false;
+		int  currentPosGridSize = 0;       // index into GetPosGridSizes()
+		int  currentRotGridSize = 0;       // index into GetRotGridSizes()
+		double actorSnapDistance = 0.0;
+		double snapDistance = 0.0;
+	};
+	virtual SnappingSettingsResult GetSnappingSettings() {
+		throw BlueprintReaderError("GetSnappingSettings not supported by this backend");
+	}
+
+	// Active viewport selector — picks the focused level viewport client
+	// and reports its layout slot. `viewport_index` is 0-based across
+	// GEditor->GetAllViewportClients() filtered to level editor clients.
+	// `is_perspective` distinguishes perspective from ortho (top/front/etc).
+	struct ActiveViewportResult {
+		bool valid = false;
+		int  viewportIndex = -1;
+		bool isPerspective = false;
+		int  sizeX = 0;
+		int  sizeY = 0;
+	};
+	virtual ActiveViewportResult GetActiveViewport() {
+		throw BlueprintReaderError("GetActiveViewport not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

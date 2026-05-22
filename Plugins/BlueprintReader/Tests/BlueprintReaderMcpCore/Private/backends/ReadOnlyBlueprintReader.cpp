@@ -452,6 +452,12 @@ IBlueprintReader::ViewportRealtimeResult ReadOnlyBlueprintReader::GetViewportRea
 IBlueprintReader::ViewportCameraSettingsResult ReadOnlyBlueprintReader::GetViewportCameraSettings() {
 	return inner_->GetViewportCameraSettings();
 }
+IBlueprintReader::SnappingSettingsResult ReadOnlyBlueprintReader::GetSnappingSettings() {
+	return inner_->GetSnappingSettings();
+}
+IBlueprintReader::ActiveViewportResult ReadOnlyBlueprintReader::GetActiveViewport() {
+	return inner_->GetActiveViewport();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

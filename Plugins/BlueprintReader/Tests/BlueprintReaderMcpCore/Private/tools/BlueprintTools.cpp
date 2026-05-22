@@ -3735,6 +3735,78 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_snapping_settings (Phase 13 Wave 3) --------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_snapping_settings";
+		d.description =
+			"[editor] Editor snapping settings: grid + rotation snap "
+			"toggles, current grid sizes (position + rotation), vertex "
+			"snapping, snap-to-actor distance. Reads "
+			"`ULevelEditorViewportSettings`. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                 {{"type","boolean"}}},
+				{"grid_enabled",          {{"type","boolean"}}},
+				{"rot_grid_enabled",      {{"type","boolean"}}},
+				{"snap_vertices",         {{"type","boolean"}}},
+				{"current_pos_grid_size", {{"type","integer"}}},
+				{"current_rot_grid_size", {{"type","integer"}}},
+				{"actor_snap_distance",   {{"type","number"}}},
+				{"snap_distance",         {{"type","number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetSnappingSettings();
+			return nlohmann::json{
+				{"valid",                 r.valid},
+				{"grid_enabled",          r.gridEnabled},
+				{"rot_grid_enabled",      r.rotGridEnabled},
+				{"snap_vertices",         r.snapVertices},
+				{"current_pos_grid_size", r.currentPosGridSize},
+				{"current_rot_grid_size", r.currentRotGridSize},
+				{"actor_snap_distance",   r.actorSnapDistance},
+				{"snap_distance",         r.snapDistance},
+			};
+		});
+	}
+
+	// ----- get_active_viewport (Phase 13 Wave 3) ----------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_active_viewport";
+		d.description =
+			"[editor] Which level viewport has focus right now (1/2/4 "
+			"layout). Returns `{valid, viewport_index, is_perspective, "
+			"size_x, size_y}`. `viewport_index` is 0-based across the "
+			"level-editor viewport clients; `is_perspective` distinguishes "
+			"perspective from ortho (top/front/side). `valid:false` when "
+			"no viewport has focus. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",          {{"type","boolean"}}},
+				{"viewport_index", {{"type","integer"}}},
+				{"is_perspective", {{"type","boolean"}}},
+				{"size_x",         {{"type","integer"}}},
+				{"size_y",         {{"type","integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveViewport();
+			return nlohmann::json{
+				{"valid",          r.valid},
+				{"viewport_index", r.viewportIndex},
+				{"is_perspective", r.isPerspective},
+				{"size_x",         r.sizeX},
+				{"size_y",         r.sizeY},
+			};
+		});
+	}
+
 	// ----- get_buffer_visualization_mode (Phase 13 Wave 3) ------------
 	{
 		ToolDescriptor d;

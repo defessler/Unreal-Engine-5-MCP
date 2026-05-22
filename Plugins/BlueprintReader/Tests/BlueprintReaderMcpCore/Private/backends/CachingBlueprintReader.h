@@ -223,6 +223,8 @@ public:
 	GizmoStateResult GetGizmoState() override;
 	ViewportRealtimeResult GetViewportRealtime() override;
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
+	SnappingSettingsResult GetSnappingSettings() override;
+	ActiveViewportResult GetActiveViewport() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------
