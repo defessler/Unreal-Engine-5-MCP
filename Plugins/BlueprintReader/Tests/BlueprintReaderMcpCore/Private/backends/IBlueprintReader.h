@@ -1758,6 +1758,36 @@ public:
 		throw BlueprintReaderError("GetAnimEditorState not supported by this backend");
 	}
 
+	// Niagara module editor selection. v1 stub — same RTTI / multi-
+	// inheritance limit as anim editor. Niagara editors use specialized
+	// toolkit types in the Niagara plugin's editor module; safe cross-
+	// casting requires a sidecar registry.
+	struct NiagaraModuleSelectionResult {
+		bool valid = false;
+		std::string assetPath;
+		std::vector<std::string> selectedModuleNames;
+	};
+	virtual NiagaraModuleSelectionResult GetNiagaraModuleSelection(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetNiagaraModuleSelection not supported by this backend");
+	}
+
+	// Curve editor selection — generic widget hosted by Anim / Sequencer
+	// / Particle / Material editors. There's no single "current curve
+	// editor" instance keyed on asset_path. v1 stub — the upgrade path
+	// requires tracking the active curve editor via the host editor's
+	// FCurveEditor pointer per asset.
+	struct CurveEditorSelectionResult {
+		bool valid = false;
+		std::string assetPath;
+		int selectedKeyCount = 0;
+		std::vector<std::string> selectedCurveNames;
+	};
+	virtual CurveEditorSelectionResult GetCurveEditorSelection(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetCurveEditorSelection not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

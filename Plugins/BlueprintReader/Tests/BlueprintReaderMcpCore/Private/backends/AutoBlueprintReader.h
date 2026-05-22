@@ -196,6 +196,8 @@ public:
 	CinematicCameraResult GetCinematicCamera() override;
 	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
 	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
+	NiagaraModuleSelectionResult GetNiagaraModuleSelection(std::string_view assetPath) override;
+	CurveEditorSelectionResult GetCurveEditorSelection(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

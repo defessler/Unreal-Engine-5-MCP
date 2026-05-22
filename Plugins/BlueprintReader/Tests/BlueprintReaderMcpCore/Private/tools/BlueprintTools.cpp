@@ -3735,6 +3735,82 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_niagara_module_selection (Phase 12 Wave 2 — stub) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_niagara_module_selection";
+		d.description =
+			"[editor] Niagara system / emitter / module editor selection. "
+			"v1 is a documented stub returning `valid:false` for all paths. "
+			"Niagara editors use specialized toolkit types in the Niagara "
+			"plugin's editor module — safe cross-cast without RTTI "
+			"requires a sidecar registry. Same upgrade path as "
+			"`get_anim_editor_state`.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                  {{"type","boolean"}}},
+				{"asset_path",             {{"type","string"}}},
+				{"selected_module_names",  {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetNiagaraModuleSelection(asset);
+			return nlohmann::json{
+				{"valid",                 r.valid},
+				{"asset_path",            r.assetPath},
+				{"selected_module_names", r.selectedModuleNames},
+			};
+		});
+	}
+
+	// ----- get_curve_editor_selection (Phase 12 Wave 2 — stub) -------
+	{
+		ToolDescriptor d;
+		d.name = "get_curve_editor_selection";
+		d.description =
+			"[editor] Generic curve editor selection. v1 is a documented "
+			"stub returning `valid:false`. The curve editor is a "
+			"SCurveEditor widget hosted inside 5+ different editors "
+			"(Anim, Sequencer, Particle, Material), so there's no single "
+			"instance keyed on asset_path. Upgrade requires per-host-"
+			"editor tracking of the active FCurveEditor pointer.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                {{"type","boolean"}}},
+				{"asset_path",           {{"type","string"}}},
+				{"selected_key_count",   {{"type","integer"}}},
+				{"selected_curve_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetCurveEditorSelection(asset);
+			return nlohmann::json{
+				{"valid",                r.valid},
+				{"asset_path",           r.assetPath},
+				{"selected_key_count",   r.selectedKeyCount},
+				{"selected_curve_names", r.selectedCurveNames},
+			};
+		});
+	}
+
 	// ----- get_sequencer_state (Phase 12 Wave 2) ----------------------
 	{
 		ToolDescriptor d;

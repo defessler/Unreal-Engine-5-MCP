@@ -752,6 +752,14 @@ IBlueprintReader::AnimEditorStateResult
 CachingBlueprintReader::GetAnimEditorState(std::string_view a) {
 	return inner_->GetAnimEditorState(a);
 }
+IBlueprintReader::NiagaraModuleSelectionResult
+CachingBlueprintReader::GetNiagaraModuleSelection(std::string_view a) {
+	return inner_->GetNiagaraModuleSelection(a);
+}
+IBlueprintReader::CurveEditorSelectionResult
+CachingBlueprintReader::GetCurveEditorSelection(std::string_view a) {
+	return inner_->GetCurveEditorSelection(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

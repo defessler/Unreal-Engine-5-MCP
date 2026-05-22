@@ -380,6 +380,8 @@ namespace
 		GetCinematicCamera,
 		GetSequencerState,
 		GetAnimEditorState,
+		GetNiagaraModuleSelection,
+		GetCurveEditorSelection,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -558,6 +560,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetCinematicCamera"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCinematicCamera; return true; }
 		if (OpStr.Equals(TEXT("GetSequencerState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetSequencerState; return true; }
 		if (OpStr.Equals(TEXT("GetAnimEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetAnimEditorState; return true; }
+		if (OpStr.Equals(TEXT("GetNiagaraModuleSelection"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetNiagaraModuleSelection; return true; }
+		if (OpStr.Equals(TEXT("GetCurveEditorSelection"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetCurveEditorSelection; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6390,6 +6394,36 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetNiagaraModuleSelectionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		// v1 stub. NiagaraSystemEditor uses multi-inheritance in the
+		// Niagara plugin's editor module; safe cross-cast without RTTI
+		// requires a sidecar registry hooked into the asset-editor lifecycle.
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetArrayField(TEXT("selected_module_names"), TArray<TSharedPtr<FJsonValue>>{});
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetCurveEditorSelectionOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		// v1 stub. Curve editor is a SCurveEditor widget hosted inside
+		// 5+ different editors; there's no single instance keyed on
+		// asset_path. The upgrade requires per-host-editor tracking of
+		// the active FCurveEditor pointer.
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("selected_key_count"), 0);
+		Out->SetArrayField(TEXT("selected_curve_names"), TArray<TSharedPtr<FJsonValue>>{});
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetAnimEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8662,6 +8696,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetCinematicCamera,         &RunGetCinematicCameraOp },
 		{ EOp::GetSequencerState,          &RunGetSequencerStateOp },
 		{ EOp::GetAnimEditorState,         &RunGetAnimEditorStateOp },
+		{ EOp::GetNiagaraModuleSelection,  &RunGetNiagaraModuleSelectionOp },
+		{ EOp::GetCurveEditorSelection,    &RunGetCurveEditorSelectionOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
