@@ -3596,6 +3596,33 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_focused_widget ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_focused_widget";
+		d.description =
+			"[editor] Slate widget the user is currently typing into / focused on. "
+			"Finer-grained than get_focused_window: \"the user is in the BP "
+			"graph search box\" vs \"the user is on the BP editor window\". "
+			"Returns `{widget_type, parent_window_title}`. Both empty when "
+			"no widget has focus. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"widget_type",         {{"type", "string"}}},
+				{"parent_window_title", {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetFocusedWidget();
+			return nlohmann::json{
+				{"widget_type",         r.widgetType},
+				{"parent_window_title", r.parentWindowTitle},
+			};
+		});
+	}
+
 	// ----- get_active_editor_mode -----------------------------------------
 	{
 		ToolDescriptor d;

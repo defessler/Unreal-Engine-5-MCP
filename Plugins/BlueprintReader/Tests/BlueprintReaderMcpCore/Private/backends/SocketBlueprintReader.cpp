@@ -1472,6 +1472,17 @@ SocketBlueprintReader::GetActiveEditorMode() {
 	return out;
 }
 
+IBlueprintReader::FocusedWidgetResult
+SocketBlueprintReader::GetFocusedWidget() {
+	auto j = RunOp({"-Op=GetFocusedWidget"});
+	FocusedWidgetResult out;
+	if (j.is_object()) {
+		out.widgetType        = j.value("widget_type",         std::string{});
+		out.parentWindowTitle = j.value("parent_window_title", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

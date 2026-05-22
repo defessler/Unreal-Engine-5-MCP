@@ -266,6 +266,7 @@ public:
 	PieStateResult GetPieState() override;
 	ModalStateResult GetModalState() override;
 	EditorModesResult GetActiveEditorMode() override;
+	FocusedWidgetResult GetFocusedWidget() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

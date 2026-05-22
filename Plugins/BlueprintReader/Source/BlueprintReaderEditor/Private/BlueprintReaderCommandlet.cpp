@@ -308,6 +308,7 @@ namespace
 		GetPieState,
 		GetModalState,
 		GetActiveEditorMode,
+		GetFocusedWidget,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -451,6 +452,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetPieState"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetPieState; return true; }
 		if (OpStr.Equals(TEXT("GetModalState"), ESearchCase::IgnoreCase))           { OutOp = EOp::GetModalState; return true; }
 		if (OpStr.Equals(TEXT("GetActiveEditorMode"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetActiveEditorMode; return true; }
+		if (OpStr.Equals(TEXT("GetFocusedWidget"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetFocusedWidget; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5852,6 +5854,32 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetFocusedWidgetOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		FString WidgetType;
+		FString ParentWindowTitle;
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication& Slate = FSlateApplication::Get();
+			// User 0 is the primary editor user. GetUserFocusedWidget
+			// returns the currently-focused widget for that user.
+			TSharedPtr<SWidget> Focus = Slate.GetUserFocusedWidget(0);
+			if (Focus.IsValid())
+			{
+				WidgetType = Focus->GetTypeAsString();
+				if (TSharedPtr<SWindow> Win = Slate.FindWidgetWindow(Focus.ToSharedRef()))
+				{
+					ParentWindowTitle = Win->GetTitle().ToString();
+				}
+			}
+		}
+		Out->SetStringField(TEXT("widget_type"),         WidgetType);
+		Out->SetStringField(TEXT("parent_window_title"), ParentWindowTitle);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -7081,6 +7109,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetPieState,                &RunGetPieStateOp },
 		{ EOp::GetModalState,              &RunGetModalStateOp },
 		{ EOp::GetActiveEditorMode,        &RunGetActiveEditorModeOp },
+		{ EOp::GetFocusedWidget,           &RunGetFocusedWidgetOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

@@ -3091,6 +3091,17 @@ CommandletBlueprintReader::GetActiveEditorMode() {
 	return out;
 }
 
+IBlueprintReader::FocusedWidgetResult
+CommandletBlueprintReader::GetFocusedWidget() {
+	auto j = RunOp({L"-Op=GetFocusedWidget"});
+	FocusedWidgetResult out;
+	if (j.is_object()) {
+		out.widgetType        = j.value("widget_type",         std::string{});
+		out.parentWindowTitle = j.value("parent_window_title", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 CommandletBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({L"-Op=LiveCodingCompile"});
