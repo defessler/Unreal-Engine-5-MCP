@@ -198,6 +198,9 @@ public:
 	ContentBrowserPathResult SetContentBrowserPath(std::string_view folderPath) override;
 	WorldToScreenResult WorldToScreen(double x, double y, double z) override;
 	ScreenToWorldResult ScreenToWorld(double x, double y, double maxDist) override;
+	UiSnapshotResult UiSnapshot(std::string_view windowFilter, int maxDepth) override;
+	UiSnapshotResult UiFind(std::string_view text, std::string_view roleFilter) override;
+	DesktopWindowsResult ListDesktopWindows() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

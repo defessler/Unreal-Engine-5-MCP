@@ -3317,6 +3317,68 @@ CommandletBlueprintReader::ScreenToWorld(double x, double y, double d) {
 	return out;
 }
 
+namespace {
+	IBlueprintReader::UiSnapshotResult ParseUiSnapshot(const nlohmann::json& j) {
+		IBlueprintReader::UiSnapshotResult out;
+		if (j.is_object()) {
+			out.truncated = j.value("truncated", false);
+			if (auto it = j.find("nodes"); it != j.end() && it->is_array()) {
+				for (const auto& n : *it) {
+					if (!n.is_object()) continue;
+					IBlueprintReader::UiNode node;
+					node.depth        = n.value("depth",        0);
+					node.widgetType   = n.value("widget_type",  std::string{});
+					node.text         = n.value("text",         std::string{});
+					node.parentWindow = n.value("parent_window", std::string{});
+					out.nodes.push_back(std::move(node));
+				}
+			}
+		}
+		return out;
+	}
+}    // namespace
+
+IBlueprintReader::UiSnapshotResult
+CommandletBlueprintReader::UiSnapshot(std::string_view w, int d) {
+	std::vector<std::wstring> args = {L"-Op=UiSnapshot",
+									  L"-MaxDepth=" + std::to_wstring(d)};
+	if (!w.empty()) {
+		args.push_back(L"-Window=" + Widen(w));
+	}
+	return ParseUiSnapshot(RunOp(args));
+}
+
+IBlueprintReader::UiSnapshotResult
+CommandletBlueprintReader::UiFind(std::string_view t, std::string_view r) {
+	std::vector<std::wstring> args = {L"-Op=UiFind"};
+	if (!t.empty()) args.push_back(L"-Text=" + Widen(t));
+	if (!r.empty()) args.push_back(L"-Role=" + Widen(r));
+	return ParseUiSnapshot(RunOp(args));
+}
+
+IBlueprintReader::DesktopWindowsResult
+CommandletBlueprintReader::ListDesktopWindows() {
+	auto j = RunOp({L"-Op=ListDesktopWindows"});
+	DesktopWindowsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("windows"); it != j.end() && it->is_array()) {
+			for (const auto& w : *it) {
+				if (!w.is_object()) continue;
+				DesktopWindowInfo info;
+				info.title       = w.value("title",       std::string{});
+				info.widgetType  = w.value("widget_type", std::string{});
+				info.posX        = w.value("pos_x",       0.0);
+				info.posY        = w.value("pos_y",       0.0);
+				info.sizeX       = w.value("size_x",      0.0);
+				info.sizeY       = w.value("size_y",      0.0);
+				info.isActive    = w.value("is_active",   false);
+				out.windows.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

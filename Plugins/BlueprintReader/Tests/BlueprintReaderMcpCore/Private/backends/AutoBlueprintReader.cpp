@@ -551,6 +551,17 @@ IBlueprintReader::ScreenToWorldResult
 AutoBlueprintReader::ScreenToWorld(double x, double y, double d) {
 	FORWARD(ScreenToWorld, x, y, d);
 }
+IBlueprintReader::UiSnapshotResult
+AutoBlueprintReader::UiSnapshot(std::string_view w, int d) {
+	FORWARD(UiSnapshot, w, d);
+}
+IBlueprintReader::UiSnapshotResult
+AutoBlueprintReader::UiFind(std::string_view t, std::string_view r) {
+	FORWARD(UiFind, t, r);
+}
+IBlueprintReader::DesktopWindowsResult AutoBlueprintReader::ListDesktopWindows() {
+	FORWARD(ListDesktopWindows);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

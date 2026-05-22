@@ -1380,6 +1380,57 @@ public:
 		throw BlueprintReaderError("ScreenToWorld not supported by this backend");
 	}
 
+	// Recursive Slate widget-tree snapshot. Walks descendants from each
+	// visible top-level window (or only the one whose title contains
+	// `windowFilter` when set). Each node returns `{depth, type, ?text}`.
+	// `maxDepth` caps recursion (default 8). Deeper trees get truncated;
+	// `truncated` flags when a subtree was cut off. Useful for "what's
+	// on screen?" reasoning without taking an actual screenshot.
+	struct UiNode {
+		int depth = 0;
+		std::string widgetType;          // SWidget::GetTypeAsString
+		std::string text;                // visible text when available
+		std::string parentWindow;        // window title the widget lives in
+	};
+	struct UiSnapshotResult {
+		std::vector<UiNode> nodes;
+		bool truncated = false;
+	};
+	virtual UiSnapshotResult UiSnapshot(std::string_view windowFilter,
+										int maxDepth) {
+		(void)windowFilter; (void)maxDepth;
+		throw BlueprintReaderError("UiSnapshot not supported by this backend");
+	}
+
+	// Find Slate widgets whose visible text contains `text` (case-sensitive
+	// substring). Optional `roleFilter` restricts to widgets whose type
+	// contains `roleFilter` (e.g. "Button" matches SButton). Walks the
+	// same tree as `UiSnapshot`. Empty `text` returns nothing.
+	virtual UiSnapshotResult UiFind(std::string_view text,
+									std::string_view roleFilter) {
+		(void)text; (void)roleFilter;
+		throw BlueprintReaderError("UiFind not supported by this backend");
+	}
+
+	// List visible top-level windows (titles + types + positions + sizes).
+	// Lighter-weight alternative to a desktop screenshot when the agent
+	// just wants to know "what windows are open?". Full screenshot
+	// composite is deferred — multi-window blitting requires a render
+	// thread + texture readback. This is the pure-introspection variant.
+	struct DesktopWindowInfo {
+		std::string title;
+		std::string widgetType;
+		double posX = 0.0, posY = 0.0;
+		double sizeX = 0.0, sizeY = 0.0;
+		bool isActive = false;
+	};
+	struct DesktopWindowsResult {
+		std::vector<DesktopWindowInfo> windows;
+	};
+	virtual DesktopWindowsResult ListDesktopWindows() {
+		throw BlueprintReaderError("ListDesktopWindows not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

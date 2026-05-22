@@ -329,6 +329,9 @@ namespace
 		SetContentBrowserPath,
 		WorldToScreen,
 		ScreenToWorld,
+		UiSnapshot,
+		UiFind,
+		ListDesktopWindows,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -486,6 +489,9 @@ namespace
 		if (OpStr.Equals(TEXT("SetContentBrowserPath"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetContentBrowserPath; return true; }
 		if (OpStr.Equals(TEXT("WorldToScreen"), ESearchCase::IgnoreCase))           { OutOp = EOp::WorldToScreen; return true; }
 		if (OpStr.Equals(TEXT("ScreenToWorld"), ESearchCase::IgnoreCase))           { OutOp = EOp::ScreenToWorld; return true; }
+		if (OpStr.Equals(TEXT("UiSnapshot"), ESearchCase::IgnoreCase))              { OutOp = EOp::UiSnapshot; return true; }
+		if (OpStr.Equals(TEXT("UiFind"), ESearchCase::IgnoreCase))                  { OutOp = EOp::UiFind; return true; }
+		if (OpStr.Equals(TEXT("ListDesktopWindows"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListDesktopWindows; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6072,6 +6078,179 @@ namespace
 		return &CB.Get();
 	}
 
+	// Try to extract visible text from a Slate widget. STextBlock/SEditableText/
+	// SButton-with-text/etc. don't share a common interface so we sniff by
+	// type name + reach into ToString() which most widgets expose.
+	FString GetWidgetText(const TSharedRef<SWidget>& W)
+	{
+		// `ToString` returns "SBox(...)" for plain widgets and "STextBlock(text='Hello')"
+		// for text widgets. Useful as a best-effort label without per-widget casts.
+		const FString S = W->ToString();
+		// Extract text='X' pattern when present.
+		const int32 Idx = S.Find(TEXT("text='"));
+		if (Idx != INDEX_NONE)
+		{
+			const int32 Start = Idx + 6;
+			const int32 EndIdx = S.Find(TEXT("'"), ESearchCase::CaseSensitive,
+										ESearchDir::FromStart, Start);
+			if (EndIdx != INDEX_NONE)
+			{
+				return S.Mid(Start, EndIdx - Start);
+			}
+		}
+		return FString();
+	}
+
+	// Recursively walk a Slate widget tree, collecting nodes that pass
+	// `Predicate`. `MaxNodes` is a hard cap to keep payloads sane.
+	void WalkSlateTree(TSharedRef<SWidget> Widget,
+					   const FString& WindowTitle,
+					   int32 Depth,
+					   int32 MaxDepth,
+					   int32 MaxNodes,
+					   TFunctionRef<bool(const TSharedRef<SWidget>&, const FString&)> Predicate,
+					   TArray<TSharedPtr<FJsonValue>>& OutNodes,
+					   bool& bOutTruncated)
+	{
+		if (OutNodes.Num() >= MaxNodes)
+		{
+			bOutTruncated = true;
+			return;
+		}
+		const FString Text = GetWidgetText(Widget);
+		if (Predicate(Widget, Text))
+		{
+			auto Node = MakeShared<FJsonObject>();
+			Node->SetNumberField(TEXT("depth"),         Depth);
+			Node->SetStringField(TEXT("widget_type"),   Widget->GetTypeAsString());
+			Node->SetStringField(TEXT("text"),          Text);
+			Node->SetStringField(TEXT("parent_window"), WindowTitle);
+			OutNodes.Add(MakeShared<FJsonValueObject>(Node));
+		}
+		if (Depth >= MaxDepth)
+		{
+			bOutTruncated = true;
+			return;
+		}
+		FChildren* Kids = Widget->GetChildren();
+		if (Kids)
+		{
+			for (int32 i = 0; i < Kids->Num(); ++i)
+			{
+				WalkSlateTree(Kids->GetChildAt(i), WindowTitle, Depth + 1,
+							  MaxDepth, MaxNodes, Predicate, OutNodes, bOutTruncated);
+				if (OutNodes.Num() >= MaxNodes)
+				{
+					bOutTruncated = true;
+					return;
+				}
+			}
+		}
+	}
+
+	int32 RunUiSnapshotOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString WindowFilter;
+		FParse::Value(*Params, TEXT("Window="), WindowFilter);
+		int32 MaxDepth = 8;
+		FParse::Value(*Params, TEXT("MaxDepth="), MaxDepth);
+		const int32 kMaxNodes = 500;
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		bool bTruncated = false;
+		if (FSlateApplication::IsInitialized())
+		{
+			TArray<TSharedRef<SWindow>> Windows;
+			FSlateApplication::Get().GetAllVisibleWindowsOrdered(Windows);
+			for (const TSharedRef<SWindow>& Win : Windows)
+			{
+				const FString Title = Win->GetTitle().ToString();
+				if (!WindowFilter.IsEmpty() && !Title.Contains(WindowFilter))
+				{
+					continue;
+				}
+				WalkSlateTree(Win, Title, 0, MaxDepth, kMaxNodes,
+					[](const TSharedRef<SWidget>&, const FString&) { return true; },
+					Nodes, bTruncated);
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("nodes"), Nodes);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunUiFindOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString TextFilter, RoleFilter;
+		FParse::Value(*Params, TEXT("Text="), TextFilter);
+		FParse::Value(*Params, TEXT("Role="), RoleFilter);
+		const int32 kMaxDepth = 24;
+		const int32 kMaxNodes = 200;
+
+		TArray<TSharedPtr<FJsonValue>> Nodes;
+		bool bTruncated = false;
+		if (FSlateApplication::IsInitialized() && !TextFilter.IsEmpty())
+		{
+			TArray<TSharedRef<SWindow>> Windows;
+			FSlateApplication::Get().GetAllVisibleWindowsOrdered(Windows);
+			for (const TSharedRef<SWindow>& Win : Windows)
+			{
+				const FString Title = Win->GetTitle().ToString();
+				WalkSlateTree(Win, Title, 0, kMaxDepth, kMaxNodes,
+					[&TextFilter, &RoleFilter](const TSharedRef<SWidget>& W, const FString& Text)
+					{
+						if (!Text.Contains(TextFilter))
+						{
+							return false;
+						}
+						if (!RoleFilter.IsEmpty() && !W->GetTypeAsString().Contains(RoleFilter))
+						{
+							return false;
+						}
+						return true;
+					},
+					Nodes, bTruncated);
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("nodes"), Nodes);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunListDesktopWindowsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Wins;
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication& Slate = FSlateApplication::Get();
+			TArray<TSharedRef<SWindow>> Windows;
+			Slate.GetAllVisibleWindowsOrdered(Windows);
+			TSharedPtr<SWindow> Active = Slate.GetActiveTopLevelWindow();
+			for (const TSharedRef<SWindow>& Win : Windows)
+			{
+				auto W = MakeShared<FJsonObject>();
+				W->SetStringField(TEXT("title"),       Win->GetTitle().ToString());
+				W->SetStringField(TEXT("widget_type"), Win->GetTypeAsString());
+				const FVector2D Pos  = Win->GetPositionInScreen();
+				const FVector2D Size = Win->GetSizeInScreen();
+				W->SetNumberField(TEXT("pos_x"),  Pos.X);
+				W->SetNumberField(TEXT("pos_y"),  Pos.Y);
+				W->SetNumberField(TEXT("size_x"), Size.X);
+				W->SetNumberField(TEXT("size_y"), Size.Y);
+				W->SetBoolField(TEXT("is_active"), Active.IsValid() && Active.Get() == &Win.Get());
+				Wins.Add(MakeShared<FJsonValueObject>(W));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("windows"), Wins);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunWorldToScreenOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		double WX = 0.0, WY = 0.0, WZ = 0.0;
@@ -7617,6 +7796,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::SetContentBrowserPath,      &RunSetContentBrowserPathOp },
 		{ EOp::WorldToScreen,              &RunWorldToScreenOp },
 		{ EOp::ScreenToWorld,              &RunScreenToWorldOp },
+		{ EOp::UiSnapshot,                 &RunUiSnapshotOp },
+		{ EOp::UiFind,                     &RunUiFindOp },
+		{ EOp::ListDesktopWindows,         &RunListDesktopWindowsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

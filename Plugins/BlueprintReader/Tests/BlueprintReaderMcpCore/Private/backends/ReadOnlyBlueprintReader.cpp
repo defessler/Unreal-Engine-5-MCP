@@ -351,6 +351,17 @@ IBlueprintReader::ScreenToWorldResult
 ReadOnlyBlueprintReader::ScreenToWorld(double x, double y, double d) {
 	return inner_->ScreenToWorld(x, y, d);
 }
+IBlueprintReader::UiSnapshotResult
+ReadOnlyBlueprintReader::UiSnapshot(std::string_view w, int d) {
+	return inner_->UiSnapshot(w, d);
+}
+IBlueprintReader::UiSnapshotResult
+ReadOnlyBlueprintReader::UiFind(std::string_view t, std::string_view r) {
+	return inner_->UiFind(t, r);
+}
+IBlueprintReader::DesktopWindowsResult ReadOnlyBlueprintReader::ListDesktopWindows() {
+	return inner_->ListDesktopWindows();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
