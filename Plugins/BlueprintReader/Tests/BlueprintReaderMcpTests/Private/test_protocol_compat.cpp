@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 176);
+	REQUIRE(spec.size() == 178);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -260,7 +260,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// Re-baselined 2026-05-22 at 176 tools after +1 Wave 2:
 	// get_anim_editor_state (stub — Persona toolkit cross-cast requires
 	// per-editor-class registry without RTTI; documented + valid:false).
-	constexpr uint64_t kCurrentToolsHash = 0x4DC2FC263C7A6F9AULL;
+	// Re-baselined 2026-05-22 at 178 tools after +2 Wave 2 stubs:
+	// get_niagara_module_selection, get_curve_editor_selection.
+	constexpr uint64_t kCurrentToolsHash = 0xDCB38214AF3275AFULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

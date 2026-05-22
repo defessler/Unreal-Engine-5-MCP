@@ -632,6 +632,14 @@ IBlueprintReader::AnimEditorStateResult
 AutoBlueprintReader::GetAnimEditorState(std::string_view a) {
 	FORWARD(GetAnimEditorState, a);
 }
+IBlueprintReader::NiagaraModuleSelectionResult
+AutoBlueprintReader::GetNiagaraModuleSelection(std::string_view a) {
+	FORWARD(GetNiagaraModuleSelection, a);
+}
+IBlueprintReader::CurveEditorSelectionResult
+AutoBlueprintReader::GetCurveEditorSelection(std::string_view a) {
+	FORWARD(GetCurveEditorSelection, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -3736,6 +3736,41 @@ CommandletBlueprintReader::GetAnimEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::NiagaraModuleSelectionResult
+CommandletBlueprintReader::GetNiagaraModuleSelection(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetNiagaraModuleSelection",
+					L"-Asset=" + Widen(assetPath)});
+	NiagaraModuleSelectionResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("selected_module_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedModuleNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::CurveEditorSelectionResult
+CommandletBlueprintReader::GetCurveEditorSelection(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetCurveEditorSelection",
+					L"-Asset=" + Widen(assetPath)});
+	CurveEditorSelectionResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid             = j.value("valid",             false);
+		out.selectedKeyCount  = j.value("selected_key_count", 0);
+		if (auto it = j.find("selected_curve_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedCurveNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

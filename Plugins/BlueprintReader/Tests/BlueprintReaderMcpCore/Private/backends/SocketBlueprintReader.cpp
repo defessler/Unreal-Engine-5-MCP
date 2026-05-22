@@ -2103,6 +2103,41 @@ SocketBlueprintReader::GetAnimEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::NiagaraModuleSelectionResult
+SocketBlueprintReader::GetNiagaraModuleSelection(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetNiagaraModuleSelection",
+					"-Asset=" + std::string(assetPath)});
+	NiagaraModuleSelectionResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("selected_module_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedModuleNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::CurveEditorSelectionResult
+SocketBlueprintReader::GetCurveEditorSelection(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetCurveEditorSelection",
+					"-Asset=" + std::string(assetPath)});
+	CurveEditorSelectionResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid             = j.value("valid",             false);
+		out.selectedKeyCount  = j.value("selected_key_count", 0);
+		if (auto it = j.find("selected_curve_names"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedCurveNames.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

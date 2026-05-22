@@ -432,6 +432,14 @@ IBlueprintReader::AnimEditorStateResult
 ReadOnlyBlueprintReader::GetAnimEditorState(std::string_view a) {
 	return inner_->GetAnimEditorState(a);
 }
+IBlueprintReader::NiagaraModuleSelectionResult
+ReadOnlyBlueprintReader::GetNiagaraModuleSelection(std::string_view a) {
+	return inner_->GetNiagaraModuleSelection(a);
+}
+IBlueprintReader::CurveEditorSelectionResult
+ReadOnlyBlueprintReader::GetCurveEditorSelection(std::string_view a) {
+	return inner_->GetCurveEditorSelection(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

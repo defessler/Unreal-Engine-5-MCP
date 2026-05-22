@@ -176,6 +176,8 @@ public:
 	CinematicCameraResult GetCinematicCamera() override;
 	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
 	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
+	NiagaraModuleSelectionResult GetNiagaraModuleSelection(std::string_view assetPath) override;
+	CurveEditorSelectionResult GetCurveEditorSelection(std::string_view assetPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,
