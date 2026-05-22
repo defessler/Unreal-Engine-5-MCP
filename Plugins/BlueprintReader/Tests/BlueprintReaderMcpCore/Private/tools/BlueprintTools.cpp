@@ -3693,6 +3693,63 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_material_instance_params (Phase 12 Wave 2) -------------
+	{
+		ToolDescriptor d;
+		d.name = "get_material_instance_params";
+		d.description =
+			"[editor] Dump scalar/vector/texture parameter values from a "
+			"UMaterialInstanceConstant asset. No open editor required — "
+			"reads parameters directly from the asset. Returns `{valid, "
+			"asset_path, parent_path, scalars, vectors, textures}`. "
+			"Switch params + RVT params not included as a scope cap.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",       {{"type","boolean"}}},
+				{"asset_path",  {{"type","string"}}},
+				{"parent_path", {{"type","string"}}},
+				{"scalars",     {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"vectors",     {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"textures",    {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetMaterialInstanceParams(asset);
+			nlohmann::json scalars  = nlohmann::json::array();
+			nlohmann::json vectors  = nlohmann::json::array();
+			nlohmann::json textures = nlohmann::json::array();
+			for (const auto& s : r.scalars) {
+				scalars.push_back({{"name", s.name}, {"value", s.value}});
+			}
+			for (const auto& v : r.vectors) {
+				vectors.push_back({
+					{"name", v.name}, {"r", v.r}, {"g", v.g},
+					{"b", v.b}, {"a", v.a},
+				});
+			}
+			for (const auto& t : r.textures) {
+				textures.push_back({{"name", t.name}, {"texture_path", t.texturePath}});
+			}
+			return nlohmann::json{
+				{"valid",       r.valid},
+				{"asset_path",  r.assetPath},
+				{"parent_path", r.parentPath},
+				{"scalars",     scalars},
+				{"vectors",     vectors},
+				{"textures",    textures},
+			};
+		});
+	}
+
 	// ----- get_blueprint_editor_state (Phase 12 Wave 2) ----------------
 	{
 		ToolDescriptor d;

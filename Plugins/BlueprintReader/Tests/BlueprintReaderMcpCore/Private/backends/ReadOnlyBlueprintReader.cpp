@@ -400,6 +400,10 @@ IBlueprintReader::BlueprintEditorStateResult
 ReadOnlyBlueprintReader::GetBlueprintEditorState(std::string_view a) {
 	return inner_->GetBlueprintEditorState(a);
 }
+IBlueprintReader::MaterialInstanceParamsResult
+ReadOnlyBlueprintReader::GetMaterialInstanceParams(std::string_view a) {
+	return inner_->GetMaterialInstanceParams(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

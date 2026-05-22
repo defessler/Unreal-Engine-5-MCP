@@ -211,6 +211,7 @@ public:
 	ActorAttributesResult ListActorAttributes(std::string_view actorName) override;
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
 	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
+	MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
