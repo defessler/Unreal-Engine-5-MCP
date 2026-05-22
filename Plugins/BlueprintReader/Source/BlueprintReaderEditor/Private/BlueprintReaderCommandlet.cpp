@@ -16,6 +16,11 @@
 #include "AssetToolsModule.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
+// Phase 8 spatial coord tools — FSceneView + projection math.
+#include "SceneView.h"
+#include "Engine/HitResult.h"
+#include "Engine/World.h"
+#include "CollisionQueryParams.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -322,6 +327,8 @@ namespace
 		GetSelectedFolders,
 		GetContentBrowserPath,
 		SetContentBrowserPath,
+		WorldToScreen,
+		ScreenToWorld,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -477,6 +484,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetSelectedFolders"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetSelectedFolders; return true; }
 		if (OpStr.Equals(TEXT("GetContentBrowserPath"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetContentBrowserPath; return true; }
 		if (OpStr.Equals(TEXT("SetContentBrowserPath"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetContentBrowserPath; return true; }
+		if (OpStr.Equals(TEXT("WorldToScreen"), ESearchCase::IgnoreCase))           { OutOp = EOp::WorldToScreen; return true; }
+		if (OpStr.Equals(TEXT("ScreenToWorld"), ESearchCase::IgnoreCase))           { OutOp = EOp::ScreenToWorld; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6063,6 +6072,108 @@ namespace
 		return &CB.Get();
 	}
 
+	int32 RunWorldToScreenOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		double WX = 0.0, WY = 0.0, WZ = 0.0;
+		FParse::Value(*Params, TEXT("WX="), WX);
+		FParse::Value(*Params, TEXT("WY="), WY);
+		FParse::Value(*Params, TEXT("WZ="), WZ);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false, bOnScreen = false;
+		double NormX = 0.0, NormY = 0.0;
+
+		FEditorViewportClient* VC = FindActiveLevelViewportClient();
+		if (VC && VC->Viewport)
+		{
+			FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(
+				VC->Viewport, VC->GetScene(), VC->EngineShowFlags)
+				.SetRealtimeUpdate(VC->IsRealtime()));
+			if (FSceneView* View = VC->CalcSceneView(&ViewFamily))
+			{
+				const FIntRect VR = View->UnscaledViewRect;
+				FVector2D ScreenPos;
+				const FVector World((float)WX, (float)WY, (float)WZ);
+				const bool bProjected = FSceneView::ProjectWorldToScreen(
+					World, VR, View->ViewMatrices.GetViewProjectionMatrix(), ScreenPos);
+				if (bProjected && VR.Width() > 0 && VR.Height() > 0)
+				{
+					NormX = (ScreenPos.X - VR.Min.X) / (double)VR.Width();
+					NormY = (ScreenPos.Y - VR.Min.Y) / (double)VR.Height();
+					bValid = true;
+					bOnScreen = (NormX >= 0.0 && NormX <= 1.0 &&
+								 NormY >= 0.0 && NormY <= 1.0);
+				}
+			}
+		}
+		Out->SetBoolField(TEXT("valid"),        bValid);
+		Out->SetNumberField(TEXT("screen_x"),   NormX);
+		Out->SetNumberField(TEXT("screen_y"),   NormY);
+		Out->SetBoolField(TEXT("is_on_screen"), bOnScreen);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunScreenToWorldOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		double SX = 0.0, SY = 0.0, MaxDist = 10000.0;
+		FParse::Value(*Params, TEXT("SX="),   SX);
+		FParse::Value(*Params, TEXT("SY="),   SY);
+		FParse::Value(*Params, TEXT("Dist="), MaxDist);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false, bHit = false;
+		double WX = 0.0, WY = 0.0, WZ = 0.0;
+		FString HitActorName;
+
+		FEditorViewportClient* VC = FindActiveLevelViewportClient();
+		if (VC && VC->Viewport)
+		{
+			FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(
+				VC->Viewport, VC->GetScene(), VC->EngineShowFlags)
+				.SetRealtimeUpdate(VC->IsRealtime()));
+			if (FSceneView* View = VC->CalcSceneView(&ViewFamily))
+			{
+				const FIntRect VR = View->UnscaledViewRect;
+				// Normalized [0,1] → pixel coords inside the viewport.
+				const FVector2D Pixel(
+					(double)VR.Min.X + SX * (double)VR.Width(),
+					(double)VR.Min.Y + SY * (double)VR.Height());
+				FVector Origin, Direction;
+				View->DeprojectFVector2D(Pixel, Origin, Direction);
+				bValid = true;
+
+				const FVector End = Origin + Direction * MaxDist;
+				WX = End.X; WY = End.Y; WZ = End.Z;
+				if (UWorld* W = VC->GetWorld())
+				{
+					FHitResult Hit;
+					FCollisionQueryParams Params2(SCENE_QUERY_STAT(BPRScreenToWorld), false);
+					if (W->LineTraceSingleByChannel(Hit, Origin, End,
+													 ECC_Visibility, Params2))
+					{
+						bHit = true;
+						WX = Hit.ImpactPoint.X;
+						WY = Hit.ImpactPoint.Y;
+						WZ = Hit.ImpactPoint.Z;
+						if (AActor* HitActor = Hit.GetActor())
+						{
+							HitActorName = HitActor->GetName();
+						}
+					}
+				}
+			}
+		}
+		Out->SetBoolField(TEXT("valid"),  bValid);
+		Out->SetBoolField(TEXT("hit"),    bHit);
+		Out->SetNumberField(TEXT("world_x"), WX);
+		Out->SetNumberField(TEXT("world_y"), WY);
+		Out->SetNumberField(TEXT("world_z"), WZ);
+		Out->SetStringField(TEXT("hit_actor_name"), HitActorName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSelectedAssetsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Paths;
@@ -7504,6 +7615,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetSelectedFolders,         &RunGetSelectedFoldersOp },
 		{ EOp::GetContentBrowserPath,      &RunGetContentBrowserPathOp },
 		{ EOp::SetContentBrowserPath,      &RunSetContentBrowserPathOp },
+		{ EOp::WorldToScreen,              &RunWorldToScreenOp },
+		{ EOp::ScreenToWorld,              &RunScreenToWorldOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

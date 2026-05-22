@@ -153,6 +153,8 @@ public:
 	ContentBrowserFoldersResult GetSelectedFolders() override;
 	ContentBrowserPathResult GetContentBrowserPath() override;
 	ContentBrowserPathResult SetContentBrowserPath(std::string_view folderPath) override;
+	WorldToScreenResult WorldToScreen(double x, double y, double z) override;
+	ScreenToWorldResult ScreenToWorld(double x, double y, double maxDist) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

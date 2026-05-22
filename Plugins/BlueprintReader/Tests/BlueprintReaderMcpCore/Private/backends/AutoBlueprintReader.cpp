@@ -543,6 +543,14 @@ IBlueprintReader::ContentBrowserPathResult
 AutoBlueprintReader::SetContentBrowserPath(std::string_view p) {
 	FORWARD(SetContentBrowserPath, p);
 }
+IBlueprintReader::WorldToScreenResult
+AutoBlueprintReader::WorldToScreen(double x, double y, double z) {
+	FORWARD(WorldToScreen, x, y, z);
+}
+IBlueprintReader::ScreenToWorldResult
+AutoBlueprintReader::ScreenToWorld(double x, double y, double d) {
+	FORWARD(ScreenToWorld, x, y, d);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

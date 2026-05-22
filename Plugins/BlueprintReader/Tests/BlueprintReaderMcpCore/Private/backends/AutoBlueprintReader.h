@@ -173,6 +173,8 @@ public:
 	ContentBrowserFoldersResult GetSelectedFolders() override;
 	ContentBrowserPathResult GetContentBrowserPath() override;
 	ContentBrowserPathResult SetContentBrowserPath(std::string_view folderPath) override;
+	WorldToScreenResult WorldToScreen(double x, double y, double z) override;
+	ScreenToWorldResult ScreenToWorld(double x, double y, double maxDist) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
