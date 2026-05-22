@@ -25,6 +25,9 @@
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/Blueprint.h"
+#include "Subsystems/AssetEditorSubsystem.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/SWindow.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
 #include "Engine/World.h"
@@ -293,6 +296,12 @@ namespace
 		// association etc. Implemented editor-side so the live
 		// backend doesn't need its own .uproject path config.
 		GetProjectMetadata,
+		// Phase 8 EA-pull Wave 1 (partial) — editor-awareness reads.
+		ListOpenAssets,
+		GetActiveAsset,
+		GetCompileStatus,
+		GetDirtyPackages,
+		GetFocusedWindow,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -427,6 +436,12 @@ namespace
 		if (OpStr.Equals(TEXT("ListAssets"), ESearchCase::IgnoreCase))              { OutOp = EOp::ListAssets; return true; }
 		if (OpStr.Equals(TEXT("FindAsset"), ESearchCase::IgnoreCase))               { OutOp = EOp::FindAsset; return true; }
 		if (OpStr.Equals(TEXT("GetProjectMetadata"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetProjectMetadata; return true; }
+		// Phase 8 EA-pull Wave 1 (partial)
+		if (OpStr.Equals(TEXT("ListOpenAssets"), ESearchCase::IgnoreCase))          { OutOp = EOp::ListOpenAssets; return true; }
+		if (OpStr.Equals(TEXT("GetActiveAsset"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetActiveAsset; return true; }
+		if (OpStr.Equals(TEXT("GetCompileStatus"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetCompileStatus; return true; }
+		if (OpStr.Equals(TEXT("GetDirtyPackages"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetDirtyPackages; return true; }
+		if (OpStr.Equals(TEXT("GetFocusedWindow"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetFocusedWindow; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5546,6 +5561,187 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// ----- Phase 8 EA-pull Wave 1 (partial) -----------------------------
+	// All require a live editor; commandlet (headless) mode returns
+	// empty results since GEditor and the asset-editor subsystem aren't
+	// available outside an interactive editor session. The wire response
+	// shape matches the SocketBlueprintReader parser.
+
+	// Per-asset activation time: look up the IAssetEditorInstance via
+	// FindEditorForAsset and call GetLastActivationTime() on the
+	// toolkit. Returns 0 when no editor is open for the asset.
+	double GetActivationTimeFor(UAssetEditorSubsystem* AES, UObject* Asset)
+	{
+		if (!AES || !IsValid(Asset))
+		{
+			return 0.0;
+		}
+		if (IAssetEditorInstance* Instance =
+			AES->FindEditorForAsset(Asset, /*bFocusIfOpen=*/false))
+		{
+			return Instance->GetLastActivationTime();
+		}
+		return 0.0;
+	}
+
+	int32 RunListOpenAssetsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Entries;
+		if (GEditor != nullptr)
+		{
+			if (UAssetEditorSubsystem* AES =
+				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				TArray<UObject*> EditedAssets = AES->GetAllEditedAssets();
+				Entries.Reserve(EditedAssets.Num());
+				for (UObject* Asset : EditedAssets)
+				{
+					if (!IsValid(Asset))
+					{
+						continue;
+					}
+					auto Row = MakeShared<FJsonObject>();
+					Row->SetStringField(TEXT("asset_path"),
+						Asset->GetPackage() ? Asset->GetPackage()->GetName() : Asset->GetPathName());
+					Row->SetStringField(TEXT("asset_class"),
+						Asset->GetClass() ? Asset->GetClass()->GetName() : FString());
+					Row->SetNumberField(TEXT("last_activation_seconds"),
+						GetActivationTimeFor(AES, Asset));
+					Entries.Add(MakeShared<FJsonValueObject>(Row));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("entries"), Entries);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetActiveAssetOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("asset_path"),  FString());
+		Out->SetStringField(TEXT("asset_class"), FString());
+		Out->SetNumberField(TEXT("last_activation_seconds"), 0.0);
+
+		if (GEditor != nullptr)
+		{
+			if (UAssetEditorSubsystem* AES =
+				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				TArray<UObject*> EditedAssets = AES->GetAllEditedAssets();
+				UObject* MostRecent = nullptr;
+				double   MostRecentTime = -1.0;
+				for (UObject* Asset : EditedAssets)
+				{
+					if (!IsValid(Asset))
+					{
+						continue;
+					}
+					const double T = GetActivationTimeFor(AES, Asset);
+					if (T > MostRecentTime)
+					{
+						MostRecentTime = T;
+						MostRecent = Asset;
+					}
+				}
+				if (IsValid(MostRecent))
+				{
+					Out->SetStringField(TEXT("asset_path"),
+						MostRecent->GetPackage() ? MostRecent->GetPackage()->GetName() : MostRecent->GetPathName());
+					Out->SetStringField(TEXT("asset_class"),
+						MostRecent->GetClass() ? MostRecent->GetClass()->GetName() : FString());
+					Out->SetNumberField(TEXT("last_activation_seconds"), MostRecentTime);
+				}
+			}
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetCompileStatusOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("get_compile_status requires asset_path"));
+		}
+		UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+		if (!IsValid(BP))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("get_compile_status: asset not found or not a Blueprint: %s"),
+					*AssetPath));
+		}
+		// Map the UBlueprint::Status enum to a stable string.
+		// BS_Unknown / Dirty / Error / UpToDate / UpToDateWithWarnings /
+		// BeingCreated.
+		const TCHAR* StatusStr = TEXT("unknown");
+		switch (BP->Status)
+		{
+			case BS_Dirty:                  StatusStr = TEXT("dirty"); break;
+			case BS_Error:                  StatusStr = TEXT("error"); break;
+			case BS_UpToDate:               StatusStr = TEXT("good"); break;
+			case BS_UpToDateWithWarnings:   StatusStr = TEXT("warning"); break;
+			case BS_BeingCreated:           StatusStr = TEXT("compiling"); break;
+			case BS_Unknown:                StatusStr = TEXT("uncompiled"); break;
+			default:                        StatusStr = TEXT("unknown"); break;
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetStringField(TEXT("status"), StatusStr);
+		// The compile error text isn't readily available post-compile
+		// (the editor surfaces it via the Compiler Results panel); leave
+		// empty for now. A future revision can hook the BlueprintCompiled
+		// delegate to capture last-error text.
+		Out->SetStringField(TEXT("last_compile_error"), FString());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetDirtyPackagesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Packages;
+		for (TObjectIterator<UPackage> It; It; ++It)
+		{
+			UPackage* Pkg = *It;
+			if (!IsValid(Pkg) || !Pkg->IsDirty())
+			{
+				continue;
+			}
+			const FString Name = Pkg->GetName();
+			auto Row = MakeShared<FJsonObject>();
+			Row->SetStringField(TEXT("package_name"), Name);
+			Row->SetBoolField(TEXT("is_content"), Name.StartsWith(TEXT("/Game/")));
+			Packages.Add(MakeShared<FJsonValueObject>(Row));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("packages"), Packages);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetFocusedWindowOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		FString Title;
+		FString ClassName;
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication& Slate = FSlateApplication::Get();
+			if (TSharedPtr<SWindow> ActiveWindow = Slate.GetActiveTopLevelWindow())
+			{
+				Title = ActiveWindow->GetTitle().ToString();
+				ClassName = ActiveWindow->GetTypeAsString();
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("title"),      Title);
+		Out->SetStringField(TEXT("class_name"), ClassName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -6766,6 +6962,12 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListAssets,                 &RunListAssetsOp },
 		{ EOp::FindAsset,                  &RunFindAssetOp },
 		{ EOp::GetProjectMetadata,         &RunGetProjectMetadataOp },
+		// Phase 8 EA-pull Wave 1 (partial)
+		{ EOp::ListOpenAssets,             &RunListOpenAssetsOp },
+		{ EOp::GetActiveAsset,             &RunGetActiveAssetOp },
+		{ EOp::GetCompileStatus,           &RunGetCompileStatusOp },
+		{ EOp::GetDirtyPackages,           &RunGetDirtyPackagesOp },
+		{ EOp::GetFocusedWindow,           &RunGetFocusedWindowOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

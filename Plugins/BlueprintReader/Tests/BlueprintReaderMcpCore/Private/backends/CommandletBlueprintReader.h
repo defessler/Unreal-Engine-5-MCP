@@ -256,6 +256,14 @@ public:
 	CVarValue SetCVar(std::string_view name, std::string_view value) override;
 	PieResult PieStart(std::string_view mode) override;
 	PieResult PieStop() override;
+
+	// ----- Phase 8 EA-pull Wave 1 (partial) -----------------------------
+	OpenAssetsResult ListOpenAssets() override;
+	ActiveAssetResult GetActiveAsset() override;
+	CompileStatusResult GetCompileStatus(std::string_view assetPath) override;
+	DirtyPackagesResult GetDirtyPackages() override;
+	FocusedWindowResult GetFocusedWindow() override;
+
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

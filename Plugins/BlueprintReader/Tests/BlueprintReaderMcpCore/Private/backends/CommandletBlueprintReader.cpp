@@ -2979,6 +2979,81 @@ IBlueprintReader::PieResult CommandletBlueprintReader::PieStop() {
 	return out;
 }
 
+// ----- Phase 8 EA-pull Wave 1 (partial) -----------------------------
+
+IBlueprintReader::OpenAssetsResult CommandletBlueprintReader::ListOpenAssets() {
+	auto j = RunOp({L"-Op=ListOpenAssets"});
+	OpenAssetsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("entries"); it != j.end() && it->is_array()) {
+			for (const auto& e : *it) {
+				if (!e.is_object()) continue;
+				OpenAssetInfo info;
+				info.assetPath  = e.value("asset_path",  std::string{});
+				info.assetClass = e.value("asset_class", std::string{});
+				info.lastActivationSeconds =
+					e.value("last_activation_seconds", 0.0);
+				out.entries.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::ActiveAssetResult CommandletBlueprintReader::GetActiveAsset() {
+	auto j = RunOp({L"-Op=GetActiveAsset"});
+	ActiveAssetResult out;
+	if (j.is_object()) {
+		out.assetPath  = j.value("asset_path",  std::string{});
+		out.assetClass = j.value("asset_class", std::string{});
+		out.lastActivationSeconds =
+			j.value("last_activation_seconds", 0.0);
+	}
+	return out;
+}
+
+IBlueprintReader::CompileStatusResult
+CommandletBlueprintReader::GetCompileStatus(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetCompileStatus",
+					L"-Asset=" + Widen(assetPath)});
+	CompileStatusResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.status           = j.value("status", std::string{});
+		out.lastCompileError = j.value("last_compile_error", std::string{});
+	}
+	return out;
+}
+
+IBlueprintReader::DirtyPackagesResult
+CommandletBlueprintReader::GetDirtyPackages() {
+	auto j = RunOp({L"-Op=GetDirtyPackages"});
+	DirtyPackagesResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("packages"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (!p.is_object()) continue;
+				DirtyPackageInfo info;
+				info.packageName      = p.value("package_name", std::string{});
+				info.isContentPackage = p.value("is_content",   false);
+				out.packages.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::FocusedWindowResult
+CommandletBlueprintReader::GetFocusedWindow() {
+	auto j = RunOp({L"-Op=GetFocusedWindow"});
+	FocusedWindowResult out;
+	if (j.is_object()) {
+		out.title     = j.value("title",      std::string{});
+		out.className = j.value("class_name", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 CommandletBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({L"-Op=LiveCodingCompile"});

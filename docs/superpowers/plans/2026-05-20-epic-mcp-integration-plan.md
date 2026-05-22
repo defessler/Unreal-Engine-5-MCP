@@ -54,7 +54,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 5 | **C2** Pagination cursors **(SHIPPED locally — pending push)** | — | 0d | — | Spec-conformant list paging |
 | 6 | **Logging** primitive **(SHIPPED locally — pending push)** | — | 0d | — | Server logs to client |
 | 7 | **E** Analytics + safety **(SHIPPED locally — pending push; scaffolding only)** | — | 0d | — | Observability + path safety |
-| 8 | **EA-pull Wave 1** Core awareness | 6–8 | 31d | Very High — every reactive agent workflow needs this | Selection, open, compile, modal — the "what's the user doing?" core |
+| 8 | **EA-pull Wave 1** Core awareness **(5 of 25 tools SHIPPED locally — partial)** | — | 0d | — | Selection, open, compile, modal — the "what's the user doing?" core |
 | 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 46d | Very High — gates Push events entirely | Transport for push events |
 | 10 | **EA-push Wave 1** Core event notifications | 8–10 | 56d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
 | 11 | **H Tier 1** PluginToolset + GameFeatures + GAS | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |

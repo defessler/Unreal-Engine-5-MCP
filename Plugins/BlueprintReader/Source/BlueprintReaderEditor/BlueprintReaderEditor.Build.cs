@@ -105,7 +105,11 @@ public class BlueprintReaderEditor : ModuleRules
 			// UDeveloperSettings for the Project Settings → BlueprintReader
 			// MCP page (port, autostart, allow/blocklist patterns, tool
 			// search toggle). Persists to EditorPerProjectUserSettings.ini.
-			"DeveloperSettings"
+			"DeveloperSettings",
+			// Phase 8 — get_focused_window queries Slate's active top-level
+			// window via FSlateApplication + SWindow::GetTypeAsString.
+			"Slate",
+			"SlateCore"
 		});
 	}
 }

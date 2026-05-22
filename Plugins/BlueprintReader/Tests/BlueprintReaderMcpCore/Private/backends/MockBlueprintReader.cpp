@@ -363,6 +363,9 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_project_metadata",
 		// Generic asset registry — fixtures aren't the asset registry
 		"list_assets", "find_asset",
+		// Phase 8 EA-pull Wave 1 (partial) — all require a live editor
+		"list_open_assets", "get_active_asset", "get_compile_status",
+		"get_dirty_packages", "get_focused_window",
 	};
 }
 
