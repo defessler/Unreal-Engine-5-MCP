@@ -3693,6 +3693,99 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- list_actor_attributes (Phase 11 GAS) ------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_actor_attributes";
+		d.description =
+			"[editor] Gameplay attributes on the named actor's "
+			"`UAbilitySystemComponent`. Returns `{valid, actor_name, "
+			"attributes: [{name, base_value, current_value}]}`. `base_value` "
+			"is the raw value before active-effect modifications; "
+			"`current_value` is after. `name` uses 'AttrSet.Attribute' "
+			"form (e.g. 'LyraHealthSet.Health'). Requires a live editor + "
+			"GAS plugin.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actor_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"actor_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"attributes", {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string actor = RequireString(args, "actor_name");
+			auto r = reader.ListActorAttributes(actor);
+			nlohmann::json attrs = nlohmann::json::array();
+			for (const auto& a : r.attributes) {
+				attrs.push_back({
+					{"name",          a.name},
+					{"base_value",    a.baseValue},
+					{"current_value", a.currentValue},
+				});
+			}
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"actor_name", r.actorName},
+				{"attributes", attrs},
+			};
+		});
+	}
+
+	// ----- list_actor_gameplay_effects ----------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_actor_gameplay_effects";
+		d.description =
+			"[editor] Active gameplay effects on the named actor's "
+			"`UAbilitySystemComponent`. Returns `{valid, actor_name, "
+			"effects: [{effect_class, stack_count, duration_remaining, "
+			"level, granted_tags}]}`. `duration_remaining` is -1 for "
+			"infinite-duration effects, else remaining seconds. "
+			"Requires a live editor + GAS plugin.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actor_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"actor_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"effects",    {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string actor = RequireString(args, "actor_name");
+			auto r = reader.ListActorGameplayEffects(actor);
+			nlohmann::json effs = nlohmann::json::array();
+			for (const auto& e : r.effects) {
+				effs.push_back({
+					{"effect_class",       e.effectClass},
+					{"stack_count",        e.stackCount},
+					{"duration_remaining", e.durationRemaining},
+					{"level",              e.level},
+					{"granted_tags",       e.grantedTags},
+				});
+			}
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"actor_name", r.actorName},
+				{"effects",    effs},
+			};
+		});
+	}
+
 	// ----- list_actor_abilities (Phase 11 H Tier 1 — GAS) -------------
 	{
 		ToolDescriptor d;

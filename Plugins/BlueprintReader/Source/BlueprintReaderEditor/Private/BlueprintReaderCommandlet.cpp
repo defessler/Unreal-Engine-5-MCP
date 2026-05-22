@@ -31,6 +31,8 @@
 #include "Abilities/GameplayAbility.h"
 #include "GameplayTagContainer.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayEffect.h"
+#include "AttributeSet.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -349,6 +351,8 @@ namespace
 		GetPluginDependencies,
 		ListActorAbilities,
 		ListActorGameplayTags,
+		ListActorAttributes,
+		ListActorGameplayEffects,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -516,6 +520,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetPluginDependencies"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetPluginDependencies; return true; }
 		if (OpStr.Equals(TEXT("ListActorAbilities"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListActorAbilities; return true; }
 		if (OpStr.Equals(TEXT("ListActorGameplayTags"), ESearchCase::IgnoreCase))   { OutOp = EOp::ListActorGameplayTags; return true; }
+		if (OpStr.Equals(TEXT("ListActorAttributes"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListActorAttributes; return true; }
+		if (OpStr.Equals(TEXT("ListActorGameplayEffects"), ESearchCase::IgnoreCase)){ OutOp = EOp::ListActorGameplayEffects; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6348,6 +6354,87 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunListActorAttributesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ActorName;
+		FParse::Value(*Params, TEXT("Actor="), ActorName);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("actor_name"), ActorName);
+		TArray<TSharedPtr<FJsonValue>> Attrs;
+
+		if (AActor* Actor = FindActorByName(ActorName))
+		{
+			if (UAbilitySystemComponent* ASC = GetActorASC(Actor))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				TArray<FGameplayAttribute> Attributes;
+				ASC->GetAllAttributes(Attributes);
+				for (const FGameplayAttribute& Attr : Attributes)
+				{
+					auto A = MakeShared<FJsonObject>();
+					// FGameplayAttribute::GetName() returns "Set.Attr" style.
+					A->SetStringField(TEXT("name"),          Attr.GetName());
+					A->SetNumberField(TEXT("base_value"),    ASC->GetNumericAttributeBase(Attr));
+					A->SetNumberField(TEXT("current_value"), ASC->GetNumericAttribute(Attr));
+					Attrs.Add(MakeShared<FJsonValueObject>(A));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("attributes"), Attrs);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunListActorGameplayEffectsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ActorName;
+		FParse::Value(*Params, TEXT("Actor="), ActorName);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("actor_name"), ActorName);
+		TArray<TSharedPtr<FJsonValue>> Effects;
+
+		if (AActor* Actor = FindActorByName(ActorName))
+		{
+			if (UAbilitySystemComponent* ASC = GetActorASC(Actor))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				const FActiveGameplayEffectsContainer& Active = ASC->GetActiveGameplayEffects();
+				for (auto It = Active.CreateConstIterator(); It; ++It)
+				{
+					const FActiveGameplayEffect& Eff = *It;
+					auto E = MakeShared<FJsonObject>();
+					const UGameplayEffect* Def = Eff.Spec.Def.Get();
+					E->SetStringField(TEXT("effect_class"),
+						Def ? Def->GetClass()->GetPathName() : FString());
+					E->SetNumberField(TEXT("stack_count"),       Eff.Spec.GetStackCount());
+					// Duration: -1 sentinel for infinite, 0+ for time-limited
+					// (remaining seconds).
+					float Duration = Eff.GetDuration();
+					E->SetNumberField(TEXT("duration_remaining"),
+						Duration < 0.0f ? -1.0 : (double)Eff.GetTimeRemaining(Actor->GetWorld()->GetTimeSeconds()));
+					E->SetNumberField(TEXT("level"), Eff.Spec.GetLevel());
+
+					TArray<TSharedPtr<FJsonValue>> Tags;
+					FGameplayTagContainer Granted;
+					Eff.Spec.GetAllGrantedTags(Granted);
+					for (auto T = Granted.CreateConstIterator(); T; ++T)
+					{
+						Tags.Add(MakeShared<FJsonValueString>(T->ToString()));
+					}
+					E->SetArrayField(TEXT("granted_tags"), Tags);
+					Effects.Add(MakeShared<FJsonValueObject>(E));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("effects"), Effects);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListActorGameplayTagsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString ActorName;
@@ -8106,6 +8193,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetPluginDependencies,      &RunGetPluginDependenciesOp },
 		{ EOp::ListActorAbilities,         &RunListActorAbilitiesOp },
 		{ EOp::ListActorGameplayTags,      &RunListActorGameplayTagsOp },
+		{ EOp::ListActorAttributes,        &RunListActorAttributesOp },
+		{ EOp::ListActorGameplayEffects,   &RunListActorGameplayEffectsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

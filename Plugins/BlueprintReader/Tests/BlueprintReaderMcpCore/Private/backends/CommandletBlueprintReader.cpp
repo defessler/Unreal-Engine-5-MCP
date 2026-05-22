@@ -3504,6 +3504,56 @@ CommandletBlueprintReader::ListActorGameplayTags(std::string_view actorName) {
 	return out;
 }
 
+IBlueprintReader::ActorAttributesResult
+CommandletBlueprintReader::ListActorAttributes(std::string_view actorName) {
+	auto j = RunOp({L"-Op=ListActorAttributes",
+					L"-Actor=" + Widen(actorName)});
+	ActorAttributesResult out;
+	out.actorName = std::string(actorName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("attributes"); it != j.end() && it->is_array()) {
+			for (const auto& a : *it) {
+				if (!a.is_object()) continue;
+				ActorAttributeInfo info;
+				info.name         = a.value("name",          std::string{});
+				info.baseValue    = a.value("base_value",    0.0);
+				info.currentValue = a.value("current_value", 0.0);
+				out.attributes.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::ActorEffectsResult
+CommandletBlueprintReader::ListActorGameplayEffects(std::string_view actorName) {
+	auto j = RunOp({L"-Op=ListActorGameplayEffects",
+					L"-Actor=" + Widen(actorName)});
+	ActorEffectsResult out;
+	out.actorName = std::string(actorName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("effects"); it != j.end() && it->is_array()) {
+			for (const auto& e : *it) {
+				if (!e.is_object()) continue;
+				ActorEffectInfo info;
+				info.effectClass       = e.value("effect_class",        std::string{});
+				info.stackCount        = e.value("stack_count",          1);
+				info.durationRemaining = e.value("duration_remaining",   0.0);
+				info.level             = e.value("level",                1.0);
+				if (auto tIt = e.find("granted_tags"); tIt != e.end() && tIt->is_array()) {
+					for (const auto& t : *tIt) {
+						if (t.is_string()) info.grantedTags.push_back(t.get<std::string>());
+					}
+				}
+				out.effects.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

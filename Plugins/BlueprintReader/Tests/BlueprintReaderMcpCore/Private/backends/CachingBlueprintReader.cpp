@@ -708,6 +708,14 @@ IBlueprintReader::ActorTagsResult
 CachingBlueprintReader::ListActorGameplayTags(std::string_view a) {
 	return inner_->ListActorGameplayTags(a);
 }
+IBlueprintReader::ActorAttributesResult
+CachingBlueprintReader::ListActorAttributes(std::string_view a) {
+	return inner_->ListActorAttributes(a);
+}
+IBlueprintReader::ActorEffectsResult
+CachingBlueprintReader::ListActorGameplayEffects(std::string_view a) {
+	return inner_->ListActorGameplayEffects(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 
