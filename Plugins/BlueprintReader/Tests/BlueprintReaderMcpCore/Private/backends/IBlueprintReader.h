@@ -1552,6 +1552,45 @@ public:
 		throw BlueprintReaderError("ListActorGameplayTags not supported by this backend");
 	}
 
+	// Gameplay attribute values on the actor's ASC. Returns both base
+	// (raw value before mods) and current (after active effects). The
+	// attribute name format matches what UAttributeSet uses internally:
+	// "AttributeSetClassName.AttributeName" (e.g. "LyraHealthSet.Health").
+	struct ActorAttributeInfo {
+		std::string name;
+		double baseValue = 0.0;
+		double currentValue = 0.0;
+	};
+	struct ActorAttributesResult {
+		bool valid = false;
+		std::string actorName;
+		std::vector<ActorAttributeInfo> attributes;
+	};
+	virtual ActorAttributesResult ListActorAttributes(std::string_view actorName) {
+		(void)actorName;
+		throw BlueprintReaderError("ListActorAttributes not supported by this backend");
+	}
+
+	// Active gameplay effects on the actor's ASC. Per-effect metadata
+	// includes stack count, remaining duration (-1 for infinite), level
+	// when set, and tags granted by the effect.
+	struct ActorEffectInfo {
+		std::string effectClass;
+		int  stackCount = 1;
+		double durationRemaining = 0.0;  // -1 sentinel for infinite
+		double level = 1.0;
+		std::vector<std::string> grantedTags;
+	};
+	struct ActorEffectsResult {
+		bool valid = false;
+		std::string actorName;
+		std::vector<ActorEffectInfo> effects;
+	};
+	virtual ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) {
+		(void)actorName;
+		throw BlueprintReaderError("ListActorGameplayEffects not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

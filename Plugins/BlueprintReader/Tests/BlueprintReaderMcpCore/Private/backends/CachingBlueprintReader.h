@@ -206,6 +206,8 @@ public:
 	PluginDependenciesResult GetPluginDependencies(std::string_view pluginName) override;
 	ActorAbilitiesResult ListActorAbilities(std::string_view actorName) override;
 	ActorTagsResult ListActorGameplayTags(std::string_view actorName) override;
+	ActorAttributesResult ListActorAttributes(std::string_view actorName) override;
+	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

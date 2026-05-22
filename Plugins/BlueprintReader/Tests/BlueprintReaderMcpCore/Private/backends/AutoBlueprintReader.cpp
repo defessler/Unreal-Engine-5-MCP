@@ -588,6 +588,14 @@ IBlueprintReader::ActorTagsResult
 AutoBlueprintReader::ListActorGameplayTags(std::string_view a) {
 	FORWARD(ListActorGameplayTags, a);
 }
+IBlueprintReader::ActorAttributesResult
+AutoBlueprintReader::ListActorAttributes(std::string_view a) {
+	FORWARD(ListActorAttributes, a);
+}
+IBlueprintReader::ActorEffectsResult
+AutoBlueprintReader::ListActorGameplayEffects(std::string_view a) {
+	FORWARD(ListActorGameplayEffects, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
