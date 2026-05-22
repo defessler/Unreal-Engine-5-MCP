@@ -60,7 +60,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 11 | **H Tier 1** PluginToolset + GameFeatures + GAS **(reads COMPLETE for all 3 toolsets — 9 of 12 in scope; write ops + GFP activate/deactivate pending)** | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |
 | | **— wire parity + core differentiation: ~13.5 weeks —** | | | | |
 | 12 | **EA-pull Wave 2** Per-asset-editor selection **(11 of ~15 SHIPPED — 8 functional + 3 stubs anim/niagara/curve_editor; remaining work is sidecar-registry design)** | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
-| 13 | **EA-pull Wave 3** Viewport + visibility **(4 of ~17 SHIPPED — buffer_viz_mode, gizmo_state, viewport_realtime, viewport_camera_settings; show_flags/view_mode/camera_transform already shipped in Phase 8)** | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
+| 13 | **EA-pull Wave 3** Viewport + visibility **(6 of ~17 SHIPPED — +snapping_settings, active_viewport; show_flags/view_mode/camera_transform already in Phase 8)** | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
 | 14 | **EA-pull Wave 4** World + SCC + system state | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
 | 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
 | 16 | **H Tier 2** ConfigSettings + Automation | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |

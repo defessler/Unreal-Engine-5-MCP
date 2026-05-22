@@ -772,6 +772,12 @@ IBlueprintReader::ViewportRealtimeResult CachingBlueprintReader::GetViewportReal
 IBlueprintReader::ViewportCameraSettingsResult CachingBlueprintReader::GetViewportCameraSettings() {
 	return inner_->GetViewportCameraSettings();
 }
+IBlueprintReader::SnappingSettingsResult CachingBlueprintReader::GetSnappingSettings() {
+	return inner_->GetSnappingSettings();
+}
+IBlueprintReader::ActiveViewportResult CachingBlueprintReader::GetActiveViewport() {
+	return inner_->GetActiveViewport();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

@@ -182,6 +182,8 @@ public:
 	GizmoStateResult GetGizmoState() override;
 	ViewportRealtimeResult GetViewportRealtime() override;
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
+	SnappingSettingsResult GetSnappingSettings() override;
+	ActiveViewportResult GetActiveViewport() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

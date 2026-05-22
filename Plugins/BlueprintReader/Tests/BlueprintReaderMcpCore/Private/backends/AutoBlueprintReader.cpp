@@ -652,6 +652,12 @@ IBlueprintReader::ViewportRealtimeResult AutoBlueprintReader::GetViewportRealtim
 IBlueprintReader::ViewportCameraSettingsResult AutoBlueprintReader::GetViewportCameraSettings() {
 	FORWARD(GetViewportCameraSettings);
 }
+IBlueprintReader::SnappingSettingsResult AutoBlueprintReader::GetSnappingSettings() {
+	FORWARD(GetSnappingSettings);
+}
+IBlueprintReader::ActiveViewportResult AutoBlueprintReader::GetActiveViewport() {
+	FORWARD(GetActiveViewport);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

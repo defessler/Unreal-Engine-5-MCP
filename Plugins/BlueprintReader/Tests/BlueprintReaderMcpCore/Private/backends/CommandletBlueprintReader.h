@@ -307,6 +307,8 @@ public:
 	GizmoStateResult GetGizmoState() override;
 	ViewportRealtimeResult GetViewportRealtime() override;
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
+	SnappingSettingsResult GetSnappingSettings() override;
+	ActiveViewportResult GetActiveViewport() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
