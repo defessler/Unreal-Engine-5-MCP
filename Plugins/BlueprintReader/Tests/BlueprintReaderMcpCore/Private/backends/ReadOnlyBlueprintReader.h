@@ -184,6 +184,7 @@ public:
 	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
+	HiddenActorsResult GetHiddenActors() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

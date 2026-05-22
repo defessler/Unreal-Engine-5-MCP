@@ -3735,6 +3735,33 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_hidden_actors (Phase 13 Wave 3) ------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_hidden_actors";
+		d.description =
+			"[editor] Names of actors hidden in the editor viewport "
+			"(temporary or level hide). Capped at 500 — `truncated:true` "
+			"signals a larger hidden set. Sorted by iteration order, not "
+			"by name. Pair with `set_actor_visibility` (Wave 3 writes, "
+			"future) to toggle. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actor_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"truncated",   {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetHiddenActors();
+			return nlohmann::json{
+				{"actor_names", r.actorNames},
+				{"truncated",   r.truncated},
+			};
+		});
+	}
+
 	// ----- get_snapping_settings (Phase 13 Wave 3) --------------------
 	{
 		ToolDescriptor d;
