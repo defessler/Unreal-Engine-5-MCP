@@ -720,6 +720,10 @@ IBlueprintReader::BlueprintEditorStateResult
 CachingBlueprintReader::GetBlueprintEditorState(std::string_view a) {
 	return inner_->GetBlueprintEditorState(a);
 }
+IBlueprintReader::MaterialInstanceParamsResult
+CachingBlueprintReader::GetMaterialInstanceParams(std::string_view a) {
+	return inner_->GetMaterialInstanceParams(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

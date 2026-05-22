@@ -35,6 +35,8 @@
 #include "AttributeSet.h"
 // Phase 12 Wave 2 — FBlueprintEditor (BlueprintEditor module / Kismet).
 #include "BlueprintEditor.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInterface.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -356,6 +358,7 @@ namespace
 		ListActorAttributes,
 		ListActorGameplayEffects,
 		GetBlueprintEditorState,
+		GetMaterialInstanceParams,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -526,6 +529,7 @@ namespace
 		if (OpStr.Equals(TEXT("ListActorAttributes"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListActorAttributes; return true; }
 		if (OpStr.Equals(TEXT("ListActorGameplayEffects"), ESearchCase::IgnoreCase)){ OutOp = EOp::ListActorGameplayEffects; return true; }
 		if (OpStr.Equals(TEXT("GetBlueprintEditorState"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetBlueprintEditorState; return true; }
+		if (OpStr.Equals(TEXT("GetMaterialInstanceParams"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetMaterialInstanceParams; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6358,6 +6362,59 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetMaterialInstanceParamsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetStringField(TEXT("parent_path"), FString());
+		TArray<TSharedPtr<FJsonValue>> Scalars, Vectors, Textures;
+
+		if (!AssetPath.IsEmpty())
+		{
+			if (UMaterialInstanceConstant* MI = LoadObject<UMaterialInstanceConstant>(nullptr, *AssetPath))
+			{
+				Out->SetBoolField(TEXT("valid"), true);
+				if (MI->Parent)
+				{
+					Out->SetStringField(TEXT("parent_path"),
+						MI->Parent->GetPathName());
+				}
+				for (const FScalarParameterValue& S : MI->ScalarParameterValues)
+				{
+					auto J = MakeShared<FJsonObject>();
+					J->SetStringField(TEXT("name"),  S.ParameterInfo.Name.ToString());
+					J->SetNumberField(TEXT("value"), S.ParameterValue);
+					Scalars.Add(MakeShared<FJsonValueObject>(J));
+				}
+				for (const FVectorParameterValue& V : MI->VectorParameterValues)
+				{
+					auto J = MakeShared<FJsonObject>();
+					J->SetStringField(TEXT("name"), V.ParameterInfo.Name.ToString());
+					J->SetNumberField(TEXT("r"), V.ParameterValue.R);
+					J->SetNumberField(TEXT("g"), V.ParameterValue.G);
+					J->SetNumberField(TEXT("b"), V.ParameterValue.B);
+					J->SetNumberField(TEXT("a"), V.ParameterValue.A);
+					Vectors.Add(MakeShared<FJsonValueObject>(J));
+				}
+				for (const FTextureParameterValue& T : MI->TextureParameterValues)
+				{
+					auto J = MakeShared<FJsonObject>();
+					J->SetStringField(TEXT("name"),         T.ParameterInfo.Name.ToString());
+					J->SetStringField(TEXT("texture_path"),
+						T.ParameterValue ? T.ParameterValue->GetPathName() : FString());
+					Textures.Add(MakeShared<FJsonValueObject>(J));
+				}
+			}
+		}
+		Out->SetArrayField(TEXT("scalars"),  Scalars);
+		Out->SetArrayField(TEXT("vectors"),  Vectors);
+		Out->SetArrayField(TEXT("textures"), Textures);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetBlueprintEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -8273,6 +8330,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListActorAttributes,        &RunListActorAttributesOp },
 		{ EOp::ListActorGameplayEffects,   &RunListActorGameplayEffectsOp },
 		{ EOp::GetBlueprintEditorState,    &RunGetBlueprintEditorStateOp },
+		{ EOp::GetMaterialInstanceParams,  &RunGetMaterialInstanceParamsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

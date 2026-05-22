@@ -3573,6 +3573,47 @@ CommandletBlueprintReader::GetBlueprintEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::MaterialInstanceParamsResult
+CommandletBlueprintReader::GetMaterialInstanceParams(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetMaterialInstanceParams",
+					L"-Asset=" + Widen(assetPath)});
+	MaterialInstanceParamsResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid      = j.value("valid", false);
+		out.parentPath = j.value("parent_path", std::string{});
+		if (auto it = j.find("scalars"); it != j.end() && it->is_array()) {
+			for (const auto& s : *it) {
+				if (!s.is_object()) continue;
+				MaterialInstanceScalarParam p;
+				p.name  = s.value("name",  std::string{});
+				p.value = s.value("value", 0.0);
+				out.scalars.push_back(std::move(p));
+			}
+		}
+		if (auto it = j.find("vectors"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (!v.is_object()) continue;
+				MaterialInstanceVectorParam p;
+				p.name = v.value("name", std::string{});
+				p.r = v.value("r", 0.0); p.g = v.value("g", 0.0);
+				p.b = v.value("b", 0.0); p.a = v.value("a", 0.0);
+				out.vectors.push_back(std::move(p));
+			}
+		}
+		if (auto it = j.find("textures"); it != j.end() && it->is_array()) {
+			for (const auto& t : *it) {
+				if (!t.is_object()) continue;
+				MaterialInstanceTextureParam p;
+				p.name        = t.value("name",         std::string{});
+				p.texturePath = t.value("texture_path", std::string{});
+				out.textures.push_back(std::move(p));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

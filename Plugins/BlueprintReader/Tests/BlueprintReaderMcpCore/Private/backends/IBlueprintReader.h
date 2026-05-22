@@ -1612,6 +1612,36 @@ public:
 		throw BlueprintReaderError("GetBlueprintEditorState not supported by this backend");
 	}
 
+	// Material instance parameter dump. Unlike most Wave-2 tools this
+	// doesn't need an open editor — UMaterialInstance exposes the
+	// parameter arrays publicly via the UAsset. Returns scalar/vector/
+	// texture parameter values; switch parameters and runtime virtual
+	// textures are excluded as a scope cap.
+	struct MaterialInstanceScalarParam {
+		std::string name;
+		double value = 0.0;
+	};
+	struct MaterialInstanceVectorParam {
+		std::string name;
+		double r = 0.0, g = 0.0, b = 0.0, a = 0.0;
+	};
+	struct MaterialInstanceTextureParam {
+		std::string name;
+		std::string texturePath;
+	};
+	struct MaterialInstanceParamsResult {
+		bool valid = false;
+		std::string assetPath;
+		std::string parentPath;     // the parent UMaterial path
+		std::vector<MaterialInstanceScalarParam>  scalars;
+		std::vector<MaterialInstanceVectorParam>  vectors;
+		std::vector<MaterialInstanceTextureParam> textures;
+	};
+	virtual MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetMaterialInstanceParams not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
