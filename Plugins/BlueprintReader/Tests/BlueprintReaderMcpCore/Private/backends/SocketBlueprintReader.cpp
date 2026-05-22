@@ -2089,6 +2089,20 @@ SocketBlueprintReader::GetSequencerState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::AnimEditorStateResult
+SocketBlueprintReader::GetAnimEditorState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetAnimEditorState",
+					"-Asset=" + std::string(assetPath)});
+	AnimEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                 false);
+		out.selectedBoneIndex  = j.value("selected_bone_index",   -1);
+		out.selectedSocketName = j.value("selected_socket_name",  std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

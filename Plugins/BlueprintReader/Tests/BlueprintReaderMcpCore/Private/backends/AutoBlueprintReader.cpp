@@ -628,6 +628,10 @@ IBlueprintReader::SequencerStateResult
 AutoBlueprintReader::GetSequencerState(std::string_view a) {
 	FORWARD(GetSequencerState, a);
 }
+IBlueprintReader::AnimEditorStateResult
+AutoBlueprintReader::GetAnimEditorState(std::string_view a) {
+	FORWARD(GetAnimEditorState, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

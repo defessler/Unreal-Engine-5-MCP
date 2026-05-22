@@ -300,6 +300,7 @@ public:
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
 	CinematicCameraResult GetCinematicCamera() override;
 	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
+	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

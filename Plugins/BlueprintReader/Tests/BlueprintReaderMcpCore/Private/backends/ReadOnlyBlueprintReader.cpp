@@ -428,6 +428,10 @@ IBlueprintReader::SequencerStateResult
 ReadOnlyBlueprintReader::GetSequencerState(std::string_view a) {
 	return inner_->GetSequencerState(a);
 }
+IBlueprintReader::AnimEditorStateResult
+ReadOnlyBlueprintReader::GetAnimEditorState(std::string_view a) {
+	return inner_->GetAnimEditorState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

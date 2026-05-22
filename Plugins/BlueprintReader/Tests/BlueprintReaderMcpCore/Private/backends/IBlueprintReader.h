@@ -1742,6 +1742,22 @@ public:
 		throw BlueprintReaderError("GetSequencerState not supported by this backend");
 	}
 
+	// Persona / Animation editor selection state. v1 covers
+	// IPersonaPreviewScene's selected bone / socket (the cheap subset of
+	// the original plan's `{scrubber_seconds, selected_curves,
+	// preview_paused}`). Scrubber position is on the preview mesh
+	// component's AnimInstance and is more involved to surface.
+	struct AnimEditorStateResult {
+		bool valid = false;
+		std::string assetPath;
+		int  selectedBoneIndex = -1;
+		std::string selectedSocketName;
+	};
+	virtual AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetAnimEditorState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

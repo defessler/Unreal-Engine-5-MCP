@@ -3722,6 +3722,20 @@ CommandletBlueprintReader::GetSequencerState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::AnimEditorStateResult
+CommandletBlueprintReader::GetAnimEditorState(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetAnimEditorState",
+					L"-Asset=" + Widen(assetPath)});
+	AnimEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                 false);
+		out.selectedBoneIndex  = j.value("selected_bone_index",   -1);
+		out.selectedSocketName = j.value("selected_socket_name",  std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

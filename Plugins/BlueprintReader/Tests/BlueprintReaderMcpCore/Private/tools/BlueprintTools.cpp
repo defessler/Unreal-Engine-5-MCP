@@ -3693,6 +3693,46 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_anim_editor_state (Phase 12 Wave 2) --------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_anim_editor_state";
+		d.description =
+			"[editor] Persona / animation editor selection state. Returns "
+			"`{valid, asset_path, selected_bone_index, selected_socket_name}`. "
+			"v1 covers the IPersonaPreviewScene selection state (bone "
+			"+ socket). Scrubber position deferred — needs deeper "
+			"AnimInstance time-tracking. `valid:true` requires any Persona-"
+			"based editor (skeleton / animation / blend-space) to be open. "
+			"Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                 {{"type","boolean"}}},
+				{"asset_path",            {{"type","string"}}},
+				{"selected_bone_index",   {{"type","integer"}}},
+				{"selected_socket_name",  {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetAnimEditorState(asset);
+			return nlohmann::json{
+				{"valid",                r.valid},
+				{"asset_path",           r.assetPath},
+				{"selected_bone_index",  r.selectedBoneIndex},
+				{"selected_socket_name", r.selectedSocketName},
+			};
+		});
+	}
+
 	// ----- get_sequencer_state (Phase 12 Wave 2) ----------------------
 	{
 		ToolDescriptor d;

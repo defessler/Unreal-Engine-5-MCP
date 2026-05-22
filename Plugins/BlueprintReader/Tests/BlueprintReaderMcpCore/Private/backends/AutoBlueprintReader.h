@@ -195,6 +195,7 @@ public:
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
 	CinematicCameraResult GetCinematicCamera() override;
 	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
+	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
