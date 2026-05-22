@@ -267,6 +267,8 @@ public:
 	ModalStateResult GetModalState() override;
 	EditorModesResult GetActiveEditorMode() override;
 	FocusedWidgetResult GetFocusedWidget() override;
+	OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) override;
+	CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

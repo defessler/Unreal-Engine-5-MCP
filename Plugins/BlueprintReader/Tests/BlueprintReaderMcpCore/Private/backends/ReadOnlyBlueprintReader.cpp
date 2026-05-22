@@ -273,6 +273,45 @@ ReadOnlyBlueprintReader::RunAutomationTests(std::string_view pattern) {
 	return inner_->RunAutomationTests(pattern);
 }
 
+// ----- Phase 8 EA-pull Wave 1 (all pass through; no .uasset mutation) ----
+
+IBlueprintReader::OpenAssetsResult ReadOnlyBlueprintReader::ListOpenAssets() {
+	return inner_->ListOpenAssets();
+}
+IBlueprintReader::ActiveAssetResult ReadOnlyBlueprintReader::GetActiveAsset() {
+	return inner_->GetActiveAsset();
+}
+IBlueprintReader::CompileStatusResult
+ReadOnlyBlueprintReader::GetCompileStatus(std::string_view a) {
+	return inner_->GetCompileStatus(a);
+}
+IBlueprintReader::DirtyPackagesResult ReadOnlyBlueprintReader::GetDirtyPackages() {
+	return inner_->GetDirtyPackages();
+}
+IBlueprintReader::FocusedWindowResult ReadOnlyBlueprintReader::GetFocusedWindow() {
+	return inner_->GetFocusedWindow();
+}
+IBlueprintReader::PieStateResult ReadOnlyBlueprintReader::GetPieState() {
+	return inner_->GetPieState();
+}
+IBlueprintReader::ModalStateResult ReadOnlyBlueprintReader::GetModalState() {
+	return inner_->GetModalState();
+}
+IBlueprintReader::EditorModesResult ReadOnlyBlueprintReader::GetActiveEditorMode() {
+	return inner_->GetActiveEditorMode();
+}
+IBlueprintReader::FocusedWidgetResult ReadOnlyBlueprintReader::GetFocusedWidget() {
+	return inner_->GetFocusedWidget();
+}
+IBlueprintReader::OpenAssetEditorResult
+ReadOnlyBlueprintReader::OpenAssetEditor(std::string_view a) {
+	return inner_->OpenAssetEditor(a);
+}
+IBlueprintReader::CloseAssetEditorResult
+ReadOnlyBlueprintReader::CloseAssetEditor(std::string_view a) {
+	return inner_->CloseAssetEditor(a);
+}
+
 // ----- Material authoring (reads pass through, writes reject) -----------
 
 std::vector<BPAssetSummary>

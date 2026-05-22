@@ -3623,6 +3623,76 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- open_asset_editor ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "open_asset_editor";
+		d.description =
+			"[editor] Open the asset editor for the given asset (Blueprint, "
+			"Material, etc.). Idempotent — opening an already-open asset "
+			"brings the existing editor window to front. `asset_path` is "
+			"package form: `/Game/AI/BP_Foo`. Returns `{opened, asset_path}`. "
+			"`opened` is false when the asset couldn't be loaded. Requires a "
+			"live editor.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path", {{"type", "string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"opened",     {{"type", "boolean"}}},
+				{"asset_path", {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string assetPath = RequireString(args, "asset_path");
+			auto r = reader.OpenAssetEditor(assetPath);
+			return nlohmann::json{
+				{"ok",         true},
+				{"opened",     r.opened},
+				{"asset_path", r.assetPath},
+			};
+		});
+	}
+
+	// ----- close_asset_editor --------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "close_asset_editor";
+		d.description =
+			"[editor] Close all editor windows for the given asset. "
+			"Idempotent — closing an asset with no editor open is a no-op "
+			"(`closed:false`, no error). `asset_path` is package form. "
+			"Returns `{closed, asset_path}`. Requires a live editor.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path", {{"type", "string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"closed",     {{"type", "boolean"}}},
+				{"asset_path", {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string assetPath = RequireString(args, "asset_path");
+			auto r = reader.CloseAssetEditor(assetPath);
+			return nlohmann::json{
+				{"ok",         true},
+				{"closed",     r.closed},
+				{"asset_path", r.assetPath},
+			};
+		});
+	}
+
 	// ----- get_active_editor_mode -----------------------------------------
 	{
 		ToolDescriptor d;

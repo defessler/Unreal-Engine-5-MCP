@@ -3113,6 +3113,30 @@ CommandletBlueprintReader::LiveCodingCompile() {
 	return out;
 }
 
+IBlueprintReader::OpenAssetEditorResult
+CommandletBlueprintReader::OpenAssetEditor(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=OpenAssetEditor",
+					L"-Asset=" + Widen(assetPath)});
+	OpenAssetEditorResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.opened = j.value("opened", false);
+	}
+	return out;
+}
+
+IBlueprintReader::CloseAssetEditorResult
+CommandletBlueprintReader::CloseAssetEditor(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=CloseAssetEditor",
+					L"-Asset=" + Widen(assetPath)});
+	CloseAssetEditorResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.closed = j.value("closed", false);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

@@ -128,6 +128,51 @@ TEST_CASE("Phase 8: mock backend rejects get_active_asset") {
 	CHECK_THROWS(f.Call("get_active_asset", json::object()));
 }
 
+TEST_CASE("Phase 8: open_asset_editor + close_asset_editor registered") {
+	Fixture f;
+	auto spec = f.registry.ListSpec();
+	std::vector<std::string> names;
+	for (const auto& t : spec) {
+		names.push_back(t["name"].get<std::string>());
+	}
+	auto has = [&](const std::string& n) {
+		return std::find(names.begin(), names.end(), n) != names.end();
+	};
+	CHECK(has("open_asset_editor"));
+	CHECK(has("close_asset_editor"));
+}
+
+TEST_CASE("Phase 8: open_asset_editor declares asset_path required") {
+	Fixture f;
+	auto spec = f.registry.ListSpec();
+	for (const auto& t : spec) {
+		if (t["name"] == "open_asset_editor") {
+			REQUIRE(t["inputSchema"].contains("required"));
+			const auto& req = t["inputSchema"]["required"];
+			REQUIRE(req.is_array());
+			bool sawAssetPath = false;
+			for (const auto& r : req) {
+				if (r == "asset_path") sawAssetPath = true;
+			}
+			CHECK(sawAssetPath);
+			return;
+		}
+	}
+	FAIL("open_asset_editor not found");
+}
+
+TEST_CASE("Phase 8: mock backend rejects open_asset_editor") {
+	Fixture f;
+	CHECK_THROWS(f.Call("open_asset_editor",
+		json{{"asset_path", "/Game/AI/BP_TestEnemy"}}));
+}
+
+TEST_CASE("Phase 8: mock backend rejects close_asset_editor") {
+	Fixture f;
+	CHECK_THROWS(f.Call("close_asset_editor",
+		json{{"asset_path", "/Game/AI/BP_TestEnemy"}}));
+}
+
 TEST_CASE("Phase 8: mock backend rejects get_compile_status") {
 	Fixture f;
 	CHECK_THROWS(f.Call("get_compile_status",

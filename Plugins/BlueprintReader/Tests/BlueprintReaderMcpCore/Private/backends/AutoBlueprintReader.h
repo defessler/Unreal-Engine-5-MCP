@@ -149,6 +149,22 @@ public:
 	AssetRegistryListResult ListAssets(std::string_view path, bool recursive) override;
 	AssetRegistryListResult FindAsset(std::string_view query, std::string_view path) override;
 
+	// ----- Phase 8 EA-pull Wave 1 (editor-awareness reads) -----------
+	// Same pattern as above: explicit overrides because IBlueprintReader's
+	// defaults throw. Live editor exposes them; commandlet returns sane
+	// empties for the read-only awareness queries that don't need a UI.
+	OpenAssetsResult ListOpenAssets() override;
+	ActiveAssetResult GetActiveAsset() override;
+	CompileStatusResult GetCompileStatus(std::string_view assetPath) override;
+	DirtyPackagesResult GetDirtyPackages() override;
+	FocusedWindowResult GetFocusedWindow() override;
+	PieStateResult GetPieState() override;
+	ModalStateResult GetModalState() override;
+	EditorModesResult GetActiveEditorMode() override;
+	FocusedWidgetResult GetFocusedWidget() override;
+	OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) override;
+	CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) override;
+
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
 	// cache has expired.

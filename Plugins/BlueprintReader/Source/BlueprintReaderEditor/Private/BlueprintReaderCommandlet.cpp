@@ -299,7 +299,7 @@ namespace
 		// association etc. Implemented editor-side so the live
 		// backend doesn't need its own .uproject path config.
 		GetProjectMetadata,
-		// Phase 8 EA-pull Wave 1 (partial) — editor-awareness reads.
+		// Phase 8 EA-pull Wave 1 — editor-awareness reads + lifecycle.
 		ListOpenAssets,
 		GetActiveAsset,
 		GetCompileStatus,
@@ -309,6 +309,8 @@ namespace
 		GetModalState,
 		GetActiveEditorMode,
 		GetFocusedWidget,
+		OpenAssetEditor,
+		CloseAssetEditor,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -453,6 +455,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetModalState"), ESearchCase::IgnoreCase))           { OutOp = EOp::GetModalState; return true; }
 		if (OpStr.Equals(TEXT("GetActiveEditorMode"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetActiveEditorMode; return true; }
 		if (OpStr.Equals(TEXT("GetFocusedWidget"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetFocusedWidget; return true; }
+		if (OpStr.Equals(TEXT("OpenAssetEditor"), ESearchCase::IgnoreCase))         { OutOp = EOp::OpenAssetEditor; return true; }
+		if (OpStr.Equals(TEXT("CloseAssetEditor"), ESearchCase::IgnoreCase))        { OutOp = EOp::CloseAssetEditor; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5880,6 +5884,64 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunOpenAssetEditorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("open_asset_editor requires asset_path"));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		bool bOpened = false;
+		if (GEditor != nullptr)
+		{
+			if (UAssetEditorSubsystem* AES =
+				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				if (UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath))
+				{
+					bOpened = AES->OpenEditorForAsset(Asset);
+				}
+			}
+		}
+		Out->SetBoolField(TEXT("opened"), bOpened);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunCloseAssetEditorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("close_asset_editor requires asset_path"));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		bool bClosed = false;
+		if (GEditor != nullptr)
+		{
+			if (UAssetEditorSubsystem* AES =
+				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				// LoadObject (not FindObject) — closing-by-path should work
+				// even if the editor is the only thing holding the asset
+				// reference. CloseAllEditorsForAsset is idempotent (no
+				// editors open → false return, no error).
+				if (UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath))
+				{
+					bClosed = AES->CloseAllEditorsForAsset(Asset) != 0;
+				}
+			}
+		}
+		Out->SetBoolField(TEXT("closed"), bClosed);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -7110,6 +7172,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetModalState,              &RunGetModalStateOp },
 		{ EOp::GetActiveEditorMode,        &RunGetActiveEditorModeOp },
 		{ EOp::GetFocusedWidget,           &RunGetFocusedWidgetOp },
+		{ EOp::OpenAssetEditor,            &RunOpenAssetEditorOp },
+		{ EOp::CloseAssetEditor,           &RunCloseAssetEditorOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

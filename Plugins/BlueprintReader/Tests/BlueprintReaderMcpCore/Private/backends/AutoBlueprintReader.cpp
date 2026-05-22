@@ -476,6 +476,45 @@ AutoBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
 	FORWARD(FindAsset, query, path);
 }
 
+// ----- Phase 8 EA-pull Wave 1 ----------------------------------------------
+
+IBlueprintReader::OpenAssetsResult AutoBlueprintReader::ListOpenAssets() {
+	FORWARD(ListOpenAssets);
+}
+IBlueprintReader::ActiveAssetResult AutoBlueprintReader::GetActiveAsset() {
+	FORWARD(GetActiveAsset);
+}
+IBlueprintReader::CompileStatusResult
+AutoBlueprintReader::GetCompileStatus(std::string_view a) {
+	FORWARD(GetCompileStatus, a);
+}
+IBlueprintReader::DirtyPackagesResult AutoBlueprintReader::GetDirtyPackages() {
+	FORWARD(GetDirtyPackages);
+}
+IBlueprintReader::FocusedWindowResult AutoBlueprintReader::GetFocusedWindow() {
+	FORWARD(GetFocusedWindow);
+}
+IBlueprintReader::PieStateResult AutoBlueprintReader::GetPieState() {
+	FORWARD(GetPieState);
+}
+IBlueprintReader::ModalStateResult AutoBlueprintReader::GetModalState() {
+	FORWARD(GetModalState);
+}
+IBlueprintReader::EditorModesResult AutoBlueprintReader::GetActiveEditorMode() {
+	FORWARD(GetActiveEditorMode);
+}
+IBlueprintReader::FocusedWidgetResult AutoBlueprintReader::GetFocusedWidget() {
+	FORWARD(GetFocusedWidget);
+}
+IBlueprintReader::OpenAssetEditorResult
+AutoBlueprintReader::OpenAssetEditor(std::string_view a) {
+	FORWARD(OpenAssetEditor, a);
+}
+IBlueprintReader::CloseAssetEditorResult
+AutoBlueprintReader::CloseAssetEditor(std::string_view a) {
+	FORWARD(CloseAssetEditor, a);
+}
+
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
 	// and the user calling shutdown_daemon explicitly wants to release
