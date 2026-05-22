@@ -1720,6 +1720,28 @@ public:
 		throw BlueprintReaderError("GetCinematicCamera not supported by this backend");
 	}
 
+	// Sequencer state for an open ULevelSequence editor. Returns the
+	// playhead time in seconds (global, i.e. unwrapped if sub-sequences
+	// are nested), the playback status as a simplified string, and the
+	// playback range bounds. `valid:false` when the level sequence isn't
+	// open in the editor.
+	//
+	// Status strings:
+	//   "stopped" / "playing" / "scrubbing" / "jumping" / "stepping" /
+	//   "paused" / "unknown"
+	struct SequencerStateResult {
+		bool valid = false;
+		std::string assetPath;
+		double playheadSeconds = 0.0;
+		std::string playbackStatus;
+		double playbackRangeStartSeconds = 0.0;
+		double playbackRangeEndSeconds   = 0.0;
+	};
+	virtual SequencerStateResult GetSequencerState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetSequencerState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

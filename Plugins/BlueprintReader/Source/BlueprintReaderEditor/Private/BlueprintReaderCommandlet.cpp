@@ -45,6 +45,11 @@
 #include "IStaticMeshEditor.h"
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
+#include "LevelSequence.h"
+#include "ILevelSequenceEditorToolkit.h"
+#include "ISequencer.h"
+#include "MovieScene.h"
+#include "MovieSceneFwd.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -372,6 +377,7 @@ namespace
 		GetMaterialEditorState,
 		GetMeshPreviewState,
 		GetCinematicCamera,
+		GetSequencerState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -548,6 +554,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetMaterialEditorState"), ESearchCase::IgnoreCase))  { OutOp = EOp::GetMaterialEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetMeshPreviewState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetMeshPreviewState; return true; }
 		if (OpStr.Equals(TEXT("GetCinematicCamera"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCinematicCamera; return true; }
+		if (OpStr.Equals(TEXT("GetSequencerState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetSequencerState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6380,6 +6387,79 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	FString MovieSceneStatusToString(EMovieScenePlayerStatus::Type Status)
+	{
+		switch (Status)
+		{
+			case EMovieScenePlayerStatus::Stopped:   return TEXT("stopped");
+			case EMovieScenePlayerStatus::Playing:   return TEXT("playing");
+			case EMovieScenePlayerStatus::Scrubbing: return TEXT("scrubbing");
+			case EMovieScenePlayerStatus::Jumping:   return TEXT("jumping");
+			case EMovieScenePlayerStatus::Stepping:  return TEXT("stepping");
+			case EMovieScenePlayerStatus::Paused:    return TEXT("paused");
+			default:                                  return TEXT("unknown");
+		}
+	}
+
+	int32 RunGetSequencerStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("playhead_seconds"), 0.0);
+		Out->SetStringField(TEXT("playback_status"), FString());
+		Out->SetNumberField(TEXT("playback_range_start_seconds"), 0.0);
+		Out->SetNumberField(TEXT("playback_range_end_seconds"),   0.0);
+
+		if (!AssetPath.IsEmpty() && GEditor != nullptr)
+		{
+			if (ULevelSequence* LS = LoadObject<ULevelSequence>(nullptr, *AssetPath))
+			{
+				if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+				{
+					if (IAssetEditorInstance* Editor = AES->FindEditorForAsset(LS, /*bFocusIfOpen=*/false))
+					{
+						const FName EditorId = Editor->GetEditorName();
+						if (EditorId == FName(TEXT("LevelSequenceEditor")))
+						{
+							ILevelSequenceEditorToolkit* LSToolkit = static_cast<ILevelSequenceEditorToolkit*>(Editor);
+							if (TSharedPtr<ISequencer> Seq = LSToolkit->GetSequencer())
+							{
+								Out->SetBoolField(TEXT("valid"), true);
+								const FQualifiedFrameTime GlobalTime = Seq->GetGlobalTime();
+								Out->SetNumberField(TEXT("playhead_seconds"),
+									GlobalTime.AsSeconds());
+								Out->SetStringField(TEXT("playback_status"),
+									MovieSceneStatusToString(Seq->GetPlaybackStatus()));
+								// Playback range from the level sequence's movie scene.
+								if (UMovieScene* Scene = LS->GetMovieScene())
+								{
+									const FFrameRate Rate = Scene->GetTickResolution();
+									const TRange<FFrameNumber> Range = Scene->GetPlaybackRange();
+									if (Range.HasLowerBound())
+									{
+										const FFrameNumber StartFrame = Range.GetLowerBoundValue();
+										Out->SetNumberField(TEXT("playback_range_start_seconds"),
+											Rate.AsSeconds(FFrameTime(StartFrame)));
+									}
+									if (Range.HasUpperBound())
+									{
+										const FFrameNumber EndFrame = Range.GetUpperBoundValue();
+										Out->SetNumberField(TEXT("playback_range_end_seconds"),
+											Rate.AsSeconds(FFrameTime(EndFrame)));
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetCinematicCameraOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -8552,6 +8632,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetMaterialEditorState,     &RunGetMaterialEditorStateOp },
 		{ EOp::GetMeshPreviewState,        &RunGetMeshPreviewStateOp },
 		{ EOp::GetCinematicCamera,         &RunGetCinematicCameraOp },
+		{ EOp::GetSequencerState,          &RunGetSequencerStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

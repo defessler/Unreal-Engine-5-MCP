@@ -424,6 +424,10 @@ IBlueprintReader::CinematicCameraResult
 ReadOnlyBlueprintReader::GetCinematicCamera() {
 	return inner_->GetCinematicCamera();
 }
+IBlueprintReader::SequencerStateResult
+ReadOnlyBlueprintReader::GetSequencerState(std::string_view a) {
+	return inner_->GetSequencerState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

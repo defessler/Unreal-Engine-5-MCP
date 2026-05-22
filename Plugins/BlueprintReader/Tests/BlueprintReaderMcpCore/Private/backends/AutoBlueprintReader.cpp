@@ -624,6 +624,10 @@ IBlueprintReader::CinematicCameraResult
 AutoBlueprintReader::GetCinematicCamera() {
 	FORWARD(GetCinematicCamera);
 }
+IBlueprintReader::SequencerStateResult
+AutoBlueprintReader::GetSequencerState(std::string_view a) {
+	FORWARD(GetSequencerState, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

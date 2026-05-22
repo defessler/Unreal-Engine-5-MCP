@@ -215,6 +215,7 @@ public:
 	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
 	CinematicCameraResult GetCinematicCamera() override;
+	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

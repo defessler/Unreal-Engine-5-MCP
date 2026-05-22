@@ -2073,6 +2073,22 @@ SocketBlueprintReader::GetCinematicCamera() {
 	return out;
 }
 
+IBlueprintReader::SequencerStateResult
+SocketBlueprintReader::GetSequencerState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetSequencerState",
+					"-Asset=" + std::string(assetPath)});
+	SequencerStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid                       = j.value("valid",                          false);
+		out.playheadSeconds             = j.value("playhead_seconds",               0.0);
+		out.playbackStatus              = j.value("playback_status",                std::string{});
+		out.playbackRangeStartSeconds   = j.value("playback_range_start_seconds",   0.0);
+		out.playbackRangeEndSeconds     = j.value("playback_range_end_seconds",     0.0);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});
