@@ -129,6 +129,22 @@ public:
 	// return what happened); they don't mutate .uasset files directly.
 	AutomationRunResult RunAutomationTests(std::string_view) override;
 
+	// ----- Phase 8 EA-pull Wave 1 (editor-awareness reads) -------------
+	// All read-shaped — no .uasset mutation. open_asset_editor and
+	// close_asset_editor manipulate UI window state, not .uasset bytes,
+	// so they pass through too.
+	OpenAssetsResult ListOpenAssets() override;
+	ActiveAssetResult GetActiveAsset() override;
+	CompileStatusResult GetCompileStatus(std::string_view) override;
+	DirtyPackagesResult GetDirtyPackages() override;
+	FocusedWindowResult GetFocusedWindow() override;
+	PieStateResult GetPieState() override;
+	ModalStateResult GetModalState() override;
+	EditorModesResult GetActiveEditorMode() override;
+	FocusedWidgetResult GetFocusedWidget() override;
+	OpenAssetEditorResult OpenAssetEditor(std::string_view) override;
+	CloseAssetEditorResult CloseAssetEditor(std::string_view) override;
+
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,
 	// set parameter, compile) throw the read-only error.

@@ -172,6 +172,20 @@ public:
 	OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
 	AutomationRunResult RunAutomationTests(std::string_view pattern) override;
 
+	// ----- Phase 8 EA-pull Wave 1 (live editor state; uncacheable) -------
+	// Volatile snapshots — caching would lie. Pass straight through.
+	OpenAssetsResult ListOpenAssets() override;
+	ActiveAssetResult GetActiveAsset() override;
+	CompileStatusResult GetCompileStatus(std::string_view assetPath) override;
+	DirtyPackagesResult GetDirtyPackages() override;
+	FocusedWindowResult GetFocusedWindow() override;
+	PieStateResult GetPieState() override;
+	ModalStateResult GetModalState() override;
+	EditorModesResult GetActiveEditorMode() override;
+	FocusedWidgetResult GetFocusedWidget() override;
+	OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) override;
+	CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) override;
+
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------
 	std::vector<BPAssetSummary> ListMaterials(std::string_view) override;

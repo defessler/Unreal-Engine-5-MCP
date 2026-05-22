@@ -1483,6 +1483,30 @@ SocketBlueprintReader::GetFocusedWidget() {
 	return out;
 }
 
+IBlueprintReader::OpenAssetEditorResult
+SocketBlueprintReader::OpenAssetEditor(std::string_view assetPath) {
+	auto j = RunOp({"-Op=OpenAssetEditor",
+					std::string("-Asset=") + std::string(assetPath)});
+	OpenAssetEditorResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.opened = j.value("opened", false);
+	}
+	return out;
+}
+
+IBlueprintReader::CloseAssetEditorResult
+SocketBlueprintReader::CloseAssetEditor(std::string_view assetPath) {
+	auto j = RunOp({"-Op=CloseAssetEditor",
+					std::string("-Asset=") + std::string(assetPath)});
+	CloseAssetEditorResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.closed = j.value("closed", false);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

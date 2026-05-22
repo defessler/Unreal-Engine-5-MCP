@@ -1210,6 +1210,30 @@ public:
 		throw BlueprintReaderError("GetFocusedWidget not supported by this backend");
 	}
 
+	// Open the asset editor for the given asset (if not already open).
+	// Idempotent: opening an asset whose editor is already up just brings
+	// it to front. `assetPath` is package-form (/Game/AI/BP_Foo).
+	// `opened` true on success; false if the asset couldn't be loaded.
+	struct OpenAssetEditorResult {
+		bool opened = false;
+		std::string assetPath;
+	};
+	virtual OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("OpenAssetEditor not supported by this backend");
+	}
+
+	// Close all editors for the given asset (if any). Idempotent: closing
+	// an asset with no editor open is a no-op (closed=false, no error).
+	struct CloseAssetEditorResult {
+		bool closed = false;
+		std::string assetPath;
+	};
+	virtual CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("CloseAssetEditor not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

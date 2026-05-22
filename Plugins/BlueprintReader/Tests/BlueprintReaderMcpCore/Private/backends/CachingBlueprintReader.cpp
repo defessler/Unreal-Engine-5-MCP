@@ -596,6 +596,45 @@ CachingBlueprintReader::RunAutomationTests(std::string_view pattern) {
 	return inner_->RunAutomationTests(pattern);
 }
 
+// ----- Phase 8 EA-pull Wave 1 (uncacheable live state) ------------------
+
+IBlueprintReader::OpenAssetsResult CachingBlueprintReader::ListOpenAssets() {
+	return inner_->ListOpenAssets();
+}
+IBlueprintReader::ActiveAssetResult CachingBlueprintReader::GetActiveAsset() {
+	return inner_->GetActiveAsset();
+}
+IBlueprintReader::CompileStatusResult
+CachingBlueprintReader::GetCompileStatus(std::string_view a) {
+	return inner_->GetCompileStatus(a);
+}
+IBlueprintReader::DirtyPackagesResult CachingBlueprintReader::GetDirtyPackages() {
+	return inner_->GetDirtyPackages();
+}
+IBlueprintReader::FocusedWindowResult CachingBlueprintReader::GetFocusedWindow() {
+	return inner_->GetFocusedWindow();
+}
+IBlueprintReader::PieStateResult CachingBlueprintReader::GetPieState() {
+	return inner_->GetPieState();
+}
+IBlueprintReader::ModalStateResult CachingBlueprintReader::GetModalState() {
+	return inner_->GetModalState();
+}
+IBlueprintReader::EditorModesResult CachingBlueprintReader::GetActiveEditorMode() {
+	return inner_->GetActiveEditorMode();
+}
+IBlueprintReader::FocusedWidgetResult CachingBlueprintReader::GetFocusedWidget() {
+	return inner_->GetFocusedWidget();
+}
+IBlueprintReader::OpenAssetEditorResult
+CachingBlueprintReader::OpenAssetEditor(std::string_view a) {
+	return inner_->OpenAssetEditor(a);
+}
+IBlueprintReader::CloseAssetEditorResult
+CachingBlueprintReader::CloseAssetEditor(std::string_view a) {
+	return inner_->CloseAssetEditor(a);
+}
+
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 
 std::vector<BPAssetSummary>
