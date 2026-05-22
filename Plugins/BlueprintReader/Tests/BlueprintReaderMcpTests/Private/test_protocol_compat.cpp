@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 144);
+	REQUIRE(spec.size() == 147);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -221,7 +221,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// lifecycle: open_asset_editor + close_asset_editor. Also fixed the
 	// wrapper-chain forwarding bug for all 11 Phase 8 tools (Auto +
 	// Caching + ReadOnly now route them through to inner backends).
-	constexpr uint64_t kCurrentToolsHash = 0x95B500EDCBD64EA2ULL;
+	// Re-baselined 2026-05-21 at 147 tools after +3 viewport tools:
+	// get_camera_transform, get_view_mode, get_show_flags.
+	constexpr uint64_t kCurrentToolsHash = 0x5FA54C5BF6A4E109ULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

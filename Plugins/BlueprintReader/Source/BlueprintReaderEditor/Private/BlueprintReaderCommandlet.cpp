@@ -311,6 +311,9 @@ namespace
 		GetFocusedWidget,
 		OpenAssetEditor,
 		CloseAssetEditor,
+		GetCameraTransform,
+		GetViewMode,
+		GetShowFlags,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -457,6 +460,9 @@ namespace
 		if (OpStr.Equals(TEXT("GetFocusedWidget"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetFocusedWidget; return true; }
 		if (OpStr.Equals(TEXT("OpenAssetEditor"), ESearchCase::IgnoreCase))         { OutOp = EOp::OpenAssetEditor; return true; }
 		if (OpStr.Equals(TEXT("CloseAssetEditor"), ESearchCase::IgnoreCase))        { OutOp = EOp::CloseAssetEditor; return true; }
+		if (OpStr.Equals(TEXT("GetCameraTransform"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCameraTransform; return true; }
+		if (OpStr.Equals(TEXT("GetViewMode"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetViewMode; return true; }
+		if (OpStr.Equals(TEXT("GetShowFlags"), ESearchCase::IgnoreCase))            { OutOp = EOp::GetShowFlags; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5942,6 +5948,131 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Picks the focused level viewport client, or first perspective if
+	// none has focus. Returns nullptr in commandlet mode (no UI) or
+	// when no level editor exists yet.
+	FEditorViewportClient* FindActiveLevelViewportClient()
+	{
+		if (!IsValid(GEditor))
+		{
+			return nullptr;
+		}
+		FEditorViewportClient* Best = nullptr;
+		for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
+		{
+			if (!VC || !VC->IsLevelEditorClient())
+			{
+				continue;
+			}
+			if (VC->Viewport && VC->Viewport->HasFocus())
+			{
+				return VC;
+			}
+			if (!Best && VC->IsPerspective())
+			{
+				Best = VC;
+			}
+		}
+		return Best;
+	}
+
+	int32 RunGetCameraTransformOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		double LX=0, LY=0, LZ=0, Pitch=0, Yaw=0, Roll=0, Fov=0;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			const FVector L = VC->GetViewLocation();
+			const FRotator R = VC->GetViewRotation();
+			LX = L.X; LY = L.Y; LZ = L.Z;
+			Pitch = R.Pitch; Yaw = R.Yaw; Roll = R.Roll;
+			Fov = VC->ViewFOV;
+			bValid = true;
+		}
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetNumberField(TEXT("loc_x"), LX);
+		Out->SetNumberField(TEXT("loc_y"), LY);
+		Out->SetNumberField(TEXT("loc_z"), LZ);
+		Out->SetNumberField(TEXT("pitch"), Pitch);
+		Out->SetNumberField(TEXT("yaw"),   Yaw);
+		Out->SetNumberField(TEXT("roll"),  Roll);
+		Out->SetNumberField(TEXT("fov"),   Fov);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetViewModeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		FString Mode;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			switch (VC->GetViewMode())
+			{
+				case VMI_BrushWireframe:        Mode = TEXT("BrushWireframe"); break;
+				case VMI_Wireframe:             Mode = TEXT("Wireframe"); break;
+				case VMI_Unlit:                 Mode = TEXT("Unlit"); break;
+				case VMI_Lit:                   Mode = TEXT("Lit"); break;
+				case VMI_LightingOnly:          Mode = TEXT("LightingOnly"); break;
+				case VMI_LightComplexity:       Mode = TEXT("LightComplexity"); break;
+				case VMI_ShaderComplexity:      Mode = TEXT("ShaderComplexity"); break;
+				case VMI_StationaryLightOverlap:Mode = TEXT("StationaryLightOverlap"); break;
+				case VMI_LightmapDensity:       Mode = TEXT("LightmapDensity"); break;
+				case VMI_LitLightmapDensity:    Mode = TEXT("LitLightmapDensity"); break;
+				case VMI_ReflectionOverride:    Mode = TEXT("ReflectionOverride"); break;
+				case VMI_VisualizeBuffer:       Mode = TEXT("VisualizeBuffer"); break;
+				case VMI_CollisionPawn:         Mode = TEXT("CollisionPawn"); break;
+				case VMI_CollisionVisibility:   Mode = TEXT("CollisionVisibility"); break;
+				default:                        Mode = TEXT("Lit"); break;
+			}
+		}
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("mode"), Mode);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetShowFlagsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		bool Wf=false, Coll=false, Grid=false, Bnds=false, Nav=false, Atmo=false;
+		bool Fog=false, Light=false, Post=false, Aa=false, Shdw=false;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			const FEngineShowFlags& F = VC->EngineShowFlags;
+			Wf    = F.Wireframe != 0;
+			Coll  = F.Collision != 0;
+			Grid  = F.Grid != 0;
+			Bnds  = F.Bounds != 0;
+			Nav   = F.Navigation != 0;
+			Atmo  = F.Atmosphere != 0;
+			Fog   = F.Fog != 0;
+			Light = F.Lighting != 0;
+			Post  = F.PostProcessing != 0;
+			Aa    = F.AntiAliasing != 0;
+			Shdw  = F.DynamicShadows != 0;
+		}
+		Out->SetBoolField(TEXT("valid"),           bValid);
+		Out->SetBoolField(TEXT("wireframe"),       Wf);
+		Out->SetBoolField(TEXT("collision"),       Coll);
+		Out->SetBoolField(TEXT("grid"),            Grid);
+		Out->SetBoolField(TEXT("bounds"),          Bnds);
+		Out->SetBoolField(TEXT("navigation"),      Nav);
+		Out->SetBoolField(TEXT("atmosphere"),      Atmo);
+		Out->SetBoolField(TEXT("fog"),             Fog);
+		Out->SetBoolField(TEXT("lighting"),        Light);
+		Out->SetBoolField(TEXT("post_processing"), Post);
+		Out->SetBoolField(TEXT("antialiasing"),    Aa);
+		Out->SetBoolField(TEXT("shadows"),         Shdw);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// Emit a small ack JSON blob for a successful write op.
 	int32 EmitOk(const FString& OutputPath, bool bPretty)
 	{
@@ -7174,6 +7305,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetFocusedWidget,           &RunGetFocusedWidgetOp },
 		{ EOp::OpenAssetEditor,            &RunOpenAssetEditorOp },
 		{ EOp::CloseAssetEditor,           &RunCloseAssetEditorOp },
+		{ EOp::GetCameraTransform,         &RunGetCameraTransformOp },
+		{ EOp::GetViewMode,                &RunGetViewModeOp },
+		{ EOp::GetShowFlags,               &RunGetShowFlagsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

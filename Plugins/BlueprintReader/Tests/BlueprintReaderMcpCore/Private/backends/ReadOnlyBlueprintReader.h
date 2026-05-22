@@ -144,6 +144,9 @@ public:
 	FocusedWidgetResult GetFocusedWidget() override;
 	OpenAssetEditorResult OpenAssetEditor(std::string_view) override;
 	CloseAssetEditorResult CloseAssetEditor(std::string_view) override;
+	CameraTransformResult GetCameraTransform() override;
+	ViewModeResult GetViewMode() override;
+	ShowFlagsResult GetShowFlags() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

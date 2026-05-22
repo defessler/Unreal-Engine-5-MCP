@@ -1234,6 +1234,53 @@ public:
 		throw BlueprintReaderError("CloseAssetEditor not supported by this backend");
 	}
 
+	// Active level-editor viewport's camera state — location, rotation, FOV.
+	// Picks the focused level viewport (or first perspective if none has
+	// focus). `valid` false when no level viewport client exists yet (PIE
+	// teardown, headless commandlet).
+	struct CameraTransformResult {
+		bool valid = false;
+		double locX = 0.0, locY = 0.0, locZ = 0.0;
+		double pitch = 0.0, yaw = 0.0, roll = 0.0;
+		double fov = 0.0;
+	};
+	virtual CameraTransformResult GetCameraTransform() {
+		throw BlueprintReaderError("GetCameraTransform not supported by this backend");
+	}
+
+	// Active level-editor viewport's view mode (Lit, Unlit, Wireframe,
+	// DetailLighting, etc.). String form of the EViewModeIndex enum.
+	// `valid` false when no viewport is available.
+	struct ViewModeResult {
+		bool valid = false;
+		std::string mode;
+	};
+	virtual ViewModeResult GetViewMode() {
+		throw BlueprintReaderError("GetViewMode not supported by this backend");
+	}
+
+	// Active level-editor viewport's commonly-toggled show flags. Returns a
+	// curated subset of FEngineShowFlags' ~100 fields — the ones agents
+	// actually care about when describing what's drawn. Full enumeration of
+	// every flag is intentionally not exposed.
+	struct ShowFlagsResult {
+		bool valid = false;
+		bool wireframe = false;
+		bool collision = false;
+		bool grid = false;
+		bool bounds = false;
+		bool navigation = false;
+		bool atmosphere = false;
+		bool fog = false;
+		bool lighting = false;
+		bool postProcessing = false;
+		bool antialiasing = false;
+		bool shadows = false;
+	};
+	virtual ShowFlagsResult GetShowFlags() {
+		throw BlueprintReaderError("GetShowFlags not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
