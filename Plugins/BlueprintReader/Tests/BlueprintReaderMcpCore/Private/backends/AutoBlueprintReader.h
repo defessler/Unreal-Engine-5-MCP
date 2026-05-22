@@ -192,6 +192,7 @@ public:
 	StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) override;
 	UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) override;
 	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
+	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

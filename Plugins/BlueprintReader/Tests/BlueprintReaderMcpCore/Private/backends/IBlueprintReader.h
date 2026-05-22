@@ -1690,6 +1690,20 @@ public:
 		throw BlueprintReaderError("GetMaterialEditorState not supported by this backend");
 	}
 
+	// Static mesh editor preview state: which LOD is being previewed,
+	// LOD-auto-select state. `current_lod_level` is -1 for "auto" or the
+	// explicit LOD index when forced.
+	struct MeshPreviewStateResult {
+		bool valid = false;
+		std::string assetPath;
+		int currentLODLevel = -1;
+		int currentLODIndex = 0;
+	};
+	virtual MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetMeshPreviewState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

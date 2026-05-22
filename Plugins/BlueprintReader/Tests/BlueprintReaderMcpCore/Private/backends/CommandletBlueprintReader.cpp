@@ -3674,6 +3674,20 @@ CommandletBlueprintReader::GetMaterialEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::MeshPreviewStateResult
+CommandletBlueprintReader::GetMeshPreviewState(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetMeshPreviewState",
+					L"-Asset=" + Widen(assetPath)});
+	MeshPreviewStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid             = j.value("valid",              false);
+		out.currentLODLevel   = j.value("current_lod_level",  -1);
+		out.currentLODIndex   = j.value("current_lod_index",  0);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

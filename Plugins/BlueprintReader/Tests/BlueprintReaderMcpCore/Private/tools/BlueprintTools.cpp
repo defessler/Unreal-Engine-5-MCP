@@ -3693,6 +3693,45 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_mesh_preview_state (Phase 12 Wave 2) --------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_mesh_preview_state";
+		d.description =
+			"[editor] Static mesh editor preview state: forced LOD level "
+			"and currently-displayed LOD index. `current_lod_level` is -1 "
+			"when on auto-LOD; an explicit integer otherwise. "
+			"`current_lod_index` is the LOD being rendered right now (resolved "
+			"by the editor's distance/auto selection). `valid:false` when the "
+			"static mesh editor for the asset isn't open.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",             {{"type","boolean"}}},
+				{"asset_path",        {{"type","string"}}},
+				{"current_lod_level", {{"type","integer"}}},
+				{"current_lod_index", {{"type","integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetMeshPreviewState(asset);
+			return nlohmann::json{
+				{"valid",             r.valid},
+				{"asset_path",        r.assetPath},
+				{"current_lod_level", r.currentLODLevel},
+				{"current_lod_index", r.currentLODIndex},
+			};
+		});
+	}
+
 	// ----- get_material_editor_state (Phase 12 Wave 2) ----------------
 	{
 		ToolDescriptor d;
