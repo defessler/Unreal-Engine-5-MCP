@@ -369,6 +369,17 @@ IBlueprintReader::GameFeatureStateResult
 ReadOnlyBlueprintReader::GetGameFeatureState(std::string_view p) {
 	return inner_->GetGameFeatureState(p);
 }
+IBlueprintReader::PluginListResult ReadOnlyBlueprintReader::ListPlugins() {
+	return inner_->ListPlugins();
+}
+IBlueprintReader::PluginDescriptorResult
+ReadOnlyBlueprintReader::GetPluginDescriptor(std::string_view p) {
+	return inner_->GetPluginDescriptor(p);
+}
+IBlueprintReader::PluginDependenciesResult
+ReadOnlyBlueprintReader::GetPluginDependencies(std::string_view p) {
+	return inner_->GetPluginDependencies(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

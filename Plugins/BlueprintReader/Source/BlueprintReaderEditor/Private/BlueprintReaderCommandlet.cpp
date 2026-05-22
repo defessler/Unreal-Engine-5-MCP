@@ -337,6 +337,9 @@ namespace
 		ListDesktopWindows,
 		ListGameFeatures,
 		GetGameFeatureState,
+		ListPlugins,
+		GetPluginDescriptor,
+		GetPluginDependencies,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -499,6 +502,9 @@ namespace
 		if (OpStr.Equals(TEXT("ListDesktopWindows"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListDesktopWindows; return true; }
 		if (OpStr.Equals(TEXT("ListGameFeatures"), ESearchCase::IgnoreCase))        { OutOp = EOp::ListGameFeatures; return true; }
 		if (OpStr.Equals(TEXT("GetGameFeatureState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetGameFeatureState; return true; }
+		if (OpStr.Equals(TEXT("ListPlugins"), ESearchCase::IgnoreCase))             { OutOp = EOp::ListPlugins; return true; }
+		if (OpStr.Equals(TEXT("GetPluginDescriptor"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetPluginDescriptor; return true; }
+		if (OpStr.Equals(TEXT("GetPluginDependencies"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetPluginDependencies; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6281,6 +6287,93 @@ namespace
 		}
 	}
 
+	int32 RunListPluginsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Plugins;
+		IPluginManager& PM = IPluginManager::Get();
+		for (const TSharedRef<IPlugin>& Plugin : PM.GetDiscoveredPlugins())
+		{
+			const FPluginDescriptor& Desc = Plugin->GetDescriptor();
+			auto P = MakeShared<FJsonObject>();
+			P->SetStringField(TEXT("name"),            Plugin->GetName());
+			P->SetStringField(TEXT("descriptor_path"), Plugin->GetDescriptorFileName());
+			P->SetStringField(TEXT("category"),        Desc.Category);
+			P->SetStringField(TEXT("version"),         Desc.VersionName);
+			P->SetBoolField(TEXT("is_enabled"),        Plugin->IsEnabled());
+			P->SetBoolField(TEXT("is_built_in"),
+				Plugin->GetType() == EPluginType::Engine ||
+				Plugin->GetType() == EPluginType::Enterprise);
+			P->SetBoolField(TEXT("is_content_only"),   Desc.Modules.Num() == 0);
+			Plugins.Add(MakeShared<FJsonValueObject>(P));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("plugins"), Plugins);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetPluginDescriptorOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Plugin;
+		FParse::Value(*Params, TEXT("Plugin="), Plugin);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetField(TEXT("descriptor"), MakeShared<FJsonValueNull>());
+
+		if (!Plugin.IsEmpty())
+		{
+			IPluginManager& PM = IPluginManager::Get();
+			TSharedPtr<IPlugin> Found = PM.FindPlugin(Plugin);
+			if (Found.IsValid())
+			{
+				// Read the raw .uplugin and parse as JSON. Simpler than
+				// re-serializing FPluginDescriptor through its UpdateJson
+				// API, and avoids field drift across UE versions.
+				FString Raw;
+				if (FFileHelper::LoadFileToString(Raw, *Found->GetDescriptorFileName()))
+				{
+					TSharedPtr<FJsonValue> Parsed;
+					TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Raw);
+					if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid())
+					{
+						Out->SetBoolField(TEXT("valid"), true);
+						Out->SetField(TEXT("descriptor"), Parsed);
+					}
+				}
+			}
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetPluginDependenciesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Plugin;
+		FParse::Value(*Params, TEXT("Plugin="), Plugin);
+		TArray<TSharedPtr<FJsonValue>> Deps;
+		bool bValid = false;
+		if (!Plugin.IsEmpty())
+		{
+			IPluginManager& PM = IPluginManager::Get();
+			TSharedPtr<IPlugin> Found = PM.FindPlugin(Plugin);
+			if (Found.IsValid())
+			{
+				bValid = true;
+				const FPluginDescriptor& Desc = Found->GetDescriptor();
+				for (const FPluginReferenceDescriptor& Ref : Desc.Plugins)
+				{
+					Deps.Add(MakeShared<FJsonValueString>(Ref.Name));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetArrayField(TEXT("dependencies"), Deps);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListGameFeaturesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Features;
@@ -7919,6 +8012,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListDesktopWindows,         &RunListDesktopWindowsOp },
 		{ EOp::ListGameFeatures,           &RunListGameFeaturesOp },
 		{ EOp::GetGameFeatureState,        &RunGetGameFeatureStateOp },
+		{ EOp::ListPlugins,                &RunListPluginsOp },
+		{ EOp::GetPluginDescriptor,        &RunGetPluginDescriptorOp },
+		{ EOp::GetPluginDependencies,      &RunGetPluginDependenciesOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

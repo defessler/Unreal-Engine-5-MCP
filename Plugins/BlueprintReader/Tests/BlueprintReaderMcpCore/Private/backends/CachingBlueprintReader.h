@@ -201,6 +201,9 @@ public:
 	DesktopWindowsResult ListDesktopWindows() override;
 	GameFeaturesListResult ListGameFeatures() override;
 	GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) override;
+	PluginListResult ListPlugins() override;
+	PluginDescriptorResult GetPluginDescriptor(std::string_view pluginName) override;
+	PluginDependenciesResult GetPluginDependencies(std::string_view pluginName) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

@@ -689,6 +689,17 @@ IBlueprintReader::GameFeatureStateResult
 CachingBlueprintReader::GetGameFeatureState(std::string_view p) {
 	return inner_->GetGameFeatureState(p);
 }
+IBlueprintReader::PluginListResult CachingBlueprintReader::ListPlugins() {
+	return inner_->ListPlugins();
+}
+IBlueprintReader::PluginDescriptorResult
+CachingBlueprintReader::GetPluginDescriptor(std::string_view p) {
+	return inner_->GetPluginDescriptor(p);
+}
+IBlueprintReader::PluginDependenciesResult
+CachingBlueprintReader::GetPluginDependencies(std::string_view p) {
+	return inner_->GetPluginDependencies(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

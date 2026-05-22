@@ -3412,6 +3412,58 @@ CommandletBlueprintReader::GetGameFeatureState(std::string_view pluginName) {
 	return out;
 }
 
+IBlueprintReader::PluginListResult CommandletBlueprintReader::ListPlugins() {
+	auto j = RunOp({L"-Op=ListPlugins"});
+	PluginListResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("plugins"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (!p.is_object()) continue;
+				PluginInfo info;
+				info.name           = p.value("name",            std::string{});
+				info.descriptorPath = p.value("descriptor_path", std::string{});
+				info.category       = p.value("category",        std::string{});
+				info.version        = p.value("version",         std::string{});
+				info.isEnabled      = p.value("is_enabled",      false);
+				info.isBuiltIn      = p.value("is_built_in",     false);
+				info.isContentOnly  = p.value("is_content_only", false);
+				out.plugins.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::PluginDescriptorResult
+CommandletBlueprintReader::GetPluginDescriptor(std::string_view pluginName) {
+	auto j = RunOp({L"-Op=GetPluginDescriptor",
+					L"-Plugin=" + Widen(pluginName)});
+	PluginDescriptorResult out;
+	out.name = std::string(pluginName);
+	if (j.is_object()) {
+		out.valid      = j.value("valid", false);
+		if (j.contains("descriptor")) out.descriptor = j["descriptor"];
+	}
+	return out;
+}
+
+IBlueprintReader::PluginDependenciesResult
+CommandletBlueprintReader::GetPluginDependencies(std::string_view pluginName) {
+	auto j = RunOp({L"-Op=GetPluginDependencies",
+					L"-Plugin=" + Widen(pluginName)});
+	PluginDependenciesResult out;
+	out.name = std::string(pluginName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("dependencies"); it != j.end() && it->is_array()) {
+			for (const auto& d : *it) {
+				if (d.is_string()) out.dependencies.push_back(d.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

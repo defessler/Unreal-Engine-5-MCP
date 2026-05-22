@@ -1779,6 +1779,58 @@ SocketBlueprintReader::GetGameFeatureState(std::string_view pluginName) {
 	return out;
 }
 
+IBlueprintReader::PluginListResult SocketBlueprintReader::ListPlugins() {
+	auto j = RunOp({"-Op=ListPlugins"});
+	PluginListResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("plugins"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (!p.is_object()) continue;
+				PluginInfo info;
+				info.name           = p.value("name",            std::string{});
+				info.descriptorPath = p.value("descriptor_path", std::string{});
+				info.category       = p.value("category",        std::string{});
+				info.version        = p.value("version",         std::string{});
+				info.isEnabled      = p.value("is_enabled",      false);
+				info.isBuiltIn      = p.value("is_built_in",     false);
+				info.isContentOnly  = p.value("is_content_only", false);
+				out.plugins.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
+IBlueprintReader::PluginDescriptorResult
+SocketBlueprintReader::GetPluginDescriptor(std::string_view pluginName) {
+	auto j = RunOp({"-Op=GetPluginDescriptor",
+					"-Plugin=" + std::string(pluginName)});
+	PluginDescriptorResult out;
+	out.name = std::string(pluginName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (j.contains("descriptor")) out.descriptor = j["descriptor"];
+	}
+	return out;
+}
+
+IBlueprintReader::PluginDependenciesResult
+SocketBlueprintReader::GetPluginDependencies(std::string_view pluginName) {
+	auto j = RunOp({"-Op=GetPluginDependencies",
+					"-Plugin=" + std::string(pluginName)});
+	PluginDependenciesResult out;
+	out.name = std::string(pluginName);
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("dependencies"); it != j.end() && it->is_array()) {
+			for (const auto& d : *it) {
+				if (d.is_string()) out.dependencies.push_back(d.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});
