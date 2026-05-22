@@ -178,6 +178,10 @@ public:
 	AnimEditorStateResult GetAnimEditorState(std::string_view assetPath) override;
 	NiagaraModuleSelectionResult GetNiagaraModuleSelection(std::string_view assetPath) override;
 	CurveEditorSelectionResult GetCurveEditorSelection(std::string_view assetPath) override;
+	BufferVizModeResult GetBufferVisualizationMode() override;
+	GizmoStateResult GetGizmoState() override;
+	ViewportRealtimeResult GetViewportRealtime() override;
+	ViewportCameraSettingsResult GetViewportCameraSettings() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

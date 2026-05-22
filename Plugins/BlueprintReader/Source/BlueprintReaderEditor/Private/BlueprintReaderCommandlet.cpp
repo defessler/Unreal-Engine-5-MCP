@@ -382,6 +382,10 @@ namespace
 		GetAnimEditorState,
 		GetNiagaraModuleSelection,
 		GetCurveEditorSelection,
+		GetBufferVisualizationMode,
+		GetGizmoState,
+		GetViewportRealtime,
+		GetViewportCameraSettings,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -562,6 +566,10 @@ namespace
 		if (OpStr.Equals(TEXT("GetAnimEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetAnimEditorState; return true; }
 		if (OpStr.Equals(TEXT("GetNiagaraModuleSelection"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetNiagaraModuleSelection; return true; }
 		if (OpStr.Equals(TEXT("GetCurveEditorSelection"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetCurveEditorSelection; return true; }
+		if (OpStr.Equals(TEXT("GetBufferVisualizationMode"), ESearchCase::IgnoreCase)){OutOp = EOp::GetBufferVisualizationMode; return true; }
+		if (OpStr.Equals(TEXT("GetGizmoState"), ESearchCase::IgnoreCase))           { OutOp = EOp::GetGizmoState; return true; }
+		if (OpStr.Equals(TEXT("GetViewportRealtime"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetViewportRealtime; return true; }
+		if (OpStr.Equals(TEXT("GetViewportCameraSettings"), ESearchCase::IgnoreCase)){OutOp = EOp::GetViewportCameraSettings; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6394,6 +6402,89 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetBufferVisualizationModeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		FString Mode;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			Mode = VC->GetCurrentBufferVisualizationModeDisplayName().ToString();
+		}
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("mode"), Mode);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetGizmoStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		FString ModeStr;
+		FString CoordStr;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			switch (VC->GetWidgetMode())
+			{
+				case UE::Widget::WM_Translate:        ModeStr = TEXT("translate"); break;
+				case UE::Widget::WM_Rotate:           ModeStr = TEXT("rotate"); break;
+				case UE::Widget::WM_Scale:            ModeStr = TEXT("scale"); break;
+				case UE::Widget::WM_TranslateRotateZ: ModeStr = TEXT("translaterotatez"); break;
+				case UE::Widget::WM_2D:               ModeStr = TEXT("2d"); break;
+				case UE::Widget::WM_None:             ModeStr = TEXT("none"); break;
+				default:                              ModeStr = TEXT("unknown"); break;
+			}
+			CoordStr = (VC->GetWidgetCoordSystemSpace() == COORD_World)
+				? TEXT("world") : TEXT("local");
+		}
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("mode"),        ModeStr);
+		Out->SetStringField(TEXT("coord_space"), CoordStr);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetViewportRealtimeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		bool bIsRealtime = false;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			bIsRealtime = VC->IsRealtime();
+		}
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("is_realtime"), bIsRealtime);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetViewportCameraSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		bool bValid = false;
+		double Fov = 0.0, Speed = 0.0, Near = 0.0, Far = 0.0;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			Fov   = VC->ViewFOV;
+			Speed = VC->GetCameraSpeed();
+			Near  = VC->GetNearClipPlane();
+			Far   = VC->GetFarClipPlaneOverride();   // 0 when not overridden
+		}
+		Out->SetBoolField(TEXT("valid"),        bValid);
+		Out->SetNumberField(TEXT("fov"),          Fov);
+		Out->SetNumberField(TEXT("camera_speed"), Speed);
+		Out->SetNumberField(TEXT("near_clip"),    Near);
+		Out->SetNumberField(TEXT("far_clip"),     Far);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetNiagaraModuleSelectionOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		// v1 stub. NiagaraSystemEditor uses multi-inheritance in the
@@ -6699,7 +6790,7 @@ namespace
 				const int32 LODCount = SM->GetNumLODs();
 				Out->SetNumberField(TEXT("lod_count"), LODCount);
 				Out->SetBoolField(TEXT("is_nanite_enabled"),
-					SM->NaniteSettings.bEnabled);
+					SM->GetNaniteSettings().bEnabled);
 				for (int32 i = 0; i < LODCount; ++i)
 				{
 					const FStaticMeshLODResources* LOD = &SM->GetRenderData()->LODResources[i];
@@ -8698,6 +8789,10 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetAnimEditorState,         &RunGetAnimEditorStateOp },
 		{ EOp::GetNiagaraModuleSelection,  &RunGetNiagaraModuleSelectionOp },
 		{ EOp::GetCurveEditorSelection,    &RunGetCurveEditorSelectionOp },
+		{ EOp::GetBufferVisualizationMode, &RunGetBufferVisualizationModeOp },
+		{ EOp::GetGizmoState,              &RunGetGizmoStateOp },
+		{ EOp::GetViewportRealtime,        &RunGetViewportRealtimeOp },
+		{ EOp::GetViewportCameraSettings,  &RunGetViewportCameraSettingsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

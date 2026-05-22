@@ -3771,6 +3771,54 @@ CommandletBlueprintReader::GetCurveEditorSelection(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::BufferVizModeResult
+CommandletBlueprintReader::GetBufferVisualizationMode() {
+	auto j = RunOp({L"-Op=GetBufferVisualizationMode"});
+	BufferVizModeResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		out.mode  = j.value("mode",  std::string{});
+	}
+	return out;
+}
+
+IBlueprintReader::GizmoStateResult
+CommandletBlueprintReader::GetGizmoState() {
+	auto j = RunOp({L"-Op=GetGizmoState"});
+	GizmoStateResult out;
+	if (j.is_object()) {
+		out.valid      = j.value("valid",       false);
+		out.mode       = j.value("mode",        std::string{});
+		out.coordSpace = j.value("coord_space", std::string{});
+	}
+	return out;
+}
+
+IBlueprintReader::ViewportRealtimeResult
+CommandletBlueprintReader::GetViewportRealtime() {
+	auto j = RunOp({L"-Op=GetViewportRealtime"});
+	ViewportRealtimeResult out;
+	if (j.is_object()) {
+		out.valid       = j.value("valid",        false);
+		out.isRealtime  = j.value("is_realtime",  false);
+	}
+	return out;
+}
+
+IBlueprintReader::ViewportCameraSettingsResult
+CommandletBlueprintReader::GetViewportCameraSettings() {
+	auto j = RunOp({L"-Op=GetViewportCameraSettings"});
+	ViewportCameraSettingsResult out;
+	if (j.is_object()) {
+		out.valid        = j.value("valid",         false);
+		out.fov          = j.value("fov",           0.0);
+		out.cameraSpeed  = j.value("camera_speed",  0.0);
+		out.nearClip     = j.value("near_clip",     0.0);
+		out.farClip      = j.value("far_clip",      0.0);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

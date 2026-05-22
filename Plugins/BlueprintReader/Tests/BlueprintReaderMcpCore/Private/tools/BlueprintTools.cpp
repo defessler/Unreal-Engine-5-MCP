@@ -3735,6 +3735,118 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_buffer_visualization_mode (Phase 13 Wave 3) ------------
+	{
+		ToolDescriptor d;
+		d.name = "get_buffer_visualization_mode";
+		d.description =
+			"[editor] Active level viewport's buffer-visualization "
+			"override (`base_color`, `roughness`, `normals`, `metallic`, "
+			"etc.). Returns `{valid, mode}`. Empty `mode` means no "
+			"override — the viewport renders in its current view-mode "
+			"(Lit/Unlit/etc.). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid", {{"type","boolean"}}},
+				{"mode",  {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetBufferVisualizationMode();
+			return nlohmann::json{{"valid", r.valid}, {"mode", r.mode}};
+		});
+	}
+
+	// ----- get_gizmo_state (Phase 13 Wave 3) ---------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_gizmo_state";
+		d.description =
+			"[editor] Translation gizmo state for the active level "
+			"viewport. Returns `{valid, mode, coord_space}`. `mode` is "
+			"`translate` / `rotate` / `scale` / `translaterotatez` / "
+			"`2d` / `none`. `coord_space` is `world` or `local`. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",       {{"type","boolean"}}},
+				{"mode",        {{"type","string"}}},
+				{"coord_space", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetGizmoState();
+			return nlohmann::json{
+				{"valid",       r.valid},
+				{"mode",        r.mode},
+				{"coord_space", r.coordSpace},
+			};
+		});
+	}
+
+	// ----- get_viewport_realtime (Phase 13 Wave 3) --------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_viewport_realtime";
+		d.description =
+			"[editor] Active level viewport's realtime flag — whether "
+			"the viewport renders every frame (true) or only on user "
+			"interaction (false). Returns `{valid, is_realtime}`. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",       {{"type","boolean"}}},
+				{"is_realtime", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetViewportRealtime();
+			return nlohmann::json{
+				{"valid",       r.valid},
+				{"is_realtime", r.isRealtime},
+			};
+		});
+	}
+
+	// ----- get_viewport_camera_settings (Phase 13 Wave 3) -------------
+	{
+		ToolDescriptor d;
+		d.name = "get_viewport_camera_settings";
+		d.description =
+			"[editor] Active level viewport's camera settings: FOV, "
+			"camera speed multiplier, near/far clip planes. Returns "
+			"`{valid, fov, camera_speed, near_clip, far_clip}`. `far_clip` "
+			"is 0 when no override is set (engine default). Requires a "
+			"live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",        {{"type","boolean"}}},
+				{"fov",          {{"type","number"}}},
+				{"camera_speed", {{"type","number"}}},
+				{"near_clip",    {{"type","number"}}},
+				{"far_clip",     {{"type","number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetViewportCameraSettings();
+			return nlohmann::json{
+				{"valid",        r.valid},
+				{"fov",          r.fov},
+				{"camera_speed", r.cameraSpeed},
+				{"near_clip",    r.nearClip},
+				{"far_clip",     r.farClip},
+			};
+		});
+	}
+
 	// ----- get_niagara_module_selection (Phase 12 Wave 2 — stub) -----
 	{
 		ToolDescriptor d;
