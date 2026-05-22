@@ -3656,6 +3656,24 @@ CommandletBlueprintReader::GetUmgEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::MaterialEditorStateResult
+CommandletBlueprintReader::GetMaterialEditorState(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetMaterialEditorState",
+					L"-Asset=" + Widen(assetPath)});
+	MaterialEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                false);
+		out.selectedNodeCount  = j.value("selected_node_count",  0);
+		if (auto it = j.find("selected_expression_classes"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedExpressionClasses.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

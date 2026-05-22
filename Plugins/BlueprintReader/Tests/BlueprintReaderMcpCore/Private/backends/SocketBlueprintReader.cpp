@@ -2023,6 +2023,24 @@ SocketBlueprintReader::GetUmgEditorState(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::MaterialEditorStateResult
+SocketBlueprintReader::GetMaterialEditorState(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetMaterialEditorState",
+					"-Asset=" + std::string(assetPath)});
+	MaterialEditorStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid              = j.value("valid",                false);
+		out.selectedNodeCount  = j.value("selected_node_count",  0);
+		if (auto it = j.find("selected_expression_classes"); it != j.end() && it->is_array()) {
+			for (const auto& n : *it) {
+				if (n.is_string()) out.selectedExpressionClasses.push_back(n.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

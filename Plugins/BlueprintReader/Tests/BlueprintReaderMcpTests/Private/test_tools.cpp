@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 171 tools (170 prior + Wave 2 +1 — get_umg_editor_state) with input schemas") {
+TEST_CASE("ToolRegistry exposes 172 tools (171 prior + Wave 2 +1 — get_material_editor_state) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 171);
+	CHECK(spec.size() == 172);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

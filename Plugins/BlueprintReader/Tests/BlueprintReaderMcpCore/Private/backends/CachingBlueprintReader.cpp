@@ -732,6 +732,10 @@ IBlueprintReader::UmgEditorStateResult
 CachingBlueprintReader::GetUmgEditorState(std::string_view a) {
 	return inner_->GetUmgEditorState(a);
 }
+IBlueprintReader::MaterialEditorStateResult
+CachingBlueprintReader::GetMaterialEditorState(std::string_view a) {
+	return inner_->GetMaterialEditorState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

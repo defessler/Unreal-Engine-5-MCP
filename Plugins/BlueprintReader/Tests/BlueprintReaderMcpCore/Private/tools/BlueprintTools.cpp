@@ -3693,6 +3693,46 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_material_editor_state (Phase 12 Wave 2) ----------------
+	{
+		ToolDescriptor d;
+		d.name = "get_material_editor_state";
+		d.description =
+			"[editor] Material editor selection state. Returns `{valid, "
+			"asset_path, selected_node_count, selected_expression_classes}`. "
+			"`selected_expression_classes` lists short class names of "
+			"currently-selected material expression nodes (e.g. "
+			"`MaterialExpressionAdd`, `MaterialExpressionTextureSample`). "
+			"`valid:false` when the material editor for the asset isn't "
+			"open. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                       {{"type","boolean"}}},
+				{"asset_path",                  {{"type","string"}}},
+				{"selected_node_count",         {{"type","integer"}}},
+				{"selected_expression_classes", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetMaterialEditorState(asset);
+			return nlohmann::json{
+				{"valid",                       r.valid},
+				{"asset_path",                  r.assetPath},
+				{"selected_node_count",         r.selectedNodeCount},
+				{"selected_expression_classes", r.selectedExpressionClasses},
+			};
+		});
+	}
+
 	// ----- get_umg_editor_state (Phase 12 Wave 2) ---------------------
 	{
 		ToolDescriptor d;

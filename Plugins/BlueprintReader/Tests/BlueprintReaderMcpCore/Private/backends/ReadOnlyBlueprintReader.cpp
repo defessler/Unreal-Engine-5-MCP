@@ -412,6 +412,10 @@ IBlueprintReader::UmgEditorStateResult
 ReadOnlyBlueprintReader::GetUmgEditorState(std::string_view a) {
 	return inner_->GetUmgEditorState(a);
 }
+IBlueprintReader::MaterialEditorStateResult
+ReadOnlyBlueprintReader::GetMaterialEditorState(std::string_view a) {
+	return inner_->GetMaterialEditorState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

@@ -612,6 +612,10 @@ IBlueprintReader::UmgEditorStateResult
 AutoBlueprintReader::GetUmgEditorState(std::string_view a) {
 	FORWARD(GetUmgEditorState, a);
 }
+IBlueprintReader::MaterialEditorStateResult
+AutoBlueprintReader::GetMaterialEditorState(std::string_view a) {
+	FORWARD(GetMaterialEditorState, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
