@@ -3693,6 +3693,48 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_blueprint_editor_state (Phase 12 Wave 2) ----------------
+	{
+		ToolDescriptor d;
+		d.name = "get_blueprint_editor_state";
+		d.description =
+			"[editor] Per-Blueprint-editor state for the named BP asset. "
+			"Returns `{valid, asset_path, current_graph_name, compile_status, "
+			"selected_node_ids}`. `selected_node_ids` are FGuid strings; "
+			"empty when no nodes selected. `compile_status` mirrors the "
+			"`get_compile_status` enum strings. `valid:true` requires the "
+			"BP's editor to be open (else still returns compile_status but "
+			"no selection data). Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",               {{"type","boolean"}}},
+				{"asset_path",          {{"type","string"}}},
+				{"current_graph_name",  {{"type","string"}}},
+				{"compile_status",      {{"type","string"}}},
+				{"selected_node_ids",   {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetBlueprintEditorState(asset);
+			return nlohmann::json{
+				{"valid",              r.valid},
+				{"asset_path",         r.assetPath},
+				{"current_graph_name", r.currentGraphName},
+				{"compile_status",     r.compileStatus},
+				{"selected_node_ids",  r.selectedNodeIds},
+			};
+		});
+	}
+
 	// ----- list_actor_attributes (Phase 11 GAS) ------------------------
 	{
 		ToolDescriptor d;

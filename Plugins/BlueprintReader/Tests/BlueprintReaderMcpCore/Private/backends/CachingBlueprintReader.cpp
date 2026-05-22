@@ -716,6 +716,10 @@ IBlueprintReader::ActorEffectsResult
 CachingBlueprintReader::ListActorGameplayEffects(std::string_view a) {
 	return inner_->ListActorGameplayEffects(a);
 }
+IBlueprintReader::BlueprintEditorStateResult
+CachingBlueprintReader::GetBlueprintEditorState(std::string_view a) {
+	return inner_->GetBlueprintEditorState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

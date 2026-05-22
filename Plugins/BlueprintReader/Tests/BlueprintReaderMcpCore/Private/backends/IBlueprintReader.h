@@ -1591,6 +1591,27 @@ public:
 		throw BlueprintReaderError("ListActorGameplayEffects not supported by this backend");
 	}
 
+	// ===== Phase 12 EA-pull Wave 2 — Per-asset-editor selection ========
+	// Drill into editor-specific state for specific asset editors.
+	// Each tool resolves via IAssetEditorInstance + cast to the specific
+	// editor type. `valid` false when asset editor isn't open or asset
+	// type doesn't match the expected editor class.
+
+	// Per-Blueprint-editor state: which nodes are selected, the active
+	// graph tab, whether the BP compiled cleanly. Useful for "I'm in the
+	// graph for BP_Foo, agent help me wire this"-style flows.
+	struct BlueprintEditorStateResult {
+		bool valid = false;
+		std::string assetPath;
+		std::vector<std::string> selectedNodeIds;   // FGuid strings
+		std::string currentGraphName;               // empty when none focused
+		std::string compileStatus;                  // shared with get_compile_status
+	};
+	virtual BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetBlueprintEditorState not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

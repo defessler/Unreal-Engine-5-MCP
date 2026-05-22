@@ -396,6 +396,10 @@ IBlueprintReader::ActorEffectsResult
 ReadOnlyBlueprintReader::ListActorGameplayEffects(std::string_view a) {
 	return inner_->ListActorGameplayEffects(a);
 }
+IBlueprintReader::BlueprintEditorStateResult
+ReadOnlyBlueprintReader::GetBlueprintEditorState(std::string_view a) {
+	return inner_->GetBlueprintEditorState(a);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

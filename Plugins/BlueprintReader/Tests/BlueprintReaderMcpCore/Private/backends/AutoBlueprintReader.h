@@ -187,6 +187,7 @@ public:
 	ActorTagsResult ListActorGameplayTags(std::string_view actorName) override;
 	ActorAttributesResult ListActorAttributes(std::string_view actorName) override;
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
+	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

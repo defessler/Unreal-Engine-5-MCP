@@ -167,6 +167,7 @@ public:
 	ActorTagsResult ListActorGameplayTags(std::string_view actorName) override;
 	ActorAttributesResult ListActorAttributes(std::string_view actorName) override;
 	ActorEffectsResult ListActorGameplayEffects(std::string_view actorName) override;
+	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

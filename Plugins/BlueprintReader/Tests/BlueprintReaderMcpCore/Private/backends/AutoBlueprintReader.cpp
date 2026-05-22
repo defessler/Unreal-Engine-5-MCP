@@ -596,6 +596,10 @@ IBlueprintReader::ActorEffectsResult
 AutoBlueprintReader::ListActorGameplayEffects(std::string_view a) {
 	FORWARD(ListActorGameplayEffects, a);
 }
+IBlueprintReader::BlueprintEditorStateResult
+AutoBlueprintReader::GetBlueprintEditorState(std::string_view a) {
+	FORWARD(GetBlueprintEditorState, a);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
