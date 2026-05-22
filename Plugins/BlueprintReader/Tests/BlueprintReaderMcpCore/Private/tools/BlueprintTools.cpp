@@ -3693,6 +3693,97 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- world_pos_to_screen ------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "world_pos_to_screen";
+		d.description =
+			"[editor] Project a 3D world position to the active level "
+			"viewport's screen space. Returns `{valid, screen_x, screen_y, "
+			"is_on_screen}`. `screen_x`/`screen_y` are normalized [0,1] "
+			"across the viewport. `is_on_screen` is true only when the "
+			"projection is in front of the camera AND inside the viewport. "
+			"Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"x", {{"type","number"}}},
+				{"y", {{"type","number"}}},
+				{"z", {{"type","number"}}},
+			}},
+			{"required", nlohmann::json::array({"x","y","z"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",        {{"type","boolean"}}},
+				{"screen_x",     {{"type","number"}}},
+				{"screen_y",     {{"type","number"}}},
+				{"is_on_screen", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			double x = args.value("x", 0.0);
+			double y = args.value("y", 0.0);
+			double z = args.value("z", 0.0);
+			auto r = reader.WorldToScreen(x, y, z);
+			return nlohmann::json{
+				{"valid",        r.valid},
+				{"screen_x",     r.screenX},
+				{"screen_y",     r.screenY},
+				{"is_on_screen", r.isOnScreen},
+			};
+		});
+	}
+
+	// ----- screen_to_world ----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "screen_to_world";
+		d.description =
+			"[editor] Inverse of `world_pos_to_screen`. Cast a ray from "
+			"screen-normalized [0,1] coordinates out to `max_distance` cm "
+			"in world space. Returns `{valid, hit, world_x, world_y, "
+			"world_z, hit_actor_name}`. When `hit` is true, the world coords "
+			"are the line-trace impact point and `hit_actor_name` identifies "
+			"the actor. When false, the coords are the ray endpoint. "
+			"Default max_distance is 10000 cm. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"screen_x",     {{"type","number"}}},
+				{"screen_y",     {{"type","number"}}},
+				{"max_distance", {{"type","number"}}},
+			}},
+			{"required", nlohmann::json::array({"screen_x","screen_y"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",          {{"type","boolean"}}},
+				{"hit",            {{"type","boolean"}}},
+				{"world_x",        {{"type","number"}}},
+				{"world_y",        {{"type","number"}}},
+				{"world_z",        {{"type","number"}}},
+				{"hit_actor_name", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			double sx = args.value("screen_x", 0.5);
+			double sy = args.value("screen_y", 0.5);
+			double md = args.value("max_distance", 10000.0);
+			auto r = reader.ScreenToWorld(sx, sy, md);
+			return nlohmann::json{
+				{"valid",          r.valid},
+				{"hit",            r.hit},
+				{"world_x",        r.worldX},
+				{"world_y",        r.worldY},
+				{"world_z",        r.worldZ},
+				{"hit_actor_name", r.hitActorName},
+			};
+		});
+	}
+
 	// ----- get_selected_assets (content browser) ------------------------
 	{
 		ToolDescriptor d;

@@ -3283,6 +3283,40 @@ CommandletBlueprintReader::SetContentBrowserPath(std::string_view folderPath) {
 								L"-Folder=" + Widen(folderPath)}));
 }
 
+IBlueprintReader::WorldToScreenResult
+CommandletBlueprintReader::WorldToScreen(double x, double y, double z) {
+	auto j = RunOp({L"-Op=WorldToScreen",
+					L"-WX=" + std::to_wstring(x),
+					L"-WY=" + std::to_wstring(y),
+					L"-WZ=" + std::to_wstring(z)});
+	WorldToScreenResult out;
+	if (j.is_object()) {
+		out.valid      = j.value("valid",        false);
+		out.screenX    = j.value("screen_x",     0.0);
+		out.screenY    = j.value("screen_y",     0.0);
+		out.isOnScreen = j.value("is_on_screen", false);
+	}
+	return out;
+}
+
+IBlueprintReader::ScreenToWorldResult
+CommandletBlueprintReader::ScreenToWorld(double x, double y, double d) {
+	auto j = RunOp({L"-Op=ScreenToWorld",
+					L"-SX=" + std::to_wstring(x),
+					L"-SY=" + std::to_wstring(y),
+					L"-Dist=" + std::to_wstring(d)});
+	ScreenToWorldResult out;
+	if (j.is_object()) {
+		out.valid  = j.value("valid",  false);
+		out.hit    = j.value("hit",    false);
+		out.worldX = j.value("world_x", 0.0);
+		out.worldY = j.value("world_y", 0.0);
+		out.worldZ = j.value("world_z", 0.0);
+		out.hitActorName = j.value("hit_actor_name", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

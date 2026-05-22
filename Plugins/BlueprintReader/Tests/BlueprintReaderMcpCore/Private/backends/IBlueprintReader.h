@@ -1347,6 +1347,39 @@ public:
 		throw BlueprintReaderError("SetContentBrowserPath not supported by this backend");
 	}
 
+	// Project a 3D world position to viewport screen space using the
+	// active level viewport's camera. `valid` false when no viewport
+	// or projection fails (behind camera, W=0). `screen_x`/`screen_y`
+	// are normalized [0,1] across the viewport; `is_on_screen` is
+	// the conjunction of (valid AND coords in [0,1] AND in front of camera).
+	struct WorldToScreenResult {
+		bool valid = false;
+		double screenX = 0.0;
+		double screenY = 0.0;
+		bool isOnScreen = false;
+	};
+	virtual WorldToScreenResult WorldToScreen(double worldX, double worldY, double worldZ) {
+		(void)worldX; (void)worldY; (void)worldZ;
+		throw BlueprintReaderError("WorldToScreen not supported by this backend");
+	}
+
+	// Inverse: cast a ray from viewport screen-normalized [0,1] coords
+	// out to `maxDistance` cm in world space. Returns the hit world
+	// position if anything was hit (line-trace through visibility);
+	// otherwise the ray endpoint. `hit` true on intersection. `valid`
+	// false when no viewport is active.
+	struct ScreenToWorldResult {
+		bool valid = false;
+		bool hit = false;
+		double worldX = 0.0, worldY = 0.0, worldZ = 0.0;
+		std::string hitActorName;     // empty when no hit
+	};
+	virtual ScreenToWorldResult ScreenToWorld(double screenX, double screenY,
+											  double maxDistance) {
+		(void)screenX; (void)screenY; (void)maxDistance;
+		throw BlueprintReaderError("ScreenToWorld not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

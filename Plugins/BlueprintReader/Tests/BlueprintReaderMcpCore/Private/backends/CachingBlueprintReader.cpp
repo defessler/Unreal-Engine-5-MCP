@@ -663,6 +663,14 @@ IBlueprintReader::ContentBrowserPathResult
 CachingBlueprintReader::SetContentBrowserPath(std::string_view p) {
 	return inner_->SetContentBrowserPath(p);
 }
+IBlueprintReader::WorldToScreenResult
+CachingBlueprintReader::WorldToScreen(double x, double y, double z) {
+	return inner_->WorldToScreen(x, y, z);
+}
+IBlueprintReader::ScreenToWorldResult
+CachingBlueprintReader::ScreenToWorld(double x, double y, double d) {
+	return inner_->ScreenToWorld(x, y, d);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

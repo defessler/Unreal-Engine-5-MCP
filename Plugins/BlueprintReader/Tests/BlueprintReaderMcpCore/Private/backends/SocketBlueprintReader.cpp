@@ -1650,6 +1650,40 @@ SocketBlueprintReader::SetContentBrowserPath(std::string_view folderPath) {
 									 "-Folder=" + std::string(folderPath)}));
 }
 
+IBlueprintReader::WorldToScreenResult
+SocketBlueprintReader::WorldToScreen(double x, double y, double z) {
+	auto j = RunOp({"-Op=WorldToScreen",
+					"-WX=" + std::to_string(x),
+					"-WY=" + std::to_string(y),
+					"-WZ=" + std::to_string(z)});
+	WorldToScreenResult out;
+	if (j.is_object()) {
+		out.valid      = j.value("valid",        false);
+		out.screenX    = j.value("screen_x",     0.0);
+		out.screenY    = j.value("screen_y",     0.0);
+		out.isOnScreen = j.value("is_on_screen", false);
+	}
+	return out;
+}
+
+IBlueprintReader::ScreenToWorldResult
+SocketBlueprintReader::ScreenToWorld(double x, double y, double d) {
+	auto j = RunOp({"-Op=ScreenToWorld",
+					"-SX=" + std::to_string(x),
+					"-SY=" + std::to_string(y),
+					"-Dist=" + std::to_string(d)});
+	ScreenToWorldResult out;
+	if (j.is_object()) {
+		out.valid  = j.value("valid",  false);
+		out.hit    = j.value("hit",    false);
+		out.worldX = j.value("world_x", 0.0);
+		out.worldY = j.value("world_y", 0.0);
+		out.worldZ = j.value("world_z", 0.0);
+		out.hitActorName = j.value("hit_actor_name", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

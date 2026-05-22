@@ -343,6 +343,14 @@ ReadOnlyBlueprintReader::SetContentBrowserPath(std::string_view p) {
 	// UI navigation, not file mutation — allowed.
 	return inner_->SetContentBrowserPath(p);
 }
+IBlueprintReader::WorldToScreenResult
+ReadOnlyBlueprintReader::WorldToScreen(double x, double y, double z) {
+	return inner_->WorldToScreen(x, y, z);
+}
+IBlueprintReader::ScreenToWorldResult
+ReadOnlyBlueprintReader::ScreenToWorld(double x, double y, double d) {
+	return inner_->ScreenToWorld(x, y, d);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
