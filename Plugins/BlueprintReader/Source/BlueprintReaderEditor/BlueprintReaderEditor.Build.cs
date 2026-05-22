@@ -109,7 +109,11 @@ public class BlueprintReaderEditor : ModuleRules
 			// Phase 8 — get_focused_window queries Slate's active top-level
 			// window via FSlateApplication + SWindow::GetTypeAsString.
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			// Phase 8 — content browser selection tools
+			// (get/set_selected_assets, get_selected_folders, etc.) hit
+			// IContentBrowserSingleton via FContentBrowserModule.
+			"ContentBrowser"
 		});
 	}
 }

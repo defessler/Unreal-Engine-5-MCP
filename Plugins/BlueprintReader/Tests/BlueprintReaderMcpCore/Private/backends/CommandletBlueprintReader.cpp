@@ -3212,6 +3212,77 @@ CommandletBlueprintReader::GetSelectedComponents() {
 	return out;
 }
 
+namespace {
+	IBlueprintReader::ContentBrowserSelectionResult
+	ParseCBSelection(const nlohmann::json& j) {
+		IBlueprintReader::ContentBrowserSelectionResult out;
+		if (j.is_object()) {
+			if (auto it = j.find("asset_paths"); it != j.end() && it->is_array()) {
+				for (const auto& v : *it) {
+					if (v.is_string()) out.assetPaths.push_back(v.get<std::string>());
+				}
+			}
+		}
+		return out;
+	}
+}    // namespace
+
+IBlueprintReader::ContentBrowserSelectionResult
+CommandletBlueprintReader::GetSelectedAssets() {
+	return ParseCBSelection(RunOp({L"-Op=GetSelectedAssets"}));
+}
+
+IBlueprintReader::ContentBrowserSelectionResult
+CommandletBlueprintReader::SetSelectedAssets(
+		const std::vector<std::string>& assetPaths) {
+	// Join with `;` because FParse::Value handles a single arg cleanly;
+	// the plugin side splits on `;`. Path strings can't contain `;` in
+	// UE's asset model so this is unambiguous.
+	std::wstring joined;
+	for (size_t i = 0; i < assetPaths.size(); ++i) {
+		if (i > 0) joined += L";";
+		joined += Widen(assetPaths[i]);
+	}
+	return ParseCBSelection(RunOp({L"-Op=SetSelectedAssets",
+									L"-Assets=" + joined}));
+}
+
+IBlueprintReader::ContentBrowserFoldersResult
+CommandletBlueprintReader::GetSelectedFolders() {
+	auto j = RunOp({L"-Op=GetSelectedFolders"});
+	ContentBrowserFoldersResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("folder_paths"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.folderPaths.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
+namespace {
+	IBlueprintReader::ContentBrowserPathResult
+	ParseCBPath(const nlohmann::json& j) {
+		IBlueprintReader::ContentBrowserPathResult out;
+		if (j.is_object()) {
+			out.currentPath = j.value("current_path", std::string{});
+		}
+		return out;
+	}
+}    // namespace
+
+IBlueprintReader::ContentBrowserPathResult
+CommandletBlueprintReader::GetContentBrowserPath() {
+	return ParseCBPath(RunOp({L"-Op=GetContentBrowserPath"}));
+}
+
+IBlueprintReader::ContentBrowserPathResult
+CommandletBlueprintReader::SetContentBrowserPath(std::string_view folderPath) {
+	return ParseCBPath(RunOp({L"-Op=SetContentBrowserPath",
+								L"-Folder=" + Widen(folderPath)}));
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

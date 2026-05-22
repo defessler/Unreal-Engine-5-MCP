@@ -1582,6 +1582,74 @@ SocketBlueprintReader::GetSelectedComponents() {
 	return out;
 }
 
+namespace {
+	IBlueprintReader::ContentBrowserSelectionResult
+	ParseSocketCBSelection(const nlohmann::json& j) {
+		IBlueprintReader::ContentBrowserSelectionResult out;
+		if (j.is_object()) {
+			if (auto it = j.find("asset_paths"); it != j.end() && it->is_array()) {
+				for (const auto& v : *it) {
+					if (v.is_string()) out.assetPaths.push_back(v.get<std::string>());
+				}
+			}
+		}
+		return out;
+	}
+}    // namespace
+
+IBlueprintReader::ContentBrowserSelectionResult
+SocketBlueprintReader::GetSelectedAssets() {
+	return ParseSocketCBSelection(RunOp({"-Op=GetSelectedAssets"}));
+}
+
+IBlueprintReader::ContentBrowserSelectionResult
+SocketBlueprintReader::SetSelectedAssets(
+		const std::vector<std::string>& assetPaths) {
+	std::string joined;
+	for (size_t i = 0; i < assetPaths.size(); ++i) {
+		if (i > 0) joined += ";";
+		joined += assetPaths[i];
+	}
+	return ParseSocketCBSelection(RunOp({"-Op=SetSelectedAssets",
+											"-Assets=" + joined}));
+}
+
+IBlueprintReader::ContentBrowserFoldersResult
+SocketBlueprintReader::GetSelectedFolders() {
+	auto j = RunOp({"-Op=GetSelectedFolders"});
+	ContentBrowserFoldersResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("folder_paths"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.folderPaths.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
+namespace {
+	IBlueprintReader::ContentBrowserPathResult
+	ParseSocketCBPath(const nlohmann::json& j) {
+		IBlueprintReader::ContentBrowserPathResult out;
+		if (j.is_object()) {
+			out.currentPath = j.value("current_path", std::string{});
+		}
+		return out;
+	}
+}    // namespace
+
+IBlueprintReader::ContentBrowserPathResult
+SocketBlueprintReader::GetContentBrowserPath() {
+	return ParseSocketCBPath(RunOp({"-Op=GetContentBrowserPath"}));
+}
+
+IBlueprintReader::ContentBrowserPathResult
+SocketBlueprintReader::SetContentBrowserPath(std::string_view folderPath) {
+	return ParseSocketCBPath(RunOp({"-Op=SetContentBrowserPath",
+									 "-Folder=" + std::string(folderPath)}));
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 148);
+	REQUIRE(spec.size() == 153);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -224,7 +224,10 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// Re-baselined 2026-05-21 at 147 tools after +3 viewport tools:
 	// get_camera_transform, get_view_mode, get_show_flags.
 	// Re-baselined 2026-05-21 at 148 tools after +1: get_selected_components.
-	constexpr uint64_t kCurrentToolsHash = 0x9240045078416C70ULL;
+	// Re-baselined 2026-05-22 at 153 tools after +5 content-browser:
+	// get_selected_assets, set_selected_assets, get_selected_folders,
+	// get_content_browser_path, set_content_browser_path.
+	constexpr uint64_t kCurrentToolsHash = 0x682488BB5EEEBC32ULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

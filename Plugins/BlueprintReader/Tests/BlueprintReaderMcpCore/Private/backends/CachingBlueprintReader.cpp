@@ -646,6 +646,23 @@ IBlueprintReader::ShowFlagsResult CachingBlueprintReader::GetShowFlags() {
 IBlueprintReader::SelectedComponentsResult CachingBlueprintReader::GetSelectedComponents() {
 	return inner_->GetSelectedComponents();
 }
+IBlueprintReader::ContentBrowserSelectionResult CachingBlueprintReader::GetSelectedAssets() {
+	return inner_->GetSelectedAssets();
+}
+IBlueprintReader::ContentBrowserSelectionResult
+CachingBlueprintReader::SetSelectedAssets(const std::vector<std::string>& a) {
+	return inner_->SetSelectedAssets(a);
+}
+IBlueprintReader::ContentBrowserFoldersResult CachingBlueprintReader::GetSelectedFolders() {
+	return inner_->GetSelectedFolders();
+}
+IBlueprintReader::ContentBrowserPathResult CachingBlueprintReader::GetContentBrowserPath() {
+	return inner_->GetContentBrowserPath();
+}
+IBlueprintReader::ContentBrowserPathResult
+CachingBlueprintReader::SetContentBrowserPath(std::string_view p) {
+	return inner_->SetContentBrowserPath(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

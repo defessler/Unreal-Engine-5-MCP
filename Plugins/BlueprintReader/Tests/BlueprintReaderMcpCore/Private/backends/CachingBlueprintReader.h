@@ -189,6 +189,11 @@ public:
 	ViewModeResult GetViewMode() override;
 	ShowFlagsResult GetShowFlags() override;
 	SelectedComponentsResult GetSelectedComponents() override;
+	ContentBrowserSelectionResult GetSelectedAssets() override;
+	ContentBrowserSelectionResult SetSelectedAssets(const std::vector<std::string>& assetPaths) override;
+	ContentBrowserFoldersResult GetSelectedFolders() override;
+	ContentBrowserPathResult GetContentBrowserPath() override;
+	ContentBrowserPathResult SetContentBrowserPath(std::string_view folderPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------
