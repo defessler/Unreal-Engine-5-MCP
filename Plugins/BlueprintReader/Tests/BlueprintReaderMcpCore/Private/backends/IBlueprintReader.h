@@ -1468,6 +1468,53 @@ public:
 		throw BlueprintReaderError("GetGameFeatureState not supported by this backend");
 	}
 
+	// ===== Phase 11 H Tier 1 — PluginToolset (read ops) =================
+	// Listing + descriptor reads against IPluginManager. Write ops
+	// (create, modify-descriptor with SCC awareness) are deferred.
+
+	struct PluginInfo {
+		std::string name;
+		std::string descriptorPath;     // /full/path/to/Foo.uplugin
+		std::string category;           // from FPluginDescriptor::Category
+		std::string version;            // VersionName from descriptor
+		bool isEnabled = false;
+		bool isBuiltIn = false;
+		bool isContentOnly = false;
+	};
+	struct PluginListResult {
+		std::vector<PluginInfo> plugins;
+	};
+	virtual PluginListResult ListPlugins() {
+		throw BlueprintReaderError("ListPlugins not supported by this backend");
+	}
+
+	// Full descriptor dump for a single plugin (parsed JSON from the
+	// .uplugin file). Returns the raw descriptor JSON so callers don't
+	// have to enumerate every field; the structure matches Epic's
+	// FPluginDescriptor schema. `valid` false when name doesn't resolve.
+	struct PluginDescriptorResult {
+		bool valid = false;
+		std::string name;
+		nlohmann::json descriptor;      // full descriptor JSON or null
+	};
+	virtual PluginDescriptorResult GetPluginDescriptor(std::string_view pluginName) {
+		(void)pluginName;
+		throw BlueprintReaderError("GetPluginDescriptor not supported by this backend");
+	}
+
+	// Plugin dependency list — extracted from FPluginDescriptor::Plugins.
+	// Returns the names of plugins this one depends on. Empty when the
+	// plugin has no `Plugins:` array in its descriptor.
+	struct PluginDependenciesResult {
+		bool valid = false;
+		std::string name;
+		std::vector<std::string> dependencies;
+	};
+	virtual PluginDependenciesResult GetPluginDependencies(std::string_view pluginName) {
+		(void)pluginName;
+		throw BlueprintReaderError("GetPluginDependencies not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

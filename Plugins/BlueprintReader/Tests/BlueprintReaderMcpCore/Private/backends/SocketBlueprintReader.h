@@ -203,6 +203,9 @@ public:
 	DesktopWindowsResult ListDesktopWindows() override;
 	GameFeaturesListResult ListGameFeatures() override;
 	GameFeatureStateResult GetGameFeatureState(std::string_view pluginName) override;
+	PluginListResult ListPlugins() override;
+	PluginDescriptorResult GetPluginDescriptor(std::string_view pluginName) override;
+	PluginDependenciesResult GetPluginDependencies(std::string_view pluginName) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

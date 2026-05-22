@@ -57,7 +57,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 8 | **EA-pull Wave 1** Core awareness **(25 of 25 + `list_desktop_windows` SHIPPED; `take_desktop_screenshot` composite deferred)** | — | 0d | — | Selection, open, compile, modal, viewport, components, content-browser, spatial, Slate UI — the "what's the user doing?" core |
 | 9 | **C3–C5** HTTP + Sessions + SSE | 13–15 | 46d | Very High — gates Push events entirely | Transport for push events |
 | 10 | **EA-push Wave 1** Core event notifications | 8–10 | 56d | Very High — biggest agentic differentiator vs Epic | Tier-A SSE events on user actions |
-| 11 | **H Tier 1** PluginToolset + GameFeatures + GAS **(GameFeatures read ops STARTED — list/get_state shipped, activate/deactivate deferred; PluginToolset + GAS pending)** | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |
+| 11 | **H Tier 1** PluginToolset + GameFeatures + GAS **(GameFeatures+Plugin reads SHIPPED — 5 of 12 in scope; write ops + GAS pending)** | 10–12 | 68d | Med (High for Lyra users) | Lyra value-add |
 | | **— wire parity + core differentiation: ~13.5 weeks —** | | | | |
 | 12 | **EA-pull Wave 2** Per-asset-editor selection | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
 | 13 | **EA-pull Wave 3** Viewport + visibility | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |

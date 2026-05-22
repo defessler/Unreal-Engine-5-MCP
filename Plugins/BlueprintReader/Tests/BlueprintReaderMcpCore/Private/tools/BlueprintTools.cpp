@@ -3693,6 +3693,110 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- list_plugins (Phase 11 H Tier 1) ----------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_plugins";
+		d.description =
+			"[editor] Enumerate all discovered plugins via IPluginManager. "
+			"Returns `{plugins: [{name, descriptor_path, category, version, "
+			"is_enabled, is_built_in, is_content_only}]}`. Includes both "
+			"enabled and disabled plugins (use `is_enabled` to filter). "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"plugins", {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListPlugins();
+			nlohmann::json plugs = nlohmann::json::array();
+			for (const auto& p : r.plugins) {
+				plugs.push_back({
+					{"name",            p.name},
+					{"descriptor_path", p.descriptorPath},
+					{"category",        p.category},
+					{"version",         p.version},
+					{"is_enabled",      p.isEnabled},
+					{"is_built_in",     p.isBuiltIn},
+					{"is_content_only", p.isContentOnly},
+				});
+			}
+			return nlohmann::json{{"plugins", plugs}};
+		});
+	}
+
+	// ----- get_plugin_descriptor ----------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_plugin_descriptor";
+		d.description =
+			"[editor] Read the full .uplugin descriptor for `plugin_name`. "
+			"Returns `{valid, descriptor}` where `descriptor` is the raw "
+			"parsed JSON from the .uplugin file (UE's FPluginDescriptor "
+			"schema — name, version, description, modules, plugins, etc.). "
+			"`valid:false` when plugin name doesn't resolve. Requires a "
+			"live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"plugin_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"plugin_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"descriptor", {{"type","object"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string name = RequireString(args, "plugin_name");
+			auto r = reader.GetPluginDescriptor(name);
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"descriptor", r.descriptor.is_null() ? nlohmann::json::object() : r.descriptor},
+			};
+		});
+	}
+
+	// ----- get_plugin_dependencies --------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_plugin_dependencies";
+		d.description =
+			"[editor] Plugins that `plugin_name` depends on (extracted from "
+			"the `Plugins:` array in its descriptor). Returns `{valid, "
+			"dependencies: [plugin_name, ...]}`. Useful for understanding "
+			"dependency chains before disabling a plugin. Requires a live "
+			"editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"plugin_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"plugin_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",        {{"type","boolean"}}},
+				{"dependencies", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string name = RequireString(args, "plugin_name");
+			auto r = reader.GetPluginDependencies(name);
+			return nlohmann::json{
+				{"valid",        r.valid},
+				{"dependencies", r.dependencies},
+			};
+		});
+	}
+
 	// ----- list_game_features (Phase 11 H Tier 1) ----------------------
 	{
 		ToolDescriptor d;

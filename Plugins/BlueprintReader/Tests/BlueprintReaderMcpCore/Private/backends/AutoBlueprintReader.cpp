@@ -569,6 +569,17 @@ IBlueprintReader::GameFeatureStateResult
 AutoBlueprintReader::GetGameFeatureState(std::string_view p) {
 	FORWARD(GetGameFeatureState, p);
 }
+IBlueprintReader::PluginListResult AutoBlueprintReader::ListPlugins() {
+	FORWARD(ListPlugins);
+}
+IBlueprintReader::PluginDescriptorResult
+AutoBlueprintReader::GetPluginDescriptor(std::string_view p) {
+	FORWARD(GetPluginDescriptor, p);
+}
+IBlueprintReader::PluginDependenciesResult
+AutoBlueprintReader::GetPluginDependencies(std::string_view p) {
+	FORWARD(GetPluginDependencies, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

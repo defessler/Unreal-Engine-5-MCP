@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 160);
+	REQUIRE(spec.size() == 163);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -235,7 +235,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// Re-baselined 2026-05-22 at 160 tools after Phase 11 starter:
 	// list_game_features + get_game_feature_state (GameFeaturesToolset
 	// read ops). Write ops (activate/deactivate) still deferred.
-	constexpr uint64_t kCurrentToolsHash = 0x896A0D6D6062B295ULL;
+	// Re-baselined 2026-05-22 at 163 tools after +3 PluginToolset reads:
+	// list_plugins, get_plugin_descriptor, get_plugin_dependencies.
+	constexpr uint64_t kCurrentToolsHash = 0x8F491C79BAD163EEULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the
