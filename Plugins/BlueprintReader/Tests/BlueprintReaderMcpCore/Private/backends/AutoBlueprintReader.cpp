@@ -514,6 +514,15 @@ IBlueprintReader::CloseAssetEditorResult
 AutoBlueprintReader::CloseAssetEditor(std::string_view a) {
 	FORWARD(CloseAssetEditor, a);
 }
+IBlueprintReader::CameraTransformResult AutoBlueprintReader::GetCameraTransform() {
+	FORWARD(GetCameraTransform);
+}
+IBlueprintReader::ViewModeResult AutoBlueprintReader::GetViewMode() {
+	FORWARD(GetViewMode);
+}
+IBlueprintReader::ShowFlagsResult AutoBlueprintReader::GetShowFlags() {
+	FORWARD(GetShowFlags);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -1507,6 +1507,55 @@ SocketBlueprintReader::CloseAssetEditor(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::CameraTransformResult
+SocketBlueprintReader::GetCameraTransform() {
+	auto j = RunOp({"-Op=GetCameraTransform"});
+	CameraTransformResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		out.locX  = j.value("loc_x",  0.0);
+		out.locY  = j.value("loc_y",  0.0);
+		out.locZ  = j.value("loc_z",  0.0);
+		out.pitch = j.value("pitch",  0.0);
+		out.yaw   = j.value("yaw",    0.0);
+		out.roll  = j.value("roll",   0.0);
+		out.fov   = j.value("fov",    0.0);
+	}
+	return out;
+}
+
+IBlueprintReader::ViewModeResult
+SocketBlueprintReader::GetViewMode() {
+	auto j = RunOp({"-Op=GetViewMode"});
+	ViewModeResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		out.mode  = j.value("mode",  std::string{});
+	}
+	return out;
+}
+
+IBlueprintReader::ShowFlagsResult
+SocketBlueprintReader::GetShowFlags() {
+	auto j = RunOp({"-Op=GetShowFlags"});
+	ShowFlagsResult out;
+	if (j.is_object()) {
+		out.valid          = j.value("valid",          false);
+		out.wireframe      = j.value("wireframe",      false);
+		out.collision      = j.value("collision",      false);
+		out.grid           = j.value("grid",           false);
+		out.bounds         = j.value("bounds",         false);
+		out.navigation     = j.value("navigation",     false);
+		out.atmosphere     = j.value("atmosphere",     false);
+		out.fog            = j.value("fog",            false);
+		out.lighting       = j.value("lighting",       false);
+		out.postProcessing = j.value("post_processing",false);
+		out.antialiasing   = j.value("antialiasing",   false);
+		out.shadows        = j.value("shadows",        false);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

@@ -3693,6 +3693,111 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_camera_transform ------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_camera_transform";
+		d.description =
+			"[editor] Read the active level viewport's camera state. Picks "
+			"the focused level viewport (or first perspective if none has "
+			"focus). Returns `{valid, loc_x/y/z, pitch/yaw/roll, fov}`. "
+			"`valid:false` means no level viewport exists (PIE teardown, "
+			"headless commandlet). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"valid", {{"type","boolean"}}},
+				{"loc_x", {{"type","number"}}},
+				{"loc_y", {{"type","number"}}},
+				{"loc_z", {{"type","number"}}},
+				{"pitch", {{"type","number"}}},
+				{"yaw",   {{"type","number"}}},
+				{"roll",  {{"type","number"}}},
+				{"fov",   {{"type","number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetCameraTransform();
+			return nlohmann::json{
+				{"valid", r.valid},
+				{"loc_x", r.locX}, {"loc_y", r.locY}, {"loc_z", r.locZ},
+				{"pitch", r.pitch},{"yaw",   r.yaw},  {"roll",  r.roll},
+				{"fov",   r.fov},
+			};
+		});
+	}
+
+	// ----- get_view_mode --------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_view_mode";
+		d.description =
+			"[editor] Read the active level viewport's view mode "
+			"(Lit / Unlit / Wireframe / DetailLighting / ShaderComplexity / "
+			"LightingOnly / ReflectionOverride / VisualizeBuffer / etc.). "
+			"Returns `{valid, mode}`. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"valid", {{"type","boolean"}}},
+				{"mode",  {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetViewMode();
+			return nlohmann::json{{"valid", r.valid}, {"mode", r.mode}};
+		});
+	}
+
+	// ----- get_show_flags ------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_show_flags";
+		d.description =
+			"[editor] Read the active level viewport's commonly-toggled show "
+			"flags. Returns a curated subset of FEngineShowFlags' ~100 fields: "
+			"wireframe, collision, grid, bounds, navigation, atmosphere, fog, "
+			"lighting, post_processing, antialiasing, shadows. Boolean each. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"valid",           {{"type","boolean"}}},
+				{"wireframe",       {{"type","boolean"}}},
+				{"collision",       {{"type","boolean"}}},
+				{"grid",            {{"type","boolean"}}},
+				{"bounds",          {{"type","boolean"}}},
+				{"navigation",      {{"type","boolean"}}},
+				{"atmosphere",      {{"type","boolean"}}},
+				{"fog",             {{"type","boolean"}}},
+				{"lighting",        {{"type","boolean"}}},
+				{"post_processing", {{"type","boolean"}}},
+				{"antialiasing",    {{"type","boolean"}}},
+				{"shadows",         {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetShowFlags();
+			return nlohmann::json{
+				{"valid",           r.valid},
+				{"wireframe",       r.wireframe},
+				{"collision",       r.collision},
+				{"grid",            r.grid},
+				{"bounds",          r.bounds},
+				{"navigation",      r.navigation},
+				{"atmosphere",      r.atmosphere},
+				{"fog",             r.fog},
+				{"lighting",        r.lighting},
+				{"post_processing", r.postProcessing},
+				{"antialiasing",    r.antialiasing},
+				{"shadows",         r.shadows},
+			};
+		});
+	}
+
 	// ----- get_active_editor_mode -----------------------------------------
 	{
 		ToolDescriptor d;

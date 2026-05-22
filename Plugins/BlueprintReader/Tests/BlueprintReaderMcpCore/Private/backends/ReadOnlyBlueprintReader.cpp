@@ -311,6 +311,15 @@ IBlueprintReader::CloseAssetEditorResult
 ReadOnlyBlueprintReader::CloseAssetEditor(std::string_view a) {
 	return inner_->CloseAssetEditor(a);
 }
+IBlueprintReader::CameraTransformResult ReadOnlyBlueprintReader::GetCameraTransform() {
+	return inner_->GetCameraTransform();
+}
+IBlueprintReader::ViewModeResult ReadOnlyBlueprintReader::GetViewMode() {
+	return inner_->GetViewMode();
+}
+IBlueprintReader::ShowFlagsResult ReadOnlyBlueprintReader::GetShowFlags() {
+	return inner_->GetShowFlags();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

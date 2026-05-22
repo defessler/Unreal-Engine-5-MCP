@@ -634,6 +634,15 @@ IBlueprintReader::CloseAssetEditorResult
 CachingBlueprintReader::CloseAssetEditor(std::string_view a) {
 	return inner_->CloseAssetEditor(a);
 }
+IBlueprintReader::CameraTransformResult CachingBlueprintReader::GetCameraTransform() {
+	return inner_->GetCameraTransform();
+}
+IBlueprintReader::ViewModeResult CachingBlueprintReader::GetViewMode() {
+	return inner_->GetViewMode();
+}
+IBlueprintReader::ShowFlagsResult CachingBlueprintReader::GetShowFlags() {
+	return inner_->GetShowFlags();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

@@ -269,6 +269,9 @@ public:
 	FocusedWidgetResult GetFocusedWidget() override;
 	OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) override;
 	CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) override;
+	CameraTransformResult GetCameraTransform() override;
+	ViewModeResult GetViewMode() override;
+	ShowFlagsResult GetShowFlags() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

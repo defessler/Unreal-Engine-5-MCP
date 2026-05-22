@@ -164,6 +164,9 @@ public:
 	FocusedWidgetResult GetFocusedWidget() override;
 	OpenAssetEditorResult OpenAssetEditor(std::string_view assetPath) override;
 	CloseAssetEditorResult CloseAssetEditor(std::string_view assetPath) override;
+	CameraTransformResult GetCameraTransform() override;
+	ViewModeResult GetViewMode() override;
+	ShowFlagsResult GetShowFlags() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
