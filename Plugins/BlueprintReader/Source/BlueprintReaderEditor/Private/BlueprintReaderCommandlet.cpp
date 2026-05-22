@@ -50,6 +50,7 @@
 #include "ISequencer.h"
 #include "MovieScene.h"
 #include "MovieSceneFwd.h"
+#include "Animation/AnimationAsset.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -378,6 +379,7 @@ namespace
 		GetMeshPreviewState,
 		GetCinematicCamera,
 		GetSequencerState,
+		GetAnimEditorState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -555,6 +557,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetMeshPreviewState"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetMeshPreviewState; return true; }
 		if (OpStr.Equals(TEXT("GetCinematicCamera"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCinematicCamera; return true; }
 		if (OpStr.Equals(TEXT("GetSequencerState"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetSequencerState; return true; }
+		if (OpStr.Equals(TEXT("GetAnimEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetAnimEditorState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6387,6 +6390,31 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetAnimEditorStateOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		// v1 stub: deferred. Without RTTI we can't cross-cast from
+		// IAssetEditorInstance to IHasPersonaToolkit (multi-inheritance,
+		// unrelated types in the type system). Reporting `valid:false`
+		// here is honest — the tool surface is documented, future
+		// versions can use UAssetEditorSubsystem::OnAssetOpenedInEditor
+		// + a per-editor-class registry to track Persona toolkits as
+		// they open, then look up by AssetPath here.
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetNumberField(TEXT("selected_bone_index"), -1);
+		Out->SetStringField(TEXT("selected_socket_name"), FString());
+
+		// Validate the asset path resolves (no-op when empty).
+		if (!AssetPath.IsEmpty())
+		{
+			(void)LoadObject<UAnimationAsset>(nullptr, *AssetPath);
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	FString MovieSceneStatusToString(EMovieScenePlayerStatus::Type Status)
 	{
 		switch (Status)
@@ -8633,6 +8661,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetMeshPreviewState,        &RunGetMeshPreviewStateOp },
 		{ EOp::GetCinematicCamera,         &RunGetCinematicCameraOp },
 		{ EOp::GetSequencerState,          &RunGetSequencerStateOp },
+		{ EOp::GetAnimEditorState,         &RunGetAnimEditorStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

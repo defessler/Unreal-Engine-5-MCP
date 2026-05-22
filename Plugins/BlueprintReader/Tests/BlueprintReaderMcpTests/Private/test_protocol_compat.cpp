@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 175);
+	REQUIRE(spec.size() == 176);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -257,7 +257,10 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// get_cinematic_camera.
 	// Re-baselined 2026-05-22 at 175 tools after +1 Wave 2:
 	// get_sequencer_state.
-	constexpr uint64_t kCurrentToolsHash = 0x7C30059A0CF3040FULL;
+	// Re-baselined 2026-05-22 at 176 tools after +1 Wave 2:
+	// get_anim_editor_state (stub — Persona toolkit cross-cast requires
+	// per-editor-class registry without RTTI; documented + valid:false).
+	constexpr uint64_t kCurrentToolsHash = 0x4DC2FC263C7A6F9AULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

@@ -748,6 +748,10 @@ IBlueprintReader::SequencerStateResult
 CachingBlueprintReader::GetSequencerState(std::string_view a) {
 	return inner_->GetSequencerState(a);
 }
+IBlueprintReader::AnimEditorStateResult
+CachingBlueprintReader::GetAnimEditorState(std::string_view a) {
+	return inner_->GetAnimEditorState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 
