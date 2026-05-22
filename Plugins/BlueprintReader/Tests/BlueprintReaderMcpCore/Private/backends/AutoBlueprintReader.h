@@ -190,6 +190,7 @@ public:
 	BlueprintEditorStateResult GetBlueprintEditorState(std::string_view assetPath) override;
 	MaterialInstanceParamsResult GetMaterialInstanceParams(std::string_view assetPath) override;
 	StaticMeshInfoResult GetStaticMeshInfo(std::string_view assetPath) override;
+	UmgEditorStateResult GetUmgEditorState(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
