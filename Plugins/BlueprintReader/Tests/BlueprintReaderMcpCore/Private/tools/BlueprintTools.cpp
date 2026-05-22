@@ -3693,6 +3693,51 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_sequencer_state (Phase 12 Wave 2) ----------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_sequencer_state";
+		d.description =
+			"[editor] Sequencer state for an open ULevelSequence editor. "
+			"Returns `{valid, asset_path, playhead_seconds, playback_status, "
+			"playback_range_start_seconds, playback_range_end_seconds}`. "
+			"`playback_status` is one of `stopped`, `playing`, `scrubbing`, "
+			"`jumping`, `stepping`, `paused`, `unknown`. `valid:false` when "
+			"the level sequence isn't open in the editor. Selection state "
+			"(tracks/sections/keys) not yet exposed; v1 covers playhead "
+			"+ range + status only. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                         {{"type","boolean"}}},
+				{"asset_path",                    {{"type","string"}}},
+				{"playhead_seconds",              {{"type","number"}}},
+				{"playback_status",               {{"type","string"}}},
+				{"playback_range_start_seconds",  {{"type","number"}}},
+				{"playback_range_end_seconds",    {{"type","number"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.GetSequencerState(asset);
+			return nlohmann::json{
+				{"valid",                         r.valid},
+				{"asset_path",                    r.assetPath},
+				{"playhead_seconds",              r.playheadSeconds},
+				{"playback_status",               r.playbackStatus},
+				{"playback_range_start_seconds",  r.playbackRangeStartSeconds},
+				{"playback_range_end_seconds",    r.playbackRangeEndSeconds},
+			};
+		});
+	}
+
 	// ----- get_cinematic_camera (Phase 12 Wave 2) ----------------------
 	{
 		ToolDescriptor d;

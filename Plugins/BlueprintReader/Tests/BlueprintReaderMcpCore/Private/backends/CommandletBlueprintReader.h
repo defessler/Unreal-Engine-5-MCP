@@ -299,6 +299,7 @@ public:
 	MaterialEditorStateResult GetMaterialEditorState(std::string_view assetPath) override;
 	MeshPreviewStateResult GetMeshPreviewState(std::string_view assetPath) override;
 	CinematicCameraResult GetCinematicCamera() override;
+	SequencerStateResult GetSequencerState(std::string_view assetPath) override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

@@ -744,6 +744,10 @@ IBlueprintReader::CinematicCameraResult
 CachingBlueprintReader::GetCinematicCamera() {
 	return inner_->GetCinematicCamera();
 }
+IBlueprintReader::SequencerStateResult
+CachingBlueprintReader::GetSequencerState(std::string_view a) {
+	return inner_->GetSequencerState(a);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

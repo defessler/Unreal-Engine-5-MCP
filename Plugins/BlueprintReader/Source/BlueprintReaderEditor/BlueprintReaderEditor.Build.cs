@@ -135,7 +135,17 @@ public class BlueprintReaderEditor : ModuleRules
 			// naming); IBlueprintEditor lives here.
 			"Kismet",
 			// Phase 12 Wave 2 — IStaticMeshEditor for get_mesh_preview_state.
-			"StaticMeshEditor"
+			"StaticMeshEditor",
+			// Phase 12 Wave 2 — get_sequencer_state. ILevelSequenceEditorToolkit
+			// lives in the LevelSequenceEditor plugin module; ISequencer in
+			// the Sequencer editor module; ULevelSequence runtime asset in
+			// the LevelSequence plugin module.
+			"LevelSequence",
+			"LevelSequenceEditor",
+			"Sequencer",
+			// MovieScene for EMovieScenePlayerStatus + FQualifiedFrameTime
+			// helpers (asSeconds resolves frame rate).
+			"MovieScene"
 		});
 	}
 }

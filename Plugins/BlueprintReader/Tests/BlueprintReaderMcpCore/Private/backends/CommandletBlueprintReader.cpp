@@ -3706,6 +3706,22 @@ CommandletBlueprintReader::GetCinematicCamera() {
 	return out;
 }
 
+IBlueprintReader::SequencerStateResult
+CommandletBlueprintReader::GetSequencerState(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetSequencerState",
+					L"-Asset=" + Widen(assetPath)});
+	SequencerStateResult out;
+	out.assetPath = std::string(assetPath);
+	if (j.is_object()) {
+		out.valid                       = j.value("valid",                          false);
+		out.playheadSeconds             = j.value("playhead_seconds",               0.0);
+		out.playbackStatus              = j.value("playback_status",                std::string{});
+		out.playbackRangeStartSeconds   = j.value("playback_range_start_seconds",   0.0);
+		out.playbackRangeEndSeconds     = j.value("playback_range_end_seconds",     0.0);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
