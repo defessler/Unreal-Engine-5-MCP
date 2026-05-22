@@ -14,6 +14,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
+#include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -315,6 +317,11 @@ namespace
 		GetViewMode,
 		GetShowFlags,
 		GetSelectedComponents,
+		GetSelectedAssets,
+		SetSelectedAssets,
+		GetSelectedFolders,
+		GetContentBrowserPath,
+		SetContentBrowserPath,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -465,6 +472,11 @@ namespace
 		if (OpStr.Equals(TEXT("GetViewMode"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetViewMode; return true; }
 		if (OpStr.Equals(TEXT("GetShowFlags"), ESearchCase::IgnoreCase))            { OutOp = EOp::GetShowFlags; return true; }
 		if (OpStr.Equals(TEXT("GetSelectedComponents"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetSelectedComponents; return true; }
+		if (OpStr.Equals(TEXT("GetSelectedAssets"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetSelectedAssets; return true; }
+		if (OpStr.Equals(TEXT("SetSelectedAssets"), ESearchCase::IgnoreCase))       { OutOp = EOp::SetSelectedAssets; return true; }
+		if (OpStr.Equals(TEXT("GetSelectedFolders"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetSelectedFolders; return true; }
+		if (OpStr.Equals(TEXT("GetContentBrowserPath"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetContentBrowserPath; return true; }
+		if (OpStr.Equals(TEXT("SetContentBrowserPath"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetContentBrowserPath; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6037,6 +6049,138 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Cache the singleton lookup. Module is loaded lazily so the first
+	// call to ContentBrowserModule::Get() may load it; subsequent calls
+	// are cheap.
+	IContentBrowserSingleton* GetContentBrowserOrNull()
+	{
+		if (FModuleManager::Get().IsModuleLoaded(TEXT("ContentBrowser")))
+		{
+			FContentBrowserModule& CB = FModuleManager::GetModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
+			return &CB.Get();
+		}
+		FContentBrowserModule& CB = FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
+		return &CB.Get();
+	}
+
+	int32 RunGetSelectedAssetsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Paths;
+		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		{
+			TArray<FAssetData> Assets;
+			CB->GetSelectedAssets(Assets);
+			for (const FAssetData& A : Assets)
+			{
+				Paths.Add(MakeShared<FJsonValueString>(A.PackageName.ToString()));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("asset_paths"), Paths);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetSelectedAssetsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetsRaw;
+		FParse::Value(*Params, TEXT("Assets="), AssetsRaw);
+		TArray<FString> AssetList;
+		AssetsRaw.ParseIntoArray(AssetList, TEXT(";"), true);
+
+		TArray<TSharedPtr<FJsonValue>> Resulting;
+		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		{
+			TArray<FAssetData> Data;
+			for (const FString& Path : AssetList)
+			{
+				// Loadable path → AssetData. Use the asset registry so we
+				// don't force-load every asset on selection.
+				FAssetRegistryModule& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+				FAssetData AD = AR.Get().GetAssetByObjectPath(FSoftObjectPath(Path));
+				if (AD.IsValid())
+				{
+					Data.Add(AD);
+				}
+			}
+			CB->SyncBrowserToAssets(Data);
+			// Echo back what's selected post-call (the UI may not have
+			// settled but the in-memory selection model is updated).
+			TArray<FAssetData> Confirmed;
+			CB->GetSelectedAssets(Confirmed);
+			for (const FAssetData& A : Confirmed)
+			{
+				Resulting.Add(MakeShared<FJsonValueString>(A.PackageName.ToString()));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("asset_paths"), Resulting);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetSelectedFoldersOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Folders;
+		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		{
+			TArray<FString> FolderPaths;
+			CB->GetSelectedFolders(FolderPaths);
+			for (const FString& F : FolderPaths)
+			{
+				Folders.Add(MakeShared<FJsonValueString>(F));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("folder_paths"), Folders);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetContentBrowserPathOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		FString CurrentPath;
+		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		{
+			TArray<FString> Paths;
+			CB->GetSelectedPathViewFolders(Paths);
+			if (Paths.Num() > 0)
+			{
+				CurrentPath = Paths[0];
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("current_path"), CurrentPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetContentBrowserPathOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Folder;
+		FParse::Value(*Params, TEXT("Folder="), Folder);
+		FString Confirmed;
+		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		{
+			if (!Folder.IsEmpty())
+			{
+				TArray<FString> Paths;
+				Paths.Add(Folder);
+				CB->SyncBrowserToFolders(Paths);
+				TArray<FString> ConfirmedPaths;
+				CB->GetSelectedPathViewFolders(ConfirmedPaths);
+				if (ConfirmedPaths.Num() > 0)
+				{
+					Confirmed = ConfirmedPaths[0];
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("current_path"), Confirmed);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSelectedComponentsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> ActorJsonArr;
@@ -7355,6 +7499,11 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetViewMode,                &RunGetViewModeOp },
 		{ EOp::GetShowFlags,               &RunGetShowFlagsOp },
 		{ EOp::GetSelectedComponents,      &RunGetSelectedComponentsOp },
+		{ EOp::GetSelectedAssets,          &RunGetSelectedAssetsOp },
+		{ EOp::SetSelectedAssets,          &RunSetSelectedAssetsOp },
+		{ EOp::GetSelectedFolders,         &RunGetSelectedFoldersOp },
+		{ EOp::GetContentBrowserPath,      &RunGetContentBrowserPathOp },
+		{ EOp::SetContentBrowserPath,      &RunSetContentBrowserPathOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

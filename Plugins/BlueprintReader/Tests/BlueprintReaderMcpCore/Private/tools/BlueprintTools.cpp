@@ -3693,6 +3693,133 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_selected_assets (content browser) ------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_selected_assets";
+		d.description =
+			"[editor] Currently-selected assets in the Content Browser. "
+			"Returns `{asset_paths: [/Game/AI/BP_Foo, ...]}` (package form). "
+			"Multi-select preserved in order. Empty when nothing selected. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_paths", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetSelectedAssets();
+			return nlohmann::json{{"asset_paths", r.assetPaths}};
+		});
+	}
+
+	// ----- set_selected_assets (content browser) ------------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_selected_assets";
+		d.description =
+			"[editor] Replace the Content Browser asset selection. "
+			"`asset_paths` are package form (`/Game/AI/BP_Foo`). Returns the "
+			"post-call selection so the caller can verify (UI may not have "
+			"settled instantly — poll if needed). Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_paths", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+			{"required", nlohmann::json::array({"asset_paths"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_paths", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::vector<std::string> paths;
+			if (auto it = args.find("asset_paths"); it != args.end() && it->is_array()) {
+				for (const auto& v : *it) {
+					if (v.is_string()) paths.push_back(v.get<std::string>());
+				}
+			}
+			auto r = reader.SetSelectedAssets(paths);
+			return nlohmann::json{{"ok", true}, {"asset_paths", r.assetPaths}};
+		});
+	}
+
+	// ----- get_selected_folders (content browser) -----------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_selected_folders";
+		d.description =
+			"[editor] Currently-selected folder paths in the Content Browser "
+			"tree (distinct from assets — folders are navigation rows). "
+			"Returns `{folder_paths: [...]}` in package form. Requires a "
+			"live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"folder_paths", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetSelectedFolders();
+			return nlohmann::json{{"folder_paths", r.folderPaths}};
+		});
+	}
+
+	// ----- get_content_browser_path -------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_content_browser_path";
+		d.description =
+			"[editor] The folder the Content Browser is currently displaying "
+			"(its address-bar path). Returns `{current_path}`. Empty when no "
+			"path is selected. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"current_path", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetContentBrowserPath();
+			return nlohmann::json{{"current_path", r.currentPath}};
+		});
+	}
+
+	// ----- set_content_browser_path -------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_content_browser_path";
+		d.description =
+			"[editor] Navigate the Content Browser to `folder_path` "
+			"(package form, e.g. `/Game/AI/Behaviors`). Returns the post-"
+			"call current_path for verification. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"folder_path", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"folder_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"current_path", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string folder = RequireString(args, "folder_path");
+			auto r = reader.SetContentBrowserPath(folder);
+			return nlohmann::json{{"ok", true}, {"current_path", r.currentPath}};
+		});
+	}
+
 	// ----- get_selected_components ---------------------------------------
 	{
 		ToolDescriptor d;

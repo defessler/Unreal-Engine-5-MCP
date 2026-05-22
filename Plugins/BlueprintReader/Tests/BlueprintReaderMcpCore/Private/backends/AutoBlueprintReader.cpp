@@ -526,6 +526,23 @@ IBlueprintReader::ShowFlagsResult AutoBlueprintReader::GetShowFlags() {
 IBlueprintReader::SelectedComponentsResult AutoBlueprintReader::GetSelectedComponents() {
 	FORWARD(GetSelectedComponents);
 }
+IBlueprintReader::ContentBrowserSelectionResult AutoBlueprintReader::GetSelectedAssets() {
+	FORWARD(GetSelectedAssets);
+}
+IBlueprintReader::ContentBrowserSelectionResult
+AutoBlueprintReader::SetSelectedAssets(const std::vector<std::string>& a) {
+	FORWARD(SetSelectedAssets, a);
+}
+IBlueprintReader::ContentBrowserFoldersResult AutoBlueprintReader::GetSelectedFolders() {
+	FORWARD(GetSelectedFolders);
+}
+IBlueprintReader::ContentBrowserPathResult AutoBlueprintReader::GetContentBrowserPath() {
+	FORWARD(GetContentBrowserPath);
+}
+IBlueprintReader::ContentBrowserPathResult
+AutoBlueprintReader::SetContentBrowserPath(std::string_view p) {
+	FORWARD(SetContentBrowserPath, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

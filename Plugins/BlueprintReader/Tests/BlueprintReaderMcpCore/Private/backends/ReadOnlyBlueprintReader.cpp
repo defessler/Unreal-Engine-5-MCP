@@ -323,6 +323,26 @@ IBlueprintReader::ShowFlagsResult ReadOnlyBlueprintReader::GetShowFlags() {
 IBlueprintReader::SelectedComponentsResult ReadOnlyBlueprintReader::GetSelectedComponents() {
 	return inner_->GetSelectedComponents();
 }
+IBlueprintReader::ContentBrowserSelectionResult ReadOnlyBlueprintReader::GetSelectedAssets() {
+	return inner_->GetSelectedAssets();
+}
+IBlueprintReader::ContentBrowserSelectionResult
+ReadOnlyBlueprintReader::SetSelectedAssets(const std::vector<std::string>& a) {
+	// Content browser selection is UI state, not .uasset mutation —
+	// pass through even in read-only mode.
+	return inner_->SetSelectedAssets(a);
+}
+IBlueprintReader::ContentBrowserFoldersResult ReadOnlyBlueprintReader::GetSelectedFolders() {
+	return inner_->GetSelectedFolders();
+}
+IBlueprintReader::ContentBrowserPathResult ReadOnlyBlueprintReader::GetContentBrowserPath() {
+	return inner_->GetContentBrowserPath();
+}
+IBlueprintReader::ContentBrowserPathResult
+ReadOnlyBlueprintReader::SetContentBrowserPath(std::string_view p) {
+	// UI navigation, not file mutation — allowed.
+	return inner_->SetContentBrowserPath(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

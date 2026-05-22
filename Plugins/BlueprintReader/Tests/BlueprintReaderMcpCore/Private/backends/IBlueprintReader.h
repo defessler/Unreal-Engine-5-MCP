@@ -1300,6 +1300,53 @@ public:
 		throw BlueprintReaderError("GetSelectedComponents not supported by this backend");
 	}
 
+	// Content browser selected-asset paths (package form). Multi-select
+	// preserves order. Empty when nothing is selected.
+	struct ContentBrowserSelectionResult {
+		std::vector<std::string> assetPaths;
+	};
+	virtual ContentBrowserSelectionResult GetSelectedAssets() {
+		throw BlueprintReaderError("GetSelectedAssets not supported by this backend");
+	}
+
+	// Set content browser asset selection. Replaces any prior selection.
+	// `assetPaths` are package-form (/Game/...). `selected` is the
+	// post-call confirmation; agents poll-for-settle if needed since
+	// IContentBrowserSingleton::SyncBrowserToAssets is async on UI.
+	virtual ContentBrowserSelectionResult SetSelectedAssets(
+		const std::vector<std::string>& assetPaths) {
+		(void)assetPaths;
+		throw BlueprintReaderError("SetSelectedAssets not supported by this backend");
+	}
+
+	// Content browser selected folder paths (package form). Distinct
+	// from `GetSelectedAssets` — folders aren't .uasset, they're tree
+	// navigation rows.
+	struct ContentBrowserFoldersResult {
+		std::vector<std::string> folderPaths;
+	};
+	virtual ContentBrowserFoldersResult GetSelectedFolders() {
+		throw BlueprintReaderError("GetSelectedFolders not supported by this backend");
+	}
+
+	// The folder the content browser is currently displaying (the
+	// "address-bar" path). Single string in package form.
+	struct ContentBrowserPathResult {
+		std::string currentPath;
+	};
+	virtual ContentBrowserPathResult GetContentBrowserPath() {
+		throw BlueprintReaderError("GetContentBrowserPath not supported by this backend");
+	}
+
+	// Navigate the content browser to `folderPath`. Returns the
+	// post-call path (verifies the navigation took effect). `folderPath`
+	// is package-form (e.g. /Game/AI/Behaviors).
+	virtual ContentBrowserPathResult SetContentBrowserPath(
+		std::string_view folderPath) {
+		(void)folderPath;
+		throw BlueprintReaderError("SetContentBrowserPath not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).
