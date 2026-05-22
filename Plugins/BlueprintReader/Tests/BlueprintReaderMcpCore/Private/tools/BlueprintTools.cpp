@@ -3698,13 +3698,15 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		ToolDescriptor d;
 		d.name = "get_anim_editor_state";
 		d.description =
-			"[editor] Persona / animation editor selection state. Returns "
-			"`{valid, asset_path, selected_bone_index, selected_socket_name}`. "
-			"v1 covers the IPersonaPreviewScene selection state (bone "
-			"+ socket). Scrubber position deferred — needs deeper "
-			"AnimInstance time-tracking. `valid:true` requires any Persona-"
-			"based editor (skeleton / animation / blend-space) to be open. "
-			"Requires a live editor.";
+			"[editor] Persona / animation editor selection state. v1 is a "
+			"documented stub returning `valid:false` for all paths — "
+			"surfacing the wire shape `{valid, asset_path, selected_bone_index, "
+			"selected_socket_name}` so callers can see the planned contract. "
+			"Implementation deferred: Persona editors use multi-inheritance "
+			"(FPersonaAssetEditorToolkit + IHasPersonaToolkit) that UE's "
+			"no-RTTI environment can't safely cross-cast. Future fix "
+			"requires a sidecar registry hooked into "
+			"UAssetEditorSubsystem::OnAssetOpenedInEditor.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
