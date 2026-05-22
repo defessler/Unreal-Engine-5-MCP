@@ -3693,6 +3693,139 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- ui_snapshot ----------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "ui_snapshot";
+		d.description =
+			"[editor] Recursive Slate widget tree snapshot. Walks every "
+			"visible top-level window (or only the one whose title contains "
+			"`window`) and returns each widget as `{depth, widget_type, text, "
+			"parent_window}`. `text` is best-effort (extracted from "
+			"`STextBlock`-like widgets); empty otherwise. Capped at 500 "
+			"nodes; `truncated:true` when a subtree was cut off. Default "
+			"max_depth=8. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"window",    {{"type","string"}}},
+				{"max_depth", {{"type","integer"}}},
+			}},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"nodes", {
+					{"type","array"},
+					{"items", {{"type","object"}}},
+				}},
+				{"truncated", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string window = args.value("window", std::string{});
+			int depth = args.value("max_depth", 8);
+			auto r = reader.UiSnapshot(window, depth);
+			nlohmann::json nodes = nlohmann::json::array();
+			for (const auto& n : r.nodes) {
+				nodes.push_back({
+					{"depth",         n.depth},
+					{"widget_type",   n.widgetType},
+					{"text",          n.text},
+					{"parent_window", n.parentWindow},
+				});
+			}
+			return nlohmann::json{
+				{"nodes", nodes}, {"truncated", r.truncated},
+			};
+		});
+	}
+
+	// ----- ui_find -------------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "ui_find";
+		d.description =
+			"[editor] Locate Slate widgets by visible text. Returns the same "
+			"`{nodes, truncated}` shape as `ui_snapshot` but filtered: only "
+			"widgets whose extracted text contains `text` (case-sensitive). "
+			"`role` (optional) further restricts to widgets whose type name "
+			"contains the substring (e.g. `Button` matches `SButton`). "
+			"Capped at 200 hits. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"text", {{"type","string"}}},
+				{"role", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"text"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"nodes",     {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"truncated", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string text = RequireString(args, "text");
+			std::string role = args.value("role", std::string{});
+			auto r = reader.UiFind(text, role);
+			nlohmann::json nodes = nlohmann::json::array();
+			for (const auto& n : r.nodes) {
+				nodes.push_back({
+					{"depth",         n.depth},
+					{"widget_type",   n.widgetType},
+					{"text",          n.text},
+					{"parent_window", n.parentWindow},
+				});
+			}
+			return nlohmann::json{
+				{"nodes", nodes}, {"truncated", r.truncated},
+			};
+		});
+	}
+
+	// ----- list_desktop_windows -----------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_desktop_windows";
+		d.description =
+			"[editor] List visible top-level Slate windows: "
+			"`{windows: [{title, widget_type, pos_x/y, size_x/y, is_active}]}`. "
+			"Lighter-weight alternative to a desktop screenshot when an "
+			"agent just needs to know which windows are open. Z-order from "
+			"`GetAllVisibleWindowsOrdered`. Requires a live editor. NOTE: "
+			"full `take_desktop_screenshot` (multi-window composite image) "
+			"is deferred — see plan doc Wave 1 remainders.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"windows", {
+					{"type","array"},
+					{"items", {{"type","object"}}},
+				}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListDesktopWindows();
+			nlohmann::json wins = nlohmann::json::array();
+			for (const auto& w : r.windows) {
+				wins.push_back({
+					{"title",       w.title},
+					{"widget_type", w.widgetType},
+					{"pos_x",       w.posX},
+					{"pos_y",       w.posY},
+					{"size_x",      w.sizeX},
+					{"size_y",      w.sizeY},
+					{"is_active",   w.isActive},
+				});
+			}
+			return nlohmann::json{{"windows", wins}};
+		});
+	}
+
 	// ----- world_pos_to_screen ------------------------------------------
 	{
 		ToolDescriptor d;

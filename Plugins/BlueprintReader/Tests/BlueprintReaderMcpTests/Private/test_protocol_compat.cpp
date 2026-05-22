@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 155);
+	REQUIRE(spec.size() == 158);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -229,7 +229,10 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// get_content_browser_path, set_content_browser_path.
 	// Re-baselined 2026-05-22 at 155 tools after +2 spatial:
 	// world_pos_to_screen, screen_to_world.
-	constexpr uint64_t kCurrentToolsHash = 0x2EAB2D5B64B3B9A5ULL;
+	// Re-baselined 2026-05-22 at 158 tools after +3 Slate UI:
+	// ui_snapshot, ui_find, list_desktop_windows. take_desktop_screenshot
+	// composite deferred.
+	constexpr uint64_t kCurrentToolsHash = 0x49B18EC90B487CB6ULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

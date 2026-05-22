@@ -671,6 +671,17 @@ IBlueprintReader::ScreenToWorldResult
 CachingBlueprintReader::ScreenToWorld(double x, double y, double d) {
 	return inner_->ScreenToWorld(x, y, d);
 }
+IBlueprintReader::UiSnapshotResult
+CachingBlueprintReader::UiSnapshot(std::string_view w, int d) {
+	return inner_->UiSnapshot(w, d);
+}
+IBlueprintReader::UiSnapshotResult
+CachingBlueprintReader::UiFind(std::string_view t, std::string_view r) {
+	return inner_->UiFind(t, r);
+}
+IBlueprintReader::DesktopWindowsResult CachingBlueprintReader::ListDesktopWindows() {
+	return inner_->ListDesktopWindows();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 
