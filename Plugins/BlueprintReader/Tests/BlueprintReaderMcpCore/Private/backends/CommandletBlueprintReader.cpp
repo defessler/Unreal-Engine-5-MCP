@@ -3865,6 +3865,39 @@ CommandletBlueprintReader::GetHiddenActors() {
 	return out;
 }
 
+IBlueprintReader::VisibleActorsResult
+CommandletBlueprintReader::GetVisibleActors(std::string_view classFilter,
+											 double maxDistanceCm) {
+	std::vector<std::wstring> args = {L"-Op=GetVisibleActors",
+									   L"-Dist=" + std::to_wstring(maxDistanceCm)};
+	if (!classFilter.empty()) {
+		args.push_back(L"-ClassFilter=" + Widen(classFilter));
+	}
+	auto j = RunOp(args);
+	VisibleActorsResult out;
+	if (j.is_object()) {
+		out.truncated = j.value("truncated", false);
+		if (auto it = j.find("actors"); it != j.end() && it->is_array()) {
+			for (const auto& a : *it) {
+				if (!a.is_object()) continue;
+				VisibleActorInfo info;
+				info.name         = a.value("name",          std::string{});
+				info.label        = a.value("label",         std::string{});
+				info.actorClass   = a.value("actor_class",   std::string{});
+				info.worldX       = a.value("world_x",       0.0);
+				info.worldY       = a.value("world_y",       0.0);
+				info.worldZ       = a.value("world_z",       0.0);
+				info.distanceCm   = a.value("distance_cm",   0.0);
+				info.screenX      = a.value("screen_x",      0.0);
+				info.screenY      = a.value("screen_y",      0.0);
+				info.hasScreenPos = a.value("has_screen_pos",false);
+				out.actors.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

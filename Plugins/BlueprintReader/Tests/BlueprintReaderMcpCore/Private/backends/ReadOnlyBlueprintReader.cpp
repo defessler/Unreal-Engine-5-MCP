@@ -461,6 +461,10 @@ IBlueprintReader::ActiveViewportResult ReadOnlyBlueprintReader::GetActiveViewpor
 IBlueprintReader::HiddenActorsResult ReadOnlyBlueprintReader::GetHiddenActors() {
 	return inner_->GetHiddenActors();
 }
+IBlueprintReader::VisibleActorsResult
+ReadOnlyBlueprintReader::GetVisibleActors(std::string_view f, double d) {
+	return inner_->GetVisibleActors(f, d);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
