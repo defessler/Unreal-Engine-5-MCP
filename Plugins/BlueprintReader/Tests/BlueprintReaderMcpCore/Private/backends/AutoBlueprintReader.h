@@ -205,6 +205,7 @@ public:
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
+	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

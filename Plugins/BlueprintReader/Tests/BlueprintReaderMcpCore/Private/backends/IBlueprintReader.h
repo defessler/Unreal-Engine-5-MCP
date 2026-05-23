@@ -1880,6 +1880,31 @@ public:
 		throw BlueprintReaderError("GetHiddenActors not supported by this backend");
 	}
 
+	// Actors visible in the active level viewport — frustum-tested
+	// against the current camera, filtered by class substring and max
+	// distance. Hidden actors are skipped. Per-actor metadata: name,
+	// label, class short-name, world location, distance from camera,
+	// normalized screen position (when projectable).
+	struct VisibleActorInfo {
+		std::string name;
+		std::string label;            // GetActorLabel — display name
+		std::string actorClass;       // short class name
+		double worldX = 0.0, worldY = 0.0, worldZ = 0.0;
+		double distanceCm = 0.0;
+		double screenX = 0.0;         // normalized [0,1]
+		double screenY = 0.0;
+		bool   hasScreenPos = false;  // false when behind camera
+	};
+	struct VisibleActorsResult {
+		std::vector<VisibleActorInfo> actors;
+		bool truncated = false;
+	};
+	virtual VisibleActorsResult GetVisibleActors(std::string_view classFilter,
+												 double maxDistanceCm) {
+		(void)classFilter; (void)maxDistanceCm;
+		throw BlueprintReaderError("GetVisibleActors not supported by this backend");
+	}
+
 	// Trigger a Live Coding compile + patch. Returns whether the compile
 	// was queued; the actual result is asynchronous (Live Coding emits
 	// its own status messages to the log).

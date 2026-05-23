@@ -228,6 +228,7 @@ public:
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
+	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

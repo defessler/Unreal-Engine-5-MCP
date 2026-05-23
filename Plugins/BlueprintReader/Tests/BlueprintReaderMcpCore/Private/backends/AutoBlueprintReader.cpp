@@ -661,6 +661,10 @@ IBlueprintReader::ActiveViewportResult AutoBlueprintReader::GetActiveViewport() 
 IBlueprintReader::HiddenActorsResult AutoBlueprintReader::GetHiddenActors() {
 	FORWARD(GetHiddenActors);
 }
+IBlueprintReader::VisibleActorsResult
+AutoBlueprintReader::GetVisibleActors(std::string_view f, double d) {
+	FORWARD(GetVisibleActors, f, d);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

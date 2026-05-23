@@ -781,6 +781,10 @@ IBlueprintReader::ActiveViewportResult CachingBlueprintReader::GetActiveViewport
 IBlueprintReader::HiddenActorsResult CachingBlueprintReader::GetHiddenActors() {
 	return inner_->GetHiddenActors();
 }
+IBlueprintReader::VisibleActorsResult
+CachingBlueprintReader::GetVisibleActors(std::string_view f, double d) {
+	return inner_->GetVisibleActors(f, d);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

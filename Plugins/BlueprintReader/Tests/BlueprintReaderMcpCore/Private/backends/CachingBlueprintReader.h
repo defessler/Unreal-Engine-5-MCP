@@ -226,6 +226,7 @@ public:
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
+	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

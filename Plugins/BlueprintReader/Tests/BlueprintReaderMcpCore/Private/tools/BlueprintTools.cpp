@@ -3735,6 +3735,60 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_visible_actors (Phase 13 Wave 3) -----------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_visible_actors";
+		d.description =
+			"[editor] Actors visible in the active level viewport — "
+			"frustum-tested against the camera, filtered by class "
+			"substring (`class_filter`, case-sensitive) and max distance "
+			"(`max_distance` in cm; 0 = no limit). Skips hidden actors. "
+			"Per-actor `{name, label, actor_class, world_x/y/z, "
+			"distance_cm, screen_x/y, has_screen_pos}`. `screen_x/y` are "
+			"normalized [0,1]; `has_screen_pos:false` means the actor "
+			"is in frustum but projects behind the camera plane. Capped "
+			"at 500 actors. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"class_filter", {{"type","string"}}},
+				{"max_distance", {{"type","number"}}},
+			}},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"actors",    {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"truncated", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string cls = args.value("class_filter", std::string{});
+			double dist     = args.value("max_distance", 0.0);
+			auto r = reader.GetVisibleActors(cls, dist);
+			nlohmann::json actors = nlohmann::json::array();
+			for (const auto& a : r.actors) {
+				actors.push_back({
+					{"name",           a.name},
+					{"label",          a.label},
+					{"actor_class",    a.actorClass},
+					{"world_x",        a.worldX},
+					{"world_y",        a.worldY},
+					{"world_z",        a.worldZ},
+					{"distance_cm",    a.distanceCm},
+					{"screen_x",       a.screenX},
+					{"screen_y",       a.screenY},
+					{"has_screen_pos", a.hasScreenPos},
+				});
+			}
+			return nlohmann::json{
+				{"actors",    actors},
+				{"truncated", r.truncated},
+			};
+		});
+	}
+
 	// ----- get_hidden_actors (Phase 13 Wave 3) ------------------------
 	{
 		ToolDescriptor d;

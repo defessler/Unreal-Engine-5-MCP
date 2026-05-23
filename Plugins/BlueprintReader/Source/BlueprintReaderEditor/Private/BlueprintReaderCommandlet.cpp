@@ -390,6 +390,7 @@ namespace
 		GetSnappingSettings,
 		GetActiveViewport,
 		GetHiddenActors,
+		GetVisibleActors,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -577,6 +578,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetSnappingSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetSnappingSettings; return true; }
 		if (OpStr.Equals(TEXT("GetActiveViewport"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetActiveViewport; return true; }
 		if (OpStr.Equals(TEXT("GetHiddenActors"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetHiddenActors; return true; }
+		if (OpStr.Equals(TEXT("GetVisibleActors"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetVisibleActors; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6409,6 +6411,112 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetVisibleActorsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		constexpr int32 kMaxActors = 500;
+		FString ClassFilter;
+		double MaxDist = 0.0;
+		FParse::Value(*Params, TEXT("ClassFilter="), ClassFilter);
+		FParse::Value(*Params, TEXT("Dist="),        MaxDist);
+
+		TArray<TSharedPtr<FJsonValue>> Actors;
+		bool bTruncated = false;
+		UWorld* World = GetEditorWorldOrNull();
+		FEditorViewportClient* VC = FindActiveLevelViewportClient();
+		if (World && VC && VC->Viewport)
+		{
+			FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(
+				VC->Viewport, VC->GetScene(), VC->EngineShowFlags)
+				.SetRealtimeUpdate(VC->IsRealtime()));
+			FSceneView* View = VC->CalcSceneView(&ViewFamily);
+			const FVector CamLoc = VC->GetViewLocation();
+			const FIntRect VR = View ? View->UnscaledViewRect : FIntRect();
+			const FMatrix VPM = View ? View->ViewMatrices.GetViewProjectionMatrix() : FMatrix::Identity;
+
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				AActor* Actor = *It;
+				if (!IsValid(Actor)) continue;
+				if (Actor->IsHidden() || Actor->IsTemporarilyHiddenInEditor() || Actor->IsHiddenEd())
+				{
+					continue;
+				}
+				if (!ClassFilter.IsEmpty())
+				{
+					const FString ClassName = Actor->GetClass()
+						? Actor->GetClass()->GetName() : FString();
+					if (!ClassName.Contains(ClassFilter))
+					{
+						continue;
+					}
+				}
+				const FVector ActorLoc = Actor->GetActorLocation();
+				const double Dist = FVector::Dist(CamLoc, ActorLoc);
+				if (MaxDist > 0.0 && Dist > MaxDist)
+				{
+					continue;
+				}
+				// Frustum check via FBox around actor (use root component
+				// bounds when available; else a point at the actor's loc).
+				bool bInFrustum = true;
+				if (View)
+				{
+					FBox Box = Actor->GetComponentsBoundingBox(true);
+					if (!Box.IsValid)
+					{
+						Box = FBox::BuildAABB(ActorLoc, FVector(50.0));
+					}
+					bInFrustum = View->ViewFrustum.IntersectBox(
+						Box.GetCenter(), Box.GetExtent());
+				}
+				if (!bInFrustum)
+				{
+					continue;
+				}
+				if (Actors.Num() >= kMaxActors)
+				{
+					bTruncated = true;
+					break;
+				}
+
+				auto A = MakeShared<FJsonObject>();
+				A->SetStringField(TEXT("name"),  Actor->GetName());
+				A->SetStringField(TEXT("label"), Actor->GetActorLabel());
+				A->SetStringField(TEXT("actor_class"),
+					Actor->GetClass() ? Actor->GetClass()->GetName() : FString());
+				A->SetNumberField(TEXT("world_x"), ActorLoc.X);
+				A->SetNumberField(TEXT("world_y"), ActorLoc.Y);
+				A->SetNumberField(TEXT("world_z"), ActorLoc.Z);
+				A->SetNumberField(TEXT("distance_cm"), Dist);
+
+				// Optional screen position via the same view.
+				bool bHasScreen = false;
+				double SX = 0.0, SY = 0.0;
+				if (View && VR.Width() > 0 && VR.Height() > 0)
+				{
+					FVector2D ScreenPos;
+					if (FSceneView::ProjectWorldToScreen(
+							ActorLoc, VR, VPM, ScreenPos))
+					{
+						SX = (ScreenPos.X - VR.Min.X) / (double)VR.Width();
+						SY = (ScreenPos.Y - VR.Min.Y) / (double)VR.Height();
+						bHasScreen = true;
+					}
+				}
+				A->SetBoolField(TEXT("has_screen_pos"), bHasScreen);
+				A->SetNumberField(TEXT("screen_x"), SX);
+				A->SetNumberField(TEXT("screen_y"), SY);
+				Actors.Add(MakeShared<FJsonValueObject>(A));
+			}
+		}
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("actors"), Actors);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetHiddenActorsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		constexpr int32 kMaxActors = 500;
@@ -8887,6 +8995,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetSnappingSettings,        &RunGetSnappingSettingsOp },
 		{ EOp::GetActiveViewport,          &RunGetActiveViewportOp },
 		{ EOp::GetHiddenActors,            &RunGetHiddenActorsOp },
+		{ EOp::GetVisibleActors,           &RunGetVisibleActorsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

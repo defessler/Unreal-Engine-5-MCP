@@ -185,6 +185,7 @@ public:
 	SnappingSettingsResult GetSnappingSettings() override;
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
+	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,
