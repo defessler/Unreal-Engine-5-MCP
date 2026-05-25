@@ -103,6 +103,7 @@
 #include "UObject/ObjectSaveContext.h"
 #include "Engine/DeveloperSettings.h"                    // Phase 16 — project settings nav
 #include "UObject/UObjectHash.h"                         // GetDerivedClasses
+#include "Misc/AutomationTest.h"                         // Phase 16 — automation discovery
 #include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
 #include "UnrealEdGlobals.h"           // GUnrealEd
 #include "IPackageAutoSaver.h"
@@ -467,6 +468,7 @@ namespace
 		ListProjectSettings,
 		GetProjectSettingValues,
 		SetProjectSetting,
+		ListAutomationTests,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -693,6 +695,7 @@ namespace
 		if (OpStr.Equals(TEXT("ListProjectSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListProjectSettings; return true; }
 		if (OpStr.Equals(TEXT("GetProjectSettingValues"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetProjectSettingValues; return true; }
 		if (OpStr.Equals(TEXT("SetProjectSetting"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetProjectSetting; return true; }
+		if (OpStr.Equals(TEXT("ListAutomationTests"), ESearchCase::IgnoreCase))    { OutOp = EOp::ListAutomationTests; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7284,6 +7287,29 @@ namespace
 			});
 	}
 
+	int32 RunListAutomationTestsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		constexpr int32 kMax = 2000;
+		TArray<FAutomationTestInfo> TestInfos;
+		FAutomationTestFramework::Get().GetValidTestNames(TestInfos);
+		TArray<TSharedPtr<FJsonValue>> Tests;
+		bool bTruncated = false;
+		for (const FAutomationTestInfo& Info : TestInfos)
+		{
+			if (Tests.Num() >= kMax) { bTruncated = true; break; }
+			auto T = MakeShared<FJsonObject>();
+			T->SetStringField(TEXT("display_name"), Info.GetDisplayName());
+			T->SetStringField(TEXT("full_path"),    Info.GetFullTestPath());
+			T->SetStringField(TEXT("test_name"),    Info.GetTestName());
+			Tests.Add(MakeShared<FJsonValueObject>(T));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("tests"), Tests);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunSetProjectSettingOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString ClassPath, PropName, NewValue;
@@ -10097,6 +10123,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListProjectSettings,        &RunListProjectSettingsOp },
 		{ EOp::GetProjectSettingValues,    &RunGetProjectSettingValuesOp },
 		{ EOp::SetProjectSetting,          &RunSetProjectSettingOp },
+		{ EOp::ListAutomationTests,        &RunListAutomationTestsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

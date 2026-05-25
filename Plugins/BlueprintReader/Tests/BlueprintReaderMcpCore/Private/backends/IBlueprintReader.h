@@ -1361,6 +1361,22 @@ public:
 		throw BlueprintReaderError("SetProjectSetting not supported by this backend");
 	}
 
+	// Registered automation tests (FAutomationTestFramework, synchronous).
+	// Each `{display_name, full_path, test_name}` — `test_name` / `full_path`
+	// feed the pattern arg of run_automation_tests. Phase 16 — AutomationTest.
+	struct AutomationTestEntry {
+		std::string displayName;
+		std::string fullPath;
+		std::string testName;
+	};
+	struct AutomationTestsResult {
+		std::vector<AutomationTestEntry> tests;
+		bool truncated = false;
+	};
+	virtual AutomationTestsResult ListAutomationTests() {
+		throw BlueprintReaderError("ListAutomationTests not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
