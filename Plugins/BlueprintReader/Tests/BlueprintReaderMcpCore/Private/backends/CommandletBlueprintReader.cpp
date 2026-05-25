@@ -4223,6 +4223,26 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::AutomationTestsResult
+CommandletBlueprintReader::ListAutomationTests() {
+	auto j = RunOp({L"-Op=ListAutomationTests"});
+	AutomationTestsResult out;
+	if (j.is_object()) {
+		out.truncated = j.value("truncated", false);
+		if (auto it = j.find("tests"); it != j.end() && it->is_array()) {
+			for (const auto& t : *it) {
+				if (!t.is_object()) continue;
+				AutomationTestEntry e;
+				e.displayName = t.value("display_name", std::string{});
+				e.fullPath    = t.value("full_path",    std::string{});
+				e.testName    = t.value("test_name",    std::string{});
+				out.tests.push_back(std::move(e));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SetProjectSettingResult
 CommandletBlueprintReader::SetProjectSetting(std::string_view classPath,
 											 std::string_view property,

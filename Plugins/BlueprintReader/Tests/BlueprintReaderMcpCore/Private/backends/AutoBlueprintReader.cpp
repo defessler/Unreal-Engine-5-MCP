@@ -834,6 +834,9 @@ IBlueprintReader::SetProjectSettingResult
 AutoBlueprintReader::SetProjectSetting(std::string_view c, std::string_view p, std::string_view v) {
 	FORWARD(SetProjectSetting, c, p, v);
 }
+IBlueprintReader::AutomationTestsResult AutoBlueprintReader::ListAutomationTests() {
+	FORWARD(ListAutomationTests);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -8311,6 +8311,38 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- list_automation_tests (Phase 16 — AutomationTest discovery) ----
+	{
+		ToolDescriptor d;
+		d.name = "list_automation_tests";
+		d.description =
+			"[editor] Registered automation tests (FAutomationTestFramework, "
+			"synchronous). Each `{display_name, full_path, test_name}` — "
+			"`full_path`/`test_name` feed the `pattern` arg of "
+			"`run_automation_tests`. Capped at 2000 (`truncated:true` if "
+			"more). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"tests",     {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"truncated", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListAutomationTests();
+			nlohmann::json tests = nlohmann::json::array();
+			for (const auto& t : r.tests) {
+				tests.push_back({
+					{"display_name", t.displayName},
+					{"full_path",    t.fullPath},
+					{"test_name",    t.testName},
+				});
+			}
+			return nlohmann::json{{"tests", tests}, {"truncated", r.truncated}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{
