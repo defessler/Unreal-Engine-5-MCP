@@ -1009,6 +1009,56 @@ public:
 		throw BlueprintReaderError("GetIsolateMode not supported by this backend");
 	}
 
+	// ===== Phase 14 — World + SCC + system state =======================
+
+	// Async asset compilation backlog (textures / static meshes / etc.)
+	// via FAssetCompilingManager. `remaining_assets` is the aggregate.
+	struct AsyncCompileStateResult {
+		int remainingAssets = 0;
+	};
+	virtual AsyncCompileStateResult GetAsyncCompileState() {
+		throw BlueprintReaderError("GetAsyncCompileState not supported by this backend");
+	}
+
+	// Shader compilation backlog via GShaderCompilingManager.
+	struct ShaderCompileStateResult {
+		bool isCompiling = false;
+		int outstandingJobs = 0;
+		int pendingJobs = 0;
+	};
+	virtual ShaderCompileStateResult GetShaderCompileState() {
+		throw BlueprintReaderError("GetShaderCompileState not supported by this backend");
+	}
+
+	// Editor "current level" — where newly-spawned actors land. Names are
+	// package paths (e.g. /Game/Maps/L_Foo).
+	struct CurrentLevelResult {
+		bool valid = false;
+		std::string levelName;   // current level package
+		std::string worldName;   // owning world package
+	};
+	virtual CurrentLevelResult GetCurrentLevel() {
+		throw BlueprintReaderError("GetCurrentLevel not supported by this backend");
+	}
+
+	// All loaded levels (persistent + streaming sublevels). Package paths.
+	struct LoadedLevelsResult {
+		std::vector<std::string> levelNames;
+	};
+	virtual LoadedLevelsResult ListLoadedLevels() {
+		throw BlueprintReaderError("ListLoadedLevels not supported by this backend");
+	}
+
+	// Active source-control provider. `name` is "None" when disabled.
+	struct SourceControlProviderResult {
+		std::string name;
+		bool enabled = false;
+		bool available = false;
+	};
+	virtual SourceControlProviderResult GetSourceControlProvider() {
+		throw BlueprintReaderError("GetSourceControlProvider not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

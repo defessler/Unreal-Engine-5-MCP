@@ -507,6 +507,22 @@ IBlueprintReader::HoverTargetResult ReadOnlyBlueprintReader::GetHoverTarget() {
 IBlueprintReader::IsolateModeResult ReadOnlyBlueprintReader::GetIsolateMode() {
 	return inner_->GetIsolateMode();
 }
+// Phase 14 — all reads, pass through.
+IBlueprintReader::AsyncCompileStateResult ReadOnlyBlueprintReader::GetAsyncCompileState() {
+	return inner_->GetAsyncCompileState();
+}
+IBlueprintReader::ShaderCompileStateResult ReadOnlyBlueprintReader::GetShaderCompileState() {
+	return inner_->GetShaderCompileState();
+}
+IBlueprintReader::CurrentLevelResult ReadOnlyBlueprintReader::GetCurrentLevel() {
+	return inner_->GetCurrentLevel();
+}
+IBlueprintReader::LoadedLevelsResult ReadOnlyBlueprintReader::ListLoadedLevels() {
+	return inner_->ListLoadedLevels();
+}
+IBlueprintReader::SourceControlProviderResult ReadOnlyBlueprintReader::GetSourceControlProvider() {
+	return inner_->GetSourceControlProvider();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

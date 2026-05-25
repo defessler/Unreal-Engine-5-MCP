@@ -7488,6 +7488,127 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ===== Phase 14 — World + SCC + system state =========================
+
+	// ----- get_async_compile_state -----
+	{
+		ToolDescriptor d;
+		d.name = "get_async_compile_state";
+		d.description =
+			"[editor] Async asset-compilation backlog (textures, static "
+			"meshes, etc.) via FAssetCompilingManager. `remaining_assets` "
+			"is the aggregate still compiling; 0 means idle. Requires a "
+			"live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"remaining_assets", {{"type","integer"}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetAsyncCompileState();
+			return nlohmann::json{{"remaining_assets", r.remainingAssets}};
+		});
+	}
+
+	// ----- get_shader_compile_state -----
+	{
+		ToolDescriptor d;
+		d.name = "get_shader_compile_state";
+		d.description =
+			"[editor] Shader-compilation backlog via GShaderCompilingManager: "
+			"`{is_compiling, outstanding_jobs, pending_jobs}`. Requires a "
+			"live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"is_compiling",     {{"type","boolean"}}},
+				{"outstanding_jobs", {{"type","integer"}}},
+				{"pending_jobs",     {{"type","integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetShaderCompileState();
+			return nlohmann::json{
+				{"is_compiling",     r.isCompiling},
+				{"outstanding_jobs", r.outstandingJobs},
+				{"pending_jobs",     r.pendingJobs},
+			};
+		});
+	}
+
+	// ----- get_current_level -----
+	{
+		ToolDescriptor d;
+		d.name = "get_current_level";
+		d.description =
+			"[editor] The editor's current level (where newly-spawned actors "
+			"land) + owning world. Names are package paths. `valid:false` "
+			"means no editor world. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"level_name", {{"type","string"}}},
+				{"world_name", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetCurrentLevel();
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"level_name", r.levelName},
+				{"world_name", r.worldName},
+			};
+		});
+	}
+
+	// ----- list_loaded_levels -----
+	{
+		ToolDescriptor d;
+		d.name = "list_loaded_levels";
+		d.description =
+			"[editor] All loaded levels (persistent + streaming sublevels) "
+			"as package paths. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"level_names", {{"type","array"}, {"items", {{"type","string"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListLoadedLevels();
+			return nlohmann::json{{"level_names", r.levelNames}};
+		});
+	}
+
+	// ----- get_source_control_provider -----
+	{
+		ToolDescriptor d;
+		d.name = "get_source_control_provider";
+		d.description =
+			"[editor] Active source-control provider: `{name, enabled, "
+			"available}`. `name` is e.g. \"Git\"/\"Perforce\"/\"None\". "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",      {{"type","string"}}},
+				{"enabled",   {{"type","boolean"}}},
+				{"available", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetSourceControlProvider();
+			return nlohmann::json{
+				{"name",      r.name},
+				{"enabled",   r.enabled},
+				{"available", r.available},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

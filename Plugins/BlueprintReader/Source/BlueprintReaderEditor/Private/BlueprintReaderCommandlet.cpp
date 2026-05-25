@@ -77,6 +77,10 @@
 #include "Bookmarks/IBookmarkTypeTools.h" // Phase 13 Wave 3 — camera bookmarks (UnrealEd)
 #include "Engine/BookMark.h"           // UBookMark (Location/Rotation)
 #include "GameFramework/WorldSettings.h"  // AWorldSettings::GetBookmarks()
+#include "AssetCompilingManager.h"     // Phase 14 — async compile backlog
+#include "ShaderCompiler.h"            // Phase 14 — GShaderCompilingManager
+#include "ISourceControlModule.h"      // Phase 14 — SCC provider
+#include "ISourceControlProvider.h"
 #include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
@@ -410,6 +414,11 @@ namespace
 		GotoCameraBookmark,
 		GetHoverTarget,
 		GetIsolateMode,
+		GetAsyncCompileState,
+		GetShaderCompileState,
+		GetCurrentLevel,
+		ListLoadedLevels,
+		GetSourceControlProvider,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -608,6 +617,11 @@ namespace
 		if (OpStr.Equals(TEXT("GotoCameraBookmark"), ESearchCase::IgnoreCase))      { OutOp = EOp::GotoCameraBookmark; return true; }
 		if (OpStr.Equals(TEXT("GetHoverTarget"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetHoverTarget; return true; }
 		if (OpStr.Equals(TEXT("GetIsolateMode"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetIsolateMode; return true; }
+		if (OpStr.Equals(TEXT("GetAsyncCompileState"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetAsyncCompileState; return true; }
+		if (OpStr.Equals(TEXT("GetShaderCompileState"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetShaderCompileState; return true; }
+		if (OpStr.Equals(TEXT("GetCurrentLevel"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetCurrentLevel; return true; }
+		if (OpStr.Equals(TEXT("ListLoadedLevels"), ESearchCase::IgnoreCase))        { OutOp = EOp::ListLoadedLevels; return true; }
+		if (OpStr.Equals(TEXT("GetSourceControlProvider"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetSourceControlProvider; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6829,6 +6843,83 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetAsyncCompileStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetNumberField(TEXT("remaining_assets"),
+			FAssetCompilingManager::Get().GetNumRemainingAssets());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetShaderCompileStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bCompiling = false;
+		int32 Outstanding = 0, Pending = 0;
+		if (GShaderCompilingManager)
+		{
+			bCompiling  = GShaderCompilingManager->IsCompiling();
+			Outstanding = GShaderCompilingManager->GetNumOutstandingJobs();
+			Pending     = GShaderCompilingManager->GetNumPendingJobs();
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("is_compiling"), bCompiling);
+		Out->SetNumberField(TEXT("outstanding_jobs"), Outstanding);
+		Out->SetNumberField(TEXT("pending_jobs"), Pending);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetCurrentLevelOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bValid = false;
+		FString LevelName, WorldName;
+		if (UWorld* World = GetEditorWorldOrNull())
+		{
+			WorldName = World->GetOutermost()->GetName();
+			if (ULevel* Cur = World->GetCurrentLevel())
+			{
+				LevelName = Cur->GetOutermost()->GetName();
+				bValid = true;
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("level_name"), LevelName);
+		Out->SetStringField(TEXT("world_name"), WorldName);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunListLoadedLevelsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Names;
+		if (UWorld* World = GetEditorWorldOrNull())
+		{
+			for (ULevel* Level : World->GetLevels())
+			{
+				if (!Level) continue;
+				Names.Add(MakeShared<FJsonValueString>(Level->GetOutermost()->GetName()));
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("level_names"), Names);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetSourceControlProviderOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		ISourceControlModule& SCM = ISourceControlModule::Get();
+		ISourceControlProvider& Provider = SCM.GetProvider();
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("name"), Provider.GetName().ToString());
+		Out->SetBoolField(TEXT("enabled"), SCM.IsEnabled());
+		Out->SetBoolField(TEXT("available"), Provider.IsAvailable());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9288,6 +9379,11 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GotoCameraBookmark,         &RunGotoCameraBookmarkOp },
 		{ EOp::GetHoverTarget,             &RunGetHoverTargetOp },
 		{ EOp::GetIsolateMode,             &RunGetIsolateModeOp },
+		{ EOp::GetAsyncCompileState,       &RunGetAsyncCompileStateOp },
+		{ EOp::GetShaderCompileState,      &RunGetShaderCompileStateOp },
+		{ EOp::GetCurrentLevel,            &RunGetCurrentLevelOp },
+		{ EOp::ListLoadedLevels,           &RunListLoadedLevelsOp },
+		{ EOp::GetSourceControlProvider,   &RunGetSourceControlProviderOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

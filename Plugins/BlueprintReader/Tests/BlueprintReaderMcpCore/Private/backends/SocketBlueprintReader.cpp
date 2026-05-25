@@ -2395,6 +2395,60 @@ SocketBlueprintReader::GetIsolateMode() {
 	return out;
 }
 
+IBlueprintReader::AsyncCompileStateResult
+SocketBlueprintReader::GetAsyncCompileState() {
+	auto j = RunOp({"-Op=GetAsyncCompileState"});
+	AsyncCompileStateResult out;
+	if (j.is_object()) out.remainingAssets = j.value("remaining_assets", 0);
+	return out;
+}
+IBlueprintReader::ShaderCompileStateResult
+SocketBlueprintReader::GetShaderCompileState() {
+	auto j = RunOp({"-Op=GetShaderCompileState"});
+	ShaderCompileStateResult out;
+	if (j.is_object()) {
+		out.isCompiling     = j.value("is_compiling", false);
+		out.outstandingJobs = j.value("outstanding_jobs", 0);
+		out.pendingJobs     = j.value("pending_jobs", 0);
+	}
+	return out;
+}
+IBlueprintReader::CurrentLevelResult
+SocketBlueprintReader::GetCurrentLevel() {
+	auto j = RunOp({"-Op=GetCurrentLevel"});
+	CurrentLevelResult out;
+	if (j.is_object()) {
+		out.valid     = j.value("valid", false);
+		out.levelName = j.value("level_name", std::string{});
+		out.worldName = j.value("world_name", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::LoadedLevelsResult
+SocketBlueprintReader::ListLoadedLevels() {
+	auto j = RunOp({"-Op=ListLoadedLevels"});
+	LoadedLevelsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("level_names"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.levelNames.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::SourceControlProviderResult
+SocketBlueprintReader::GetSourceControlProvider() {
+	auto j = RunOp({"-Op=GetSourceControlProvider"});
+	SourceControlProviderResult out;
+	if (j.is_object()) {
+		out.name      = j.value("name", std::string{});
+		out.enabled   = j.value("enabled", false);
+		out.available = j.value("available", false);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});
