@@ -139,6 +139,10 @@ public:
 	void BeginBatch() override;
 	nlohmann::json EndBatch(bool skipCompile = false) override;
 	nlohmann::json ShutdownDaemon() override;
+	// Exec tool — forward to the active backend. Without this override the
+	// call would hit IBlueprintReader's throwing default ("not supported")
+	// even though commandlet/live implement it.
+	PythonResult RunPythonScript(std::string_view code) override;
 
 	// ----- Project + Asset-registry queries -------------------------
 	// Without these explicit overrides the calls would dispatch to

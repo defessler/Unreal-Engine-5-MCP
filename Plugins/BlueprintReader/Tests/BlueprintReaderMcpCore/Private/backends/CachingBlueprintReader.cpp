@@ -315,6 +315,13 @@ void CachingBlueprintReader::AddVariable(std::string_view assetPath, std::string
 	InvalidateAsset(assetPath);
 }
 
+// Exec tool: forward to inner. Arbitrary Python can mutate any asset, but
+// we can't know which — rely on the short read-cache TTL to expire stale
+// entries rather than blanket-clearing on every call.
+IBlueprintReader::PythonResult CachingBlueprintReader::RunPythonScript(std::string_view code) {
+	return inner_->RunPythonScript(code);
+}
+
 void CachingBlueprintReader::SetNodePosition(std::string_view assetPath, std::string_view graphName,
 											 std::string_view nodeId, int x, int y) {
 	inner_->SetNodePosition(assetPath, graphName, nodeId, x, y);

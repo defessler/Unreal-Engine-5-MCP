@@ -57,6 +57,9 @@ void ReadOnlyBlueprintReader::AddVariable(std::string_view, std::string_view,
 										  std::string_view, bool, bool) {
 	Reject("add_variable");
 }
+IBlueprintReader::PythonResult ReadOnlyBlueprintReader::RunPythonScript(std::string_view) {
+	Reject("run_python_script");
+}
 void ReadOnlyBlueprintReader::SetNodePosition(std::string_view, std::string_view,
 											  std::string_view, int, int) {
 	Reject("set_node_position");

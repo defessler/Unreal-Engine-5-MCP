@@ -1,0 +1,97 @@
+{
+    "summary": {
+        "asset_path": "/Game/Test/BP_Inherited",
+        "name": "BP_Inherited",
+        "parent_class": "APlayerController",
+        "modified_iso": "2026-05-24T00:00:00Z"
+    },
+    "metadata": {
+        "asset_path": "/Game/Test/BP_Inherited",
+        "name": "BP_Inherited",
+        "parent_class": "APlayerController",
+        "interfaces": [],
+        "variables": [
+            {
+                "name": "OwnVar",
+                "type": {
+                    "category": "bool",
+                    "sub_category": null,
+                    "sub_category_object": null,
+                    "is_array": false,
+                    "is_set": false,
+                    "is_map": false
+                },
+                "default_value": "false",
+                "category": "",
+                "is_replicated": false,
+                "is_editable": true
+            }
+        ],
+        "functions": [
+            { "name": "CheckRefs" }
+        ],
+        "macros": [],
+        "graphs": [
+            { "name": "EventGraph", "type": "EventGraph" }
+        ]
+    },
+    "graphs": [
+        {
+            "name": "EventGraph",
+            "type": "EventGraph",
+            "nodes": [],
+            "connections": []
+        }
+    ],
+    "functions": [
+        {
+            "name": "CheckRefs",
+            "inputs": [],
+            "outputs": [],
+            "locals": [],
+            "graph": {
+                "name": "CheckRefs",
+                "type": "Function",
+                "nodes": [
+                    {
+                        "id": "DAG10001-0000-0000-0000-000000000001",
+                        "class": "K2Node_VariableGet",
+                        "title": "Get OwnVar",
+                        "position": { "x": 0, "y": 0 },
+                        "comment": null,
+                        "pins": [],
+                        "meta": {
+                            "variableName": "OwnVar",
+                            "variableClass": "/Game/Test/BP_Inherited.BP_Inherited_C"
+                        }
+                    },
+                    {
+                        "id": "DAG10002-0000-0000-0000-000000000002",
+                        "class": "K2Node_VariableGet",
+                        "title": "Get PlayerCameraManager",
+                        "position": { "x": 0, "y": 80 },
+                        "comment": null,
+                        "pins": [],
+                        "meta": {
+                            "variableName": "PlayerCameraManager",
+                            "variableClass": "/Script/Engine.PlayerController"
+                        }
+                    },
+                    {
+                        "id": "DAG10003-0000-0000-0000-000000000003",
+                        "class": "K2Node_VariableSet",
+                        "title": "Set MissingVar",
+                        "position": { "x": 0, "y": 160 },
+                        "comment": null,
+                        "pins": [],
+                        "meta": {
+                            "variableName": "MissingVar",
+                            "variableClass": "/Game/Test/BP_Inherited.BP_Inherited_C"
+                        }
+                    }
+                ],
+                "connections": []
+            }
+        }
+    ]
+}

@@ -194,7 +194,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	REQUIRE(callResult["content"].size() == 1);
 	auto inner = json::parse(callResult["content"][0]["text"].get<std::string>());
 	REQUIRE(inner.is_array());
-	CHECK(inner.size() == 6); // 6 fixtures all under /Game
+	CHECK(inner.size() == 7); // 7 fixtures all under /Game
 	// Make sure the canonical asset_path key is present, not assetPath.
 	CHECK(inner[0].contains("asset_path"));
 	CHECK(inner[0].contains("parent_class"));
@@ -370,7 +370,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	REQUIRE(r3.has_value());
 	auto inner3 = json::parse((*r3)["result"]["content"][0]["text"].get<std::string>());
 	REQUIRE(inner3.is_array());
-	CHECK(inner3.size() == 6);  // same 6 fixtures the direct-call test checks
+	CHECK(inner3.size() == 7);  // same 7 fixtures the direct-call test checks
 }
 
 TEST_CASE("call_tool rejects unknown tool names with a clear error") {
