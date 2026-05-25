@@ -1407,6 +1407,15 @@ public:
 		throw BlueprintReaderError("GetActiveCookTarget not supported by this backend");
 	}
 
+	// Editor workspace docking layout, serialized via
+	// FGlobalTabmanager::PersistLayout()->ToString(). Phase 17 — advanced.
+	struct WorkspaceLayoutResult {
+		std::string layout;  // empty when Slate isn't initialized (commandlet)
+	};
+	virtual WorkspaceLayoutResult GetWorkspaceLayout() {
+		throw BlueprintReaderError("GetWorkspaceLayout not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

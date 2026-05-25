@@ -843,6 +843,9 @@ IBlueprintReader::EditorEventsResult AutoBlueprintReader::GetEditorEvents() {
 IBlueprintReader::CookTargetResult AutoBlueprintReader::GetActiveCookTarget() {
 	FORWARD(GetActiveCookTarget);
 }
+IBlueprintReader::WorkspaceLayoutResult AutoBlueprintReader::GetWorkspaceLayout() {
+	FORWARD(GetWorkspaceLayout);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -8401,6 +8401,27 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_workspace_layout (Phase 17 — advanced state) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_workspace_layout";
+		d.description =
+			"[editor] The editor's current docking/workspace layout, serialized "
+			"via FGlobalTabmanager::PersistLayout (`layout` string). Reflects "
+			"which tabs/panels are open and how they're arranged. Empty when "
+			"Slate isn't initialized (e.g. a -nullrhi commandlet); populated in "
+			"a live editor. Requires a live editor for meaningful output.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"layout", {{"type","string"}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetWorkspaceLayout();
+			return nlohmann::json{{"layout", r.layout}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

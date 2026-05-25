@@ -611,6 +611,9 @@ IBlueprintReader::EditorEventsResult ReadOnlyBlueprintReader::GetEditorEvents() 
 IBlueprintReader::CookTargetResult ReadOnlyBlueprintReader::GetActiveCookTarget() {
 	return inner_->GetActiveCookTarget();
 }
+IBlueprintReader::WorkspaceLayoutResult ReadOnlyBlueprintReader::GetWorkspaceLayout() {
+	return inner_->GetWorkspaceLayout();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

@@ -69,6 +69,7 @@
 #include "Engine/Blueprint.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
 #include "EditorModes.h"
@@ -473,6 +474,7 @@ namespace
 		ListAutomationTests,
 		GetEditorEvents,
 		GetActiveCookTarget,
+		GetWorkspaceLayout,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -702,6 +704,7 @@ namespace
 		if (OpStr.Equals(TEXT("ListAutomationTests"), ESearchCase::IgnoreCase))    { OutOp = EOp::ListAutomationTests; return true; }
 		if (OpStr.Equals(TEXT("GetEditorEvents"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetEditorEvents; return true; }
 		if (OpStr.Equals(TEXT("GetActiveCookTarget"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetActiveCookTarget; return true; }
+		if (OpStr.Equals(TEXT("GetWorkspaceLayout"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetWorkspaceLayout; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7777,6 +7780,25 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetWorkspaceLayoutOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		FString LayoutStr;
+		if (FSlateApplication::IsInitialized())
+		{
+			// Serialize the editor's current docking layout. In a -nullrhi
+			// commandlet the global tab manager exists but has no persisted
+			// layout, so this is a minimal string; in a live editor it is the
+			// full workspace state.
+			const TSharedRef<FTabManager::FLayout> Layout =
+				FGlobalTabmanager::Get()->PersistLayout();
+			LayoutStr = Layout->ToString();
+		}
+		Out->SetStringField(TEXT("layout"), LayoutStr);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -10267,6 +10289,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListAutomationTests,        &RunListAutomationTestsOp },
 		{ EOp::GetEditorEvents,            &RunGetEditorEventsOp },
 		{ EOp::GetActiveCookTarget,        &RunGetActiveCookTargetOp },
+		{ EOp::GetWorkspaceLayout,         &RunGetWorkspaceLayoutOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
