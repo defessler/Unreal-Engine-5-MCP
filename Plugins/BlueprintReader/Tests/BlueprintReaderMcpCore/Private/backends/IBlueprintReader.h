@@ -1299,6 +1299,17 @@ public:
 		throw BlueprintReaderError("GetStreamingSources not supported by this backend");
 	}
 
+	// Packages saved during this editor session, most-recent first
+	// (package paths). Backed by a ring buffer the editor populates from
+	// UPackage::PackageSavedWithContextEvent — empty in a fresh one-shot
+	// commandlet, accumulates in a live editor. Phase 14 — recent activity.
+	struct RecentSavedPackagesResult {
+		std::vector<std::string> packagePaths;
+	};
+	virtual RecentSavedPackagesResult GetRecentlySavedPackages() {
+		throw BlueprintReaderError("GetRecentlySavedPackages not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

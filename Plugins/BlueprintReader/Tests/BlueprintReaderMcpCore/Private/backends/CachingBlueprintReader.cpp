@@ -907,6 +907,9 @@ CachingBlueprintReader::SetPluginEnabled(std::string_view n, bool e) {
 IBlueprintReader::StreamingSourcesResult CachingBlueprintReader::GetStreamingSources() {
 	return inner_->GetStreamingSources();
 }
+IBlueprintReader::RecentSavedPackagesResult CachingBlueprintReader::GetRecentlySavedPackages() {
+	return inner_->GetRecentlySavedPackages();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

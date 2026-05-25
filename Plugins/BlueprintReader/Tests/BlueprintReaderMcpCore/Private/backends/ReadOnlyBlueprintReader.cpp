@@ -588,6 +588,9 @@ ReadOnlyBlueprintReader::SetPluginEnabled(std::string_view, bool) {
 IBlueprintReader::StreamingSourcesResult ReadOnlyBlueprintReader::GetStreamingSources() {
 	return inner_->GetStreamingSources();
 }
+IBlueprintReader::RecentSavedPackagesResult ReadOnlyBlueprintReader::GetRecentlySavedPackages() {
+	return inner_->GetRecentlySavedPackages();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

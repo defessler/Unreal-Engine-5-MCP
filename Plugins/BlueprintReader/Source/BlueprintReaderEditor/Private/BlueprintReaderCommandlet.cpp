@@ -99,6 +99,8 @@
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
 #include "WorldPartition/WorldPartitionSubsystem.h"      // Phase 14 — streaming sources
 #include "WorldPartition/WorldPartitionStreamingSource.h"
+#include "UObject/Package.h"                             // Phase 14 — saved-package event
+#include "UObject/ObjectSaveContext.h"
 #include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
 #include "UnrealEdGlobals.h"           // GUnrealEd
 #include "IPackageAutoSaver.h"
@@ -459,6 +461,7 @@ namespace
 		GetActiveStats,
 		SetPluginEnabled,
 		GetStreamingSources,
+		GetRecentlySavedPackages,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -681,6 +684,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetActiveStats"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetActiveStats; return true; }
 		if (OpStr.Equals(TEXT("SetPluginEnabled"), ESearchCase::IgnoreCase))       { OutOp = EOp::SetPluginEnabled; return true; }
 		if (OpStr.Equals(TEXT("GetStreamingSources"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetStreamingSources; return true; }
+		if (OpStr.Equals(TEXT("GetRecentlySavedPackages"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlySavedPackages; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7227,6 +7231,66 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Phase 14 — recently-saved package ring buffer. Subscribed lazily on
+	// the first get_recently_saved_packages call (no module-lifecycle
+	// wiring needed); accumulates from UPackage::PackageSavedWithContextEvent
+	// in a live editor. Bounded, most-recent last.
+	struct FRecentSavesBuffer
+	{
+		static constexpr int32 kMax = 50;
+		FCriticalSection Lock;
+		TArray<FString> Items;
+
+		void Push(const FString& Name)
+		{
+			FScopeLock L(&Lock);
+			Items.Remove(Name);          // dedup → move to most-recent
+			Items.Add(Name);
+			while (Items.Num() > kMax) { Items.RemoveAt(0); }
+		}
+		TArray<FString> Snapshot()
+		{
+			FScopeLock L(&Lock);
+			return Items;
+		}
+	};
+
+	FRecentSavesBuffer& GetRecentSavesBuffer()
+	{
+		static FRecentSavesBuffer Buffer;
+		return Buffer;
+	}
+
+	void EnsureRecentSavesSubscribed()
+	{
+		static bool bSubscribed = false;
+		if (bSubscribed) { return; }
+		bSubscribed = true;
+		UPackage::PackageSavedWithContextEvent.AddLambda(
+			[](const FString& /*Filename*/, UPackage* Package, FObjectPostSaveContext)
+			{
+				if (Package)
+				{
+					GetRecentSavesBuffer().Push(Package->GetName());
+				}
+			});
+	}
+
+	int32 RunGetRecentlySavedPackagesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		EnsureRecentSavesSubscribed();
+		const TArray<FString> Snap = GetRecentSavesBuffer().Snapshot();
+		TArray<TSharedPtr<FJsonValue>> Paths;
+		for (int32 i = Snap.Num() - 1; i >= 0; --i)   // most-recent first
+		{
+			Paths.Add(MakeShared<FJsonValueString>(Snap[i]));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("package_paths"), Paths);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetStreamingSourcesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Sources;
@@ -9911,6 +9975,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetActiveStats,             &RunGetActiveStatsOp },
 		{ EOp::SetPluginEnabled,           &RunSetPluginEnabledOp },
 		{ EOp::GetStreamingSources,        &RunGetStreamingSourcesOp },
+		{ EOp::GetRecentlySavedPackages,   &RunGetRecentlySavedPackagesOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
