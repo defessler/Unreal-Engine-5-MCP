@@ -244,6 +244,10 @@ public:
 	CurrentLevelResult GetCurrentLevel() override;
 	LoadedLevelsResult ListLoadedLevels() override;
 	SourceControlProviderResult GetSourceControlProvider() override;
+	AssetRegistryStateResult GetAssetRegistryState() override;
+	DataLayerStatesResult GetDataLayerStates() override;
+	AutosaveStatusResult GetAutosaveStatus() override;
+	RecoveryStateResult GetRecoveryState() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

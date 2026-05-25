@@ -1059,6 +1059,48 @@ public:
 		throw BlueprintReaderError("GetSourceControlProvider not supported by this backend");
 	}
 
+	// Asset-registry scan status. `is_loading_assets` true while the
+	// initial/background scan is still running.
+	struct AssetRegistryStateResult {
+		bool isLoadingAssets = false;
+		bool searchAllAssets = false;
+	};
+	virtual AssetRegistryStateResult GetAssetRegistryState() {
+		throw BlueprintReaderError("GetAssetRegistryState not supported by this backend");
+	}
+
+	// World Partition data layers + per-layer effective runtime state
+	// (Unloaded/Loaded/Activated). `has_world_partition` false on
+	// non-partitioned maps (layers will be empty).
+	struct DataLayerStateInfo {
+		std::string shortName;
+		std::string fullName;
+		std::string runtimeState;
+	};
+	struct DataLayerStatesResult {
+		std::vector<DataLayerStateInfo> layers;
+		bool hasWorldPartition = false;
+	};
+	virtual DataLayerStatesResult GetDataLayerStates() {
+		throw BlueprintReaderError("GetDataLayerStates not supported by this backend");
+	}
+
+	// Editor autosave status via IPackageAutoSaver.
+	struct AutosaveStatusResult {
+		bool isAutoSaving = false;
+	};
+	virtual AutosaveStatusResult GetAutosaveStatus() {
+		throw BlueprintReaderError("GetAutosaveStatus not supported by this backend");
+	}
+
+	// Crash-recovery state — whether autosave restore files are pending.
+	struct RecoveryStateResult {
+		bool hasPackagesToRestore = false;
+	};
+	virtual RecoveryStateResult GetRecoveryState() {
+		throw BlueprintReaderError("GetRecoveryState not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

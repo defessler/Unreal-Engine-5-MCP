@@ -755,6 +755,18 @@ IBlueprintReader::LoadedLevelsResult AutoBlueprintReader::ListLoadedLevels() {
 IBlueprintReader::SourceControlProviderResult AutoBlueprintReader::GetSourceControlProvider() {
 	FORWARD(GetSourceControlProvider);
 }
+IBlueprintReader::AssetRegistryStateResult AutoBlueprintReader::GetAssetRegistryState() {
+	FORWARD(GetAssetRegistryState);
+}
+IBlueprintReader::DataLayerStatesResult AutoBlueprintReader::GetDataLayerStates() {
+	FORWARD(GetDataLayerStates);
+}
+IBlueprintReader::AutosaveStatusResult AutoBlueprintReader::GetAutosaveStatus() {
+	FORWARD(GetAutosaveStatus);
+}
+IBlueprintReader::RecoveryStateResult AutoBlueprintReader::GetRecoveryState() {
+	FORWARD(GetRecoveryState);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

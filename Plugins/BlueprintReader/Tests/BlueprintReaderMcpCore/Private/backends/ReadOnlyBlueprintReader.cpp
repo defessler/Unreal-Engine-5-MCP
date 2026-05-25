@@ -523,6 +523,18 @@ IBlueprintReader::LoadedLevelsResult ReadOnlyBlueprintReader::ListLoadedLevels()
 IBlueprintReader::SourceControlProviderResult ReadOnlyBlueprintReader::GetSourceControlProvider() {
 	return inner_->GetSourceControlProvider();
 }
+IBlueprintReader::AssetRegistryStateResult ReadOnlyBlueprintReader::GetAssetRegistryState() {
+	return inner_->GetAssetRegistryState();
+}
+IBlueprintReader::DataLayerStatesResult ReadOnlyBlueprintReader::GetDataLayerStates() {
+	return inner_->GetDataLayerStates();
+}
+IBlueprintReader::AutosaveStatusResult ReadOnlyBlueprintReader::GetAutosaveStatus() {
+	return inner_->GetAutosaveStatus();
+}
+IBlueprintReader::RecoveryStateResult ReadOnlyBlueprintReader::GetRecoveryState() {
+	return inner_->GetRecoveryState();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

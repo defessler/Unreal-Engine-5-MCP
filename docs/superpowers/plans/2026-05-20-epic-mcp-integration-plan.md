@@ -61,7 +61,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | | **— wire parity + core differentiation: ~13.5 weeks —** | | | | |
 | 12 | **EA-pull Wave 2** Per-asset-editor selection **(11 of ~15 SHIPPED — 8 functional + 3 stubs anim/niagara/curve_editor; remaining work is sidecar-registry design)** | 6–8 | 76d | Med — drills into specific workflows | BP/Material/Sequencer/Anim/UMG selection state |
 | 13 | **EA-pull Wave 3** Viewport + visibility **(COMPLETE — 18 tools; +4 final: get_camera_bookmarks/goto_camera_bookmark functional, get_hover_target + get_isolate_mode shipped as documented stubs pending editor-module sidecar)** | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
-| 14 | **EA-pull Wave 4** World + SCC + system state **(5 of ~25 SHIPPED — batch 1: get_async_compile_state/get_shader_compile_state/get_current_level/list_loaded_levels/get_source_control_provider)** | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
+| 14 | **EA-pull Wave 4** World + SCC + system state **(9 of ~25 SHIPPED — +batch 2: get_asset_registry_state/get_data_layer_states/get_autosave_status/get_recovery_state)** | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
 | 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
 | 16 | **H Tier 2** ConfigSettings + Automation | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |
 | | **— feature-complete EA + H: ~21 weeks —** | | | | |
