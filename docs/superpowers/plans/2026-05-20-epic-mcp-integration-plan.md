@@ -65,7 +65,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
 | 16 | **H Tier 2** ConfigSettings + Automation | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |
 | | **— feature-complete EA + H: ~21 weeks —** | | | | |
-| 17 | **EA-pull Wave 5** Advanced + niche | 5–7 | 113d | Very Low — demand-driven | BP debug, takes, render queue, modeling tools, console history |
+| 17 | **EA-pull Wave 5** Advanced + niche **(2 of ~20 SHIPPED — get_active_culture/get_editor_theme)** | 5–7 | 113d | Very Low — demand-driven | BP debug, takes, render queue, modeling tools, console history |
 | | **— full plan execution: ~22.5 weeks —** | | | | |
 | — | Deferred / demand-driven | — | — | (see Decision log) | G visual annotation, J cancellation, K MCP-as-client, L file sandbox, M reflection, EU Slate write-control, multi-user concert, Live Link |
 

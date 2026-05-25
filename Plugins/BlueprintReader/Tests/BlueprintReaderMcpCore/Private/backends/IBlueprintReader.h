@@ -1128,6 +1128,28 @@ public:
 		throw BlueprintReaderError("GetFileLockStatus not supported by this backend");
 	}
 
+	// ===== Phase 17 — Advanced / niche editor state ====================
+
+	// Active editor culture/language (FInternationalization).
+	struct ActiveCultureResult {
+		std::string language;      // e.g. "en"
+		std::string culture;       // e.g. "en-US"
+		std::string displayName;   // e.g. "English (United States)"
+	};
+	virtual ActiveCultureResult GetActiveCulture() {
+		throw BlueprintReaderError("GetActiveCulture not supported by this backend");
+	}
+
+	// Current editor theme id (UEditorStyleSettings::CurrentAppliedTheme
+	// GUID). Well-known: Dark/Light ship with fixed GUIDs; custom themes
+	// get their own. Agents can detect theme changes by id.
+	struct EditorThemeResult {
+		std::string themeId;
+	};
+	virtual EditorThemeResult GetEditorTheme() {
+		throw BlueprintReaderError("GetEditorTheme not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

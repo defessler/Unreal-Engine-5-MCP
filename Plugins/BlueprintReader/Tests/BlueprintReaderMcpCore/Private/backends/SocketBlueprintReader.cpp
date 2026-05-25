@@ -2519,6 +2519,25 @@ SocketBlueprintReader::GetFileLockStatus(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::ActiveCultureResult
+SocketBlueprintReader::GetActiveCulture() {
+	auto j = RunOp({"-Op=GetActiveCulture"});
+	ActiveCultureResult out;
+	if (j.is_object()) {
+		out.language    = j.value("language", std::string{});
+		out.culture     = j.value("culture", std::string{});
+		out.displayName = j.value("display_name", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::EditorThemeResult
+SocketBlueprintReader::GetEditorTheme() {
+	auto j = RunOp({"-Op=GetEditorTheme"});
+	EditorThemeResult out;
+	if (j.is_object()) out.themeId = j.value("theme_id", std::string{});
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

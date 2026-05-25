@@ -4152,6 +4152,25 @@ CommandletBlueprintReader::GetFileLockStatus(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::ActiveCultureResult
+CommandletBlueprintReader::GetActiveCulture() {
+	auto j = RunOp({L"-Op=GetActiveCulture"});
+	ActiveCultureResult out;
+	if (j.is_object()) {
+		out.language    = j.value("language", std::string{});
+		out.culture     = j.value("culture", std::string{});
+		out.displayName = j.value("display_name", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::EditorThemeResult
+CommandletBlueprintReader::GetEditorTheme() {
+	auto j = RunOp({L"-Op=GetEditorTheme"});
+	EditorThemeResult out;
+	if (j.is_object()) out.themeId = j.value("theme_id", std::string{});
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

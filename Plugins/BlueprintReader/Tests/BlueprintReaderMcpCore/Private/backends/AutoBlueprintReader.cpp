@@ -775,6 +775,12 @@ IBlueprintReader::FileLockStatusResult
 AutoBlueprintReader::GetFileLockStatus(std::string_view p) {
 	FORWARD(GetFileLockStatus, p);
 }
+IBlueprintReader::ActiveCultureResult AutoBlueprintReader::GetActiveCulture() {
+	FORWARD(GetActiveCulture);
+}
+IBlueprintReader::EditorThemeResult AutoBlueprintReader::GetEditorTheme() {
+	FORWARD(GetEditorTheme);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

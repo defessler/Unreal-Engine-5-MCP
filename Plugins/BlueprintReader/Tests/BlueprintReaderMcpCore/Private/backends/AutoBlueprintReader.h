@@ -231,6 +231,8 @@ public:
 	RecoveryStateResult GetRecoveryState() override;
 	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
 	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
+	ActiveCultureResult GetActiveCulture() override;
+	EditorThemeResult GetEditorTheme() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
