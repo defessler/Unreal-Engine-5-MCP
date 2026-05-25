@@ -220,6 +220,11 @@ public:
 	GotoBookmarkResult GotoCameraBookmark(int slot) override;
 	HoverTargetResult GetHoverTarget() override;
 	IsolateModeResult GetIsolateMode() override;
+	AsyncCompileStateResult GetAsyncCompileState() override;
+	ShaderCompileStateResult GetShaderCompileState() override;
+	CurrentLevelResult GetCurrentLevel() override;
+	LoadedLevelsResult ListLoadedLevels() override;
+	SourceControlProviderResult GetSourceControlProvider() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

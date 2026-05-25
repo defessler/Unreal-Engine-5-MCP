@@ -740,6 +740,21 @@ IBlueprintReader::HoverTargetResult AutoBlueprintReader::GetHoverTarget() {
 IBlueprintReader::IsolateModeResult AutoBlueprintReader::GetIsolateMode() {
 	FORWARD(GetIsolateMode);
 }
+IBlueprintReader::AsyncCompileStateResult AutoBlueprintReader::GetAsyncCompileState() {
+	FORWARD(GetAsyncCompileState);
+}
+IBlueprintReader::ShaderCompileStateResult AutoBlueprintReader::GetShaderCompileState() {
+	FORWARD(GetShaderCompileState);
+}
+IBlueprintReader::CurrentLevelResult AutoBlueprintReader::GetCurrentLevel() {
+	FORWARD(GetCurrentLevel);
+}
+IBlueprintReader::LoadedLevelsResult AutoBlueprintReader::ListLoadedLevels() {
+	FORWARD(ListLoadedLevels);
+}
+IBlueprintReader::SourceControlProviderResult AutoBlueprintReader::GetSourceControlProvider() {
+	FORWARD(GetSourceControlProvider);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

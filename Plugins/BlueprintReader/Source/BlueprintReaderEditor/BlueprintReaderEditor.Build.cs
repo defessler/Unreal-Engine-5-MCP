@@ -145,10 +145,12 @@ public class BlueprintReaderEditor : ModuleRules
 			"Sequencer",
 			// MovieScene for EMovieScenePlayerStatus + FQualifiedFrameTime
 			// helpers (asSeconds resolves frame rate).
-			"MovieScene"
+			"MovieScene",
 			// Phase 13 Wave 3 note: ULayersSubsystem (get_hidden_layers /
 			// set_layer_visibility) lives in UnrealEd (Layers/LayersSubsystem.h),
 			// already a dependency — no extra module needed.
+			// Phase 14 — get_source_control_provider reads ISourceControlModule.
+			"SourceControl"
 		});
 	}
 }

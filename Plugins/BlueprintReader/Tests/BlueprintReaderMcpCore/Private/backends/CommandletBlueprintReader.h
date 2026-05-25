@@ -321,6 +321,11 @@ public:
 	GotoBookmarkResult GotoCameraBookmark(int slot) override;
 	HoverTargetResult GetHoverTarget() override;
 	IsolateModeResult GetIsolateMode() override;
+	AsyncCompileStateResult GetAsyncCompileState() override;
+	ShaderCompileStateResult GetShaderCompileState() override;
+	CurrentLevelResult GetCurrentLevel() override;
+	LoadedLevelsResult ListLoadedLevels() override;
+	SourceControlProviderResult GetSourceControlProvider() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

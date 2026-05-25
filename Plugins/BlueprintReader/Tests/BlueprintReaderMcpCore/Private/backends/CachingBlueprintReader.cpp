@@ -827,6 +827,21 @@ IBlueprintReader::HoverTargetResult CachingBlueprintReader::GetHoverTarget() {
 IBlueprintReader::IsolateModeResult CachingBlueprintReader::GetIsolateMode() {
 	return inner_->GetIsolateMode();
 }
+IBlueprintReader::AsyncCompileStateResult CachingBlueprintReader::GetAsyncCompileState() {
+	return inner_->GetAsyncCompileState();
+}
+IBlueprintReader::ShaderCompileStateResult CachingBlueprintReader::GetShaderCompileState() {
+	return inner_->GetShaderCompileState();
+}
+IBlueprintReader::CurrentLevelResult CachingBlueprintReader::GetCurrentLevel() {
+	return inner_->GetCurrentLevel();
+}
+IBlueprintReader::LoadedLevelsResult CachingBlueprintReader::ListLoadedLevels() {
+	return inner_->ListLoadedLevels();
+}
+IBlueprintReader::SourceControlProviderResult CachingBlueprintReader::GetSourceControlProvider() {
+	return inner_->GetSourceControlProvider();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

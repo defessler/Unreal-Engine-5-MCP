@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 196 tools (192 prior + Wave 3 +4 — bookmarks + hover/isolate stubs) with input schemas") {
+TEST_CASE("ToolRegistry exposes 201 tools (196 prior + Phase 14 +5 — system/world/SCC reads) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 196);
+	CHECK(spec.size() == 201);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

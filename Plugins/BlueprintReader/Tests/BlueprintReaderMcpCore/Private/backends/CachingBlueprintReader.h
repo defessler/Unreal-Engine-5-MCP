@@ -239,6 +239,11 @@ public:
 	GotoBookmarkResult GotoCameraBookmark(int slot) override;
 	HoverTargetResult GetHoverTarget() override;
 	IsolateModeResult GetIsolateMode() override;
+	AsyncCompileStateResult GetAsyncCompileState() override;
+	ShaderCompileStateResult GetShaderCompileState() override;
+	CurrentLevelResult GetCurrentLevel() override;
+	LoadedLevelsResult ListLoadedLevels() override;
+	SourceControlProviderResult GetSourceControlProvider() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------
