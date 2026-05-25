@@ -2569,6 +2569,27 @@ SocketBlueprintReader::GetLiveCodingState() {
 	return out;
 }
 
+IBlueprintReader::GameFeatureActionResult
+SocketBlueprintReader::ActivateGameFeature(std::string_view plugin) {
+	auto j = RunOp({"-Op=ActivateGameFeature", "-Plugin=" + std::string(plugin)});
+	GameFeatureActionResult out;
+	if (j.is_object()) {
+		out.requested = j.value("requested", false);
+		out.url       = j.value("url", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::GameFeatureActionResult
+SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
+	auto j = RunOp({"-Op=DeactivateGameFeature", "-Plugin=" + std::string(plugin)});
+	GameFeatureActionResult out;
+	if (j.is_object()) {
+		out.requested = j.value("requested", false);
+		out.url       = j.value("url", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

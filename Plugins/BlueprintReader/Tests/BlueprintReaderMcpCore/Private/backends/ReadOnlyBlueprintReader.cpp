@@ -555,6 +555,14 @@ IBlueprintReader::MonitorInfoResult ReadOnlyBlueprintReader::GetMonitors() {
 IBlueprintReader::LiveCodingStateResult ReadOnlyBlueprintReader::GetLiveCodingState() {
 	return inner_->GetLiveCodingState();
 }
+IBlueprintReader::GameFeatureActionResult
+ReadOnlyBlueprintReader::ActivateGameFeature(std::string_view) {
+	Reject("activate_game_feature");
+}
+IBlueprintReader::GameFeatureActionResult
+ReadOnlyBlueprintReader::DeactivateGameFeature(std::string_view) {
+	Reject("deactivate_game_feature");
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

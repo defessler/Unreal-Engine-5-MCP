@@ -1176,6 +1176,26 @@ public:
 		throw BlueprintReaderError("GetLiveCodingState not supported by this backend");
 	}
 
+	// ===== Phase 11 — GameFeatures activate/deactivate (writes) ========
+	// Async fire-and-forget: `requested:true` means the state change was
+	// queued (resolve `plugin` to a URL succeeded). The actual result is
+	// asynchronous — poll get_game_feature_state to confirm. `plugin`
+	// accepts a plugin name or a file:-protocol URL. `requested:false`
+	// means the name couldn't be resolved to a GFP. Rejected in
+	// read-only mode (mutates runtime game state).
+	struct GameFeatureActionResult {
+		bool requested = false;
+		std::string url;
+	};
+	virtual GameFeatureActionResult ActivateGameFeature(std::string_view plugin) {
+		(void)plugin;
+		throw BlueprintReaderError("ActivateGameFeature not supported by this backend");
+	}
+	virtual GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) {
+		(void)plugin;
+		throw BlueprintReaderError("DeactivateGameFeature not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

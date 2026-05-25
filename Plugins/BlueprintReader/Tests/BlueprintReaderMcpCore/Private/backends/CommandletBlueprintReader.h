@@ -336,6 +336,8 @@ public:
 	EditorThemeResult GetEditorTheme() override;
 	MonitorInfoResult GetMonitors() override;
 	LiveCodingStateResult GetLiveCodingState() override;
+	GameFeatureActionResult ActivateGameFeature(std::string_view plugin) override;
+	GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
