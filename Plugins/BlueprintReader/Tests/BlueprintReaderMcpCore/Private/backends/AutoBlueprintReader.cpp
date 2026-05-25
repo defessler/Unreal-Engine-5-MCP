@@ -767,6 +767,14 @@ IBlueprintReader::AutosaveStatusResult AutoBlueprintReader::GetAutosaveStatus() 
 IBlueprintReader::RecoveryStateResult AutoBlueprintReader::GetRecoveryState() {
 	FORWARD(GetRecoveryState);
 }
+IBlueprintReader::SourceControlStatusResult
+AutoBlueprintReader::GetSourceControlStatus(std::string_view p) {
+	FORWARD(GetSourceControlStatus, p);
+}
+IBlueprintReader::FileLockStatusResult
+AutoBlueprintReader::GetFileLockStatus(std::string_view p) {
+	FORWARD(GetFileLockStatus, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

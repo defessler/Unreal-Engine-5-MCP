@@ -854,6 +854,14 @@ IBlueprintReader::AutosaveStatusResult CachingBlueprintReader::GetAutosaveStatus
 IBlueprintReader::RecoveryStateResult CachingBlueprintReader::GetRecoveryState() {
 	return inner_->GetRecoveryState();
 }
+IBlueprintReader::SourceControlStatusResult
+CachingBlueprintReader::GetSourceControlStatus(std::string_view p) {
+	return inner_->GetSourceControlStatus(p);
+}
+IBlueprintReader::FileLockStatusResult
+CachingBlueprintReader::GetFileLockStatus(std::string_view p) {
+	return inner_->GetFileLockStatus(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

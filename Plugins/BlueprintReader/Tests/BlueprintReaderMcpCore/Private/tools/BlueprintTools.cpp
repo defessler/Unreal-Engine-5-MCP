@@ -7706,6 +7706,78 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_source_control_status -----
+	{
+		ToolDescriptor d;
+		d.name = "get_source_control_status";
+		d.description =
+			"[editor] Per-file source-control status (cached): `{valid, "
+			"controlled, checked_out, checked_out_other, modified, "
+			"current}`. `valid:false` when SCC is disabled or the file has "
+			"no cached state. Reads cached state only (no server round-"
+			"trip). Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",             {{"type","boolean"}}},
+				{"controlled",        {{"type","boolean"}}},
+				{"checked_out",       {{"type","boolean"}}},
+				{"checked_out_other", {{"type","boolean"}}},
+				{"modified",          {{"type","boolean"}}},
+				{"current",           {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = RequireString(args, "asset_path");
+			auto r = reader.GetSourceControlStatus(path);
+			return nlohmann::json{
+				{"valid",             r.valid},
+				{"controlled",        r.controlled},
+				{"checked_out",       r.checkedOut},
+				{"checked_out_other", r.checkedOutOther},
+				{"modified",          r.modified},
+				{"current",           r.current},
+			};
+		});
+	}
+
+	// ----- get_file_lock_status -----
+	{
+		ToolDescriptor d;
+		d.name = "get_file_lock_status";
+		d.description =
+			"[editor] Whether an asset is checked out / locked by another "
+			"user: `{valid, checked_out_by_other, other_user}`. Reads "
+			"cached SCC state. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",                {{"type","boolean"}}},
+				{"checked_out_by_other", {{"type","boolean"}}},
+				{"other_user",           {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = RequireString(args, "asset_path");
+			auto r = reader.GetFileLockStatus(path);
+			return nlohmann::json{
+				{"valid",                r.valid},
+				{"checked_out_by_other", r.checkedOutByOther},
+				{"other_user",           r.otherUser},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

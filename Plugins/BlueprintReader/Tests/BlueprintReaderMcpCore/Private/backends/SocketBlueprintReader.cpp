@@ -2493,6 +2493,32 @@ SocketBlueprintReader::GetRecoveryState() {
 	return out;
 }
 
+IBlueprintReader::SourceControlStatusResult
+SocketBlueprintReader::GetSourceControlStatus(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetSourceControlStatus", "-Asset=" + std::string(assetPath)});
+	SourceControlStatusResult out;
+	if (j.is_object()) {
+		out.valid           = j.value("valid", false);
+		out.controlled      = j.value("controlled", false);
+		out.checkedOut      = j.value("checked_out", false);
+		out.checkedOutOther = j.value("checked_out_other", false);
+		out.modified        = j.value("modified", false);
+		out.current         = j.value("current", false);
+	}
+	return out;
+}
+IBlueprintReader::FileLockStatusResult
+SocketBlueprintReader::GetFileLockStatus(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetFileLockStatus", "-Asset=" + std::string(assetPath)});
+	FileLockStatusResult out;
+	if (j.is_object()) {
+		out.valid             = j.value("valid", false);
+		out.checkedOutByOther = j.value("checked_out_by_other", false);
+		out.otherUser         = j.value("other_user", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

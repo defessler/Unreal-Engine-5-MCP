@@ -1101,6 +1101,33 @@ public:
 		throw BlueprintReaderError("GetRecoveryState not supported by this backend");
 	}
 
+	// Per-file source-control status (cached state; reads what the editor
+	// already knows without hitting the server). `valid:false` when SCC is
+	// disabled or no cached state exists for the file.
+	struct SourceControlStatusResult {
+		bool valid = false;
+		bool controlled = false;
+		bool checkedOut = false;
+		bool checkedOutOther = false;
+		bool modified = false;
+		bool current = false;
+	};
+	virtual SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetSourceControlStatus not supported by this backend");
+	}
+
+	// Who (if anyone) has the file checked out / locked by another user.
+	struct FileLockStatusResult {
+		bool valid = false;
+		bool checkedOutByOther = false;
+		std::string otherUser;
+	};
+	virtual FileLockStatusResult GetFileLockStatus(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetFileLockStatus not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

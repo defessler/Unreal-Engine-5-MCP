@@ -210,6 +210,8 @@ public:
 	DataLayerStatesResult GetDataLayerStates() override;
 	AutosaveStatusResult GetAutosaveStatus() override;
 	RecoveryStateResult GetRecoveryState() override;
+	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
+	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

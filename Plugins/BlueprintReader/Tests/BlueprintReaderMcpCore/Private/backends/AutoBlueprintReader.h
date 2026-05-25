@@ -229,6 +229,8 @@ public:
 	DataLayerStatesResult GetDataLayerStates() override;
 	AutosaveStatusResult GetAutosaveStatus() override;
 	RecoveryStateResult GetRecoveryState() override;
+	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
+	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

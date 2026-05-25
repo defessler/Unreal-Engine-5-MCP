@@ -248,6 +248,8 @@ public:
 	DataLayerStatesResult GetDataLayerStates() override;
 	AutosaveStatusResult GetAutosaveStatus() override;
 	RecoveryStateResult GetRecoveryState() override;
+	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
+	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

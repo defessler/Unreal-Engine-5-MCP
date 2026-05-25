@@ -4126,6 +4126,32 @@ CommandletBlueprintReader::GetRecoveryState() {
 	return out;
 }
 
+IBlueprintReader::SourceControlStatusResult
+CommandletBlueprintReader::GetSourceControlStatus(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetSourceControlStatus", L"-Asset=" + Widen(assetPath)});
+	SourceControlStatusResult out;
+	if (j.is_object()) {
+		out.valid           = j.value("valid", false);
+		out.controlled      = j.value("controlled", false);
+		out.checkedOut      = j.value("checked_out", false);
+		out.checkedOutOther = j.value("checked_out_other", false);
+		out.modified        = j.value("modified", false);
+		out.current         = j.value("current", false);
+	}
+	return out;
+}
+IBlueprintReader::FileLockStatusResult
+CommandletBlueprintReader::GetFileLockStatus(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetFileLockStatus", L"-Asset=" + Widen(assetPath)});
+	FileLockStatusResult out;
+	if (j.is_object()) {
+		out.valid             = j.value("valid", false);
+		out.checkedOutByOther = j.value("checked_out_by_other", false);
+		out.otherUser         = j.value("other_user", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
