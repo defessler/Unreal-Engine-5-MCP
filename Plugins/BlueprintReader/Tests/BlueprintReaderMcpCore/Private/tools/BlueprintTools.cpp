@@ -7882,6 +7882,76 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ===== Phase 11 H Tier 1 — GameFeatures activate/deactivate (writes) ==
+
+	// ----- activate_game_feature -----
+	{
+		ToolDescriptor d;
+		d.name = "activate_game_feature";
+		d.description =
+			"[editor] Request activation of a Game Feature Plugin by name or "
+			"file:-protocol URL (async, fire-and-forget). `requested:true` "
+			"means load+activate was queued; poll `get_game_feature_state` to "
+			"confirm. `requested:false` means the name didn't resolve to a "
+			"GFP. Blocked in read-only mode. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"plugin", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"plugin"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"requested", {{"type","boolean"}}},
+				{"url",       {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string plugin = RequireString(args, "plugin");
+			auto r = reader.ActivateGameFeature(plugin);
+			return nlohmann::json{
+				{"ok",        true},
+				{"requested", r.requested},
+				{"url",       r.url},
+			};
+		});
+	}
+
+	// ----- deactivate_game_feature -----
+	{
+		ToolDescriptor d;
+		d.name = "deactivate_game_feature";
+		d.description =
+			"[editor] Request deactivation of a Game Feature Plugin by name "
+			"or file:-protocol URL (async, fire-and-forget). `requested:true` "
+			"means deactivation was queued; poll `get_game_feature_state` to "
+			"confirm. `requested:false` means the name didn't resolve. "
+			"Blocked in read-only mode. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"plugin", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"plugin"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"requested", {{"type","boolean"}}},
+				{"url",       {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string plugin = RequireString(args, "plugin");
+			auto r = reader.DeactivateGameFeature(plugin);
+			return nlohmann::json{
+				{"ok",        true},
+				{"requested", r.requested},
+				{"url",       r.url},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

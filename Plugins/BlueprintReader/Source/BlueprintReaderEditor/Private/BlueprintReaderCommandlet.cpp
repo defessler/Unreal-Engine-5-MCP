@@ -444,6 +444,8 @@ namespace
 		GetEditorTheme,
 		GetMonitors,            // not GetMonitorInfo: Win32 macro collision
 		GetLiveCodingState,
+		ActivateGameFeature,
+		DeactivateGameFeature,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -657,6 +659,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetEditorTheme"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetEditorTheme; return true; }
 		if (OpStr.Equals(TEXT("GetMonitors"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetMonitors; return true; }
 		if (OpStr.Equals(TEXT("GetLiveCodingState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetLiveCodingState; return true; }
+		if (OpStr.Equals(TEXT("ActivateGameFeature"), ESearchCase::IgnoreCase))     { OutOp = EOp::ActivateGameFeature; return true; }
+		if (OpStr.Equals(TEXT("DeactivateGameFeature"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeactivateGameFeature; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7141,6 +7145,68 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Resolve a GFP identifier (plugin name OR file:-protocol URL) to its
+	// URL. Names are matched against the enumerated GFP list.
+	FString ResolveGameFeatureUrl(const FString& NameOrUrl)
+	{
+		if (NameOrUrl.Contains(TEXT(":")))   // already a file:-protocol URL
+		{
+			return NameOrUrl;
+		}
+		TArray<TPair<FString, FString>> Pairs;
+		CollectGameFeaturePluginUrls(Pairs);   // {URL, plugin name}
+		for (const TPair<FString, FString>& P : Pairs)
+		{
+			if (P.Value == NameOrUrl)
+			{
+				return P.Key;
+			}
+		}
+		return FString();
+	}
+
+	int32 RunActivateGameFeatureOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString NameOrUrl;
+		FParse::Value(*Params, TEXT("Plugin="), NameOrUrl);
+		const FString Url = ResolveGameFeatureUrl(NameOrUrl);
+		bool bRequested = false;
+		if (!Url.IsEmpty() && GEngine)
+		{
+			if (UGameFeaturesSubsystem* GFS = GEngine->GetEngineSubsystem<UGameFeaturesSubsystem>())
+			{
+				GFS->LoadAndActivateGameFeaturePlugin(Url, FGameFeaturePluginLoadComplete());
+				bRequested = true;
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("requested"), bRequested);
+		Out->SetStringField(TEXT("url"), Url);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunDeactivateGameFeatureOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString NameOrUrl;
+		FParse::Value(*Params, TEXT("Plugin="), NameOrUrl);
+		const FString Url = ResolveGameFeatureUrl(NameOrUrl);
+		bool bRequested = false;
+		if (!Url.IsEmpty() && GEngine)
+		{
+			if (UGameFeaturesSubsystem* GFS = GEngine->GetEngineSubsystem<UGameFeaturesSubsystem>())
+			{
+				GFS->DeactivateGameFeaturePlugin(Url);
+				bRequested = true;
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("requested"), bRequested);
+		Out->SetStringField(TEXT("url"), Url);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9615,6 +9681,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetEditorTheme,             &RunGetEditorThemeOp },
 		{ EOp::GetMonitors,                &RunGetMonitorInfoOp },
 		{ EOp::GetLiveCodingState,         &RunGetLiveCodingStateOp },
+		{ EOp::ActivateGameFeature,        &RunActivateGameFeatureOp },
+		{ EOp::DeactivateGameFeature,      &RunDeactivateGameFeatureOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

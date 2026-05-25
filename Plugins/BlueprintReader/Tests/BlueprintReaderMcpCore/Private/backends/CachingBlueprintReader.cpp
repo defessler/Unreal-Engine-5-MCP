@@ -874,6 +874,14 @@ IBlueprintReader::MonitorInfoResult CachingBlueprintReader::GetMonitors() {
 IBlueprintReader::LiveCodingStateResult CachingBlueprintReader::GetLiveCodingState() {
 	return inner_->GetLiveCodingState();
 }
+IBlueprintReader::GameFeatureActionResult
+CachingBlueprintReader::ActivateGameFeature(std::string_view p) {
+	return inner_->ActivateGameFeature(p);
+}
+IBlueprintReader::GameFeatureActionResult
+CachingBlueprintReader::DeactivateGameFeature(std::string_view p) {
+	return inner_->DeactivateGameFeature(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

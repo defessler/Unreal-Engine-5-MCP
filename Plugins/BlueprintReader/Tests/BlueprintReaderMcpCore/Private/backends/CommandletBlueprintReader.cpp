@@ -4202,6 +4202,27 @@ CommandletBlueprintReader::GetLiveCodingState() {
 	return out;
 }
 
+IBlueprintReader::GameFeatureActionResult
+CommandletBlueprintReader::ActivateGameFeature(std::string_view plugin) {
+	auto j = RunOp({L"-Op=ActivateGameFeature", L"-Plugin=" + Widen(plugin)});
+	GameFeatureActionResult out;
+	if (j.is_object()) {
+		out.requested = j.value("requested", false);
+		out.url       = j.value("url", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::GameFeatureActionResult
+CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
+	auto j = RunOp({L"-Op=DeactivateGameFeature", L"-Plugin=" + Widen(plugin)});
+	GameFeatureActionResult out;
+	if (j.is_object()) {
+		out.requested = j.value("requested", false);
+		out.url       = j.value("url", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
