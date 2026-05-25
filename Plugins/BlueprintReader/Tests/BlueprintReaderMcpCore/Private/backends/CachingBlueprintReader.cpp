@@ -910,6 +910,9 @@ IBlueprintReader::StreamingSourcesResult CachingBlueprintReader::GetStreamingSou
 IBlueprintReader::RecentSavedPackagesResult CachingBlueprintReader::GetRecentlySavedPackages() {
 	return inner_->GetRecentlySavedPackages();
 }
+IBlueprintReader::ProjectSettingsResult CachingBlueprintReader::ListProjectSettings() {
+	return inner_->ListProjectSettings();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

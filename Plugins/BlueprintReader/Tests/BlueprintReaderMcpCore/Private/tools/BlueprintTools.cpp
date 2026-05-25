@@ -8199,6 +8199,38 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ===== Phase 16 H Tier 2 — ConfigSettings nav =========================
+
+	// ----- list_project_settings -----
+	{
+		ToolDescriptor d;
+		d.name = "list_project_settings";
+		d.description =
+			"[editor] All Project/Editor Settings sections (UDeveloperSettings "
+			"CDOs): each `{container, category, section, class_path}`. The "
+			"3-tier nav read (Container -> Category -> Section) that future "
+			"get/set/save/reset settings tools drill into. Requires a live "
+			"editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"sections", {{"type","array"}, {"items", {{"type","object"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.ListProjectSettings();
+			nlohmann::json secs = nlohmann::json::array();
+			for (const auto& s : r.sections) {
+				secs.push_back({
+					{"container",  s.container},
+					{"category",   s.category},
+					{"section",    s.section},
+					{"class_path", s.classPath},
+				});
+			}
+			return nlohmann::json{{"sections", secs}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

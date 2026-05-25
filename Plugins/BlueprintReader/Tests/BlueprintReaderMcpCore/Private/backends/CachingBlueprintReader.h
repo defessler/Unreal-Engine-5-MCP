@@ -264,6 +264,7 @@ public:
 	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
+	ProjectSettingsResult ListProjectSettings() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

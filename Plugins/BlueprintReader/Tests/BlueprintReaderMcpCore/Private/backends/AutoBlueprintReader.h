@@ -245,6 +245,7 @@ public:
 	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
+	ProjectSettingsResult ListProjectSettings() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

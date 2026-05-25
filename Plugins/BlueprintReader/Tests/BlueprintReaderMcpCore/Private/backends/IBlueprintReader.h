@@ -1310,6 +1310,23 @@ public:
 		throw BlueprintReaderError("GetRecentlySavedPackages not supported by this backend");
 	}
 
+	// ===== Phase 16 H Tier 2 — ConfigSettings nav (read) ===============
+	// All Project/Editor Settings sections (UDeveloperSettings CDOs):
+	// container (Project/Editor) → category → section, plus the settings
+	// class path. The 3-tier nav read that get/set tools drill into.
+	struct ProjectSettingInfo {
+		std::string container;   // "Project" | "Editor"
+		std::string category;
+		std::string section;
+		std::string classPath;
+	};
+	struct ProjectSettingsResult {
+		std::vector<ProjectSettingInfo> sections;
+	};
+	virtual ProjectSettingsResult ListProjectSettings() {
+		throw BlueprintReaderError("ListProjectSettings not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

@@ -101,6 +101,8 @@
 #include "WorldPartition/WorldPartitionStreamingSource.h"
 #include "UObject/Package.h"                             // Phase 14 — saved-package event
 #include "UObject/ObjectSaveContext.h"
+#include "Engine/DeveloperSettings.h"                    // Phase 16 — project settings nav
+#include "UObject/UObjectHash.h"                         // GetDerivedClasses
 #include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
 #include "UnrealEdGlobals.h"           // GUnrealEd
 #include "IPackageAutoSaver.h"
@@ -462,6 +464,7 @@ namespace
 		SetPluginEnabled,
 		GetStreamingSources,
 		GetRecentlySavedPackages,
+		ListProjectSettings,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -685,6 +688,7 @@ namespace
 		if (OpStr.Equals(TEXT("SetPluginEnabled"), ESearchCase::IgnoreCase))       { OutOp = EOp::SetPluginEnabled; return true; }
 		if (OpStr.Equals(TEXT("GetStreamingSources"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetStreamingSources; return true; }
 		if (OpStr.Equals(TEXT("GetRecentlySavedPackages"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlySavedPackages; return true; }
+		if (OpStr.Equals(TEXT("ListProjectSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListProjectSettings; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7276,6 +7280,35 @@ namespace
 			});
 	}
 
+	int32 RunListProjectSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Sections;
+		TArray<UClass*> DerivedClasses;
+		GetDerivedClasses(UDeveloperSettings::StaticClass(), DerivedClasses, /*bRecursive=*/true);
+		for (UClass* Cls : DerivedClasses)
+		{
+			if (!Cls || Cls->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated))
+			{
+				continue;
+			}
+			const UDeveloperSettings* CDO = Cls->GetDefaultObject<UDeveloperSettings>();
+			if (!CDO)
+			{
+				continue;
+			}
+			auto S = MakeShared<FJsonObject>();
+			S->SetStringField(TEXT("container"),  CDO->GetContainerName().ToString());
+			S->SetStringField(TEXT("category"),   CDO->GetCategoryName().ToString());
+			S->SetStringField(TEXT("section"),    CDO->GetSectionName().ToString());
+			S->SetStringField(TEXT("class_path"), Cls->GetPathName());
+			Sections.Add(MakeShared<FJsonValueObject>(S));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("sections"), Sections);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetRecentlySavedPackagesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		EnsureRecentSavesSubscribed();
@@ -9976,6 +10009,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::SetPluginEnabled,           &RunSetPluginEnabledOp },
 		{ EOp::GetStreamingSources,        &RunGetStreamingSourcesOp },
 		{ EOp::GetRecentlySavedPackages,   &RunGetRecentlySavedPackagesOp },
+		{ EOp::ListProjectSettings,        &RunListProjectSettingsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

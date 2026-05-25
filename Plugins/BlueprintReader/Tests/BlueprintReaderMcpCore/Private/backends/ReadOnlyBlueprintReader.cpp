@@ -591,6 +591,9 @@ IBlueprintReader::StreamingSourcesResult ReadOnlyBlueprintReader::GetStreamingSo
 IBlueprintReader::RecentSavedPackagesResult ReadOnlyBlueprintReader::GetRecentlySavedPackages() {
 	return inner_->GetRecentlySavedPackages();
 }
+IBlueprintReader::ProjectSettingsResult ReadOnlyBlueprintReader::ListProjectSettings() {
+	return inner_->ListProjectSettings();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
