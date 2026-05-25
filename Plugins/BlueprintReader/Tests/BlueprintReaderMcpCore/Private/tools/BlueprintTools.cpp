@@ -8269,6 +8269,48 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- set_project_setting -----
+	{
+		ToolDescriptor d;
+		d.name = "set_project_setting";
+		d.description =
+			"[editor] Set one property on a settings section by `class_path` "
+			"+ `property` name, importing `value` from text, then persisting "
+			"to the class's Default*.ini. `applied:true` on success; "
+			"`message` carries the failure detail otherwise. Best for scalar "
+			"values (numbers/bools/enums/simple strings) — complex struct "
+			"text may not survive arg parsing. Blocked in read-only mode. "
+			"Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"class_path", {{"type","string"}}},
+				{"property",   {{"type","string"}}},
+				{"value",      {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"class_path","property","value"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"applied", {{"type","boolean"}}},
+				{"message", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string cp = RequireString(args, "class_path");
+			std::string prop = RequireString(args, "property");
+			std::string val = args.value("value", std::string{});
+			auto r = reader.SetProjectSetting(cp, prop, val);
+			return nlohmann::json{
+				{"ok",      true},
+				{"applied", r.applied},
+				{"message", r.message},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

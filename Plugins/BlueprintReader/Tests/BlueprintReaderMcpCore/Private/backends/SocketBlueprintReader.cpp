@@ -2590,6 +2590,22 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::SetProjectSettingResult
+SocketBlueprintReader::SetProjectSetting(std::string_view classPath,
+										 std::string_view property,
+										 std::string_view value) {
+	auto j = RunOp({"-Op=SetProjectSetting",
+					"-Class=" + std::string(classPath),
+					"-Property=" + std::string(property),
+					"-Value=" + std::string(value)});
+	SetProjectSettingResult out;
+	if (j.is_object()) {
+		out.applied = j.value("applied", false);
+		out.message = j.value("message", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::ProjectSettingValuesResult
 SocketBlueprintReader::GetProjectSettingValues(std::string_view classPath) {
 	auto j = RunOp({"-Op=GetProjectSettingValues", "-Class=" + std::string(classPath)});

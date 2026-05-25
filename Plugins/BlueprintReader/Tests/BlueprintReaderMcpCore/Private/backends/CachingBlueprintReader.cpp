@@ -917,6 +917,10 @@ IBlueprintReader::ProjectSettingValuesResult
 CachingBlueprintReader::GetProjectSettingValues(std::string_view p) {
 	return inner_->GetProjectSettingValues(p);
 }
+IBlueprintReader::SetProjectSettingResult
+CachingBlueprintReader::SetProjectSetting(std::string_view c, std::string_view p, std::string_view v) {
+	return inner_->SetProjectSetting(c, p, v);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

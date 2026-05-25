@@ -1346,6 +1346,21 @@ public:
 		throw BlueprintReaderError("GetProjectSettingValues not supported by this backend");
 	}
 
+	// Set one property on a settings section (UDeveloperSettings CDO) by
+	// class path + property name, importing `value` from text, then
+	// persisting to the class's Default*.ini. `applied` = the import +
+	// save succeeded. Rejected in read-only mode (writes config). Phase 16.
+	struct SetProjectSettingResult {
+		bool applied = false;
+		std::string message;   // failure detail when applied is false
+	};
+	virtual SetProjectSettingResult SetProjectSetting(std::string_view classPath,
+													  std::string_view property,
+													  std::string_view value) {
+		(void)classPath; (void)property; (void)value;
+		throw BlueprintReaderError("SetProjectSetting not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
