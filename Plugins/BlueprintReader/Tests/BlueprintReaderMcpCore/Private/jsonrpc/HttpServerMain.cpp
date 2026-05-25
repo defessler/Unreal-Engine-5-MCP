@@ -2,13 +2,21 @@
 
 #include "jsonrpc/HttpTransport.h"
 #include "jsonrpc/Server.h"
+#include "jsonrpc/SseFrame.h"
 
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <mutex>
 #include <ostream>
 #include <string>
+#include <thread>
+#include <vector>
+
+#include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
 	#ifndef WIN32_LEAN_AND_MEAN
@@ -100,6 +108,111 @@ std::string ReadRequest(SocketType s) {
 	return buf;
 }
 
+// Write one HTTP/1.1 chunked-transfer chunk: "<hex-size>\r\n<data>\r\n".
+bool SendChunk(SocketType s, const std::string& data) {
+	char hdr[32];
+	const int hlen = std::snprintf(hdr, sizeof(hdr), "%zx\r\n", data.size());
+	if (hlen <= 0) {
+		return false;
+	}
+	return SendAll(s, hdr, static_cast<std::size_t>(hlen))
+		&& SendAll(s, data.data(), data.size())
+		&& SendAll(s, "\r\n", 2);
+}
+
+// SSE GET stream (C5): hold the socket open, draining server-queued
+// notifications into chunked text/event-stream frames until the client
+// disconnects. Server access is serialized by `mtx` (Server isn't
+// thread-safe). One queue is shared across streams — for multiple SSE
+// clients the first to drain wins (fan-out is a later refinement; the
+// common case is a single client).
+void StreamSse(SocketType s, Server& server, std::mutex& mtx) {
+	static constexpr char kHead[] =
+		"HTTP/1.1 200 OK\r\n"
+		"Content-Type: text/event-stream\r\n"
+		"Cache-Control: no-cache\r\n"
+		"Connection: keep-alive\r\n"
+		"Transfer-Encoding: chunked\r\n"
+		"\r\n";
+	if (!SendAll(s, kHead, sizeof(kHead) - 1)) {
+		return;
+	}
+	// Advise reconnect cadence up front.
+	if (!SendChunk(s, FormatRetryFrame(3000))) {
+		return;
+	}
+	int idleTicks = 0;
+	for (;;) {
+		std::vector<nlohmann::json> notes;
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+			notes = server.TakePendingNotifications();
+		}
+		for (const nlohmann::json& note : notes) {
+			if (!SendChunk(s, FormatSseFrame("message", note))) {
+				return;
+			}
+			idleTicks = 0;
+		}
+		if (notes.empty() && ++idleTicks >= 20) {    // ~5s keep-alive
+			if (!SendChunk(s, FormatCommentFrame("keep-alive"))) {
+				return;
+			}
+			idleTicks = 0;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(250));
+	}
+}
+
+// Per-connection worker (one detached thread each). GET on the MCP path
+// becomes an SSE stream; everything else is a one-shot JSON-RPC dispatch.
+void HandleConnection(SocketType conn, Server& server, std::mutex& mtx,
+					  std::string mcpPath) {
+	const std::string raw = ReadRequest(conn);
+	if (raw.empty()) {
+		CloseSocket(conn);
+		return;
+	}
+	HttpRequest req;
+	try {
+		req = ParseRequest(raw);
+	} catch (const std::exception&) {
+		HttpResponse bad;
+		bad.statusCode = 400;
+		bad.statusText = "Bad Request";
+		bad.body = "{\"error\":\"malformed request\"}";
+		const std::string out = FormatResponse(bad);
+		SendAll(conn, out.data(), out.size());
+		CloseSocket(conn);
+		return;
+	}
+
+	if (req.method == "GET" && req.path == mcpPath) {
+		// SSE stream — Origin guard still applies (defense in depth).
+		if (!IsOriginAllowed(req)) {
+			HttpResponse forbidden;
+			forbidden.statusCode = 403;
+			forbidden.statusText = "Forbidden";
+			forbidden.body = "{\"error\":\"origin not allowed\"}";
+			const std::string out = FormatResponse(forbidden);
+			SendAll(conn, out.data(), out.size());
+		} else {
+			StreamSse(conn, server, mtx);
+		}
+		CloseSocket(conn);
+		return;
+	}
+
+	HttpResponse resp;
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		resp = Handle(req, server, mcpPath);
+	}
+	const std::string out = FormatResponse(resp);
+	SendAll(conn, out.data(), out.size());
+	CloseSocket(conn);
+}
+
 }    // namespace
 
 int RunHttpServer(Server& server, uint16_t port, const std::string& mcpPath,
@@ -143,27 +256,20 @@ int RunHttpServer(Server& server, uint16_t port, const std::string& mcpPath,
 	log << "[bp-reader-mcp][http] listening on http://127.0.0.1:" << port
 		<< mcpPath << "\n";
 
+	// Serializes all Server access across connection threads (Server is
+	// single-threaded by design). Lives for the process — this function
+	// never returns — so detached workers may safely capture it by ref.
+	std::mutex serverMutex;
+
 	for (;;) {
 		const SocketType conn = ::accept(listenSock, nullptr, nullptr);
 		if (conn == kInvalidSocket) {
 			continue;    // transient accept error — keep serving
 		}
-		const std::string raw = ReadRequest(conn);
-		if (!raw.empty()) {
-			HttpResponse resp;
-			try {
-				const HttpRequest req = ParseRequest(raw);
-				resp = Handle(req, server, mcpPath);
-			} catch (const std::exception& e) {
-				resp.statusCode = 400;
-				resp.statusText = "Bad Request";
-				resp.contentType = "application/json";
-				resp.body = std::string("{\"error\":\"") + e.what() + "\"}";
-			}
-			const std::string out = FormatResponse(resp);
-			SendAll(conn, out.data(), out.size());
-		}
-		CloseSocket(conn);
+		// One detached worker per connection so an SSE GET stream can be
+		// held open while POSTs are served on other connections.
+		std::thread(HandleConnection, conn, std::ref(server),
+					std::ref(serverMutex), mcpPath).detach();
 	}
 	// Unreachable in v1 (no in-band shutdown). Listener + WSACleanup are
 	// reclaimed on process exit.
