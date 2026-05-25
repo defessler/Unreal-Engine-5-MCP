@@ -465,6 +465,7 @@ namespace
 		GetStreamingSources,
 		GetRecentlySavedPackages,
 		ListProjectSettings,
+		GetProjectSettingValues,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -689,6 +690,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetStreamingSources"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetStreamingSources; return true; }
 		if (OpStr.Equals(TEXT("GetRecentlySavedPackages"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlySavedPackages; return true; }
 		if (OpStr.Equals(TEXT("ListProjectSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListProjectSettings; return true; }
+		if (OpStr.Equals(TEXT("GetProjectSettingValues"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetProjectSettingValues; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7280,6 +7282,43 @@ namespace
 			});
 	}
 
+	int32 RunGetProjectSettingValuesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassPath;
+		FParse::Value(*Params, TEXT("Class="), ClassPath);
+		bool bValid = false;
+		TArray<TSharedPtr<FJsonValue>> Values;
+		UClass* Cls = FindObject<UClass>(nullptr, *ClassPath);
+		if (!Cls) { Cls = LoadObject<UClass>(nullptr, *ClassPath); }
+		if (Cls)
+		{
+			if (UObject* CDO = Cls->GetDefaultObject())
+			{
+				bValid = true;
+				for (TFieldIterator<FProperty> It(Cls); It; ++It)
+				{
+					FProperty* Prop = *It;
+					if (!Prop) continue;
+					FString ValueText;
+					Prop->ExportText_Direct(ValueText,
+						Prop->ContainerPtrToValuePtr<void>(CDO),
+						/*Defaults=*/nullptr, /*OwnerObject=*/CDO, PPF_None);
+					auto V = MakeShared<FJsonObject>();
+					V->SetStringField(TEXT("name"),  Prop->GetName());
+					V->SetStringField(TEXT("value"), ValueText);
+					V->SetStringField(TEXT("type"),  Prop->GetCPPType());
+					Values.Add(MakeShared<FJsonValueObject>(V));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("class_path"), ClassPath);
+		Out->SetArrayField(TEXT("values"), Values);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunListProjectSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Sections;
@@ -10010,6 +10049,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetStreamingSources,        &RunGetStreamingSourcesOp },
 		{ EOp::GetRecentlySavedPackages,   &RunGetRecentlySavedPackagesOp },
 		{ EOp::ListProjectSettings,        &RunListProjectSettingsOp },
+		{ EOp::GetProjectSettingValues,    &RunGetProjectSettingValuesOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

@@ -228,6 +228,7 @@ public:
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	ProjectSettingsResult ListProjectSettings() override;
+	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

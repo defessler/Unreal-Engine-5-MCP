@@ -1327,6 +1327,25 @@ public:
 		throw BlueprintReaderError("ListProjectSettings not supported by this backend");
 	}
 
+	// All property values of one settings section (UDeveloperSettings CDO),
+	// each `{name, value, type}` (value is the reflection-exported text).
+	// `class_path` is a section's class path from list_project_settings.
+	// `valid:false` when the class can't be resolved. Phase 16.
+	struct SettingValueInfo {
+		std::string name;
+		std::string value;
+		std::string type;
+	};
+	struct ProjectSettingValuesResult {
+		bool valid = false;
+		std::string classPath;
+		std::vector<SettingValueInfo> values;
+	};
+	virtual ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) {
+		(void)classPath;
+		throw BlueprintReaderError("GetProjectSettingValues not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

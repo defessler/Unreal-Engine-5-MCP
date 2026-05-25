@@ -8231,6 +8231,44 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_project_setting_values -----
+	{
+		ToolDescriptor d;
+		d.name = "get_project_setting_values";
+		d.description =
+			"[editor] All property values of one settings section "
+			"(UDeveloperSettings CDO), each `{name, value, type}` where "
+			"`value` is the reflection-exported text. `class_path` comes "
+			"from `list_project_settings`. `valid:false` when the class "
+			"can't be resolved. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"class_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"class_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",      {{"type","boolean"}}},
+				{"class_path", {{"type","string"}}},
+				{"values",     {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string cp = RequireString(args, "class_path");
+			auto r = reader.GetProjectSettingValues(cp);
+			nlohmann::json vals = nlohmann::json::array();
+			for (const auto& v : r.values) {
+				vals.push_back({{"name", v.name}, {"value", v.value}, {"type", v.type}});
+			}
+			return nlohmann::json{
+				{"valid",      r.valid},
+				{"class_path", r.classPath},
+				{"values",     vals},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{
