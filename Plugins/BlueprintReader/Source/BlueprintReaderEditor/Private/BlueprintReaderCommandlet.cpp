@@ -448,6 +448,7 @@ namespace
 		ActivateGameFeature,
 		DeactivateGameFeature,
 		GetRecentlyOpenedAssets,
+		GetDebugInstance,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -664,6 +665,7 @@ namespace
 		if (OpStr.Equals(TEXT("ActivateGameFeature"), ESearchCase::IgnoreCase))     { OutOp = EOp::ActivateGameFeature; return true; }
 		if (OpStr.Equals(TEXT("DeactivateGameFeature"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeactivateGameFeature; return true; }
 		if (OpStr.Equals(TEXT("GetRecentlyOpenedAssets"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlyOpenedAssets; return true; }
+		if (OpStr.Equals(TEXT("GetDebugInstance"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetDebugInstance; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7210,6 +7212,30 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetDebugInstanceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		bool bValid = false, bHasDbg = false;
+		FString DbgName, DbgPath;
+		if (UBlueprint* BP = LoadMutableBlueprint(AssetPath))
+		{
+			bValid = true;
+			if (UObject* Dbg = BP->GetObjectBeingDebugged())
+			{
+				bHasDbg = true;
+				DbgName = Dbg->GetName();
+				DbgPath = Dbg->GetPathName();
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("has_debug_object"), bHasDbg);
+		Out->SetStringField(TEXT("debug_object_name"), DbgName);
+		Out->SetStringField(TEXT("debug_object_path"), DbgPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetRecentlyOpenedAssetsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		TArray<TSharedPtr<FJsonValue>> Paths;
@@ -9710,6 +9736,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ActivateGameFeature,        &RunActivateGameFeatureOp },
 		{ EOp::DeactivateGameFeature,      &RunDeactivateGameFeatureOp },
 		{ EOp::GetRecentlyOpenedAssets,    &RunGetRecentlyOpenedAssetsOp },
+		{ EOp::GetDebugInstance,           &RunGetDebugInstanceOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

@@ -7971,6 +7971,42 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_debug_instance (Phase 17) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_debug_instance";
+		d.description =
+			"[editor] PIE-attached debug object for a Blueprint "
+			"(`UBlueprint::GetObjectBeingDebugged`): `{valid, "
+			"has_debug_object, debug_object_name, debug_object_path}`. "
+			"`has_debug_object:false` when nothing is attached (e.g. not in "
+			"PIE). Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",             {{"type","boolean"}}},
+				{"has_debug_object",  {{"type","boolean"}}},
+				{"debug_object_name", {{"type","string"}}},
+				{"debug_object_path", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = RequireString(args, "asset_path");
+			auto r = reader.GetDebugInstance(path);
+			return nlohmann::json{
+				{"valid",             r.valid},
+				{"has_debug_object",  r.hasDebugObject},
+				{"debug_object_name", r.debugObjectName},
+				{"debug_object_path", r.debugObjectPath},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{
