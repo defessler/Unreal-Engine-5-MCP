@@ -266,6 +266,7 @@ public:
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	ProjectSettingsResult ListProjectSettings() override;
 	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
+	SetProjectSettingResult SetProjectSetting(std::string_view classPath, std::string_view property, std::string_view value) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

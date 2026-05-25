@@ -598,6 +598,10 @@ IBlueprintReader::ProjectSettingValuesResult
 ReadOnlyBlueprintReader::GetProjectSettingValues(std::string_view p) {
 	return inner_->GetProjectSettingValues(p);
 }
+IBlueprintReader::SetProjectSettingResult
+ReadOnlyBlueprintReader::SetProjectSetting(std::string_view, std::string_view, std::string_view) {
+	Reject("set_project_setting");
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

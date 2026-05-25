@@ -466,6 +466,7 @@ namespace
 		GetRecentlySavedPackages,
 		ListProjectSettings,
 		GetProjectSettingValues,
+		SetProjectSetting,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -691,6 +692,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetRecentlySavedPackages"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlySavedPackages; return true; }
 		if (OpStr.Equals(TEXT("ListProjectSettings"), ESearchCase::IgnoreCase))     { OutOp = EOp::ListProjectSettings; return true; }
 		if (OpStr.Equals(TEXT("GetProjectSettingValues"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetProjectSettingValues; return true; }
+		if (OpStr.Equals(TEXT("SetProjectSetting"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetProjectSetting; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7282,6 +7284,50 @@ namespace
 			});
 	}
 
+	int32 RunSetProjectSettingOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassPath, PropName, NewValue;
+		FParse::Value(*Params, TEXT("Class="), ClassPath);
+		FParse::Value(*Params, TEXT("Property="), PropName);
+		FParse::Value(*Params, TEXT("Value="), NewValue);
+		bool bApplied = false;
+		FString Message;
+		UClass* Cls = FindObject<UClass>(nullptr, *ClassPath);
+		if (!Cls) { Cls = LoadObject<UClass>(nullptr, *ClassPath); }
+		if (!Cls)
+		{
+			Message = TEXT("class not found");
+		}
+		else if (UObject* CDO = Cls->GetDefaultObject())
+		{
+			FProperty* Prop = FindFProperty<FProperty>(Cls, *PropName);
+			if (!Prop)
+			{
+				Message = TEXT("property not found");
+			}
+			else
+			{
+				const TCHAR* Parsed = Prop->ImportText_Direct(*NewValue,
+					Prop->ContainerPtrToValuePtr<void>(CDO),
+					/*OwnerObject=*/CDO, PPF_None);
+				if (Parsed == nullptr)
+				{
+					Message = TEXT("value parse failed");
+				}
+				else
+				{
+					CDO->TryUpdateDefaultConfigFile();
+					bApplied = true;
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("applied"), bApplied);
+		Out->SetStringField(TEXT("message"), Message);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetProjectSettingValuesOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString ClassPath;
@@ -10050,6 +10096,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetRecentlySavedPackages,   &RunGetRecentlySavedPackagesOp },
 		{ EOp::ListProjectSettings,        &RunListProjectSettingsOp },
 		{ EOp::GetProjectSettingValues,    &RunGetProjectSettingValuesOp },
+		{ EOp::SetProjectSetting,          &RunSetProjectSettingOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
