@@ -4223,6 +4223,26 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::ProjectSettingsResult
+CommandletBlueprintReader::ListProjectSettings() {
+	auto j = RunOp({L"-Op=ListProjectSettings"});
+	ProjectSettingsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("sections"); it != j.end() && it->is_array()) {
+			for (const auto& s : *it) {
+				if (!s.is_object()) continue;
+				ProjectSettingInfo info;
+				info.container = s.value("container", std::string{});
+				info.category  = s.value("category",  std::string{});
+				info.section   = s.value("section",   std::string{});
+				info.classPath = s.value("class_path",std::string{});
+				out.sections.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::RecentSavedPackagesResult
 CommandletBlueprintReader::GetRecentlySavedPackages() {
 	auto j = RunOp({L"-Op=GetRecentlySavedPackages"});
