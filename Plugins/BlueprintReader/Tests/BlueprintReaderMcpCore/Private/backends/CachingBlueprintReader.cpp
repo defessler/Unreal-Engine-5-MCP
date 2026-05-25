@@ -913,6 +913,10 @@ IBlueprintReader::RecentSavedPackagesResult CachingBlueprintReader::GetRecentlyS
 IBlueprintReader::ProjectSettingsResult CachingBlueprintReader::ListProjectSettings() {
 	return inner_->ListProjectSettings();
 }
+IBlueprintReader::ProjectSettingValuesResult
+CachingBlueprintReader::GetProjectSettingValues(std::string_view p) {
+	return inner_->GetProjectSettingValues(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

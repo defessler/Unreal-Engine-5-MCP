@@ -594,6 +594,10 @@ IBlueprintReader::RecentSavedPackagesResult ReadOnlyBlueprintReader::GetRecently
 IBlueprintReader::ProjectSettingsResult ReadOnlyBlueprintReader::ListProjectSettings() {
 	return inner_->ListProjectSettings();
 }
+IBlueprintReader::ProjectSettingValuesResult
+ReadOnlyBlueprintReader::GetProjectSettingValues(std::string_view p) {
+	return inner_->GetProjectSettingValues(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

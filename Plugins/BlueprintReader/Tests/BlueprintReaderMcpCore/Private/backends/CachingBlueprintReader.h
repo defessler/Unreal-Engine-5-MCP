@@ -265,6 +265,7 @@ public:
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	ProjectSettingsResult ListProjectSettings() override;
+	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

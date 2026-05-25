@@ -246,6 +246,7 @@ public:
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	ProjectSettingsResult ListProjectSettings() override;
+	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

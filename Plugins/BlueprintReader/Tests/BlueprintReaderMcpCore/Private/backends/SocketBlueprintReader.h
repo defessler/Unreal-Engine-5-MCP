@@ -265,6 +265,7 @@ public:
 	StreamingSourcesResult GetStreamingSources() override;
 	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	ProjectSettingsResult ListProjectSettings() override;
+	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

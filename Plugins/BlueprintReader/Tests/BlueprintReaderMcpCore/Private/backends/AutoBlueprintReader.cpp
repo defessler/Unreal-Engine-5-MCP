@@ -826,6 +826,10 @@ IBlueprintReader::RecentSavedPackagesResult AutoBlueprintReader::GetRecentlySave
 IBlueprintReader::ProjectSettingsResult AutoBlueprintReader::ListProjectSettings() {
 	FORWARD(ListProjectSettings);
 }
+IBlueprintReader::ProjectSettingValuesResult
+AutoBlueprintReader::GetProjectSettingValues(std::string_view p) {
+	FORWARD(GetProjectSettingValues, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

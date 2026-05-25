@@ -63,7 +63,7 @@ The **Cost-of-delay** column captures what the user loses if this phase is pushe
 | 13 | **EA-pull Wave 3** Viewport + visibility **(COMPLETE — 18 tools; +4 final: get_camera_bookmarks/goto_camera_bookmark functional, get_hover_target + get_isolate_mode shipped as documented stubs pending editor-module sidecar)** | 5–7 | 83d | Med — viewport-aware agent UX | Show flags, view mode, hover, gizmo, camera |
 | 14 | **EA-pull Wave 4** World + SCC + system state **(15 of ~25 SHIPPED — +get_recently_saved_packages (ring buffer); recent-activity pair complete)** | 6–8 | 91d | Low (Med for Lyra: partition+data layers) | Partition, data layers, SCC, outliner, recent activity |
 | 15 | **EA-push Wave 2** Extended event coverage | 5–7 | 98d | Low — additive on top of Wave 1 push | Tier-B/C events + Lyra-specific (GFP, partition cells) |
-| 16 | **H Tier 2** ConfigSettings + Automation **(1 of ~8 SHIPPED — list_project_settings nav read; get/set/save/reset + automation discovery pending)** | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |
+| 16 | **H Tier 2** ConfigSettings + Automation **(2 of ~8 SHIPPED — list_project_settings + get_project_setting_values (reflection dump); set/save/reset + automation discovery pending)** | 6–8 | 106d | Low (Med for Lyra) | More Lyra value-add |
 | | **— feature-complete EA + H: ~21 weeks —** | | | | |
 | 17 | **EA-pull Wave 5** Advanced + niche **(8 of ~20 SHIPPED — +get_active_stats; BP-debug trio + culture/theme/monitor/live_coding/stats)** | 5–7 | 113d | Very Low — demand-driven | BP debug, takes, render queue, modeling tools, console history |
 | | **— full plan execution: ~22.5 weeks —** | | | | |
