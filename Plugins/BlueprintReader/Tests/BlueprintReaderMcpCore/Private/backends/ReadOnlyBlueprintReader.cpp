@@ -549,6 +549,12 @@ IBlueprintReader::ActiveCultureResult ReadOnlyBlueprintReader::GetActiveCulture(
 IBlueprintReader::EditorThemeResult ReadOnlyBlueprintReader::GetEditorTheme() {
 	return inner_->GetEditorTheme();
 }
+IBlueprintReader::MonitorInfoResult ReadOnlyBlueprintReader::GetMonitors() {
+	return inner_->GetMonitors();
+}
+IBlueprintReader::LiveCodingStateResult ReadOnlyBlueprintReader::GetLiveCodingState() {
+	return inner_->GetLiveCodingState();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

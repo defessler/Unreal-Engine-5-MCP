@@ -252,6 +252,8 @@ public:
 	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 	ActiveCultureResult GetActiveCulture() override;
 	EditorThemeResult GetEditorTheme() override;
+	MonitorInfoResult GetMonitors() override;
+	LiveCodingStateResult GetLiveCodingState() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

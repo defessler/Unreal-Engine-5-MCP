@@ -252,6 +252,8 @@ public:
 	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 	ActiveCultureResult GetActiveCulture() override;
 	EditorThemeResult GetEditorTheme() override;
+	MonitorInfoResult GetMonitors() override;
+	LiveCodingStateResult GetLiveCodingState() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
