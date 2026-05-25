@@ -338,6 +338,7 @@ public:
 	LiveCodingStateResult GetLiveCodingState() override;
 	GameFeatureActionResult ActivateGameFeature(std::string_view plugin) override;
 	GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) override;
+	RecentAssetsResult GetRecentlyOpenedAssets() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

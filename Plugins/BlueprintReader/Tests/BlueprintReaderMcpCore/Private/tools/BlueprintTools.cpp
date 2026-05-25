@@ -7882,6 +7882,25 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_recently_opened_assets (Phase 14) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_recently_opened_assets";
+		d.description =
+			"[editor] Recently-opened assets from the editor MRU list, "
+			"most-recent first (package paths). Reflects the current editor "
+			"session's history. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"asset_paths", {{"type","array"}, {"items", {{"type","string"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetRecentlyOpenedAssets();
+			return nlohmann::json{{"asset_paths", r.assetPaths}};
+		});
+	}
+
 	// ===== Phase 11 H Tier 1 — GameFeatures activate/deactivate (writes) ==
 
 	// ----- activate_game_feature -----

@@ -1196,6 +1196,15 @@ public:
 		throw BlueprintReaderError("DeactivateGameFeature not supported by this backend");
 	}
 
+	// Recently-opened assets (editor MRU list, most-recent first). Package
+	// paths. Phase 14 — recent activity.
+	struct RecentAssetsResult {
+		std::vector<std::string> assetPaths;
+	};
+	virtual RecentAssetsResult GetRecentlyOpenedAssets() {
+		throw BlueprintReaderError("GetRecentlyOpenedAssets not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
