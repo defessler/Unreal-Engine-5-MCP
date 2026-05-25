@@ -574,6 +574,10 @@ IBlueprintReader::BreakpointsResult
 ReadOnlyBlueprintReader::GetBlueprintBreakpoints(std::string_view p) {
 	return inner_->GetBlueprintBreakpoints(p);
 }
+IBlueprintReader::WatchedPinsResult
+ReadOnlyBlueprintReader::GetWatchedPins(std::string_view p) {
+	return inner_->GetWatchedPins(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

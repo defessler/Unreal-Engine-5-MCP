@@ -240,6 +240,7 @@ public:
 	RecentAssetsResult GetRecentlyOpenedAssets() override;
 	DebugInstanceResult GetDebugInstance(std::string_view assetPath) override;
 	BreakpointsResult GetBlueprintBreakpoints(std::string_view assetPath) override;
+	WatchedPinsResult GetWatchedPins(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

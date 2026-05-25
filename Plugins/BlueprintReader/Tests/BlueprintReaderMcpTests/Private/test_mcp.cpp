@@ -159,7 +159,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(frames[1]["id"] == 2);
 	auto& list = frames[1]["result"]["tools"];
 	REQUIRE(list.is_array());
-	CHECK(list.size() == 216);  // +25 P8 + 11 P11 + 11 P12 Wave 2 + 18 P13 Wave 3 + 12 P14 + 6 P17
+	CHECK(list.size() == 217);  // +25 P8 + 11 P11 + 11 P12 Wave 2 + 18 P13 Wave 3 + 12 P14 + 7 P17
 	std::vector<std::string> names;
 	for (auto& t : list)
 	{
@@ -299,10 +299,10 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	auto reader = test::MakeMockReader();
 	tools::ToolRegistry registry;
 	tools::RegisterBlueprintTools(registry, reader);
-	REQUIRE(registry.TotalRegistered() == 216);
+	REQUIRE(registry.TotalRegistered() == 217);
 
 	tools::RegisterToolsetMetaTools(registry);
-	REQUIRE(registry.TotalRegistered() == 219);  // +3 meta-tools
+	REQUIRE(registry.TotalRegistered() == 220);  // +3 meta-tools
 
 	tools::EnableToolSearchMode(registry);
 	// Active set should now be 4: list_toolsets, describe_toolset, call_tool, shutdown_daemon.

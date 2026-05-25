@@ -893,6 +893,10 @@ IBlueprintReader::BreakpointsResult
 CachingBlueprintReader::GetBlueprintBreakpoints(std::string_view p) {
 	return inner_->GetBlueprintBreakpoints(p);
 }
+IBlueprintReader::WatchedPinsResult
+CachingBlueprintReader::GetWatchedPins(std::string_view p) {
+	return inner_->GetWatchedPins(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

@@ -1238,6 +1238,24 @@ public:
 		throw BlueprintReaderError("GetBlueprintBreakpoints not supported by this backend");
 	}
 
+	// Watched pins on a Blueprint (FKismetDebugUtilities). Per-pin: name,
+	// owning node (guid + name), direction. `valid:false` when the BP
+	// can't be loaded. Phase 17 — BP debug.
+	struct WatchedPinInfo {
+		std::string pinName;
+		std::string nodeGuid;
+		std::string nodeName;
+		std::string direction;   // input | output
+	};
+	struct WatchedPinsResult {
+		bool valid = false;
+		std::vector<WatchedPinInfo> pins;
+	};
+	virtual WatchedPinsResult GetWatchedPins(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetWatchedPins not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

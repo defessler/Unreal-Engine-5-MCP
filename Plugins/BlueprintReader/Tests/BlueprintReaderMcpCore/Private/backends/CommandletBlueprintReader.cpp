@@ -4223,6 +4223,27 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::WatchedPinsResult
+CommandletBlueprintReader::GetWatchedPins(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetWatchedPins", L"-Asset=" + Widen(assetPath)});
+	WatchedPinsResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("pins"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (!p.is_object()) continue;
+				WatchedPinInfo info;
+				info.pinName   = p.value("pin_name",  std::string{});
+				info.nodeGuid  = p.value("node_guid", std::string{});
+				info.nodeName  = p.value("node_name", std::string{});
+				info.direction = p.value("direction", std::string{});
+				out.pins.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::BreakpointsResult
 CommandletBlueprintReader::GetBlueprintBreakpoints(std::string_view assetPath) {
 	auto j = RunOp({L"-Op=GetBlueprintBreakpoints", L"-Asset=" + Widen(assetPath)});

@@ -452,6 +452,7 @@ namespace
 		GetRecentlyOpenedAssets,
 		GetDebugInstance,
 		GetBlueprintBreakpoints,
+		GetWatchedPins,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -670,6 +671,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetRecentlyOpenedAssets"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlyOpenedAssets; return true; }
 		if (OpStr.Equals(TEXT("GetDebugInstance"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetDebugInstance; return true; }
 		if (OpStr.Equals(TEXT("GetBlueprintBreakpoints"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetBlueprintBreakpoints; return true; }
+		if (OpStr.Equals(TEXT("GetWatchedPins"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetWatchedPins; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7216,6 +7218,37 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetWatchedPinsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		bool bValid = false;
+		TArray<TSharedPtr<FJsonValue>> Pins;
+		if (UBlueprint* BP = LoadMutableBlueprint(AssetPath))
+		{
+			bValid = true;
+			FKismetDebugUtilities::ForeachPinWatch(BP,
+				[&Pins](UEdGraphPin* Pin)
+				{
+					if (!Pin) return;
+					UEdGraphNode* Node = Pin->GetOwningNodeUnchecked();
+					auto P = MakeShared<FJsonObject>();
+					P->SetStringField(TEXT("pin_name"),  Pin->PinName.ToString());
+					P->SetStringField(TEXT("node_guid"),
+						Node ? Node->NodeGuid.ToString() : FString());
+					P->SetStringField(TEXT("node_name"),
+						Node ? Node->GetName() : FString());
+					P->SetStringField(TEXT("direction"),
+						Pin->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
+					Pins.Add(MakeShared<FJsonValueObject>(P));
+				});
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetArrayField(TEXT("pins"), Pins);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetBlueprintBreakpointsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -9772,6 +9805,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetRecentlyOpenedAssets,    &RunGetRecentlyOpenedAssetsOp },
 		{ EOp::GetDebugInstance,           &RunGetDebugInstanceOp },
 		{ EOp::GetBlueprintBreakpoints,    &RunGetBlueprintBreakpointsOp },
+		{ EOp::GetWatchedPins,             &RunGetWatchedPinsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
