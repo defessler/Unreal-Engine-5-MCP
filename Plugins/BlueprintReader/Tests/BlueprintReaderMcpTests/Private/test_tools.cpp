@@ -215,10 +215,28 @@ TEST_CASE("list_blueprints returns canonical BPAssetSummary array") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{{"path", "/Game"}});
 	REQUIRE(out.is_array());
-	CHECK(out.size() == 6);
+	CHECK(out.size() == 7);
 	CHECK(out[0].contains("asset_path"));
 	CHECK(out[0].contains("parent_class"));
 	CHECK(out[0].contains("modified_iso"));
+}
+
+TEST_CASE("find_dangling_references skips inherited parent-class variable references") {
+	Fixture f;
+	auto out = f.Call("find_dangling_references",
+		json{{"asset_path", "/Game/Test/BP_Inherited"}});
+	// Only MissingVar (an own-class member that isn't declared) is dangling.
+	// PlayerCameraManager is inherited from APlayerController, and OwnVar
+	// exists — neither may be flagged.
+	REQUIRE(out["total"].get<int>() == 1);
+	REQUIRE(out["dangling"].is_array());
+	REQUIRE(out["dangling"].size() == 1);
+	CHECK(out["dangling"][0]["missing"] == "MissingVar");
+	CHECK(out["dangling"][0]["symbol_type"] == "variable");
+	for (const auto& d : out["dangling"]) {
+		CHECK(d["missing"] != "PlayerCameraManager");
+		CHECK(d["missing"] != "OwnVar");
+	}
 }
 
 TEST_CASE("read_blueprint returns canonical BPMetadata") {

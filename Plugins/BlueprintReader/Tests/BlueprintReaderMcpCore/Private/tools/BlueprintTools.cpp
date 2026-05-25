@@ -1825,7 +1825,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"Empty `dangling` array means clean.\n\nCoverage limits: external "
 			"(cross-BP) function calls aren't validated — we can only "
 			"confirm intra-BP calls. UMG bind_widget references need a "
-			"future plugin-side validator.";
+			"future plugin-side validator. Inherited parent-class members "
+			"(e.g. PlayerCameraManager) are treated as valid, not dangling.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -1917,7 +1918,21 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 					if (isVarRef) {
 						std::string varName = getMetaString(n.Meta,
 							{"variable_name", "variableName", "var_name", "VarName"});
-						if (!varName.empty() && knownVars.find(varName) == knownVars.end()) {
+						if (varName.empty()) {
+							continue;
+						}
+						// Only flag self/own-class variable references. A ref whose
+						// owner class is a parent/external class is INHERITED, not
+						// dangling — knownVars enumerates only this BP's own declared
+						// variables, so an inherited member (e.g. PlayerCameraManager
+						// on APlayerController) would otherwise be a false positive.
+						// Mirrors the self-call heuristic used for functions below.
+						const std::string varClass = getMetaString(n.Meta,
+							{"variable_class", "variableClass"});
+						const bool isOwnMember = varClass.empty() ||
+							varClass == meta.Name ||
+							varClass.find(meta.Name) != std::string::npos;
+						if (isOwnMember && knownVars.find(varName) == knownVars.end()) {
 							addEntry(g.Name, n, varName, "variable");
 						}
 						continue;

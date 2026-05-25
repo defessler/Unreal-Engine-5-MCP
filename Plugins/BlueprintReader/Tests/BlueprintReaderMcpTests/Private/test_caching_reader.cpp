@@ -127,6 +127,15 @@ public:
 		return inner_.WriteGeneratedSource(p, c, cd);
 	}
 
+	std::atomic<int> runPythonCalls{0};
+	PythonResult RunPythonScript(std::string_view code) override {
+		++runPythonCalls;
+		PythonResult r;
+		r.ok = true;
+		r.commandResult = std::string("ran:") + std::string(code);
+		return r;
+	}
+
 private:
 	MockBlueprintReader inner_;
 };
@@ -145,6 +154,14 @@ struct Fixture {
 
 }    // namespace test_caching_reader_detail
 using namespace test_caching_reader_detail;
+
+TEST_CASE("Cache: RunPythonScript forwards to inner (regression: wrapper threw 'not supported')") {
+	Fixture f;
+	auto res = f.cache->RunPythonScript("print('hi')");
+	CHECK(f.counter->runPythonCalls == 1);
+	CHECK(res.ok);
+	CHECK(res.commandResult == "ran:print('hi')");
+}
 
 TEST_CASE("Cache: second read of same blueprint hits the cache") {
 	Fixture f;

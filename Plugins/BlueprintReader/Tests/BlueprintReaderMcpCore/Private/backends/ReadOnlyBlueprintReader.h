@@ -71,6 +71,9 @@ public:
 	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view,
 													std::string_view,
 													bool) override;
+	// Arbitrary Python has full unreal.* API access and can mutate the
+	// project — treated as a write and rejected in read-only mode.
+	PythonResult RunPythonScript(std::string_view) override;
 	// Structural diff is a read op (no .uasset mutation) — pass through.
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;

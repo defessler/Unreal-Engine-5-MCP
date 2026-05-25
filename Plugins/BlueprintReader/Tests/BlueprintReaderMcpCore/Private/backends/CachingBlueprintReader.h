@@ -111,6 +111,8 @@ public:
 	WriteGeneratedSourceResult WriteGeneratedSource(std::string_view destPath,
 													std::string_view content,
 													bool createDirs) override;
+	// Exec tool — nothing to cache; forward straight to inner.
+	PythonResult RunPythonScript(std::string_view code) override;
 	// Structural diff is a comparison across two assets — caching the
 	// result by a single asset key is awkward and gains little (diff is
 	// not a hot loop in practice). Pass through.

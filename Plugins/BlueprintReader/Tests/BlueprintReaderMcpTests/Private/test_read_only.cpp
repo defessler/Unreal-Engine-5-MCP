@@ -71,6 +71,7 @@ TEST_CASE("ReadOnly: every write tool throws BlueprintReaderError mentioning the
 	check([&]{ r->RetypeVariable("/x","V",floatType); });
 	check([&]{ r->SetVariableCategory("/x","V","Cat"); });
 	check([&]{ r->DuplicateBlueprint("/Game/X","/Game/Y"); });
+	check([&]{ r->RunPythonScript("print('x')"); });
 }
 
 TEST_CASE("ReadOnly: error message mentions the affected op name") {

@@ -7,16 +7,16 @@
 
 using namespace bpr::backends;
 
-TEST_CASE("MockBlueprintReader loads all 6 fixtures") {
+TEST_CASE("MockBlueprintReader loads all 7 fixtures") {
 	auto reader = bpr::test::MakeMockReader();
-	CHECK(reader.FixtureCount() == 6);
+	CHECK(reader.FixtureCount() == 7);
 }
 
 TEST_CASE("ListBlueprints filters by path prefix") {
 	auto reader = bpr::test::MakeMockReader();
 
 	auto all = reader.ListBlueprints("/Game");
-	CHECK(all.size() == 6);
+	CHECK(all.size() == 7);
 
 	auto ai = reader.ListBlueprints("/Game/AI");
 	REQUIRE(ai.size() == 1);

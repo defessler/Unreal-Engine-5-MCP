@@ -381,6 +381,9 @@ void AutoBlueprintReader::AddVariable(std::string_view a, std::string_view n,
 									  std::string_view c, bool r, bool e) {
 	FORWARD_VOID(AddVariable, a, n, t, d, c, r, e);
 }
+IBlueprintReader::PythonResult AutoBlueprintReader::RunPythonScript(std::string_view code) {
+	FORWARD(RunPythonScript, code);
+}
 void AutoBlueprintReader::SetNodePosition(std::string_view a, std::string_view g,
 										  std::string_view n, int x, int y) {
 	FORWARD_VOID(SetNodePosition, a, g, n, x, y);
