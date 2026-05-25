@@ -117,7 +117,7 @@ void SendAll(SocketType s, const char* data, std::size_t len) {
 					   static_cast<int>(std::min<std::size_t>(len - sent, 1 << 20)),
 					   0);
 		if (n <= 0) {
-			throw BlueprintReaderError("SocketBlueprintReader: socket write failed");
+			throw SocketTransportError("SocketBlueprintReader: socket write failed");
 		}
 		sent += static_cast<std::size_t>(n);
 	}
@@ -140,7 +140,7 @@ std::string RecvLine(SocketType s, std::string& pending) {
 		char buf[4096];
 		int n = ::recv(s, buf, sizeof(buf), 0);
 		if (n <= 0) {
-			throw BlueprintReaderError(
+			throw SocketTransportError(
 				"SocketBlueprintReader: connection closed before frame complete");
 		}
 		pending.append(buf, static_cast<std::size_t>(n));
@@ -378,7 +378,7 @@ void SocketBlueprintReader::EnsureConnected() {
 		r = TryConnectAndHandshake();
 	}
 	if (!r.ok) {
-		throw BlueprintReaderError(fmt::format(
+		throw SocketTransportError(fmt::format(
 			"SocketBlueprintReader: {} — is the editor running with "
 			"BP_READER_LIVE_PORT/TOKEN published in Saved/bp-reader-live.json?",
 			r.error));

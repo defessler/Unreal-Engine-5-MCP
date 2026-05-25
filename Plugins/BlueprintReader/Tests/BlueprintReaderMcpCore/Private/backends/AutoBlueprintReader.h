@@ -228,6 +228,11 @@ private:
 	// mu_; we may block briefly on a TCP connect.
 	IBlueprintReader& Pick();
 
+	// After a socket route (live editor or commandlet daemon) fails at the
+	// transport/auth layer, drop it, switch to the commandlet for a cooldown
+	// window, and return that commandlet to retry the call on. Caller holds mu_.
+	IBlueprintReader& FallBackToCommandlet(const SocketTransportError& e);
+
 	// Recompute the routing decision (file read + TCP probe). Caller
 	// holds mu_.
 	void Probe();

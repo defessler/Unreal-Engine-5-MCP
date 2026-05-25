@@ -238,3 +238,31 @@ TEST_CASE("Auto: explicit env-style port/token wins over handshake file") {
 	// the BackendFactory tests — see test_backend_factory.cpp if/when
 	// we add one.
 }
+
+TEST_CASE("Auto: live transport failure mid-op falls back to commandlet (no strand)") {
+	// The listener accepts then immediately closes — so connect() succeeds
+	// (the probe routes to "live"), but the first real op can't read the
+	// hello frame and the socket route throws SocketTransportError. Auto must
+	// fall back to the commandlet rather than surfacing that error on every
+	// call (the strand the retest report hit). The commandlet here can't spawn
+	// a real editor (synthetic engine/uproject paths), so the op still fails —
+	// but with a DIFFERENT error, which proves the fallback path was taken
+	// rather than the transport error propagating.
+	TestListener listener;
+	TempProject tp;
+	tp.WriteHandshake(listener.port, "tok");
+	bpr::backends::AutoBlueprintReader reader(MakeAutoCfg(tp));
+	REQUIRE(reader.SelectBackendForTesting() == "live");
+
+	bool surfacedTransport = false;
+	bool fellBack = false;
+	try {
+		reader.ListBlueprints("/Game");
+	} catch (const bpr::backends::SocketTransportError&) {
+		surfacedTransport = true;
+	} catch (const std::exception&) {
+		fellBack = true;  // commandlet failure (synthetic paths) — fallback taken
+	}
+	CHECK_FALSE(surfacedTransport);
+	CHECK(fellBack);
+}
