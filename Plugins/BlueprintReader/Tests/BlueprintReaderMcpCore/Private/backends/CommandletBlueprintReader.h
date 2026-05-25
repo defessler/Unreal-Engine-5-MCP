@@ -332,6 +332,8 @@ public:
 	RecoveryStateResult GetRecoveryState() override;
 	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
 	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
+	ActiveCultureResult GetActiveCulture() override;
+	EditorThemeResult GetEditorTheme() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

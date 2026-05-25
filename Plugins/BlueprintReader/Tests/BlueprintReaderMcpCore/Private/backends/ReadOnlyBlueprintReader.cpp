@@ -543,6 +543,12 @@ IBlueprintReader::FileLockStatusResult
 ReadOnlyBlueprintReader::GetFileLockStatus(std::string_view p) {
 	return inner_->GetFileLockStatus(p);
 }
+IBlueprintReader::ActiveCultureResult ReadOnlyBlueprintReader::GetActiveCulture() {
+	return inner_->GetActiveCulture();
+}
+IBlueprintReader::EditorThemeResult ReadOnlyBlueprintReader::GetEditorTheme() {
+	return inner_->GetEditorTheme();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

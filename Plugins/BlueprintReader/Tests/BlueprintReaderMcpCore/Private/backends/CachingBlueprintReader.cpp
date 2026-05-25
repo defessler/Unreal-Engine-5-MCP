@@ -862,6 +862,12 @@ IBlueprintReader::FileLockStatusResult
 CachingBlueprintReader::GetFileLockStatus(std::string_view p) {
 	return inner_->GetFileLockStatus(p);
 }
+IBlueprintReader::ActiveCultureResult CachingBlueprintReader::GetActiveCulture() {
+	return inner_->GetActiveCulture();
+}
+IBlueprintReader::EditorThemeResult CachingBlueprintReader::GetEditorTheme() {
+	return inner_->GetEditorTheme();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

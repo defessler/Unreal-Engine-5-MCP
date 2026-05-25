@@ -83,6 +83,9 @@
 #include "ISourceControlProvider.h"
 #include "ISourceControlState.h"       // Phase 14 — per-file SCC state
 #include "SourceControlHelpers.h"      // package path -> filename
+#include "Internationalization/Internationalization.h" // Phase 17 — culture
+#include "Internationalization/Culture.h"               // FCulture accessors
+#include "Settings/EditorStyleSettings.h"               // Phase 17 — theme id
 #include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
 #include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
@@ -433,6 +436,8 @@ namespace
 		GetRecoveryState,
 		GetSourceControlStatus,
 		GetFileLockStatus,
+		GetActiveCulture,
+		GetEditorTheme,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -642,6 +647,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetRecoveryState"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetRecoveryState; return true; }
 		if (OpStr.Equals(TEXT("GetSourceControlStatus"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetSourceControlStatus; return true; }
 		if (OpStr.Equals(TEXT("GetFileLockStatus"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetFileLockStatus; return true; }
+		if (OpStr.Equals(TEXT("GetActiveCulture"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetActiveCulture; return true; }
+		if (OpStr.Equals(TEXT("GetEditorTheme"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetEditorTheme; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7061,6 +7068,32 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetActiveCultureOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		FInternationalization& I18N = FInternationalization::Get();
+		FCultureRef Culture = I18N.GetCurrentCulture();
+		FCultureRef Lang = I18N.GetCurrentLanguage();
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("language"),     Lang->GetName());
+		Out->SetStringField(TEXT("culture"),      Culture->GetName());
+		Out->SetStringField(TEXT("display_name"), Culture->GetEnglishName());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetEditorThemeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		FString ThemeId;
+		if (const UEditorStyleSettings* S = GetDefault<UEditorStyleSettings>())
+		{
+			ThemeId = S->CurrentAppliedTheme.ToString();
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("theme_id"), ThemeId);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9531,6 +9564,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetRecoveryState,           &RunGetRecoveryStateOp },
 		{ EOp::GetSourceControlStatus,     &RunGetSourceControlStatusOp },
 		{ EOp::GetFileLockStatus,          &RunGetFileLockStatusOp },
+		{ EOp::GetActiveCulture,           &RunGetActiveCultureOp },
+		{ EOp::GetEditorTheme,             &RunGetEditorThemeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

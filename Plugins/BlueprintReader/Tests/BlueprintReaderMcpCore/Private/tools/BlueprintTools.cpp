@@ -7778,6 +7778,55 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ===== Phase 17 — Advanced / niche editor state ======================
+
+	// ----- get_active_culture -----
+	{
+		ToolDescriptor d;
+		d.name = "get_active_culture";
+		d.description =
+			"[editor] Active editor culture/language: `{language, culture, "
+			"display_name}` (e.g. en / en-US / \"English (United States)\"). "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"language",     {{"type","string"}}},
+				{"culture",      {{"type","string"}}},
+				{"display_name", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveCulture();
+			return nlohmann::json{
+				{"language",     r.language},
+				{"culture",      r.culture},
+				{"display_name", r.displayName},
+			};
+		});
+	}
+
+	// ----- get_editor_theme -----
+	{
+		ToolDescriptor d;
+		d.name = "get_editor_theme";
+		d.description =
+			"[editor] Current editor theme id (`UEditorStyleSettings::"
+			"CurrentAppliedTheme` GUID). Dark/Light ship with fixed GUIDs; "
+			"custom themes get their own. Agents can detect theme changes "
+			"by id. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"theme_id", {{"type","string"}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetEditorTheme();
+			return nlohmann::json{{"theme_id", r.themeId}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{
