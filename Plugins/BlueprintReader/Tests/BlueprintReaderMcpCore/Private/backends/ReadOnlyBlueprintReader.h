@@ -233,6 +233,7 @@ public:
 	AutomationTestsResult ListAutomationTests() override;
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
+	WorkspaceLayoutResult GetWorkspaceLayout() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

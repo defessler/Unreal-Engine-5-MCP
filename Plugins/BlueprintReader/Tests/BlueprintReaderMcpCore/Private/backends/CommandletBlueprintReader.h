@@ -352,6 +352,7 @@ public:
 	AutomationTestsResult ListAutomationTests() override;
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
+	WorkspaceLayoutResult GetWorkspaceLayout() override;
 
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;

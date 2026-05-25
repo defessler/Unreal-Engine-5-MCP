@@ -930,6 +930,9 @@ IBlueprintReader::EditorEventsResult CachingBlueprintReader::GetEditorEvents() {
 IBlueprintReader::CookTargetResult CachingBlueprintReader::GetActiveCookTarget() {
 	return inner_->GetActiveCookTarget();
 }
+IBlueprintReader::WorkspaceLayoutResult CachingBlueprintReader::GetWorkspaceLayout() {
+	return inner_->GetWorkspaceLayout();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

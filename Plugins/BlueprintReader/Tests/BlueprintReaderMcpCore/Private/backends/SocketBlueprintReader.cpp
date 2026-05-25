@@ -2841,6 +2841,16 @@ SocketBlueprintReader::GetActiveCookTarget() {
 	return out;
 }
 
+IBlueprintReader::WorkspaceLayoutResult
+SocketBlueprintReader::GetWorkspaceLayout() {
+	auto j = RunOp({"-Op=GetWorkspaceLayout"});
+	WorkspaceLayoutResult out;
+	if (j.is_object()) {
+		out.layout = j.value("layout", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

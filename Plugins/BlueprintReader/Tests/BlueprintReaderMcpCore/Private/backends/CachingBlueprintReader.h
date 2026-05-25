@@ -270,6 +270,7 @@ public:
 	AutomationTestsResult ListAutomationTests() override;
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
+	WorkspaceLayoutResult GetWorkspaceLayout() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

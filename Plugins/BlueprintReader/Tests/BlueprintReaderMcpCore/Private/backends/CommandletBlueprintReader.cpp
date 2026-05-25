@@ -4474,6 +4474,16 @@ CommandletBlueprintReader::GetActiveCookTarget() {
 	return out;
 }
 
+IBlueprintReader::WorkspaceLayoutResult
+CommandletBlueprintReader::GetWorkspaceLayout() {
+	auto j = RunOp({L"-Op=GetWorkspaceLayout"});
+	WorkspaceLayoutResult out;
+	if (j.is_object()) {
+		out.layout = j.value("layout", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
