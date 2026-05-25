@@ -2590,6 +2590,27 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::BreakpointsResult
+SocketBlueprintReader::GetBlueprintBreakpoints(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetBlueprintBreakpoints", "-Asset=" + std::string(assetPath)});
+	BreakpointsResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("breakpoints"); it != j.end() && it->is_array()) {
+			for (const auto& b : *it) {
+				if (!b.is_object()) continue;
+				BreakpointInfo info;
+				info.nodeGuid = b.value("node_guid", std::string{});
+				info.nodeName = b.value("node_name", std::string{});
+				info.location = b.value("location",  std::string{});
+				info.enabled  = b.value("enabled",   false);
+				out.breakpoints.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::DebugInstanceResult
 SocketBlueprintReader::GetDebugInstance(std::string_view assetPath) {
 	auto j = RunOp({"-Op=GetDebugInstance", "-Asset=" + std::string(assetPath)});

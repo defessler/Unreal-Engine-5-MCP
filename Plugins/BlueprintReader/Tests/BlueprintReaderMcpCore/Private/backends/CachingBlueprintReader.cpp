@@ -889,6 +889,10 @@ IBlueprintReader::DebugInstanceResult
 CachingBlueprintReader::GetDebugInstance(std::string_view p) {
 	return inner_->GetDebugInstance(p);
 }
+IBlueprintReader::BreakpointsResult
+CachingBlueprintReader::GetBlueprintBreakpoints(std::string_view p) {
+	return inner_->GetBlueprintBreakpoints(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

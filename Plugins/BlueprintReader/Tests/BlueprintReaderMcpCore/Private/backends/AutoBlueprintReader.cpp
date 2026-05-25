@@ -802,6 +802,10 @@ IBlueprintReader::DebugInstanceResult
 AutoBlueprintReader::GetDebugInstance(std::string_view p) {
 	FORWARD(GetDebugInstance, p);
 }
+IBlueprintReader::BreakpointsResult
+AutoBlueprintReader::GetBlueprintBreakpoints(std::string_view p) {
+	FORWARD(GetBlueprintBreakpoints, p);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

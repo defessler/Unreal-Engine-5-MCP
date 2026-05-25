@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 215 tools (214 prior + Phase 17 +1 — get_debug_instance) with input schemas") {
+TEST_CASE("ToolRegistry exposes 216 tools (215 prior + Phase 17 +1 — get_blueprint_breakpoints) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 215);
+	CHECK(spec.size() == 216);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

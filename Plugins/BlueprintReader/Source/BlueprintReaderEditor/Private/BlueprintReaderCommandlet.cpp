@@ -88,6 +88,8 @@
 #include "Settings/EditorStyleSettings.h"               // Phase 17 — theme id
 #include "GenericPlatform/GenericApplication.h"         // Phase 17 — FDisplayMetrics
 #include "MRUFavoritesList.h"                            // Phase 14 — recent assets MRU
+#include "Kismet2/KismetDebugUtilities.h"                // Phase 17 — BP breakpoints
+#include "Kismet2/Breakpoint.h"
 #if PLATFORM_WINDOWS
 #include "ILiveCodingModule.h"                          // Phase 17 — live coding state
 #endif
@@ -449,6 +451,7 @@ namespace
 		DeactivateGameFeature,
 		GetRecentlyOpenedAssets,
 		GetDebugInstance,
+		GetBlueprintBreakpoints,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -666,6 +669,7 @@ namespace
 		if (OpStr.Equals(TEXT("DeactivateGameFeature"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeactivateGameFeature; return true; }
 		if (OpStr.Equals(TEXT("GetRecentlyOpenedAssets"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlyOpenedAssets; return true; }
 		if (OpStr.Equals(TEXT("GetDebugInstance"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetDebugInstance; return true; }
+		if (OpStr.Equals(TEXT("GetBlueprintBreakpoints"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetBlueprintBreakpoints; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7212,6 +7216,36 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetBlueprintBreakpointsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		bool bValid = false;
+		TArray<TSharedPtr<FJsonValue>> Breaks;
+		if (UBlueprint* BP = LoadMutableBlueprint(AssetPath))
+		{
+			bValid = true;
+			FKismetDebugUtilities::ForeachBreakpoint(BP,
+				[&Breaks](FBlueprintBreakpoint& BPt)
+				{
+					UEdGraphNode* Node = BPt.GetLocation();
+					auto B = MakeShared<FJsonObject>();
+					B->SetStringField(TEXT("node_guid"),
+						Node ? Node->NodeGuid.ToString() : FString());
+					B->SetStringField(TEXT("node_name"),
+						Node ? Node->GetName() : FString());
+					B->SetStringField(TEXT("location"),
+						BPt.GetLocationDescription().ToString());
+					B->SetBoolField(TEXT("enabled"), BPt.IsEnabled());
+					Breaks.Add(MakeShared<FJsonValueObject>(B));
+				});
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetArrayField(TEXT("breakpoints"), Breaks);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetDebugInstanceOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -9737,6 +9771,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::DeactivateGameFeature,      &RunDeactivateGameFeatureOp },
 		{ EOp::GetRecentlyOpenedAssets,    &RunGetRecentlyOpenedAssetsOp },
 		{ EOp::GetDebugInstance,           &RunGetDebugInstanceOp },
+		{ EOp::GetBlueprintBreakpoints,    &RunGetBlueprintBreakpointsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

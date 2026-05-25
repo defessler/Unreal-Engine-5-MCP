@@ -258,6 +258,7 @@ public:
 	GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) override;
 	RecentAssetsResult GetRecentlyOpenedAssets() override;
 	DebugInstanceResult GetDebugInstance(std::string_view assetPath) override;
+	BreakpointsResult GetBlueprintBreakpoints(std::string_view assetPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

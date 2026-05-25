@@ -570,6 +570,10 @@ IBlueprintReader::DebugInstanceResult
 ReadOnlyBlueprintReader::GetDebugInstance(std::string_view p) {
 	return inner_->GetDebugInstance(p);
 }
+IBlueprintReader::BreakpointsResult
+ReadOnlyBlueprintReader::GetBlueprintBreakpoints(std::string_view p) {
+	return inner_->GetBlueprintBreakpoints(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
