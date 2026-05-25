@@ -578,6 +578,9 @@ IBlueprintReader::WatchedPinsResult
 ReadOnlyBlueprintReader::GetWatchedPins(std::string_view p) {
 	return inner_->GetWatchedPins(p);
 }
+IBlueprintReader::ActiveStatsResult ReadOnlyBlueprintReader::GetActiveStats() {
+	return inner_->GetActiveStats();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

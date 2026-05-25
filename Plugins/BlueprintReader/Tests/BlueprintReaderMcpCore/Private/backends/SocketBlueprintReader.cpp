@@ -2590,6 +2590,21 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::ActiveStatsResult
+SocketBlueprintReader::GetActiveStats() {
+	auto j = RunOp({"-Op=GetActiveStats"});
+	ActiveStatsResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		if (auto it = j.find("stats"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.stats.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::WatchedPinsResult
 SocketBlueprintReader::GetWatchedPins(std::string_view assetPath) {
 	auto j = RunOp({"-Op=GetWatchedPins", "-Asset=" + std::string(assetPath)});

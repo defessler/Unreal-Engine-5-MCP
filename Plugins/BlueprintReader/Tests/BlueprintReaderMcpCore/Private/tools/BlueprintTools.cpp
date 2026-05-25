@@ -7971,6 +7971,29 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_active_stats (Phase 17) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_active_stats";
+		d.description =
+			"[editor] Stat overlays enabled in the active level viewport "
+			"(e.g. `Unit`, `FPS`, `GPU`, `SceneRendering`) via "
+			"FViewportClient::GetEnabledStats. `valid:false` when no "
+			"viewport is focused. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid", {{"type","boolean"}}},
+				{"stats", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveStats();
+			return nlohmann::json{{"valid", r.valid}, {"stats", r.stats}};
+		});
+	}
+
 	// ----- get_watched_pins (Phase 17) -----
 	{
 		ToolDescriptor d;

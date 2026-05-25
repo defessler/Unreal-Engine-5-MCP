@@ -1256,6 +1256,17 @@ public:
 		throw BlueprintReaderError("GetWatchedPins not supported by this backend");
 	}
 
+	// Stat overlays enabled in the active level viewport (StatUnit, StatFPS,
+	// StatGPU, etc.) via FViewportClient::GetEnabledStats. `valid:false`
+	// when no viewport is focused. Phase 17 — advanced.
+	struct ActiveStatsResult {
+		bool valid = false;
+		std::vector<std::string> stats;
+	};
+	virtual ActiveStatsResult GetActiveStats() {
+		throw BlueprintReaderError("GetActiveStats not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

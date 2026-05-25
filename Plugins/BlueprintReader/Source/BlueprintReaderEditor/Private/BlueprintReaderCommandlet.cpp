@@ -453,6 +453,7 @@ namespace
 		GetDebugInstance,
 		GetBlueprintBreakpoints,
 		GetWatchedPins,
+		GetActiveStats,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -672,6 +673,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetDebugInstance"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetDebugInstance; return true; }
 		if (OpStr.Equals(TEXT("GetBlueprintBreakpoints"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetBlueprintBreakpoints; return true; }
 		if (OpStr.Equals(TEXT("GetWatchedPins"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetWatchedPins; return true; }
+		if (OpStr.Equals(TEXT("GetActiveStats"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetActiveStats; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7218,6 +7220,28 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetActiveStatsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bValid = false;
+		TArray<TSharedPtr<FJsonValue>> Stats;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			bValid = true;
+			if (const TArray<FString>* Enabled = VC->GetEnabledStats())
+			{
+				for (const FString& S : *Enabled)
+				{
+					Stats.Add(MakeShared<FJsonValueString>(S));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetArrayField(TEXT("stats"), Stats);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetWatchedPinsOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -9806,6 +9830,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetDebugInstance,           &RunGetDebugInstanceOp },
 		{ EOp::GetBlueprintBreakpoints,    &RunGetBlueprintBreakpointsOp },
 		{ EOp::GetWatchedPins,             &RunGetWatchedPinsOp },
+		{ EOp::GetActiveStats,             &RunGetActiveStatsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
