@@ -795,6 +795,9 @@ IBlueprintReader::GameFeatureActionResult
 AutoBlueprintReader::DeactivateGameFeature(std::string_view p) {
 	FORWARD(DeactivateGameFeature, p);
 }
+IBlueprintReader::RecentAssetsResult AutoBlueprintReader::GetRecentlyOpenedAssets() {
+	FORWARD(GetRecentlyOpenedAssets);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

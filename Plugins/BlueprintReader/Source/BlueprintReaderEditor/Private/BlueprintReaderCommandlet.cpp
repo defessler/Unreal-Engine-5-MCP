@@ -87,6 +87,7 @@
 #include "Internationalization/Culture.h"               // FCulture accessors
 #include "Settings/EditorStyleSettings.h"               // Phase 17 — theme id
 #include "GenericPlatform/GenericApplication.h"         // Phase 17 — FDisplayMetrics
+#include "MRUFavoritesList.h"                            // Phase 14 — recent assets MRU
 #if PLATFORM_WINDOWS
 #include "ILiveCodingModule.h"                          // Phase 17 — live coding state
 #endif
@@ -446,6 +447,7 @@ namespace
 		GetLiveCodingState,
 		ActivateGameFeature,
 		DeactivateGameFeature,
+		GetRecentlyOpenedAssets,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -661,6 +663,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetLiveCodingState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetLiveCodingState; return true; }
 		if (OpStr.Equals(TEXT("ActivateGameFeature"), ESearchCase::IgnoreCase))     { OutOp = EOp::ActivateGameFeature; return true; }
 		if (OpStr.Equals(TEXT("DeactivateGameFeature"), ESearchCase::IgnoreCase))   { OutOp = EOp::DeactivateGameFeature; return true; }
+		if (OpStr.Equals(TEXT("GetRecentlyOpenedAssets"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetRecentlyOpenedAssets; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7207,6 +7210,29 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetRecentlyOpenedAssetsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Paths;
+		if (IsValid(GEditor))
+		{
+			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				if (FMainMRUFavoritesList* MRU = AES->GetRecentlyOpenedAssets())
+				{
+					const int32 Num = MRU->GetNumItems();
+					for (int32 i = 0; i < Num; ++i)
+					{
+						Paths.Add(MakeShared<FJsonValueString>(MRU->GetMRUItem(i)));
+					}
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("asset_paths"), Paths);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9683,6 +9709,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetLiveCodingState,         &RunGetLiveCodingStateOp },
 		{ EOp::ActivateGameFeature,        &RunActivateGameFeatureOp },
 		{ EOp::DeactivateGameFeature,      &RunDeactivateGameFeatureOp },
+		{ EOp::GetRecentlyOpenedAssets,    &RunGetRecentlyOpenedAssetsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

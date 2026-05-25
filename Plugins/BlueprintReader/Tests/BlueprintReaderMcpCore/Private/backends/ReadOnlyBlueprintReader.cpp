@@ -563,6 +563,9 @@ IBlueprintReader::GameFeatureActionResult
 ReadOnlyBlueprintReader::DeactivateGameFeature(std::string_view) {
 	Reject("deactivate_game_feature");
 }
+IBlueprintReader::RecentAssetsResult ReadOnlyBlueprintReader::GetRecentlyOpenedAssets() {
+	return inner_->GetRecentlyOpenedAssets();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
