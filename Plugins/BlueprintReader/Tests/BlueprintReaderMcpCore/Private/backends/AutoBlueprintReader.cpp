@@ -705,6 +705,29 @@ IBlueprintReader::VisibleActorsResult
 AutoBlueprintReader::GetVisibleActors(std::string_view f, double d) {
 	FORWARD(GetVisibleActors, f, d);
 }
+IBlueprintReader::SetViewModeResult
+AutoBlueprintReader::SetViewMode(std::string_view m) {
+	FORWARD(SetViewMode, m);
+}
+IBlueprintReader::SetGizmoModeResult
+AutoBlueprintReader::SetGizmoMode(std::string_view m) {
+	FORWARD(SetGizmoMode, m);
+}
+IBlueprintReader::SetViewportRealtimeResult
+AutoBlueprintReader::SetViewportRealtime(bool e) {
+	FORWARD(SetViewportRealtime, e);
+}
+IBlueprintReader::SetActorVisibilityResult
+AutoBlueprintReader::SetActorVisibility(std::string_view n, bool v) {
+	FORWARD(SetActorVisibility, n, v);
+}
+IBlueprintReader::HiddenLayersResult AutoBlueprintReader::GetHiddenLayers() {
+	FORWARD(GetHiddenLayers);
+}
+IBlueprintReader::SetLayerVisibilityResult
+AutoBlueprintReader::SetLayerVisibility(std::string_view l, bool v) {
+	FORWARD(SetLayerVisibility, l, v);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -468,6 +468,32 @@ IBlueprintReader::VisibleActorsResult
 ReadOnlyBlueprintReader::GetVisibleActors(std::string_view f, double d) {
 	return inner_->GetVisibleActors(f, d);
 }
+// Viewport view-state — agent's own camera/render state, not world content.
+IBlueprintReader::SetViewModeResult
+ReadOnlyBlueprintReader::SetViewMode(std::string_view m) {
+	return inner_->SetViewMode(m);
+}
+IBlueprintReader::SetGizmoModeResult
+ReadOnlyBlueprintReader::SetGizmoMode(std::string_view m) {
+	return inner_->SetGizmoMode(m);
+}
+IBlueprintReader::SetViewportRealtimeResult
+ReadOnlyBlueprintReader::SetViewportRealtime(bool e) {
+	return inner_->SetViewportRealtime(e);
+}
+IBlueprintReader::HiddenLayersResult ReadOnlyBlueprintReader::GetHiddenLayers() {
+	return inner_->GetHiddenLayers();
+}
+// Level-domain visibility mutations — reject in read-only mode (same line
+// as set_selection; toggling actor/layer visibility dirties the map).
+IBlueprintReader::SetActorVisibilityResult
+ReadOnlyBlueprintReader::SetActorVisibility(std::string_view, bool) {
+	Reject("set_actor_visibility");
+}
+IBlueprintReader::SetLayerVisibilityResult
+ReadOnlyBlueprintReader::SetLayerVisibility(std::string_view, bool) {
+	Reject("set_layer_visibility");
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
