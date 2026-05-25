@@ -7971,6 +7971,43 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_blueprint_breakpoints (Phase 17) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_blueprint_breakpoints";
+		d.description =
+			"[editor] Breakpoints set on a Blueprint (FKismetDebugUtilities). "
+			"Each: `{node_guid, node_name, location, enabled}`. "
+			"`valid:false` when the BP can't be loaded. Requires a live "
+			"editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",       {{"type","boolean"}}},
+				{"breakpoints", {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = RequireString(args, "asset_path");
+			auto r = reader.GetBlueprintBreakpoints(path);
+			nlohmann::json bps = nlohmann::json::array();
+			for (const auto& b : r.breakpoints) {
+				bps.push_back({
+					{"node_guid", b.nodeGuid},
+					{"node_name", b.nodeName},
+					{"location",  b.location},
+					{"enabled",   b.enabled},
+				});
+			}
+			return nlohmann::json{{"valid", r.valid}, {"breakpoints", bps}};
+		});
+	}
+
 	// ----- get_debug_instance (Phase 17) -----
 	{
 		ToolDescriptor d;

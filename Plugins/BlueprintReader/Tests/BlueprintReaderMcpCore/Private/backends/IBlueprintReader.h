@@ -1220,6 +1220,24 @@ public:
 		throw BlueprintReaderError("GetDebugInstance not supported by this backend");
 	}
 
+	// Blueprint breakpoints (FKismetDebugUtilities). Per-breakpoint: the
+	// node it's on (guid + name), a human description, and enabled flag.
+	// `valid:false` when the BP can't be loaded. Phase 17 — BP debug.
+	struct BreakpointInfo {
+		std::string nodeGuid;
+		std::string nodeName;
+		std::string location;   // GetLocationDescription
+		bool enabled = false;
+	};
+	struct BreakpointsResult {
+		bool valid = false;
+		std::vector<BreakpointInfo> breakpoints;
+	};
+	virtual BreakpointsResult GetBlueprintBreakpoints(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetBlueprintBreakpoints not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
