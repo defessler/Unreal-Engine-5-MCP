@@ -5,6 +5,7 @@
 
 #include <doctest/doctest.h>
 
+#include "Env.h"
 #include "tools/Analytics.h"
 
 #include <chrono>
@@ -52,8 +53,10 @@ TEST_CASE("AnalyticsEnabled: returns false when env var unset (default)") {
 	// We can't reliably unset env vars portably in a test, so assume
 	// the test env doesn't set BP_READER_ANALYTICS=1. This matches
 	// the default for both dev + CI runs.
-	const char* current = std::getenv("BP_READER_ANALYTICS");
-	if (current == nullptr || *current == '\0') {
+	// env::Get returns nullopt for both unset and empty, matching the old
+	// null/empty check — and uses _dupenv_s on MSVC, avoiding C4996.
+	const auto current = env::Get("BP_READER_ANALYTICS");
+	if (!current) {
 		CHECK_FALSE(tools::AnalyticsEnabled());
 	} else {
 		// If the test env DOES set it, just check that the func didn't
