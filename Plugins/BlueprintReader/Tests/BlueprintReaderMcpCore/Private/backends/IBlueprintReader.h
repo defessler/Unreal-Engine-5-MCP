@@ -1205,6 +1205,21 @@ public:
 		throw BlueprintReaderError("GetRecentlyOpenedAssets not supported by this backend");
 	}
 
+	// PIE-attached debug object for a Blueprint (UBlueprint::
+	// GetObjectBeingDebugged). `valid:false` when the BP can't be loaded;
+	// `has_debug_object:false` when nothing is attached (e.g. not in PIE).
+	// Phase 17 — BP debug.
+	struct DebugInstanceResult {
+		bool valid = false;
+		bool hasDebugObject = false;
+		std::string debugObjectName;
+		std::string debugObjectPath;
+	};
+	virtual DebugInstanceResult GetDebugInstance(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("GetDebugInstance not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

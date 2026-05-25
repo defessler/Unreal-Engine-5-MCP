@@ -4223,6 +4223,19 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::DebugInstanceResult
+CommandletBlueprintReader::GetDebugInstance(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=GetDebugInstance", L"-Asset=" + Widen(assetPath)});
+	DebugInstanceResult out;
+	if (j.is_object()) {
+		out.valid           = j.value("valid", false);
+		out.hasDebugObject  = j.value("has_debug_object", false);
+		out.debugObjectName = j.value("debug_object_name", std::string{});
+		out.debugObjectPath = j.value("debug_object_path", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::RecentAssetsResult
 CommandletBlueprintReader::GetRecentlyOpenedAssets() {
 	auto j = RunOp({L"-Op=GetRecentlyOpenedAssets"});

@@ -257,6 +257,7 @@ public:
 	GameFeatureActionResult ActivateGameFeature(std::string_view plugin) override;
 	GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) override;
 	RecentAssetsResult GetRecentlyOpenedAssets() override;
+	DebugInstanceResult GetDebugInstance(std::string_view assetPath) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

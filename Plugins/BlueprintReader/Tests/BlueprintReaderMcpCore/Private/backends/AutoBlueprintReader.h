@@ -238,6 +238,7 @@ public:
 	GameFeatureActionResult ActivateGameFeature(std::string_view plugin) override;
 	GameFeatureActionResult DeactivateGameFeature(std::string_view plugin) override;
 	RecentAssetsResult GetRecentlyOpenedAssets() override;
+	DebugInstanceResult GetDebugInstance(std::string_view assetPath) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

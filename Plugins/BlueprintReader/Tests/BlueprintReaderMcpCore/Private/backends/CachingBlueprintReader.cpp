@@ -885,6 +885,10 @@ CachingBlueprintReader::DeactivateGameFeature(std::string_view p) {
 IBlueprintReader::RecentAssetsResult CachingBlueprintReader::GetRecentlyOpenedAssets() {
 	return inner_->GetRecentlyOpenedAssets();
 }
+IBlueprintReader::DebugInstanceResult
+CachingBlueprintReader::GetDebugInstance(std::string_view p) {
+	return inner_->GetDebugInstance(p);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

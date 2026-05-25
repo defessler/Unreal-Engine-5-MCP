@@ -2590,6 +2590,19 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::DebugInstanceResult
+SocketBlueprintReader::GetDebugInstance(std::string_view assetPath) {
+	auto j = RunOp({"-Op=GetDebugInstance", "-Asset=" + std::string(assetPath)});
+	DebugInstanceResult out;
+	if (j.is_object()) {
+		out.valid           = j.value("valid", false);
+		out.hasDebugObject  = j.value("has_debug_object", false);
+		out.debugObjectName = j.value("debug_object_name", std::string{});
+		out.debugObjectPath = j.value("debug_object_path", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::RecentAssetsResult
 SocketBlueprintReader::GetRecentlyOpenedAssets() {
 	auto j = RunOp({"-Op=GetRecentlyOpenedAssets"});
