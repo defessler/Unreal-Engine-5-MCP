@@ -2590,6 +2590,21 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::SetPluginEnabledResult
+SocketBlueprintReader::SetPluginEnabled(std::string_view pluginName, bool enabled) {
+	std::vector<std::string> args = {"-Op=SetPluginEnabled",
+									  "-Plugin=" + std::string(pluginName)};
+	if (enabled) args.push_back("-Enabled");
+	auto j = RunOp(args);
+	SetPluginEnabledResult out;
+	if (j.is_object()) {
+		out.applied = j.value("applied", false);
+		out.saved   = j.value("saved", false);
+		out.message = j.value("message", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::ActiveStatsResult
 SocketBlueprintReader::GetActiveStats() {
 	auto j = RunOp({"-Op=GetActiveStats"});

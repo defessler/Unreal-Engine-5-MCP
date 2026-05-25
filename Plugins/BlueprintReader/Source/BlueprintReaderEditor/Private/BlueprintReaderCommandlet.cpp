@@ -90,6 +90,7 @@
 #include "MRUFavoritesList.h"                            // Phase 14 — recent assets MRU
 #include "Kismet2/KismetDebugUtilities.h"                // Phase 17 — BP breakpoints
 #include "Kismet2/Breakpoint.h"
+#include "Interfaces/IProjectManager.h"                  // Phase 11 — set_plugin_enabled
 #if PLATFORM_WINDOWS
 #include "ILiveCodingModule.h"                          // Phase 17 — live coding state
 #endif
@@ -454,6 +455,7 @@ namespace
 		GetBlueprintBreakpoints,
 		GetWatchedPins,
 		GetActiveStats,
+		SetPluginEnabled,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -674,6 +676,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetBlueprintBreakpoints"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetBlueprintBreakpoints; return true; }
 		if (OpStr.Equals(TEXT("GetWatchedPins"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetWatchedPins; return true; }
 		if (OpStr.Equals(TEXT("GetActiveStats"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetActiveStats; return true; }
+		if (OpStr.Equals(TEXT("SetPluginEnabled"), ESearchCase::IgnoreCase))       { OutOp = EOp::SetPluginEnabled; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7220,6 +7223,43 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunSetPluginEnabledOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PluginName;
+		FParse::Value(*Params, TEXT("Plugin="), PluginName);
+		const bool bEnabled = FParse::Param(*Params, TEXT("Enabled"));
+		bool bApplied = false, bSaved = false;
+		FString Message;
+		if (!PluginName.IsEmpty())
+		{
+			FText FailReason;
+			bApplied = IProjectManager::Get().SetPluginEnabled(PluginName, bEnabled, FailReason);
+			if (!bApplied)
+			{
+				Message = FailReason.ToString();
+			}
+			else if (IProjectManager::Get().IsCurrentProjectDirty())
+			{
+				FText SaveFail;
+				bSaved = IProjectManager::Get().SaveCurrentProjectToDisk(SaveFail);
+				if (!bSaved)
+				{
+					Message = SaveFail.ToString();
+				}
+			}
+			else
+			{
+				bSaved = true;   // already in the requested state, nothing to write
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("applied"), bApplied);
+		Out->SetBoolField(TEXT("saved"), bSaved);
+		Out->SetStringField(TEXT("message"), Message);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetActiveStatsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		bool bValid = false;
@@ -9831,6 +9871,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetBlueprintBreakpoints,    &RunGetBlueprintBreakpointsOp },
 		{ EOp::GetWatchedPins,             &RunGetWatchedPinsOp },
 		{ EOp::GetActiveStats,             &RunGetActiveStatsOp },
+		{ EOp::SetPluginEnabled,           &RunSetPluginEnabledOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

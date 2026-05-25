@@ -900,6 +900,10 @@ CachingBlueprintReader::GetWatchedPins(std::string_view p) {
 IBlueprintReader::ActiveStatsResult CachingBlueprintReader::GetActiveStats() {
 	return inner_->GetActiveStats();
 }
+IBlueprintReader::SetPluginEnabledResult
+CachingBlueprintReader::SetPluginEnabled(std::string_view n, bool e) {
+	return inner_->SetPluginEnabled(n, e);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

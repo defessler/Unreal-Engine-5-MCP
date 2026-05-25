@@ -261,6 +261,7 @@ public:
 	BreakpointsResult GetBlueprintBreakpoints(std::string_view assetPath) override;
 	WatchedPinsResult GetWatchedPins(std::string_view assetPath) override;
 	ActiveStatsResult GetActiveStats() override;
+	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

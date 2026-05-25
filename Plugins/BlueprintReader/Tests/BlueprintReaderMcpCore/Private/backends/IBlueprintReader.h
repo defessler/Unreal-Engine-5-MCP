@@ -1267,6 +1267,22 @@ public:
 		throw BlueprintReaderError("GetActiveStats not supported by this backend");
 	}
 
+	// ===== Phase 11 H Tier 1 — PluginToolset write =====================
+	// Enable/disable a plugin in the project's .uproject descriptor
+	// (IProjectManager). `applied` = the in-memory descriptor changed;
+	// `saved` = the .uproject was written to disk. Takes effect on the
+	// next editor restart (modules load/unload at startup). Rejected in
+	// read-only mode (mutates the project file).
+	struct SetPluginEnabledResult {
+		bool applied = false;
+		bool saved = false;
+		std::string message;   // fail reason, when applied/saved is false
+	};
+	virtual SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) {
+		(void)pluginName; (void)enabled;
+		throw BlueprintReaderError("SetPluginEnabled not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
