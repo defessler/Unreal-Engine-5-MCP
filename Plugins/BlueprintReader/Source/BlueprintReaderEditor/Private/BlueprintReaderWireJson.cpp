@@ -9,6 +9,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "UObject/Class.h"
+#include "UObject/UObjectIterator.h"   // TObjectIterator (needed outside unity builds)
 
 namespace
 {

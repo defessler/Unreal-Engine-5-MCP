@@ -38,6 +38,10 @@
 #include "Materials/MaterialInstanceConstant.h"
 #include "Materials/MaterialInterface.h"
 #include "Engine/StaticMesh.h"
+// FStaticMeshRenderData + FStaticMeshLODResources full definitions
+// (Engine/StaticMesh.h only forward-declares them) — get_mesh_preview_state
+// walks GetRenderData()->LODResources. Required outside unity builds.
+#include "StaticMeshResources.h"
 #include "WidgetBlueprintEditor.h"
 #include "WidgetBlueprint.h"
 #include "IMaterialEditor.h"
