@@ -206,6 +206,10 @@ public:
 	CurrentLevelResult GetCurrentLevel() override;
 	LoadedLevelsResult ListLoadedLevels() override;
 	SourceControlProviderResult GetSourceControlProvider() override;
+	AssetRegistryStateResult GetAssetRegistryState() override;
+	DataLayerStatesResult GetDataLayerStates() override;
+	AutosaveStatusResult GetAutosaveStatus() override;
+	RecoveryStateResult GetRecoveryState() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

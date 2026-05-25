@@ -7609,6 +7609,103 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_asset_registry_state -----
+	{
+		ToolDescriptor d;
+		d.name = "get_asset_registry_state";
+		d.description =
+			"[editor] Asset-registry scan status: `{is_loading_assets, "
+			"search_all_assets}`. `is_loading_assets:true` means the "
+			"background scan is still running (asset queries may be "
+			"incomplete). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"is_loading_assets", {{"type","boolean"}}},
+				{"search_all_assets", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetAssetRegistryState();
+			return nlohmann::json{
+				{"is_loading_assets", r.isLoadingAssets},
+				{"search_all_assets", r.searchAllAssets},
+			};
+		});
+	}
+
+	// ----- get_data_layer_states -----
+	{
+		ToolDescriptor d;
+		d.name = "get_data_layer_states";
+		d.description =
+			"[editor] World Partition data layers + per-layer effective "
+			"runtime state (Unloaded/Loaded/Activated). Each: `{short_name, "
+			"full_name, runtime_state}`. `has_world_partition:false` on "
+			"non-partitioned maps (layers empty). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"layers", {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"has_world_partition", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetDataLayerStates();
+			nlohmann::json layers = nlohmann::json::array();
+			for (const auto& l : r.layers) {
+				layers.push_back({
+					{"short_name",    l.shortName},
+					{"full_name",     l.fullName},
+					{"runtime_state", l.runtimeState},
+				});
+			}
+			return nlohmann::json{
+				{"layers", layers},
+				{"has_world_partition", r.hasWorldPartition},
+			};
+		});
+	}
+
+	// ----- get_autosave_status -----
+	{
+		ToolDescriptor d;
+		d.name = "get_autosave_status";
+		d.description =
+			"[editor] Editor autosave status: `{is_auto_saving}` (true "
+			"while an autosave is in progress). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"is_auto_saving", {{"type","boolean"}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetAutosaveStatus();
+			return nlohmann::json{{"is_auto_saving", r.isAutoSaving}};
+		});
+	}
+
+	// ----- get_recovery_state -----
+	{
+		ToolDescriptor d;
+		d.name = "get_recovery_state";
+		d.description =
+			"[editor] Crash-recovery state: `{has_packages_to_restore}` "
+			"(true when autosave restore files are pending from a prior "
+			"unclean shutdown). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"has_packages_to_restore", {{"type","boolean"}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetRecoveryState();
+			return nlohmann::json{{"has_packages_to_restore", r.hasPackagesToRestore}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

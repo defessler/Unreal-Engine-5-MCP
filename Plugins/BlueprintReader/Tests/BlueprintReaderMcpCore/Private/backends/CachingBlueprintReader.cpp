@@ -842,6 +842,18 @@ IBlueprintReader::LoadedLevelsResult CachingBlueprintReader::ListLoadedLevels() 
 IBlueprintReader::SourceControlProviderResult CachingBlueprintReader::GetSourceControlProvider() {
 	return inner_->GetSourceControlProvider();
 }
+IBlueprintReader::AssetRegistryStateResult CachingBlueprintReader::GetAssetRegistryState() {
+	return inner_->GetAssetRegistryState();
+}
+IBlueprintReader::DataLayerStatesResult CachingBlueprintReader::GetDataLayerStates() {
+	return inner_->GetDataLayerStates();
+}
+IBlueprintReader::AutosaveStatusResult CachingBlueprintReader::GetAutosaveStatus() {
+	return inner_->GetAutosaveStatus();
+}
+IBlueprintReader::RecoveryStateResult CachingBlueprintReader::GetRecoveryState() {
+	return inner_->GetRecoveryState();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

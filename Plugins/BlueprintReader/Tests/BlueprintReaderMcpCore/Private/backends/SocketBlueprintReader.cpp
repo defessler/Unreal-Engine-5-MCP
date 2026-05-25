@@ -2449,6 +2449,50 @@ SocketBlueprintReader::GetSourceControlProvider() {
 	return out;
 }
 
+IBlueprintReader::AssetRegistryStateResult
+SocketBlueprintReader::GetAssetRegistryState() {
+	auto j = RunOp({"-Op=GetAssetRegistryState"});
+	AssetRegistryStateResult out;
+	if (j.is_object()) {
+		out.isLoadingAssets = j.value("is_loading_assets", false);
+		out.searchAllAssets = j.value("search_all_assets", false);
+	}
+	return out;
+}
+IBlueprintReader::DataLayerStatesResult
+SocketBlueprintReader::GetDataLayerStates() {
+	auto j = RunOp({"-Op=GetDataLayerStates"});
+	DataLayerStatesResult out;
+	if (j.is_object()) {
+		out.hasWorldPartition = j.value("has_world_partition", false);
+		if (auto it = j.find("layers"); it != j.end() && it->is_array()) {
+			for (const auto& l : *it) {
+				if (!l.is_object()) continue;
+				DataLayerStateInfo info;
+				info.shortName    = l.value("short_name",    std::string{});
+				info.fullName     = l.value("full_name",     std::string{});
+				info.runtimeState = l.value("runtime_state", std::string{});
+				out.layers.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::AutosaveStatusResult
+SocketBlueprintReader::GetAutosaveStatus() {
+	auto j = RunOp({"-Op=GetAutosaveStatus"});
+	AutosaveStatusResult out;
+	if (j.is_object()) out.isAutoSaving = j.value("is_auto_saving", false);
+	return out;
+}
+IBlueprintReader::RecoveryStateResult
+SocketBlueprintReader::GetRecoveryState() {
+	auto j = RunOp({"-Op=GetRecoveryState"});
+	RecoveryStateResult out;
+	if (j.is_object()) out.hasPackagesToRestore = j.value("has_packages_to_restore", false);
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

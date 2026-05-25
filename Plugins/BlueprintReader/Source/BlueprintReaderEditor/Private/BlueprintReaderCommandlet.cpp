@@ -81,6 +81,12 @@
 #include "ShaderCompiler.h"            // Phase 14 — GShaderCompilingManager
 #include "ISourceControlModule.h"      // Phase 14 — SCC provider
 #include "ISourceControlProvider.h"
+#include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
+#include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
+#include "WorldPartition/DataLayer/DataLayerInstance.h"
+#include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
+#include "UnrealEdGlobals.h"           // GUnrealEd
+#include "IPackageAutoSaver.h"
 #include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
@@ -419,6 +425,10 @@ namespace
 		GetCurrentLevel,
 		ListLoadedLevels,
 		GetSourceControlProvider,
+		GetAssetRegistryState,
+		GetDataLayerStates,
+		GetAutosaveStatus,
+		GetRecoveryState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -622,6 +632,10 @@ namespace
 		if (OpStr.Equals(TEXT("GetCurrentLevel"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetCurrentLevel; return true; }
 		if (OpStr.Equals(TEXT("ListLoadedLevels"), ESearchCase::IgnoreCase))        { OutOp = EOp::ListLoadedLevels; return true; }
 		if (OpStr.Equals(TEXT("GetSourceControlProvider"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetSourceControlProvider; return true; }
+		if (OpStr.Equals(TEXT("GetAssetRegistryState"), ESearchCase::IgnoreCase))   { OutOp = EOp::GetAssetRegistryState; return true; }
+		if (OpStr.Equals(TEXT("GetDataLayerStates"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetDataLayerStates; return true; }
+		if (OpStr.Equals(TEXT("GetAutosaveStatus"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetAutosaveStatus; return true; }
+		if (OpStr.Equals(TEXT("GetRecoveryState"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetRecoveryState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6920,6 +6934,70 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetAssetRegistryStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		IAssetRegistry& AR = IAssetRegistry::GetChecked();
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("is_loading_assets"), AR.IsLoadingAssets());
+		Out->SetBoolField(TEXT("search_all_assets"), AR.IsSearchAllAssets());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetDataLayerStatesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Layers;
+		bool bHasWP = false;
+		if (UWorld* World = GetEditorWorldOrNull())
+		{
+			if (UDataLayerManager* DLM = UDataLayerManager::GetDataLayerManager(World))
+			{
+				bHasWP = true;
+				for (UDataLayerInstance* Inst : DLM->GetDataLayerInstances())
+				{
+					if (!Inst) continue;
+					auto L = MakeShared<FJsonObject>();
+					L->SetStringField(TEXT("short_name"), Inst->GetDataLayerShortName());
+					L->SetStringField(TEXT("full_name"),  Inst->GetDataLayerFullName());
+					L->SetStringField(TEXT("runtime_state"),
+						GetDataLayerRuntimeStateName(Inst->GetEffectiveRuntimeState()));
+					Layers.Add(MakeShared<FJsonValueObject>(L));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("layers"), Layers);
+		Out->SetBoolField(TEXT("has_world_partition"), bHasWP);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetAutosaveStatusOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bAutoSaving = false;
+		if (GUnrealEd)
+		{
+			bAutoSaving = GUnrealEd->GetPackageAutoSaver().IsAutoSaving();
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("is_auto_saving"), bAutoSaving);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetRecoveryStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bHasRestore = false;
+		if (GUnrealEd)
+		{
+			bHasRestore = GUnrealEd->GetPackageAutoSaver().HasPackagesToRestore();
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("has_packages_to_restore"), bHasRestore);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9384,6 +9462,10 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetCurrentLevel,            &RunGetCurrentLevelOp },
 		{ EOp::ListLoadedLevels,           &RunListLoadedLevelsOp },
 		{ EOp::GetSourceControlProvider,   &RunGetSourceControlProviderOp },
+		{ EOp::GetAssetRegistryState,      &RunGetAssetRegistryStateOp },
+		{ EOp::GetDataLayerStates,         &RunGetDataLayerStatesOp },
+		{ EOp::GetAutosaveStatus,          &RunGetAutosaveStatusOp },
+		{ EOp::GetRecoveryState,           &RunGetRecoveryStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
