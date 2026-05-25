@@ -97,6 +97,8 @@
 #include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
 #include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
+#include "WorldPartition/WorldPartitionSubsystem.h"      // Phase 14 — streaming sources
+#include "WorldPartition/WorldPartitionStreamingSource.h"
 #include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
 #include "UnrealEdGlobals.h"           // GUnrealEd
 #include "IPackageAutoSaver.h"
@@ -456,6 +458,7 @@ namespace
 		GetWatchedPins,
 		GetActiveStats,
 		SetPluginEnabled,
+		GetStreamingSources,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -677,6 +680,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetWatchedPins"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetWatchedPins; return true; }
 		if (OpStr.Equals(TEXT("GetActiveStats"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetActiveStats; return true; }
 		if (OpStr.Equals(TEXT("SetPluginEnabled"), ESearchCase::IgnoreCase))       { OutOp = EOp::SetPluginEnabled; return true; }
+		if (OpStr.Equals(TEXT("GetStreamingSources"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetStreamingSources; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7223,6 +7227,40 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetStreamingSourcesOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Sources;
+		bool bHasWP = false;
+		if (UWorld* World = GetEditorWorldOrNull())
+		{
+			if (UWorldPartitionSubsystem* WPS = World->GetSubsystem<UWorldPartitionSubsystem>())
+			{
+				bHasWP = true;
+				for (const IWorldPartitionStreamingSourceProvider* Provider :
+						WPS->GetStreamingSourceProviders())
+				{
+					if (!Provider) continue;
+					FWorldPartitionStreamingSource Src;
+					if (!Provider->GetStreamingSource(Src)) continue;
+					auto S = MakeShared<FJsonObject>();
+					S->SetStringField(TEXT("name"),  Src.Name.ToString());
+					S->SetNumberField(TEXT("loc_x"), Src.Location.X);
+					S->SetNumberField(TEXT("loc_y"), Src.Location.Y);
+					S->SetNumberField(TEXT("loc_z"), Src.Location.Z);
+					S->SetNumberField(TEXT("pitch"), Src.Rotation.Pitch);
+					S->SetNumberField(TEXT("yaw"),   Src.Rotation.Yaw);
+					S->SetNumberField(TEXT("roll"),  Src.Rotation.Roll);
+					Sources.Add(MakeShared<FJsonValueObject>(S));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("sources"), Sources);
+		Out->SetBoolField(TEXT("has_world_partition"), bHasWP);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunSetPluginEnabledOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		FString PluginName;
@@ -9872,6 +9910,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetWatchedPins,             &RunGetWatchedPinsOp },
 		{ EOp::GetActiveStats,             &RunGetActiveStatsOp },
 		{ EOp::SetPluginEnabled,           &RunSetPluginEnabledOp },
+		{ EOp::GetStreamingSources,        &RunGetStreamingSourcesOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

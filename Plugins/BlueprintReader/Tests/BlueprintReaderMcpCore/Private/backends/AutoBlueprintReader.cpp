@@ -817,6 +817,9 @@ IBlueprintReader::SetPluginEnabledResult
 AutoBlueprintReader::SetPluginEnabled(std::string_view n, bool e) {
 	FORWARD(SetPluginEnabled, n, e);
 }
+IBlueprintReader::StreamingSourcesResult AutoBlueprintReader::GetStreamingSources() {
+	FORWARD(GetStreamingSources);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

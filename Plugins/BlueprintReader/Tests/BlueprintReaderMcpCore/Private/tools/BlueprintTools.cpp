@@ -7882,6 +7882,40 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_streaming_sources (Phase 14 — World Partition) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_streaming_sources";
+		d.description =
+			"[editor] World Partition streaming sources (camera/player "
+			"providers driving cell streaming). Each: `{name, loc_x/y/z, "
+			"pitch, yaw, roll}`. `has_world_partition:false` on "
+			"non-partitioned maps (sources empty). Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"sources", {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"has_world_partition", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetStreamingSources();
+			nlohmann::json srcs = nlohmann::json::array();
+			for (const auto& s : r.sources) {
+				srcs.push_back({
+					{"name",  s.name},
+					{"loc_x", s.locX}, {"loc_y", s.locY}, {"loc_z", s.locZ},
+					{"pitch", s.pitch}, {"yaw", s.yaw}, {"roll", s.roll},
+				});
+			}
+			return nlohmann::json{
+				{"sources", srcs},
+				{"has_world_partition", r.hasWorldPartition},
+			};
+		});
+	}
+
 	// ----- get_recently_opened_assets (Phase 14) -----
 	{
 		ToolDescriptor d;
