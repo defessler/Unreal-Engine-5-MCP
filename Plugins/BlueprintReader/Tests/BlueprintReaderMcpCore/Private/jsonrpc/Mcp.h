@@ -15,6 +15,7 @@
 #pragma once
 
 #include "jsonrpc/Server.h"
+#include "tools/EditorSubscriptions.h"
 #include "tools/Logger.h"
 #include "tools/Prompts.h"
 #include "tools/Resources.h"
@@ -82,11 +83,18 @@ void RegisterHandlers(jsonrpc::Server& server,
 // Same nullable-pointer pattern: pass nullptr for any of
 // prompts/logger/resources to suppress the matching capability +
 // handlers.
+//
+// `editorSubs` (Phase 10, EA-push): when non-null, advertises the
+// `experimental.editor` capability and registers editor/subscribe +
+// editor/unsubscribe. nullptr (the default) keeps push events off —
+// editor/subscribe is unregistered, so it yields -32601. main.cpp wires
+// it only under BP_READER_PUSH_EVENTS.
 void RegisterHandlers(jsonrpc::Server& server,
                       tools::ToolRegistry& registry,
                       tools::prompts::PromptRegistry* prompts,
                       tools::Logger* logger,
                       tools::resources::ResourceRegistry* resources,
-                      const ServerInfo& info);
+                      const ServerInfo& info,
+                      tools::EditorSubscriptions* editorSubs = nullptr);
 
 }    // namespace bpr::mcp

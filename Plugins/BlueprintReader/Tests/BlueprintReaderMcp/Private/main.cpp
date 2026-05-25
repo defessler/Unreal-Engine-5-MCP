@@ -24,6 +24,7 @@
 #include "jsonrpc/HttpServerMain.h"
 #include "tools/Analytics.h"
 #include "tools/BlueprintTools.h"
+#include "tools/EditorSubscriptions.h"
 #include "tools/Logger.h"
 #include "tools/Prompts.h"
 #include "tools/Resources.h"
@@ -530,8 +531,20 @@ int RunServerLoop() {
 					  << resources.ProviderCount() << " bp:// providers\n";
 		}
 	}
+	// Phase 10 (EA-push) — opt-in editor push-event subscription model.
+	// Off by default (BP_READER_PUSH_EVENTS=0): no editor capability is
+	// advertised and editor/subscribe yields -32601. The Tier-A event
+	// sources (editor delegates -> notifications) are a follow-up; this
+	// wires the client-facing subscription surface.
+	std::unique_ptr<tools::EditorSubscriptions> editorSubs;
+	if (env::BoolOrDefault("BP_READER_PUSH_EVENTS", false, std::cerr)) {
+		editorSubs = std::make_unique<tools::EditorSubscriptions>();
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] push events: editor/subscribe enabled\n";
+		}
+	}
 	mcp::RegisterHandlers(server, registry, &promptRegistry, &logger,
-						   &resources, info);
+						   &resources, info, editorSubs.get());
 
 	// Phase 7 — Analytics + EULA. Both default to "minimum surface":
 	// the no-op provider does nothing; the EULA notice fires once on
