@@ -189,6 +189,14 @@ public:
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
 	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
+	// Viewport view-state writes pass through (per-viewport, no dirty);
+	// layer/actor visibility reject (level-domain mutation).
+	SetViewModeResult SetViewMode(std::string_view mode) override;
+	SetGizmoModeResult SetGizmoMode(std::string_view mode) override;
+	SetViewportRealtimeResult SetViewportRealtime(bool enabled) override;
+	SetActorVisibilityResult SetActorVisibility(std::string_view actorName, bool visible) override;
+	HiddenLayersResult GetHiddenLayers() override;
+	SetLayerVisibilityResult SetLayerVisibility(std::string_view layer, bool visible) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

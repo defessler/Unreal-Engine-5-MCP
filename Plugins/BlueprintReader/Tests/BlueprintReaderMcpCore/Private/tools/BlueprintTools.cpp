@@ -3804,6 +3804,219 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_hidden_layers (Phase 13 Wave 3) ------------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_hidden_layers";
+		d.description =
+			"[editor] Names of editor layers whose visibility is off "
+			"(`ULayersSubsystem`). Capped at 500 — `truncated:true` signals "
+			"a larger set. Pair with `set_layer_visibility` to toggle. "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"layer_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"truncated",   {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetHiddenLayers();
+			return nlohmann::json{
+				{"layer_names", r.layerNames},
+				{"truncated",   r.truncated},
+			};
+		});
+	}
+
+	// ----- set_layer_visibility (Phase 13 Wave 3) ---------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_layer_visibility";
+		d.description =
+			"[editor] Show or hide an editor layer by name "
+			"(`ULayersSubsystem`). `valid:false` means no layer with that "
+			"name exists. Blocked in read-only mode (mutates level-domain "
+			"state). Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"layer",   {{"type","string"}}},
+				{"visible", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"layer","visible"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"valid",   {{"type","boolean"}}},
+				{"layer",   {{"type","string"}}},
+				{"visible", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string layer = RequireString(args, "layer");
+			bool visible = args.value("visible", true);
+			auto r = reader.SetLayerVisibility(layer, visible);
+			return nlohmann::json{
+				{"ok",      true},
+				{"valid",   r.valid},
+				{"layer",   r.layer},
+				{"visible", r.visible},
+			};
+		});
+	}
+
+	// ----- set_actor_visibility (Phase 13 Wave 3) ---------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_actor_visibility";
+		d.description =
+			"[editor] Show or hide an actor in the editor viewport by name "
+			"via `SetIsTemporarilyHiddenInEditor` (does not dirty the "
+			"package). `valid:false` means no actor with that name was "
+			"found. Blocked in read-only mode. Pairs with "
+			"`get_hidden_actors`. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",    {{"type","string"}}},
+				{"visible", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"name","visible"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"valid",   {{"type","boolean"}}},
+				{"name",    {{"type","string"}}},
+				{"visible", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string name = RequireString(args, "name");
+			bool visible = args.value("visible", true);
+			auto r = reader.SetActorVisibility(name, visible);
+			return nlohmann::json{
+				{"ok",      true},
+				{"valid",   r.valid},
+				{"name",    r.name},
+				{"visible", r.visible},
+			};
+		});
+	}
+
+	// ----- set_view_mode (Phase 13 Wave 3) ----------------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_view_mode";
+		d.description =
+			"[editor] Set the active level viewport's view mode. Accepts "
+			"`Lit`, `Unlit`, `Wireframe`, `BrushWireframe`, `LightingOnly`, "
+			"`LightComplexity`, `ShaderComplexity`, `StationaryLightOverlap`, "
+			"`LightmapDensity`, `LitLightmapDensity`, `ReflectionOverride`, "
+			"`CollisionPawn`, `CollisionVisibility` (case-insensitive). "
+			"`valid:false` means no viewport or an unrecognized mode. Read "
+			"counterpart: `get_view_mode`. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"mode", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"mode"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",    {{"type","boolean"}}},
+				{"valid", {{"type","boolean"}}},
+				{"mode",  {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string mode = RequireString(args, "mode");
+			auto r = reader.SetViewMode(mode);
+			return nlohmann::json{
+				{"ok",    true},
+				{"valid", r.valid},
+				{"mode",  r.mode},
+			};
+		});
+	}
+
+	// ----- set_gizmo_mode (Phase 13 Wave 3) ---------------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_gizmo_mode";
+		d.description =
+			"[editor] Set the transform gizmo mode in the active level "
+			"viewport: `translate`, `rotate`, or `scale` (case-insensitive). "
+			"`valid:false` means no viewport or an unrecognized mode. Read "
+			"counterpart: `get_gizmo_state`. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"mode", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"mode"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",    {{"type","boolean"}}},
+				{"valid", {{"type","boolean"}}},
+				{"mode",  {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string mode = RequireString(args, "mode");
+			auto r = reader.SetGizmoMode(mode);
+			return nlohmann::json{
+				{"ok",    true},
+				{"valid", r.valid},
+				{"mode",  r.mode},
+			};
+		});
+	}
+
+	// ----- set_viewport_realtime (Phase 13 Wave 3) --------------------
+	{
+		ToolDescriptor d;
+		d.name = "set_viewport_realtime";
+		d.description =
+			"[editor] Enable or disable realtime rendering in the active "
+			"level viewport. `valid:false` means no viewport; `is_realtime` "
+			"echoes the resulting state. Read counterpart: "
+			"`get_viewport_realtime`. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"enabled", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"enabled"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"valid",       {{"type","boolean"}}},
+				{"is_realtime", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			bool enabled = args.value("enabled", true);
+			auto r = reader.SetViewportRealtime(enabled);
+			return nlohmann::json{
+				{"ok",          true},
+				{"valid",       r.valid},
+				{"is_realtime", r.isRealtime},
+			};
+		});
+	}
+
 	// ----- get_hidden_actors (Phase 13 Wave 3) ------------------------
 	{
 		ToolDescriptor d;
@@ -3812,8 +4025,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"[editor] Names of actors hidden in the editor viewport "
 			"(temporary or level hide). Capped at 500 — `truncated:true` "
 			"signals a larger hidden set. Sorted by iteration order, not "
-			"by name. Pair with `set_actor_visibility` (Wave 3 writes, "
-			"future) to toggle. Requires a live editor.";
+			"by name. Pair with `set_actor_visibility` to toggle. "
+			"Requires a live editor.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
 		d.output_schema = {
 			{"type","object"},

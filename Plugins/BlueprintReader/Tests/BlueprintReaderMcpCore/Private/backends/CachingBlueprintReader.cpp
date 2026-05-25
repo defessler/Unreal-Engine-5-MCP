@@ -792,6 +792,29 @@ IBlueprintReader::VisibleActorsResult
 CachingBlueprintReader::GetVisibleActors(std::string_view f, double d) {
 	return inner_->GetVisibleActors(f, d);
 }
+IBlueprintReader::SetViewModeResult
+CachingBlueprintReader::SetViewMode(std::string_view m) {
+	return inner_->SetViewMode(m);
+}
+IBlueprintReader::SetGizmoModeResult
+CachingBlueprintReader::SetGizmoMode(std::string_view m) {
+	return inner_->SetGizmoMode(m);
+}
+IBlueprintReader::SetViewportRealtimeResult
+CachingBlueprintReader::SetViewportRealtime(bool e) {
+	return inner_->SetViewportRealtime(e);
+}
+IBlueprintReader::SetActorVisibilityResult
+CachingBlueprintReader::SetActorVisibility(std::string_view n, bool v) {
+	return inner_->SetActorVisibility(n, v);
+}
+IBlueprintReader::HiddenLayersResult CachingBlueprintReader::GetHiddenLayers() {
+	return inner_->GetHiddenLayers();
+}
+IBlueprintReader::SetLayerVisibilityResult
+CachingBlueprintReader::SetLayerVisibility(std::string_view l, bool v) {
+	return inner_->SetLayerVisibility(l, v);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

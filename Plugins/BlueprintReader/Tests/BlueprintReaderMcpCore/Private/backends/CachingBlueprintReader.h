@@ -229,6 +229,12 @@ public:
 	ActiveViewportResult GetActiveViewport() override;
 	HiddenActorsResult GetHiddenActors() override;
 	VisibleActorsResult GetVisibleActors(std::string_view classFilter, double maxDistanceCm) override;
+	SetViewModeResult SetViewMode(std::string_view mode) override;
+	SetGizmoModeResult SetGizmoMode(std::string_view mode) override;
+	SetViewportRealtimeResult SetViewportRealtime(bool enabled) override;
+	SetActorVisibilityResult SetActorVisibility(std::string_view actorName, bool visible) override;
+	HiddenLayersResult GetHiddenLayers() override;
+	SetLayerVisibilityResult SetLayerVisibility(std::string_view layer, bool visible) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

@@ -3898,6 +3898,81 @@ CommandletBlueprintReader::GetVisibleActors(std::string_view classFilter,
 	return out;
 }
 
+IBlueprintReader::SetViewModeResult
+CommandletBlueprintReader::SetViewMode(std::string_view mode) {
+	auto j = RunOp({L"-Op=SetViewMode", L"-Mode=" + Widen(mode)});
+	SetViewModeResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		out.mode  = j.value("mode", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::SetGizmoModeResult
+CommandletBlueprintReader::SetGizmoMode(std::string_view mode) {
+	auto j = RunOp({L"-Op=SetGizmoMode", L"-Mode=" + Widen(mode)});
+	SetGizmoModeResult out;
+	if (j.is_object()) {
+		out.valid = j.value("valid", false);
+		out.mode  = j.value("mode", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::SetViewportRealtimeResult
+CommandletBlueprintReader::SetViewportRealtime(bool enabled) {
+	std::vector<std::wstring> args = {L"-Op=SetViewportRealtime"};
+	if (enabled) args.push_back(L"-Enabled");
+	auto j = RunOp(args);
+	SetViewportRealtimeResult out;
+	if (j.is_object()) {
+		out.valid      = j.value("valid", false);
+		out.isRealtime = j.value("is_realtime", false);
+	}
+	return out;
+}
+IBlueprintReader::SetActorVisibilityResult
+CommandletBlueprintReader::SetActorVisibility(std::string_view actorName, bool visible) {
+	std::vector<std::wstring> args = {L"-Op=SetActorVisibility",
+									   L"-Name=" + Widen(actorName)};
+	if (visible) args.push_back(L"-Visible");
+	auto j = RunOp(args);
+	SetActorVisibilityResult out;
+	if (j.is_object()) {
+		out.valid   = j.value("valid", false);
+		out.name    = j.value("name", std::string{});
+		out.visible = j.value("visible", false);
+	}
+	return out;
+}
+IBlueprintReader::HiddenLayersResult
+CommandletBlueprintReader::GetHiddenLayers() {
+	auto j = RunOp({L"-Op=GetHiddenLayers"});
+	HiddenLayersResult out;
+	if (j.is_object()) {
+		out.truncated = j.value("truncated", false);
+		if (auto it = j.find("layer_names"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.layerNames.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::SetLayerVisibilityResult
+CommandletBlueprintReader::SetLayerVisibility(std::string_view layer, bool visible) {
+	std::vector<std::wstring> args = {L"-Op=SetLayerVisibility",
+									   L"-Layer=" + Widen(layer)};
+	if (visible) args.push_back(L"-Visible");
+	auto j = RunOp(args);
+	SetLayerVisibilityResult out;
+	if (j.is_object()) {
+		out.valid   = j.value("valid", false);
+		out.layer   = j.value("layer", std::string{});
+		out.visible = j.value("visible", false);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

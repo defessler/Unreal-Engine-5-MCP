@@ -892,6 +892,71 @@ public:
 		throw BlueprintReaderError("SetShowFlag not supported by this backend");
 	}
 
+	// ----- Phase 13 Wave 3 writes: viewport view-state + visibility -----
+	// Viewport writes (view mode, gizmo, realtime) are per-viewport-client
+	// view state — reversible, no package dirty, so read-only mode allows
+	// them. Layer/actor visibility toggle level-domain state and are
+	// rejected in read-only mode (same line as set_selection).
+
+	struct SetViewModeResult {
+		bool valid = false;
+		std::string mode;   // canonical mode applied
+	};
+	virtual SetViewModeResult SetViewMode(std::string_view mode) {
+		(void)mode;
+		throw BlueprintReaderError("SetViewMode not supported by this backend");
+	}
+
+	struct SetGizmoModeResult {
+		bool valid = false;
+		std::string mode;   // translate|rotate|scale
+	};
+	virtual SetGizmoModeResult SetGizmoMode(std::string_view mode) {
+		(void)mode;
+		throw BlueprintReaderError("SetGizmoMode not supported by this backend");
+	}
+
+	struct SetViewportRealtimeResult {
+		bool valid = false;
+		bool isRealtime = false;
+	};
+	virtual SetViewportRealtimeResult SetViewportRealtime(bool enabled) {
+		(void)enabled;
+		throw BlueprintReaderError("SetViewportRealtime not supported by this backend");
+	}
+
+	struct SetActorVisibilityResult {
+		bool valid = false;       // false when actor not found
+		std::string name;
+		bool visible = false;     // resulting visibility
+	};
+	virtual SetActorVisibilityResult SetActorVisibility(std::string_view actorName,
+														bool visible) {
+		(void)actorName; (void)visible;
+		throw BlueprintReaderError("SetActorVisibility not supported by this backend");
+	}
+
+	// Layers hidden in the editor (ULayersSubsystem) — names of layers whose
+	// visibility flag is off. Capped at 500 to bound the payload.
+	struct HiddenLayersResult {
+		std::vector<std::string> layerNames;
+		bool truncated = false;
+	};
+	virtual HiddenLayersResult GetHiddenLayers() {
+		throw BlueprintReaderError("GetHiddenLayers not supported by this backend");
+	}
+
+	struct SetLayerVisibilityResult {
+		bool valid = false;       // false when layer not found
+		std::string layer;
+		bool visible = false;
+	};
+	virtual SetLayerVisibilityResult SetLayerVisibility(std::string_view layer,
+														bool visible) {
+		(void)layer; (void)visible;
+		throw BlueprintReaderError("SetLayerVisibility not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

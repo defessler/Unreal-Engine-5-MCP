@@ -72,6 +72,8 @@
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
 #include "EditorModes.h"
+#include "Layers/LayersSubsystem.h"    // Phase 13 Wave 3 — layer visibility (UnrealEd)
+#include "Layers/Layer.h"              // ULayer::IsVisible()
 #include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
@@ -395,6 +397,12 @@ namespace
 		GetActiveViewport,
 		GetHiddenActors,
 		GetVisibleActors,
+		SetViewMode,
+		SetGizmoMode,
+		SetViewportRealtime,
+		SetActorVisibility,
+		GetHiddenLayers,
+		SetLayerVisibility,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -583,6 +591,12 @@ namespace
 		if (OpStr.Equals(TEXT("GetActiveViewport"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetActiveViewport; return true; }
 		if (OpStr.Equals(TEXT("GetHiddenActors"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetHiddenActors; return true; }
 		if (OpStr.Equals(TEXT("GetVisibleActors"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetVisibleActors; return true; }
+		if (OpStr.Equals(TEXT("SetViewMode"), ESearchCase::IgnoreCase))             { OutOp = EOp::SetViewMode; return true; }
+		if (OpStr.Equals(TEXT("SetGizmoMode"), ESearchCase::IgnoreCase))            { OutOp = EOp::SetGizmoMode; return true; }
+		if (OpStr.Equals(TEXT("SetViewportRealtime"), ESearchCase::IgnoreCase))     { OutOp = EOp::SetViewportRealtime; return true; }
+		if (OpStr.Equals(TEXT("SetActorVisibility"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetActorVisibility; return true; }
+		if (OpStr.Equals(TEXT("GetHiddenLayers"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetHiddenLayers; return true; }
+		if (OpStr.Equals(TEXT("SetLayerVisibility"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetLayerVisibility; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6551,6 +6565,175 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunSetViewModeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ModeStr;
+		FParse::Value(*Params, TEXT("Mode="), ModeStr);
+		bool bValid = false;
+		FString Applied;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			EViewModeIndex Mode = VMI_Lit;
+			bool bRecognized = true;
+			if      (ModeStr.Equals(TEXT("Wireframe"), ESearchCase::IgnoreCase))            Mode = VMI_Wireframe;
+			else if (ModeStr.Equals(TEXT("BrushWireframe"), ESearchCase::IgnoreCase))       Mode = VMI_BrushWireframe;
+			else if (ModeStr.Equals(TEXT("Unlit"), ESearchCase::IgnoreCase))                Mode = VMI_Unlit;
+			else if (ModeStr.Equals(TEXT("Lit"), ESearchCase::IgnoreCase))                  Mode = VMI_Lit;
+			else if (ModeStr.Equals(TEXT("LightingOnly"), ESearchCase::IgnoreCase))         Mode = VMI_LightingOnly;
+			else if (ModeStr.Equals(TEXT("LightComplexity"), ESearchCase::IgnoreCase))      Mode = VMI_LightComplexity;
+			else if (ModeStr.Equals(TEXT("ShaderComplexity"), ESearchCase::IgnoreCase))     Mode = VMI_ShaderComplexity;
+			else if (ModeStr.Equals(TEXT("StationaryLightOverlap"), ESearchCase::IgnoreCase))Mode = VMI_StationaryLightOverlap;
+			else if (ModeStr.Equals(TEXT("LightmapDensity"), ESearchCase::IgnoreCase))      Mode = VMI_LightmapDensity;
+			else if (ModeStr.Equals(TEXT("LitLightmapDensity"), ESearchCase::IgnoreCase))   Mode = VMI_LitLightmapDensity;
+			else if (ModeStr.Equals(TEXT("ReflectionOverride"), ESearchCase::IgnoreCase))   Mode = VMI_ReflectionOverride;
+			else if (ModeStr.Equals(TEXT("CollisionPawn"), ESearchCase::IgnoreCase))        Mode = VMI_CollisionPawn;
+			else if (ModeStr.Equals(TEXT("CollisionVisibility"), ESearchCase::IgnoreCase))  Mode = VMI_CollisionVisibility;
+			else bRecognized = false;
+
+			if (bRecognized)
+			{
+				VC->SetViewMode(Mode);
+				VC->Invalidate();
+				bValid = true;
+				Applied = ModeStr;
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("mode"), Applied);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetGizmoModeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ModeStr;
+		FParse::Value(*Params, TEXT("Mode="), ModeStr);
+		bool bValid = false;
+		FString Applied;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			UE::Widget::EWidgetMode Mode = UE::Widget::WM_Translate;
+			bool bRecognized = true;
+			if      (ModeStr.Equals(TEXT("translate"), ESearchCase::IgnoreCase)) Mode = UE::Widget::WM_Translate;
+			else if (ModeStr.Equals(TEXT("rotate"), ESearchCase::IgnoreCase))    Mode = UE::Widget::WM_Rotate;
+			else if (ModeStr.Equals(TEXT("scale"), ESearchCase::IgnoreCase))     Mode = UE::Widget::WM_Scale;
+			else bRecognized = false;
+
+			if (bRecognized)
+			{
+				VC->SetWidgetMode(Mode);
+				VC->Invalidate();
+				bValid = true;
+				Applied = ModeStr.ToLower();
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("mode"), Applied);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetViewportRealtimeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const bool bEnabled = FParse::Param(*Params, TEXT("Enabled"));
+		bool bValid = false;
+		bool bIsRealtime = false;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			VC->SetRealtime(bEnabled);
+			VC->Invalidate();
+			bValid = true;
+			bIsRealtime = VC->IsRealtime();
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("is_realtime"), bIsRealtime);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetActorVisibilityOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Name;
+		FParse::Value(*Params, TEXT("Name="), Name);
+		const bool bVisible = FParse::Param(*Params, TEXT("Visible"));
+		bool bValid = false;
+		if (AActor* Actor = FindActorByName(Name))
+		{
+			// Temporary editor-only hide: does not dirty the package.
+			Actor->SetIsTemporarilyHiddenInEditor(!bVisible);
+			bValid = true;
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("name"), Name);
+		Out->SetBoolField(TEXT("visible"), bVisible);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetHiddenLayersOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		constexpr int32 kMaxLayers = 500;
+		TArray<TSharedPtr<FJsonValue>> Names;
+		bool bTruncated = false;
+		if (IsValid(GEditor))
+		{
+			if (ULayersSubsystem* Layers = GEditor->GetEditorSubsystem<ULayersSubsystem>())
+			{
+				TArray<FName> AllLayers;
+				Layers->AddAllLayerNamesTo(AllLayers);
+				for (const FName& LayerName : AllLayers)
+				{
+					ULayer* Layer = nullptr;
+					if (!Layers->TryGetLayer(LayerName, Layer) || !Layer || Layer->IsVisible())
+					{
+						continue;   // resolved-and-visible, or couldn't resolve
+					}
+					if (Names.Num() >= kMaxLayers)
+					{
+						bTruncated = true;
+						break;
+					}
+					Names.Add(MakeShared<FJsonValueString>(LayerName.ToString()));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("layer_names"), Names);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunSetLayerVisibilityOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString LayerName;
+		FParse::Value(*Params, TEXT("Layer="), LayerName);
+		const bool bVisible = FParse::Param(*Params, TEXT("Visible"));
+		bool bValid = false;
+		if (IsValid(GEditor) && !LayerName.IsEmpty())
+		{
+			if (ULayersSubsystem* Layers = GEditor->GetEditorSubsystem<ULayersSubsystem>())
+			{
+				const FName LayerFName(*LayerName);
+				if (Layers->IsLayer(LayerFName))
+				{
+					Layers->SetLayerVisibility(LayerFName, bVisible);
+					bValid = true;
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetStringField(TEXT("layer"), LayerName);
+		Out->SetBoolField(TEXT("visible"), bVisible);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9000,6 +9183,12 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetActiveViewport,          &RunGetActiveViewportOp },
 		{ EOp::GetHiddenActors,            &RunGetHiddenActorsOp },
 		{ EOp::GetVisibleActors,           &RunGetVisibleActorsOp },
+		{ EOp::SetViewMode,                &RunSetViewModeOp },
+		{ EOp::SetGizmoMode,               &RunSetGizmoModeOp },
+		{ EOp::SetViewportRealtime,        &RunSetViewportRealtimeOp },
+		{ EOp::SetActorVisibility,         &RunSetActorVisibilityOp },
+		{ EOp::GetHiddenLayers,            &RunGetHiddenLayersOp },
+		{ EOp::SetLayerVisibility,         &RunSetLayerVisibilityOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
