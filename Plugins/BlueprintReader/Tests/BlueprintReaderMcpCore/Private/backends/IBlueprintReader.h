@@ -957,6 +957,58 @@ public:
 		throw BlueprintReaderError("SetLayerVisibility not supported by this backend");
 	}
 
+	// Saved viewport camera bookmarks (Ctrl-1..9 poses). Read from the
+	// world settings; only populated slots are returned. `max_slots` is
+	// the allocated bookmark array size.
+	struct CameraBookmarkInfo {
+		int slot = 0;
+		double locX = 0.0, locY = 0.0, locZ = 0.0;
+		double pitch = 0.0, yaw = 0.0, roll = 0.0;
+	};
+	struct CameraBookmarksResult {
+		std::vector<CameraBookmarkInfo> bookmarks;
+		int maxSlots = 0;
+	};
+	virtual CameraBookmarksResult GetCameraBookmarks() {
+		throw BlueprintReaderError("GetCameraBookmarks not supported by this backend");
+	}
+
+	// Jump the active viewport camera to a saved bookmark slot. `jumped`
+	// is false when the slot is empty or no viewport is focused. View-state
+	// only (moves the camera) — allowed in read-only mode.
+	struct GotoBookmarkResult {
+		bool jumped = false;
+		int slot = 0;
+	};
+	virtual GotoBookmarkResult GotoCameraBookmark(int slot) {
+		(void)slot;
+		throw BlueprintReaderError("GotoCameraBookmark not supported by this backend");
+	}
+
+	// Hover target under the cursor (hit proxy). v1 stub: resolving the
+	// hit proxy requires a render-thread readback + RTTI cross-cast that
+	// isn't safe out-of-process; returns valid:false until a sidecar in
+	// the editor module captures hover state. Shape is locked here.
+	struct HoverTargetResult {
+		bool valid = false;
+		std::string hitProxyType;
+		std::string actorName;
+	};
+	virtual HoverTargetResult GetHoverTarget() {
+		throw BlueprintReaderError("GetHoverTarget not supported by this backend");
+	}
+
+	// Show-only-selected / isolate mode (UE 5.6+). v1 stub: no stable
+	// public accessor for the level-viewport isolate flag; returns
+	// valid:false. Shape is locked here.
+	struct IsolateModeResult {
+		bool valid = false;
+		bool isolated = false;
+	};
+	virtual IsolateModeResult GetIsolateMode() {
+		throw BlueprintReaderError("GetIsolateMode not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

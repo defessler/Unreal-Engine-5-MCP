@@ -4017,6 +4017,130 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_camera_bookmarks (Phase 13 Wave 3) ---------------------
+	{
+		ToolDescriptor d;
+		d.name = "get_camera_bookmarks";
+		d.description =
+			"[editor] Saved viewport camera bookmarks (Ctrl-1..9 poses) from "
+			"the world settings. Returns only populated slots: `{slot, "
+			"loc_x/y/z, pitch, yaw, roll}`. `max_slots` is the allocated "
+			"bookmark array size. Pair with `goto_camera_bookmark`. Requires "
+			"a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"bookmarks", {{"type","array"}, {"items", {{"type","object"}}}}},
+				{"max_slots", {{"type","integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetCameraBookmarks();
+			nlohmann::json bms = nlohmann::json::array();
+			for (const auto& b : r.bookmarks) {
+				bms.push_back({
+					{"slot",  b.slot},
+					{"loc_x", b.locX}, {"loc_y", b.locY}, {"loc_z", b.locZ},
+					{"pitch", b.pitch}, {"yaw", b.yaw}, {"roll", b.roll},
+				});
+			}
+			return nlohmann::json{
+				{"bookmarks", bms},
+				{"max_slots", r.maxSlots},
+			};
+		});
+	}
+
+	// ----- goto_camera_bookmark (Phase 13 Wave 3) ---------------------
+	{
+		ToolDescriptor d;
+		d.name = "goto_camera_bookmark";
+		d.description =
+			"[editor] Jump the active viewport camera to a saved bookmark "
+			"slot (0-based). `jumped:false` means the slot is empty or no "
+			"viewport is focused. View-state only — allowed in read-only "
+			"mode. Requires a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"slot", {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"slot"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",     {{"type","boolean"}}},
+				{"jumped", {{"type","boolean"}}},
+				{"slot",   {{"type","integer"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			int slot = args.value("slot", 0);
+			auto r = reader.GotoCameraBookmark(slot);
+			return nlohmann::json{
+				{"ok",     true},
+				{"jumped", r.jumped},
+				{"slot",   r.slot},
+			};
+		});
+	}
+
+	// ----- get_hover_target (Phase 13 Wave 3 — v1 stub) ---------------
+	{
+		ToolDescriptor d;
+		d.name = "get_hover_target";
+		d.description =
+			"[editor] Hit-proxy target under the cursor (actor/surface/"
+			"component). v1 stub: resolving the hit proxy needs a render-"
+			"thread readback + RTTI cross-cast that isn't safe out-of-"
+			"process — returns `valid:false` until an editor-module sidecar "
+			"captures hover state. Shape is stable.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",          {{"type","boolean"}}},
+				{"hit_proxy_type", {{"type","string"}}},
+				{"actor_name",     {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetHoverTarget();
+			return nlohmann::json{
+				{"valid",          r.valid},
+				{"hit_proxy_type", r.hitProxyType},
+				{"actor_name",     r.actorName},
+			};
+		});
+	}
+
+	// ----- get_isolate_mode (Phase 13 Wave 3 — v1 stub) ---------------
+	{
+		ToolDescriptor d;
+		d.name = "get_isolate_mode";
+		d.description =
+			"[editor] Show-only-selected / isolate mode state (UE 5.6+). "
+			"v1 stub: no stable public accessor for the level-viewport "
+			"isolate flag — returns `valid:false`. Shape is stable.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid",    {{"type","boolean"}}},
+				{"isolated", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetIsolateMode();
+			return nlohmann::json{
+				{"valid",    r.valid},
+				{"isolated", r.isolated},
+			};
+		});
+	}
+
 	// ----- get_hidden_actors (Phase 13 Wave 3) ------------------------
 	{
 		ToolDescriptor d;

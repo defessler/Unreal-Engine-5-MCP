@@ -815,6 +815,18 @@ IBlueprintReader::SetLayerVisibilityResult
 CachingBlueprintReader::SetLayerVisibility(std::string_view l, bool v) {
 	return inner_->SetLayerVisibility(l, v);
 }
+IBlueprintReader::CameraBookmarksResult CachingBlueprintReader::GetCameraBookmarks() {
+	return inner_->GetCameraBookmarks();
+}
+IBlueprintReader::GotoBookmarkResult CachingBlueprintReader::GotoCameraBookmark(int s) {
+	return inner_->GotoCameraBookmark(s);
+}
+IBlueprintReader::HoverTargetResult CachingBlueprintReader::GetHoverTarget() {
+	return inner_->GetHoverTarget();
+}
+IBlueprintReader::IsolateModeResult CachingBlueprintReader::GetIsolateMode() {
+	return inner_->GetIsolateMode();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

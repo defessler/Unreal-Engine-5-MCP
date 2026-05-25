@@ -3973,6 +3973,61 @@ CommandletBlueprintReader::SetLayerVisibility(std::string_view layer, bool visib
 	return out;
 }
 
+IBlueprintReader::CameraBookmarksResult
+CommandletBlueprintReader::GetCameraBookmarks() {
+	auto j = RunOp({L"-Op=GetCameraBookmarks"});
+	CameraBookmarksResult out;
+	if (j.is_object()) {
+		out.maxSlots = j.value("max_slots", 0);
+		if (auto it = j.find("bookmarks"); it != j.end() && it->is_array()) {
+			for (const auto& b : *it) {
+				if (!b.is_object()) continue;
+				CameraBookmarkInfo info;
+				info.slot  = b.value("slot",  0);
+				info.locX  = b.value("loc_x", 0.0);
+				info.locY  = b.value("loc_y", 0.0);
+				info.locZ  = b.value("loc_z", 0.0);
+				info.pitch = b.value("pitch", 0.0);
+				info.yaw   = b.value("yaw",   0.0);
+				info.roll  = b.value("roll",  0.0);
+				out.bookmarks.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::GotoBookmarkResult
+CommandletBlueprintReader::GotoCameraBookmark(int slot) {
+	auto j = RunOp({L"-Op=GotoCameraBookmark", L"-Slot=" + std::to_wstring(slot)});
+	GotoBookmarkResult out;
+	if (j.is_object()) {
+		out.jumped = j.value("jumped", false);
+		out.slot   = j.value("slot", 0);
+	}
+	return out;
+}
+IBlueprintReader::HoverTargetResult
+CommandletBlueprintReader::GetHoverTarget() {
+	auto j = RunOp({L"-Op=GetHoverTarget"});
+	HoverTargetResult out;
+	if (j.is_object()) {
+		out.valid        = j.value("valid", false);
+		out.hitProxyType = j.value("hit_proxy_type", std::string{});
+		out.actorName    = j.value("actor_name", std::string{});
+	}
+	return out;
+}
+IBlueprintReader::IsolateModeResult
+CommandletBlueprintReader::GetIsolateMode() {
+	auto j = RunOp({L"-Op=GetIsolateMode"});
+	IsolateModeResult out;
+	if (j.is_object()) {
+		out.valid    = j.value("valid", false);
+		out.isolated = j.value("isolated", false);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

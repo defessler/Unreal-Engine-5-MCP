@@ -494,6 +494,19 @@ IBlueprintReader::SetLayerVisibilityResult
 ReadOnlyBlueprintReader::SetLayerVisibility(std::string_view, bool) {
 	Reject("set_layer_visibility");
 }
+IBlueprintReader::CameraBookmarksResult ReadOnlyBlueprintReader::GetCameraBookmarks() {
+	return inner_->GetCameraBookmarks();
+}
+// View-state only — moves the agent's own camera, no world mutation.
+IBlueprintReader::GotoBookmarkResult ReadOnlyBlueprintReader::GotoCameraBookmark(int s) {
+	return inner_->GotoCameraBookmark(s);
+}
+IBlueprintReader::HoverTargetResult ReadOnlyBlueprintReader::GetHoverTarget() {
+	return inner_->GetHoverTarget();
+}
+IBlueprintReader::IsolateModeResult ReadOnlyBlueprintReader::GetIsolateMode() {
+	return inner_->GetIsolateMode();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

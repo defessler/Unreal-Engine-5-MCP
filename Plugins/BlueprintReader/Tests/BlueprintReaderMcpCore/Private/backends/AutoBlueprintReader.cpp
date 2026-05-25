@@ -728,6 +728,18 @@ IBlueprintReader::SetLayerVisibilityResult
 AutoBlueprintReader::SetLayerVisibility(std::string_view l, bool v) {
 	FORWARD(SetLayerVisibility, l, v);
 }
+IBlueprintReader::CameraBookmarksResult AutoBlueprintReader::GetCameraBookmarks() {
+	FORWARD(GetCameraBookmarks);
+}
+IBlueprintReader::GotoBookmarkResult AutoBlueprintReader::GotoCameraBookmark(int s) {
+	FORWARD(GotoCameraBookmark, s);
+}
+IBlueprintReader::HoverTargetResult AutoBlueprintReader::GetHoverTarget() {
+	FORWARD(GetHoverTarget);
+}
+IBlueprintReader::IsolateModeResult AutoBlueprintReader::GetIsolateMode() {
+	FORWARD(GetIsolateMode);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

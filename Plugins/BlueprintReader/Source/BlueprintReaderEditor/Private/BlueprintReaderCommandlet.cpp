@@ -74,6 +74,9 @@
 #include "EditorModes.h"
 #include "Layers/LayersSubsystem.h"    // Phase 13 Wave 3 — layer visibility (UnrealEd)
 #include "Layers/Layer.h"              // ULayer::IsVisible()
+#include "Bookmarks/IBookmarkTypeTools.h" // Phase 13 Wave 3 — camera bookmarks (UnrealEd)
+#include "Engine/BookMark.h"           // UBookMark (Location/Rotation)
+#include "GameFramework/WorldSettings.h"  // AWorldSettings::GetBookmarks()
 #include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
@@ -403,6 +406,10 @@ namespace
 		SetActorVisibility,
 		GetHiddenLayers,
 		SetLayerVisibility,
+		GetCameraBookmarks,
+		GotoCameraBookmark,
+		GetHoverTarget,
+		GetIsolateMode,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -597,6 +604,10 @@ namespace
 		if (OpStr.Equals(TEXT("SetActorVisibility"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetActorVisibility; return true; }
 		if (OpStr.Equals(TEXT("GetHiddenLayers"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetHiddenLayers; return true; }
 		if (OpStr.Equals(TEXT("SetLayerVisibility"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetLayerVisibility; return true; }
+		if (OpStr.Equals(TEXT("GetCameraBookmarks"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetCameraBookmarks; return true; }
+		if (OpStr.Equals(TEXT("GotoCameraBookmark"), ESearchCase::IgnoreCase))      { OutOp = EOp::GotoCameraBookmark; return true; }
+		if (OpStr.Equals(TEXT("GetHoverTarget"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetHoverTarget; return true; }
+		if (OpStr.Equals(TEXT("GetIsolateMode"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetIsolateMode; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6734,6 +6745,90 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetCameraBookmarksOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Bookmarks;
+		int32 MaxSlots = 0;
+		if (UWorld* World = GetEditorWorldOrNull())
+		{
+			if (AWorldSettings* WS = World->GetWorldSettings())
+			{
+				const TArray<UBookmarkBase*>& All = WS->GetBookmarks();
+				MaxSlots = All.Num();
+				for (int32 i = 0; i < All.Num(); ++i)
+				{
+					UBookMark* BM = Cast<UBookMark>(All[i]);
+					if (!BM)
+					{
+						continue;   // empty slot or non-3D bookmark
+					}
+					auto B = MakeShared<FJsonObject>();
+					B->SetNumberField(TEXT("slot"),  i);
+					B->SetNumberField(TEXT("loc_x"), BM->Location.X);
+					B->SetNumberField(TEXT("loc_y"), BM->Location.Y);
+					B->SetNumberField(TEXT("loc_z"), BM->Location.Z);
+					B->SetNumberField(TEXT("pitch"), BM->Rotation.Pitch);
+					B->SetNumberField(TEXT("yaw"),   BM->Rotation.Yaw);
+					B->SetNumberField(TEXT("roll"),  BM->Rotation.Roll);
+					Bookmarks.Add(MakeShared<FJsonValueObject>(B));
+				}
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("bookmarks"), Bookmarks);
+		Out->SetNumberField(TEXT("max_slots"), MaxSlots);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGotoCameraBookmarkOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		int32 Slot = 0;
+		FParse::Value(*Params, TEXT("Slot="), Slot);
+		bool bJumped = false;
+		if (FEditorViewportClient* VC = FindActiveLevelViewportClient())
+		{
+			IBookmarkTypeTools& BT = IBookmarkTypeTools::Get();
+			if (Slot >= 0 && (uint32)Slot < BT.GetMaxNumberOfBookmarks(VC)
+				&& BT.CheckBookmark((uint32)Slot, VC))
+			{
+				BT.JumpToBookmark((uint32)Slot, nullptr, VC);
+				VC->Invalidate();
+				bJumped = true;
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("jumped"), bJumped);
+		Out->SetNumberField(TEXT("slot"), Slot);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetHoverTargetOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		// v1 stub: resolving the viewport hit proxy requires a render-thread
+		// readback + RTTI cross-cast (HActor/HBSPSurface/etc.) that isn't safe
+		// to do out-of-process from a commandlet. Returns valid:false until a
+		// sidecar in the editor module captures hover state on the game thread.
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("hit_proxy_type"), FString());
+		Out->SetStringField(TEXT("actor_name"), FString());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetIsolateModeOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		// v1 stub: no stable public accessor for the level-viewport
+		// show-only-selected / isolate flag (UE 5.6+). Returns valid:false.
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetBoolField(TEXT("isolated"), false);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9189,6 +9284,10 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::SetActorVisibility,         &RunSetActorVisibilityOp },
 		{ EOp::GetHiddenLayers,            &RunGetHiddenLayersOp },
 		{ EOp::SetLayerVisibility,         &RunSetLayerVisibilityOp },
+		{ EOp::GetCameraBookmarks,         &RunGetCameraBookmarksOp },
+		{ EOp::GotoCameraBookmark,         &RunGotoCameraBookmarkOp },
+		{ EOp::GetHoverTarget,             &RunGetHoverTargetOp },
+		{ EOp::GetIsolateMode,             &RunGetIsolateModeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
