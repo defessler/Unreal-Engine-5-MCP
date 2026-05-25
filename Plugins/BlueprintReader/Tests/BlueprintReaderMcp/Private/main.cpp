@@ -21,6 +21,7 @@
 #include "Env.h"
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
+#include "jsonrpc/HttpServerMain.h"
 #include "tools/Analytics.h"
 #include "tools/BlueprintTools.h"
 #include "tools/Logger.h"
@@ -30,6 +31,8 @@
 #include "tools/ToolsetMeta.h"
 
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -547,6 +550,19 @@ int RunServerLoop() {
 		tools::IAnalyticsProvider* p;
 		~AnalyticsLifecycle() { if (p) p->OnSessionEnd(); }
 	} lifecycle{analytics.get()};
+
+	// Phase 9 (C3) — opt-in HTTP transport. When BP_READER_HTTP_PORT is
+	// set, serve JSON-RPC over a localhost HTTP socket loop instead of
+	// stdio (stdio remains the default; this branch is purely additive).
+	const std::string httpPortStr = env::GetOrDefault("BP_READER_HTTP_PORT", "");
+	if (!httpPortStr.empty()) {
+		const uint16_t httpPort = static_cast<uint16_t>(std::strtoul(httpPortStr.c_str(), nullptr, 10));
+		const std::string mcpPath = env::GetOrDefault("BP_READER_HTTP_PATH", "/mcp");
+		std::cerr << "[bp-reader-mcp] HTTP transport on 127.0.0.1:" << httpPort
+				  << mcpPath << " (stdio disabled)\n";
+		const int rc = jsonrpc::http::RunHttpServer(server, httpPort, mcpPath, std::cerr);
+		return rc;
+	}
 
 	server.Run(std::cin, std::cout, std::cerr);
 	if (env::VerboseLoggingEnabled()) {
