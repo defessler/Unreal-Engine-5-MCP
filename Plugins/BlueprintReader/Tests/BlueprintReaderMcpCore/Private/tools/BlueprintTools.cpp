@@ -7971,6 +7971,43 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_watched_pins (Phase 17) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_watched_pins";
+		d.description =
+			"[editor] Watched pins on a Blueprint (FKismetDebugUtilities). "
+			"Each: `{pin_name, node_guid, node_name, direction}`. "
+			"`valid:false` when the BP can't be loaded. Requires a live "
+			"editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"valid", {{"type","boolean"}}},
+				{"pins",  {{"type","array"}, {"items", {{"type","object"}}}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = RequireString(args, "asset_path");
+			auto r = reader.GetWatchedPins(path);
+			nlohmann::json pins = nlohmann::json::array();
+			for (const auto& p : r.pins) {
+				pins.push_back({
+					{"pin_name",  p.pinName},
+					{"node_guid", p.nodeGuid},
+					{"node_name", p.nodeName},
+					{"direction", p.direction},
+				});
+			}
+			return nlohmann::json{{"valid", r.valid}, {"pins", pins}};
+		});
+	}
+
 	// ----- get_blueprint_breakpoints (Phase 17) -----
 	{
 		ToolDescriptor d;

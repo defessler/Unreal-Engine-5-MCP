@@ -259,6 +259,7 @@ public:
 	RecentAssetsResult GetRecentlyOpenedAssets() override;
 	DebugInstanceResult GetDebugInstance(std::string_view assetPath) override;
 	BreakpointsResult GetBlueprintBreakpoints(std::string_view assetPath) override;
+	WatchedPinsResult GetWatchedPins(std::string_view assetPath) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
