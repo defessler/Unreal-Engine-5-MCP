@@ -927,6 +927,9 @@ IBlueprintReader::AutomationTestsResult CachingBlueprintReader::ListAutomationTe
 IBlueprintReader::EditorEventsResult CachingBlueprintReader::GetEditorEvents() {
 	return inner_->GetEditorEvents();
 }
+IBlueprintReader::CookTargetResult CachingBlueprintReader::GetActiveCookTarget() {
+	return inner_->GetActiveCookTarget();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

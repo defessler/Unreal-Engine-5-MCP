@@ -1397,6 +1397,16 @@ public:
 		throw BlueprintReaderError("GetEditorEvents not supported by this backend");
 	}
 
+	// Active cook target platforms (ITargetPlatformManagerModule) +
+	// the editor's running platform. Phase 14 — system state.
+	struct CookTargetResult {
+		std::vector<std::string> platforms;
+		std::string runningPlatform;
+	};
+	virtual CookTargetResult GetActiveCookTarget() {
+		throw BlueprintReaderError("GetActiveCookTarget not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
