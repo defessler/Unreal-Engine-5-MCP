@@ -6,12 +6,14 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <mutex>
 #include <ostream>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -106,6 +108,20 @@ std::string ReadRequest(SocketType s) {
 		buf.append(chunk, static_cast<std::size_t>(n));
 	}
 	return buf;
+}
+
+// C4 — opaque session id for the Mcp-Session-Id header (128 random bits,
+// hex). Not security-sensitive (localhost correlation token), so a PRNG
+// is fine. thread_local RNG keeps it lock-free across connection threads.
+std::string GenerateSessionId() {
+	static thread_local std::mt19937_64 rng{std::random_device{}()};
+	const std::uint64_t a = rng();
+	const std::uint64_t b = rng();
+	char buf[33];
+	std::snprintf(buf, sizeof(buf), "%016llx%016llx",
+				  static_cast<unsigned long long>(a),
+				  static_cast<unsigned long long>(b));
+	return std::string(buf, 32);
 }
 
 // Write one HTTP/1.1 chunked-transfer chunk: "<hex-size>\r\n<data>\r\n".
@@ -207,6 +223,20 @@ void HandleConnection(SocketType conn, Server& server, std::mutex& mtx,
 	{
 		std::lock_guard<std::mutex> lock(mtx);
 		resp = Handle(req, server, mcpPath);
+	}
+	// C4 — assign an Mcp-Session-Id on the initialize response so clients
+	// can correlate the session on later requests. Lenient: we don't
+	// reject requests that omit it (keeps simple/dev clients working;
+	// strict per-session validation is a later refinement).
+	if (resp.statusCode == 200 && req.method == "POST") {
+		try {
+			const nlohmann::json j = nlohmann::json::parse(req.body);
+			if (j.value("method", std::string{}) == "initialize") {
+				resp.headers["Mcp-Session-Id"] = GenerateSessionId();
+			}
+		} catch (const std::exception&) {
+			// non-JSON body — nothing to correlate; leave the response as-is
+		}
 	}
 	const std::string out = FormatResponse(resp);
 	SendAll(conn, out.data(), out.size());
