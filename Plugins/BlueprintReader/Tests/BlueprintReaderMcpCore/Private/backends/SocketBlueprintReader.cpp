@@ -2590,6 +2590,20 @@ SocketBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::RecentSavedPackagesResult
+SocketBlueprintReader::GetRecentlySavedPackages() {
+	auto j = RunOp({"-Op=GetRecentlySavedPackages"});
+	RecentSavedPackagesResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("package_paths"); it != j.end() && it->is_array()) {
+			for (const auto& v : *it) {
+				if (v.is_string()) out.packagePaths.push_back(v.get<std::string>());
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::StreamingSourcesResult
 SocketBlueprintReader::GetStreamingSources() {
 	auto j = RunOp({"-Op=GetStreamingSources"});

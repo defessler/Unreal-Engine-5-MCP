@@ -263,6 +263,7 @@ public:
 	ActiveStatsResult GetActiveStats() override;
 	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;
 	StreamingSourcesResult GetStreamingSources() override;
+	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

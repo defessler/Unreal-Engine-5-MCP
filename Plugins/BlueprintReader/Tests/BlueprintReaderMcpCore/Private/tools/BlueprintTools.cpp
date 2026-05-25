@@ -7976,6 +7976,26 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_recently_saved_packages (Phase 14) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_recently_saved_packages";
+		d.description =
+			"[editor] Packages saved during this editor session, most-recent "
+			"first (package paths). Backed by a ring buffer populated from "
+			"the package-saved event — empty in a fresh headless commandlet, "
+			"accumulates in a live editor. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"package_paths", {{"type","array"}, {"items", {{"type","string"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetRecentlySavedPackages();
+			return nlohmann::json{{"package_paths", r.packagePaths}};
+		});
+	}
+
 	// ===== Phase 11 H Tier 1 — GameFeatures activate/deactivate (writes) ==
 
 	// ----- activate_game_feature -----

@@ -263,6 +263,7 @@ public:
 	ActiveStatsResult GetActiveStats() override;
 	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;
 	StreamingSourcesResult GetStreamingSources() override;
+	RecentSavedPackagesResult GetRecentlySavedPackages() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
