@@ -4171,6 +4171,37 @@ CommandletBlueprintReader::GetEditorTheme() {
 	return out;
 }
 
+IBlueprintReader::MonitorInfoResult
+CommandletBlueprintReader::GetMonitors() {
+	auto j = RunOp({L"-Op=GetMonitors"});
+	MonitorInfoResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("monitors"); it != j.end() && it->is_array()) {
+			for (const auto& m : *it) {
+				if (!m.is_object()) continue;
+				MonitorInfo info;
+				info.name         = m.value("name",          std::string{});
+				info.nativeWidth  = m.value("native_width",  0);
+				info.nativeHeight = m.value("native_height", 0);
+				info.isPrimary    = m.value("is_primary",    false);
+				out.monitors.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::LiveCodingStateResult
+CommandletBlueprintReader::GetLiveCodingState() {
+	auto j = RunOp({L"-Op=GetLiveCodingState"});
+	LiveCodingStateResult out;
+	if (j.is_object()) {
+		out.available   = j.value("available", false);
+		out.hasStarted  = j.value("has_started", false);
+		out.isCompiling = j.value("is_compiling", false);
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

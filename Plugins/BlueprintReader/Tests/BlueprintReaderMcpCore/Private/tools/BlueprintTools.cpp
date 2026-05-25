@@ -7827,6 +7827,61 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_monitor_info -----
+	{
+		ToolDescriptor d;
+		d.name = "get_monitor_info";
+		d.description =
+			"[editor] Connected monitors (FDisplayMetrics): each "
+			"`{name, native_width, native_height, is_primary}`. Useful for "
+			"multi-monitor placement reasoning. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"monitors", {{"type","array"}, {"items", {{"type","object"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetMonitors();
+			nlohmann::json mons = nlohmann::json::array();
+			for (const auto& m : r.monitors) {
+				mons.push_back({
+					{"name",          m.name},
+					{"native_width",  m.nativeWidth},
+					{"native_height", m.nativeHeight},
+					{"is_primary",    m.isPrimary},
+				});
+			}
+			return nlohmann::json{{"monitors", mons}};
+		});
+	}
+
+	// ----- get_live_coding_state -----
+	{
+		ToolDescriptor d;
+		d.name = "get_live_coding_state";
+		d.description =
+			"[editor] Live Coding (C++ hot-patch) state: `{available, "
+			"has_started, is_compiling}`. `available:false` on non-Windows "
+			"or when the module isn't loaded. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"available",    {{"type","boolean"}}},
+				{"has_started",  {{"type","boolean"}}},
+				{"is_compiling", {{"type","boolean"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetLiveCodingState();
+			return nlohmann::json{
+				{"available",    r.available},
+				{"has_started",  r.hasStarted},
+				{"is_compiling", r.isCompiling},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

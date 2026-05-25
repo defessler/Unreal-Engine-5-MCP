@@ -868,6 +868,12 @@ IBlueprintReader::ActiveCultureResult CachingBlueprintReader::GetActiveCulture()
 IBlueprintReader::EditorThemeResult CachingBlueprintReader::GetEditorTheme() {
 	return inner_->GetEditorTheme();
 }
+IBlueprintReader::MonitorInfoResult CachingBlueprintReader::GetMonitors() {
+	return inner_->GetMonitors();
+}
+IBlueprintReader::LiveCodingStateResult CachingBlueprintReader::GetLiveCodingState() {
+	return inner_->GetLiveCodingState();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

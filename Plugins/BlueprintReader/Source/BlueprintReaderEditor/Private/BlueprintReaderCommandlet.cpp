@@ -86,6 +86,10 @@
 #include "Internationalization/Internationalization.h" // Phase 17 — culture
 #include "Internationalization/Culture.h"               // FCulture accessors
 #include "Settings/EditorStyleSettings.h"               // Phase 17 — theme id
+#include "GenericPlatform/GenericApplication.h"         // Phase 17 — FDisplayMetrics
+#if PLATFORM_WINDOWS
+#include "ILiveCodingModule.h"                          // Phase 17 — live coding state
+#endif
 #include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
 #include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
@@ -438,6 +442,8 @@ namespace
 		GetFileLockStatus,
 		GetActiveCulture,
 		GetEditorTheme,
+		GetMonitors,            // not GetMonitorInfo: Win32 macro collision
+		GetLiveCodingState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -649,6 +655,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetFileLockStatus"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetFileLockStatus; return true; }
 		if (OpStr.Equals(TEXT("GetActiveCulture"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetActiveCulture; return true; }
 		if (OpStr.Equals(TEXT("GetEditorTheme"), ESearchCase::IgnoreCase))          { OutOp = EOp::GetEditorTheme; return true; }
+		if (OpStr.Equals(TEXT("GetMonitors"), ESearchCase::IgnoreCase))             { OutOp = EOp::GetMonitors; return true; }
+		if (OpStr.Equals(TEXT("GetLiveCodingState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetLiveCodingState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7068,6 +7076,45 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetMonitorInfoOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> Monitors;
+		FDisplayMetrics DM;
+		FDisplayMetrics::RebuildDisplayMetrics(DM);
+		for (const FMonitorInfo& M : DM.MonitorInfo)
+		{
+			auto J = MakeShared<FJsonObject>();
+			J->SetStringField(TEXT("name"), M.Name);
+			J->SetNumberField(TEXT("native_width"),  M.NativeWidth);
+			J->SetNumberField(TEXT("native_height"), M.NativeHeight);
+			J->SetBoolField(TEXT("is_primary"), M.bIsPrimary);
+			Monitors.Add(MakeShared<FJsonValueObject>(J));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("monitors"), Monitors);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetLiveCodingStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		bool bAvailable=false, bStarted=false, bCompiling=false;
+#if PLATFORM_WINDOWS
+		if (ILiveCodingModule* LC = FModuleManager::GetModulePtr<ILiveCodingModule>("LiveCoding"))
+		{
+			bAvailable  = true;
+			bStarted    = LC->HasStarted();
+			bCompiling  = LC->IsCompiling();
+		}
+#endif
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("available"), bAvailable);
+		Out->SetBoolField(TEXT("has_started"), bStarted);
+		Out->SetBoolField(TEXT("is_compiling"), bCompiling);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetActiveCultureOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		FInternationalization& I18N = FInternationalization::Get();
@@ -9566,6 +9613,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetFileLockStatus,          &RunGetFileLockStatusOp },
 		{ EOp::GetActiveCulture,           &RunGetActiveCultureOp },
 		{ EOp::GetEditorTheme,             &RunGetEditorThemeOp },
+		{ EOp::GetMonitors,                &RunGetMonitorInfoOp },
+		{ EOp::GetLiveCodingState,         &RunGetLiveCodingStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

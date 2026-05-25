@@ -2538,6 +2538,37 @@ SocketBlueprintReader::GetEditorTheme() {
 	return out;
 }
 
+IBlueprintReader::MonitorInfoResult
+SocketBlueprintReader::GetMonitors() {
+	auto j = RunOp({"-Op=GetMonitors"});
+	MonitorInfoResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("monitors"); it != j.end() && it->is_array()) {
+			for (const auto& m : *it) {
+				if (!m.is_object()) continue;
+				MonitorInfo info;
+				info.name         = m.value("name",          std::string{});
+				info.nativeWidth  = m.value("native_width",  0);
+				info.nativeHeight = m.value("native_height", 0);
+				info.isPrimary    = m.value("is_primary",    false);
+				out.monitors.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+IBlueprintReader::LiveCodingStateResult
+SocketBlueprintReader::GetLiveCodingState() {
+	auto j = RunOp({"-Op=GetLiveCodingState"});
+	LiveCodingStateResult out;
+	if (j.is_object()) {
+		out.available   = j.value("available", false);
+		out.hasStarted  = j.value("has_started", false);
+		out.isCompiling = j.value("is_compiling", false);
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

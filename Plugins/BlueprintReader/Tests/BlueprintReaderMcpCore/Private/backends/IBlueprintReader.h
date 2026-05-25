@@ -1150,6 +1150,32 @@ public:
 		throw BlueprintReaderError("GetEditorTheme not supported by this backend");
 	}
 
+	// Connected monitors (FDisplayMetrics): name + native resolution +
+	// primary flag. Useful for multi-monitor placement reasoning.
+	struct MonitorInfo {
+		std::string name;
+		int nativeWidth = 0;
+		int nativeHeight = 0;
+		bool isPrimary = false;
+	};
+	struct MonitorInfoResult {
+		std::vector<MonitorInfo> monitors;
+	};
+	virtual MonitorInfoResult GetMonitors() {  // not GetMonitorInfo: Win32 macro collision
+		throw BlueprintReaderError("GetMonitors not supported by this backend");
+	}
+
+	// Live Coding (C++ hot-patch) state. `available:false` on non-Windows
+	// or when the module isn't loaded.
+	struct LiveCodingStateResult {
+		bool available = false;
+		bool hasStarted = false;
+		bool isCompiling = false;
+	};
+	virtual LiveCodingStateResult GetLiveCodingState() {
+		throw BlueprintReaderError("GetLiveCodingState not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

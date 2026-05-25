@@ -150,7 +150,16 @@ public class BlueprintReaderEditor : ModuleRules
 			// set_layer_visibility) lives in UnrealEd (Layers/LayersSubsystem.h),
 			// already a dependency — no extra module needed.
 			// Phase 14 — get_source_control_provider reads ISourceControlModule.
-			"SourceControl"
+			"SourceControl",
+			// Phase 17 — get_monitor_info links FDisplayMetrics::RebuildDisplayMetrics.
+			"ApplicationCore"
 		});
+
+		// Phase 17 — get_live_coding_state queries ILiveCodingModule via
+		// FModuleManager (include-only, no link). Windows-only module.
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PrivateIncludePathModuleNames.Add("LiveCoding");
+		}
 	}
 }

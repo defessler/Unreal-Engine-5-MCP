@@ -781,6 +781,12 @@ IBlueprintReader::ActiveCultureResult AutoBlueprintReader::GetActiveCulture() {
 IBlueprintReader::EditorThemeResult AutoBlueprintReader::GetEditorTheme() {
 	FORWARD(GetEditorTheme);
 }
+IBlueprintReader::MonitorInfoResult AutoBlueprintReader::GetMonitors() {
+	FORWARD(GetMonitors);
+}
+IBlueprintReader::LiveCodingStateResult AutoBlueprintReader::GetLiveCodingState() {
+	FORWARD(GetLiveCodingState);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

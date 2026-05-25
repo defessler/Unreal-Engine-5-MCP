@@ -233,6 +233,8 @@ public:
 	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 	ActiveCultureResult GetActiveCulture() override;
 	EditorThemeResult GetEditorTheme() override;
+	MonitorInfoResult GetMonitors() override;
+	LiveCodingStateResult GetLiveCodingState() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
