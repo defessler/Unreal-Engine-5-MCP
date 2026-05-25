@@ -4459,6 +4459,21 @@ CommandletBlueprintReader::GetEditorEvents() {
 	return out;
 }
 
+IBlueprintReader::CookTargetResult
+CommandletBlueprintReader::GetActiveCookTarget() {
+	auto j = RunOp({L"-Op=GetActiveCookTarget"});
+	CookTargetResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("platforms"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (p.is_string()) out.platforms.push_back(p.get<std::string>());
+			}
+		}
+		out.runningPlatform = j.value("running_platform", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

@@ -250,6 +250,7 @@ public:
 	SetProjectSettingResult SetProjectSetting(std::string_view classPath, std::string_view property, std::string_view value) override;
 	AutomationTestsResult ListAutomationTests() override;
 	EditorEventsResult GetEditorEvents() override;
+	CookTargetResult GetActiveCookTarget() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

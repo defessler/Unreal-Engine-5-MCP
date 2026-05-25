@@ -232,6 +232,7 @@ public:
 	SetProjectSettingResult SetProjectSetting(std::string_view classPath, std::string_view property, std::string_view value) override;  // write — reject
 	AutomationTestsResult ListAutomationTests() override;
 	EditorEventsResult GetEditorEvents() override;
+	CookTargetResult GetActiveCookTarget() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

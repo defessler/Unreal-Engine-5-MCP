@@ -79,6 +79,8 @@
 #include "GameFramework/WorldSettings.h"  // AWorldSettings::GetBookmarks()
 #include "AssetCompilingManager.h"     // Phase 14 — async compile backlog
 #include "ShaderCompiler.h"            // Phase 14 — GShaderCompilingManager
+#include "Interfaces/ITargetPlatformManagerModule.h" // Phase 14 — active cook targets
+#include "Interfaces/ITargetPlatform.h"
 #include "ISourceControlModule.h"      // Phase 14 — SCC provider
 #include "ISourceControlProvider.h"
 #include "ISourceControlState.h"       // Phase 14 — per-file SCC state
@@ -470,6 +472,7 @@ namespace
 		SetProjectSetting,
 		ListAutomationTests,
 		GetEditorEvents,
+		GetActiveCookTarget,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -698,6 +701,7 @@ namespace
 		if (OpStr.Equals(TEXT("SetProjectSetting"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetProjectSetting; return true; }
 		if (OpStr.Equals(TEXT("ListAutomationTests"), ESearchCase::IgnoreCase))    { OutOp = EOp::ListAutomationTests; return true; }
 		if (OpStr.Equals(TEXT("GetEditorEvents"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetEditorEvents; return true; }
+		if (OpStr.Equals(TEXT("GetActiveCookTarget"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetActiveCookTarget; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7747,6 +7751,32 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetActiveCookTargetOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		TArray<TSharedPtr<FJsonValue>> Platforms;
+		FString Running;
+		if (ITargetPlatformManagerModule* TPM =
+				FModuleManager::GetModulePtr<ITargetPlatformManagerModule>(TEXT("TargetPlatform")))
+		{
+			for (ITargetPlatform* P : TPM->GetActiveTargetPlatforms())
+			{
+				if (P)
+				{
+					Platforms.Add(MakeShared<FJsonValueString>(P->PlatformName()));
+				}
+			}
+			if (ITargetPlatform* R = TPM->GetRunningTargetPlatform())
+			{
+				Running = R->PlatformName();
+			}
+		}
+		Out->SetArrayField(TEXT("platforms"), Platforms);
+		Out->SetStringField(TEXT("running_platform"), Running);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -10236,6 +10266,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::SetProjectSetting,          &RunSetProjectSettingOp },
 		{ EOp::ListAutomationTests,        &RunListAutomationTestsOp },
 		{ EOp::GetEditorEvents,            &RunGetEditorEventsOp },
+		{ EOp::GetActiveCookTarget,        &RunGetActiveCookTargetOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

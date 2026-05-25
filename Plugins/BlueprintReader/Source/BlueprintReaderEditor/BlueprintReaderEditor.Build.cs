@@ -155,6 +155,12 @@ public class BlueprintReaderEditor : ModuleRules
 			"ApplicationCore"
 		});
 
+		// Phase 14 — get_active_cook_target queries ITargetPlatformManagerModule
+		// via FModuleManager. All calls are header-declared pure virtuals
+		// (GetActiveTargetPlatforms / GetRunningTargetPlatform / PlatformName),
+		// resolved through the vtable — include-only, no link dependency.
+		PrivateIncludePathModuleNames.Add("TargetPlatform");
+
 		// Phase 17 — get_live_coding_state queries ILiveCodingModule via
 		// FModuleManager (include-only, no link). Windows-only module.
 		if (Target.Platform == UnrealTargetPlatform.Win64)

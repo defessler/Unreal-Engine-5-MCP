@@ -2826,6 +2826,21 @@ SocketBlueprintReader::GetEditorEvents() {
 	return out;
 }
 
+IBlueprintReader::CookTargetResult
+SocketBlueprintReader::GetActiveCookTarget() {
+	auto j = RunOp({"-Op=GetActiveCookTarget"});
+	CookTargetResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("platforms"); it != j.end() && it->is_array()) {
+			for (const auto& p : *it) {
+				if (p.is_string()) out.platforms.push_back(p.get<std::string>());
+			}
+		}
+		out.runningPlatform = j.value("running_platform", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

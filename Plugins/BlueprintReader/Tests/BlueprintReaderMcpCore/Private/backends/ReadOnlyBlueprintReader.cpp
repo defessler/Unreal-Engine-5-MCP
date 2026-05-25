@@ -608,6 +608,9 @@ IBlueprintReader::AutomationTestsResult ReadOnlyBlueprintReader::ListAutomationT
 IBlueprintReader::EditorEventsResult ReadOnlyBlueprintReader::GetEditorEvents() {
 	return inner_->GetEditorEvents();
 }
+IBlueprintReader::CookTargetResult ReadOnlyBlueprintReader::GetActiveCookTarget() {
+	return inner_->GetActiveCookTarget();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

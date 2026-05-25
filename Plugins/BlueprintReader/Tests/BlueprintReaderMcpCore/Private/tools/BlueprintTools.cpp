@@ -8372,6 +8372,35 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_active_cook_target (Phase 14 — system state) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_active_cook_target";
+		d.description =
+			"[editor] List the editor's active cook target platforms and the "
+			"running platform, via ITargetPlatformManagerModule. `platforms` is "
+			"the set UBT/the cooker would target; `running_platform` is the "
+			"host the editor itself runs on (e.g. Windows). Empty when the "
+			"TargetPlatform module is unavailable. Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"platforms", {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"running_platform", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetActiveCookTarget();
+			nlohmann::json platforms = nlohmann::json::array();
+			for (const auto& p : r.platforms) platforms.push_back(p);
+			return nlohmann::json{
+				{"platforms", platforms},
+				{"running_platform", r.runningPlatform},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{
