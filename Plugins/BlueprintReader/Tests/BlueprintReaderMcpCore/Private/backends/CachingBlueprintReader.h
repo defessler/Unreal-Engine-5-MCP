@@ -235,6 +235,10 @@ public:
 	SetActorVisibilityResult SetActorVisibility(std::string_view actorName, bool visible) override;
 	HiddenLayersResult GetHiddenLayers() override;
 	SetLayerVisibilityResult SetLayerVisibility(std::string_view layer, bool visible) override;
+	CameraBookmarksResult GetCameraBookmarks() override;
+	GotoBookmarkResult GotoCameraBookmark(int slot) override;
+	HoverTargetResult GetHoverTarget() override;
+	IsolateModeResult GetIsolateMode() override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

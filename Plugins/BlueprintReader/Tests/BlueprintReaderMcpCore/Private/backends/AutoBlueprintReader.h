@@ -216,6 +216,10 @@ public:
 	SetActorVisibilityResult SetActorVisibility(std::string_view actorName, bool visible) override;
 	HiddenLayersResult GetHiddenLayers() override;
 	SetLayerVisibilityResult SetLayerVisibility(std::string_view layer, bool visible) override;
+	CameraBookmarksResult GetCameraBookmarks() override;
+	GotoBookmarkResult GotoCameraBookmark(int slot) override;
+	HoverTargetResult GetHoverTarget() override;
+	IsolateModeResult GetIsolateMode() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

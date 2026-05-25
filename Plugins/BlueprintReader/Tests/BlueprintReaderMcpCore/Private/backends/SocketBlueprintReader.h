@@ -235,6 +235,10 @@ public:
 	SetActorVisibilityResult SetActorVisibility(std::string_view actorName, bool visible) override;
 	HiddenLayersResult GetHiddenLayers() override;
 	SetLayerVisibilityResult SetLayerVisibility(std::string_view layer, bool visible) override;
+	CameraBookmarksResult GetCameraBookmarks() override;
+	GotoBookmarkResult GotoCameraBookmark(int slot) override;
+	HoverTargetResult GetHoverTarget() override;
+	IsolateModeResult GetIsolateMode() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
