@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdio>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -340,17 +341,53 @@ std::string AutoBlueprintReader::SelectBackendForTesting() {
 // where needed). On Pick, we may rebuild live_ / probe — that's the
 // blocking section.
 
-#define FORWARD(method, ...)                          \
-	do {                                              \
-		std::lock_guard<std::mutex> lock(mu_);        \
-		return Pick().method(__VA_ARGS__);            \
+#define FORWARD(method, ...) \
+	do { \
+		std::lock_guard<std::mutex> lock(mu_); \
+		IBlueprintReader& picked = Pick(); \
+		if (route_ == Route::Commandlet) { \
+			return picked.method(__VA_ARGS__); \
+		} \
+		try { \
+			return picked.method(__VA_ARGS__); \
+		} catch (const SocketTransportError& bprTransportErr) { \
+			return FallBackToCommandlet(bprTransportErr).method(__VA_ARGS__); \
+		} \
 	} while (0)
 
-#define FORWARD_VOID(method, ...)                     \
-	do {                                              \
-		std::lock_guard<std::mutex> lock(mu_);        \
-		Pick().method(__VA_ARGS__);                   \
+#define FORWARD_VOID(method, ...) \
+	do { \
+		std::lock_guard<std::mutex> lock(mu_); \
+		IBlueprintReader& picked = Pick(); \
+		if (route_ == Route::Commandlet) { \
+			picked.method(__VA_ARGS__); \
+		} else { \
+			try { \
+				picked.method(__VA_ARGS__); \
+			} catch (const SocketTransportError& bprTransportErr) { \
+				FallBackToCommandlet(bprTransportErr).method(__VA_ARGS__); \
+			} \
+		} \
 	} while (0)
+
+IBlueprintReader& AutoBlueprintReader::FallBackToCommandlet(const SocketTransportError& e) {
+	// The probed socket route (live editor or daemon) connected but then
+	// failed at the transport/auth layer — a stale token, a zombie listener,
+	// or an editor dying mid-call. Surfacing this on every call strands the
+	// session (the repeated auth_fail users hit). Drop the dead socket route
+	// and serve this call (plus the next probeTtl window) from the commandlet;
+	// the cooldown stops us re-probing straight back onto the broken socket,
+	// and once it elapses the next probe re-evaluates — so we recover on our
+	// own if the editor comes back.
+	std::fprintf(stderr,
+		"[bp-reader-mcp][auto] socket route transport error, falling back to "
+		"commandlet: %s\n", e.what());
+	live_.reset();
+	cmdletSocket_.reset();
+	route_ = Route::Commandlet;
+	lastProbe_ = std::chrono::steady_clock::now();
+	return EnsureCommandlet();
+}
 
 std::vector<BPAssetSummary> AutoBlueprintReader::ListBlueprints(std::string_view p) {
 	FORWARD(ListBlueprints, p);

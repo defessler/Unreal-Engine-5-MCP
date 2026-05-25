@@ -30,6 +30,16 @@ public:
 	using BlueprintReaderError::BlueprintReaderError;
 };
 
+// Thrown by SocketBlueprintReader when the TRANSPORT fails — connect
+// refused, connection dropped mid-frame, or auth rejected — as distinct
+// from a tool-level error the editor returned. AutoBlueprintReader catches
+// this to fall back to the commandlet instead of stranding the session on
+// an unreachable or auth-broken socket route.
+class SocketTransportError : public BlueprintReaderError {
+public:
+	using BlueprintReaderError::BlueprintReaderError;
+};
+
 class IBlueprintReader {
 public:
 	virtual ~IBlueprintReader() = default;
