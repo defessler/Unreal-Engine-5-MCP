@@ -4223,6 +4223,21 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::SetPluginEnabledResult
+CommandletBlueprintReader::SetPluginEnabled(std::string_view pluginName, bool enabled) {
+	std::vector<std::wstring> args = {L"-Op=SetPluginEnabled",
+									   L"-Plugin=" + Widen(pluginName)};
+	if (enabled) args.push_back(L"-Enabled");
+	auto j = RunOp(args);
+	SetPluginEnabledResult out;
+	if (j.is_object()) {
+		out.applied = j.value("applied", false);
+		out.saved   = j.value("saved", false);
+		out.message = j.value("message", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::ActiveStatsResult
 CommandletBlueprintReader::GetActiveStats() {
 	auto j = RunOp({L"-Op=GetActiveStats"});

@@ -7901,6 +7901,47 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- set_plugin_enabled (Phase 11 H Tier 1 — PluginToolset write) ---
+	{
+		ToolDescriptor d;
+		d.name = "set_plugin_enabled";
+		d.description =
+			"[editor] Enable or disable a plugin in the project's .uproject "
+			"descriptor (IProjectManager). `applied` = the descriptor "
+			"changed; `saved` = the .uproject was written. Takes effect on "
+			"the next editor restart (modules load/unload at startup). "
+			"Blocked in read-only mode (mutates the project file). Requires "
+			"a live editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"plugin",  {{"type","string"}}},
+				{"enabled", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"plugin","enabled"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"applied", {{"type","boolean"}}},
+				{"saved",   {{"type","boolean"}}},
+				{"message", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string plugin = RequireString(args, "plugin");
+			bool enabled = args.value("enabled", true);
+			auto r = reader.SetPluginEnabled(plugin, enabled);
+			return nlohmann::json{
+				{"ok",      true},
+				{"applied", r.applied},
+				{"saved",   r.saved},
+				{"message", r.message},
+			};
+		});
+	}
+
 	// ===== Phase 11 H Tier 1 — GameFeatures activate/deactivate (writes) ==
 
 	// ----- activate_game_feature -----
