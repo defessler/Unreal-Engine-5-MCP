@@ -18,7 +18,8 @@ void RegisterHandlersImpl(jr::Server& server,
 						  tools::prompts::PromptRegistry* prompts,
 						  tools::Logger* logger,
 						  tools::resources::ResourceRegistry* resources,
-						  const ServerInfo& info);
+						  const ServerInfo& info,
+						  tools::EditorSubscriptions* editorSubs = nullptr);
 
 std::string DefaultInstructions() {
 	// Onboarding text the LLM sees as system-prompt context at session
@@ -101,8 +102,9 @@ void RegisterHandlers(jr::Server& server,
 					  tools::prompts::PromptRegistry* prompts,
 					  tools::Logger* logger,
 					  tools::resources::ResourceRegistry* resources,
-					  const ServerInfo& info) {
-	RegisterHandlersImpl(server, registry, prompts, logger, resources, info);
+					  const ServerInfo& info,
+					  tools::EditorSubscriptions* editorSubs) {
+	RegisterHandlersImpl(server, registry, prompts, logger, resources, info, editorSubs);
 }
 
 void RegisterHandlersImpl(jr::Server& server,
@@ -110,9 +112,10 @@ void RegisterHandlersImpl(jr::Server& server,
 						  tools::prompts::PromptRegistry* prompts,
 						  tools::Logger* logger,
 						  tools::resources::ResourceRegistry* resources,
-						  const ServerInfo& info) {
+						  const ServerInfo& info,
+						  tools::EditorSubscriptions* editorSubs) {
 	// -------- initialize ---------------------------------------------------
-	server.Register("initialize", [info, prompts, logger, resources](const nlohmann::json& params) -> jr::Response {
+	server.Register("initialize", [info, prompts, logger, resources, editorSubs](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
 		// our default. The MCP spec evolves and clients send a string like
 		// "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
@@ -164,6 +167,13 @@ void RegisterHandlersImpl(jr::Server& server,
 		// to false). Suppress when no providers are wired.
 		if (resources != nullptr && resources->ProviderCount() > 0) {
 			capabilities["resources"] = nlohmann::json::object();
+		}
+		// Phase 10 (EA-push): advertise the editor push-events capability
+		// under `experimental` (non-standard cap) when subscriptions are
+		// wired. Clients opt in via editor/subscribe. Off by default
+		// (editorSubs nullptr → not advertised, methods not registered).
+		if (editorSubs != nullptr) {
+			capabilities["experimental"]["editor"] = {{"events", true}};
 		}
 		nlohmann::json result = {
 			{"protocolVersion", negotiated},
@@ -384,6 +394,49 @@ void RegisterHandlersImpl(jr::Server& server,
 							level));
 				}
 				return jr::Response::Ok(nlohmann::json::object());
+			});
+	}
+
+	// -------- editor/subscribe + editor/unsubscribe -----------------------
+	// Phase 10 (EA-push) — subscription model for editor push events.
+	// Registered only when push events are enabled (editorSubs non-null);
+	// otherwise these methods are absent and the server replies -32601,
+	// honoring the BP_READER_PUSH_EVENTS kill-switch. The Tier-A event
+	// *sources* (editor UE-delegate -> Server::QueueNotification over the
+	// live channel) are the follow-up; this is the client-facing model.
+	if (editorSubs != nullptr) {
+		server.Register("editor/subscribe",
+			[editorSubs](const nlohmann::json& params) -> jr::Response {
+				std::vector<std::string> types;
+				if (params.is_object()) {
+					auto it = params.find("event_types");
+					if (it != params.end() && it->is_array()) {
+						for (const auto& v : *it) {
+							if (v.is_string()) {
+								types.push_back(v.get<std::string>());
+							}
+						}
+					}
+				}
+				return jr::Response::Ok(nlohmann::json{
+					{"subscription_id", editorSubs->Subscribe(types)},
+				});
+			});
+
+		server.Register("editor/unsubscribe",
+			[editorSubs](const nlohmann::json& params) -> jr::Response {
+				if (!params.is_object()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						"editor/unsubscribe params must be an object");
+				}
+				auto it = params.find("subscription_id");
+				if (it == params.end() || !it->is_string()) {
+					return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+						R"(editor/unsubscribe missing string "subscription_id")");
+				}
+				return jr::Response::Ok(nlohmann::json{
+					{"ok", editorSubs->Unsubscribe(it->get<std::string>())},
+				});
 			});
 	}
 
