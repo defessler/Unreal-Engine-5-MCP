@@ -7717,6 +7717,25 @@ namespace
 		{
 			GetEditorEventBuffer().Push(TEXT("pie_stopped"), MakeShared<FJsonObject>());
 		});
+		FEditorDelegates::PausePIE.AddLambda([](bool)
+		{
+			GetEditorEventBuffer().Push(TEXT("pie_paused"), MakeShared<FJsonObject>());
+		});
+		FEditorDelegates::ResumePIE.AddLambda([](bool)
+		{
+			GetEditorEventBuffer().Push(TEXT("pie_resumed"), MakeShared<FJsonObject>());
+		});
+
+		// Package saved (also feeds the recently-saved ring buffer via its
+		// own independent hook — both subscribe to the same multicast).
+		UPackage::PackageSavedWithContextEvent.AddLambda(
+			[](const FString& /*Filename*/, UPackage* Package, FObjectPostSaveContext)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("package"),
+					Package ? Package->GetName() : FString());
+				GetEditorEventBuffer().Push(TEXT("package_saved"), P);
+			});
 	}
 
 	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
