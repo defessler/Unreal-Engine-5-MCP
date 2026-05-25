@@ -231,6 +231,7 @@ public:
 	ProjectSettingValuesResult GetProjectSettingValues(std::string_view classPath) override;
 	SetProjectSettingResult SetProjectSetting(std::string_view classPath, std::string_view property, std::string_view value) override;  // write — reject
 	AutomationTestsResult ListAutomationTests() override;
+	EditorEventsResult GetEditorEvents() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

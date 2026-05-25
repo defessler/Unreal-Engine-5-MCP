@@ -469,6 +469,7 @@ namespace
 		GetProjectSettingValues,
 		SetProjectSetting,
 		ListAutomationTests,
+		GetEditorEvents,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -696,6 +697,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetProjectSettingValues"), ESearchCase::IgnoreCase)){ OutOp = EOp::GetProjectSettingValues; return true; }
 		if (OpStr.Equals(TEXT("SetProjectSetting"), ESearchCase::IgnoreCase))      { OutOp = EOp::SetProjectSetting; return true; }
 		if (OpStr.Equals(TEXT("ListAutomationTests"), ESearchCase::IgnoreCase))    { OutOp = EOp::ListAutomationTests; return true; }
+		if (OpStr.Equals(TEXT("GetEditorEvents"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetEditorEvents; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7636,6 +7638,96 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Phase 10 (EA-push) — editor event capture. Lazy-subscribed on the
+	// first get_editor_events call (no module-lifecycle wiring); buffers
+	// Tier-A UE-delegate events as {name, params}. Bounded ring, drained
+	// on read. Game-thread only in practice (delegates + the op both run
+	// on the editor's main thread); the lock is cheap insurance.
+	struct FEditorEventBuffer
+	{
+		static constexpr int32 kMax = 200;
+		FCriticalSection Lock;
+		TArray<TSharedPtr<FJsonObject>> Events;
+
+		void Push(const FString& Name, const TSharedPtr<FJsonObject>& Params)
+		{
+			FScopeLock L(&Lock);
+			auto E = MakeShared<FJsonObject>();
+			E->SetStringField(TEXT("name"), Name);
+			E->SetObjectField(TEXT("params"),
+				Params.IsValid() ? Params : MakeShared<FJsonObject>());
+			Events.Add(E);
+			while (Events.Num() > kMax) { Events.RemoveAt(0); }
+		}
+		TArray<TSharedPtr<FJsonValue>> Drain()
+		{
+			FScopeLock L(&Lock);
+			TArray<TSharedPtr<FJsonValue>> Out;
+			for (const TSharedPtr<FJsonObject>& E : Events)
+			{
+				Out.Add(MakeShared<FJsonValueObject>(E));
+			}
+			Events.Reset();
+			return Out;
+		}
+	};
+
+	FEditorEventBuffer& GetEditorEventBuffer()
+	{
+		static FEditorEventBuffer Buffer;
+		return Buffer;
+	}
+
+	void EnsureEditorEventsSubscribed()
+	{
+		static bool bSubscribed = false;
+		if (bSubscribed) { return; }
+		bSubscribed = true;
+
+		USelection::SelectionChangedEvent.AddLambda([](UObject* /*Sel*/)
+		{
+			int32 Count = 0;
+			if (IsValid(GEditor))
+			{
+				if (USelection* S = GEditor->GetSelectedActors()) { Count = S->Num(); }
+			}
+			auto P = MakeShared<FJsonObject>();
+			P->SetNumberField(TEXT("count"), Count);
+			GetEditorEventBuffer().Push(TEXT("level_actor_selection_changed"), P);
+		});
+
+		if (IsValid(GEditor))
+		{
+			if (UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+			{
+				AES->OnAssetOpenedInEditor().AddLambda([](UObject* Asset, IAssetEditorInstance*)
+				{
+					auto P = MakeShared<FJsonObject>();
+					P->SetStringField(TEXT("asset"), Asset ? Asset->GetPathName() : FString());
+					GetEditorEventBuffer().Push(TEXT("asset_opened"), P);
+				});
+			}
+		}
+
+		FEditorDelegates::BeginPIE.AddLambda([](bool)
+		{
+			GetEditorEventBuffer().Push(TEXT("pie_started"), MakeShared<FJsonObject>());
+		});
+		FEditorDelegates::EndPIE.AddLambda([](bool)
+		{
+			GetEditorEventBuffer().Push(TEXT("pie_stopped"), MakeShared<FJsonObject>());
+		});
+	}
+
+	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		EnsureEditorEventsSubscribed();
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetArrayField(TEXT("events"), GetEditorEventBuffer().Drain());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -10124,6 +10216,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetProjectSettingValues,    &RunGetProjectSettingValuesOp },
 		{ EOp::SetProjectSetting,          &RunSetProjectSettingOp },
 		{ EOp::ListAutomationTests,        &RunListAutomationTestsOp },
+		{ EOp::GetEditorEvents,            &RunGetEditorEventsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

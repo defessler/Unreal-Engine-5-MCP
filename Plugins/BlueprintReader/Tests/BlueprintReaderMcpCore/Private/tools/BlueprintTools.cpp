@@ -8343,6 +8343,35 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_editor_events (Phase 10 — EA-push event sources) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_editor_events";
+		d.description =
+			"[editor] Drain buffered editor events captured from UE delegates "
+			"(level_actor_selection_changed, asset_opened, pie_started, "
+			"pie_stopped). Each `{name, params}`. Draining clears the buffer. "
+			"Empty in a fresh one-shot commandlet; accumulates in a "
+			"live/daemon editor. The poll side of push (an SSE auto-push that "
+			"forwards these to notifications/editor/* is a follow-up). "
+			"Requires a live editor.";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {{"events", {{"type","array"}, {"items", {{"type","object"}}}}}}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetEditorEvents();
+			nlohmann::json events = nlohmann::json::array();
+			for (const auto& e : r.events) {
+				nlohmann::json params = nlohmann::json::object();
+				try { params = nlohmann::json::parse(e.paramsJson); } catch (...) {}
+				events.push_back({{"name", e.name}, {"params", params}});
+			}
+			return nlohmann::json{{"events", events}};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

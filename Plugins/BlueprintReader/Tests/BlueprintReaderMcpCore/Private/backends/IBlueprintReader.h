@@ -1377,6 +1377,26 @@ public:
 		throw BlueprintReaderError("ListAutomationTests not supported by this backend");
 	}
 
+	// ===== Phase 10 (EA-push) — editor event SOURCES ===================
+	// Drains buffered Tier-A editor events (UE delegates the editor module
+	// subscribes to: selection-changed, asset-opened, PIE start/stop, ...).
+	// Each `{name, params_json}` where name is a notifications/editor/<x>
+	// suffix and params_json is the event's JSON params. Most-recent last;
+	// draining clears the buffer. Empty in a fresh one-shot commandlet;
+	// accumulates in a live/daemon editor. This is the event-capture half
+	// of push — agents can poll it now; an SSE auto-push (drain ->
+	// Server::QueueNotification) is a thin follow-up on top of C5.
+	struct EditorEventEntry {
+		std::string name;
+		std::string paramsJson;
+	};
+	struct EditorEventsResult {
+		std::vector<EditorEventEntry> events;
+	};
+	virtual EditorEventsResult GetEditorEvents() {
+		throw BlueprintReaderError("GetEditorEvents not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

@@ -605,6 +605,9 @@ ReadOnlyBlueprintReader::SetProjectSetting(std::string_view, std::string_view, s
 IBlueprintReader::AutomationTestsResult ReadOnlyBlueprintReader::ListAutomationTests() {
 	return inner_->ListAutomationTests();
 }
+IBlueprintReader::EditorEventsResult ReadOnlyBlueprintReader::GetEditorEvents() {
+	return inner_->GetEditorEvents();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
