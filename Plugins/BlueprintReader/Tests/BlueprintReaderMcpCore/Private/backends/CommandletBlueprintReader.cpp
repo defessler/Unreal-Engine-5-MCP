@@ -4437,6 +4437,28 @@ CommandletBlueprintReader::GetRecentlyOpenedAssets() {
 	return out;
 }
 
+IBlueprintReader::EditorEventsResult
+CommandletBlueprintReader::GetEditorEvents() {
+	auto j = RunOp({L"-Op=GetEditorEvents"});
+	EditorEventsResult out;
+	if (j.is_object()) {
+		if (auto it = j.find("events"); it != j.end() && it->is_array()) {
+			for (const auto& e : *it) {
+				if (!e.is_object()) continue;
+				EditorEventEntry entry;
+				entry.name = e.value("name", std::string{});
+				if (auto p = e.find("params"); p != e.end()) {
+					entry.paramsJson = p->dump();
+				} else {
+					entry.paramsJson = "{}";
+				}
+				out.events.push_back(std::move(entry));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
