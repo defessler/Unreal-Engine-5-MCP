@@ -897,6 +897,9 @@ IBlueprintReader::WatchedPinsResult
 CachingBlueprintReader::GetWatchedPins(std::string_view p) {
 	return inner_->GetWatchedPins(p);
 }
+IBlueprintReader::ActiveStatsResult CachingBlueprintReader::GetActiveStats() {
+	return inner_->GetActiveStats();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

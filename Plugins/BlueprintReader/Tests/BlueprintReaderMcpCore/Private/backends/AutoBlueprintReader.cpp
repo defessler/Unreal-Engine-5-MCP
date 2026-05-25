@@ -810,6 +810,9 @@ IBlueprintReader::WatchedPinsResult
 AutoBlueprintReader::GetWatchedPins(std::string_view p) {
 	FORWARD(GetWatchedPins, p);
 }
+IBlueprintReader::ActiveStatsResult AutoBlueprintReader::GetActiveStats() {
+	FORWARD(GetActiveStats);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
