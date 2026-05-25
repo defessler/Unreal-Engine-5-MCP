@@ -904,6 +904,9 @@ IBlueprintReader::SetPluginEnabledResult
 CachingBlueprintReader::SetPluginEnabled(std::string_view n, bool e) {
 	return inner_->SetPluginEnabled(n, e);
 }
+IBlueprintReader::StreamingSourcesResult CachingBlueprintReader::GetStreamingSources() {
+	return inner_->GetStreamingSources();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

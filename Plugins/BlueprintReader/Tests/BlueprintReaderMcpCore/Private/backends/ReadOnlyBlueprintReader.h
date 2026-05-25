@@ -225,6 +225,7 @@ public:
 	WatchedPinsResult GetWatchedPins(std::string_view assetPath) override;
 	ActiveStatsResult GetActiveStats() override;
 	SetPluginEnabledResult SetPluginEnabled(std::string_view pluginName, bool enabled) override;  // write — reject
+	StreamingSourcesResult GetStreamingSources() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

@@ -1283,6 +1283,22 @@ public:
 		throw BlueprintReaderError("SetPluginEnabled not supported by this backend");
 	}
 
+	// World Partition streaming sources (camera / player providers driving
+	// cell streaming). Each: name + world transform. `has_world_partition`
+	// false on non-partitioned maps. Phase 14 — world/partition.
+	struct StreamingSourceInfo {
+		std::string name;
+		double locX = 0.0, locY = 0.0, locZ = 0.0;
+		double pitch = 0.0, yaw = 0.0, roll = 0.0;
+	};
+	struct StreamingSourcesResult {
+		std::vector<StreamingSourceInfo> sources;
+		bool hasWorldPartition = false;
+	};
+	virtual StreamingSourcesResult GetStreamingSources() {
+		throw BlueprintReaderError("GetStreamingSources not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

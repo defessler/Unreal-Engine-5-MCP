@@ -4223,6 +4223,30 @@ CommandletBlueprintReader::DeactivateGameFeature(std::string_view plugin) {
 	return out;
 }
 
+IBlueprintReader::StreamingSourcesResult
+CommandletBlueprintReader::GetStreamingSources() {
+	auto j = RunOp({L"-Op=GetStreamingSources"});
+	StreamingSourcesResult out;
+	if (j.is_object()) {
+		out.hasWorldPartition = j.value("has_world_partition", false);
+		if (auto it = j.find("sources"); it != j.end() && it->is_array()) {
+			for (const auto& s : *it) {
+				if (!s.is_object()) continue;
+				StreamingSourceInfo info;
+				info.name  = s.value("name",  std::string{});
+				info.locX  = s.value("loc_x", 0.0);
+				info.locY  = s.value("loc_y", 0.0);
+				info.locZ  = s.value("loc_z", 0.0);
+				info.pitch = s.value("pitch", 0.0);
+				info.yaw   = s.value("yaw",   0.0);
+				info.roll  = s.value("roll",  0.0);
+				out.sources.push_back(std::move(info));
+			}
+		}
+	}
+	return out;
+}
+
 IBlueprintReader::SetPluginEnabledResult
 CommandletBlueprintReader::SetPluginEnabled(std::string_view pluginName, bool enabled) {
 	std::vector<std::wstring> args = {L"-Op=SetPluginEnabled",
