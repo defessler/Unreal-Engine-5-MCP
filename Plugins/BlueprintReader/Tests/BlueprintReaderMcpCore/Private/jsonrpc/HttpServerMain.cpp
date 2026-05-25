@@ -1,8 +1,10 @@
 #include "jsonrpc/HttpServerMain.h"
 
+#include "backends/IBlueprintReader.h"
 #include "jsonrpc/HttpTransport.h"
 #include "jsonrpc/Server.h"
 #include "jsonrpc/SseFrame.h"
+#include "tools/EditorSubscriptions.h"
 
 #include <cctype>
 #include <chrono>
@@ -142,7 +144,9 @@ bool SendChunk(SocketType s, const std::string& data) {
 // thread-safe). One queue is shared across streams — for multiple SSE
 // clients the first to drain wins (fan-out is a later refinement; the
 // common case is a single client).
-void StreamSse(SocketType s, Server& server, std::mutex& mtx) {
+void StreamSse(SocketType s, Server& server, std::mutex& mtx,
+			   backends::IBlueprintReader* reader,
+			   tools::EditorSubscriptions* editorSubs) {
 	static constexpr char kHead[] =
 		"HTTP/1.1 200 OK\r\n"
 		"Content-Type: text/event-stream\r\n"
@@ -158,10 +162,33 @@ void StreamSse(SocketType s, Server& server, std::mutex& mtx) {
 		return;
 	}
 	int idleTicks = 0;
+	int pollTicks = 0;
 	for (;;) {
 		std::vector<nlohmann::json> notes;
 		{
 			std::lock_guard<std::mutex> lock(mtx);
+			// Phase 10 auto-push: ~every 2s, drain editor events from the
+			// backend and queue each subscribed one as a
+			// notifications/editor/<name>. Under the same mutex that
+			// serializes POST dispatch, so backend access stays single-
+			// threaded. mock/no-editor backends throw -> swallowed.
+			if (reader != nullptr && editorSubs != nullptr && ++pollTicks >= 8) {
+				pollTicks = 0;
+				try {
+					const auto evs = reader->GetEditorEvents();
+					for (const auto& e : evs.events) {
+						if (!editorSubs->IsSubscribed(e.name)) {
+							continue;
+						}
+						nlohmann::json params = nlohmann::json::object();
+						try { params = nlohmann::json::parse(e.paramsJson); }
+						catch (...) {}
+						server.QueueNotification("notifications/editor/" + e.name, params);
+					}
+				} catch (...) {
+					// Backend doesn't support events (e.g. mock) — ignore.
+				}
+			}
 			notes = server.TakePendingNotifications();
 		}
 		for (const nlohmann::json& note : notes) {
@@ -183,7 +210,9 @@ void StreamSse(SocketType s, Server& server, std::mutex& mtx) {
 // Per-connection worker (one detached thread each). GET on the MCP path
 // becomes an SSE stream; everything else is a one-shot JSON-RPC dispatch.
 void HandleConnection(SocketType conn, Server& server, std::mutex& mtx,
-					  std::string mcpPath) {
+					  std::string mcpPath,
+					  backends::IBlueprintReader* reader,
+					  tools::EditorSubscriptions* editorSubs) {
 	const std::string raw = ReadRequest(conn);
 	if (raw.empty()) {
 		CloseSocket(conn);
@@ -213,7 +242,7 @@ void HandleConnection(SocketType conn, Server& server, std::mutex& mtx,
 			const std::string out = FormatResponse(forbidden);
 			SendAll(conn, out.data(), out.size());
 		} else {
-			StreamSse(conn, server, mtx);
+			StreamSse(conn, server, mtx, reader, editorSubs);
 		}
 		CloseSocket(conn);
 		return;
@@ -246,7 +275,9 @@ void HandleConnection(SocketType conn, Server& server, std::mutex& mtx,
 }    // namespace
 
 int RunHttpServer(Server& server, uint16_t port, const std::string& mcpPath,
-                  std::ostream& log) {
+                  std::ostream& log,
+                  backends::IBlueprintReader* reader,
+                  tools::EditorSubscriptions* editorSubs) {
 #if defined(_WIN32)
 	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -299,7 +330,7 @@ int RunHttpServer(Server& server, uint16_t port, const std::string& mcpPath,
 		// One detached worker per connection so an SSE GET stream can be
 		// held open while POSTs are served on other connections.
 		std::thread(HandleConnection, conn, std::ref(server),
-					std::ref(serverMutex), mcpPath).detach();
+					std::ref(serverMutex), mcpPath, reader, editorSubs).detach();
 	}
 	// Unreachable in v1 (no in-band shutdown). Listener + WSACleanup are
 	// reclaimed on process exit.

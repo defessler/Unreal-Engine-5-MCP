@@ -573,7 +573,8 @@ int RunServerLoop() {
 		const std::string mcpPath = env::GetOrDefault("BP_READER_HTTP_PATH", "/mcp");
 		std::cerr << "[bp-reader-mcp] HTTP transport on 127.0.0.1:" << httpPort
 				  << mcpPath << " (stdio disabled)\n";
-		const int rc = jsonrpc::http::RunHttpServer(server, httpPort, mcpPath, std::cerr);
+		const int rc = jsonrpc::http::RunHttpServer(server, httpPort, mcpPath, std::cerr,
+													reader.get(), editorSubs.get());
 		return rc;
 	}
 

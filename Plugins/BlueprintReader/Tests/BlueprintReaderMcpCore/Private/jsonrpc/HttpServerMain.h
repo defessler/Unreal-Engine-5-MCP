@@ -25,6 +25,8 @@
 #include <string>
 
 namespace bpr::jsonrpc { class Server; }
+namespace bpr::backends { class IBlueprintReader; }
+namespace bpr::tools { class EditorSubscriptions; }
 
 namespace bpr::jsonrpc::http {
 
@@ -32,7 +34,17 @@ namespace bpr::jsonrpc::http {
 // http::Handle(req, server, mcpPath). Returns a process exit code; the
 // accept loop runs until a fatal listen-socket error (the process is
 // killed to stop it, same lifecycle as the stdio EOF path).
+//
+// `reader` + `editorSubs` (Phase 10 auto-push, both optional): when both
+// are set, an SSE GET stream periodically drains reader->GetEditorEvents()
+// and queues each subscribed event as a notifications/editor/<name>
+// notification (which the same stream then emits). Backend access happens
+// under the server mutex that already serializes POST dispatch, so no new
+// concurrency surface. Pass nullptr to disable auto-push (POST/SSE still
+// work; the stream just relays server-generated notifications).
 int RunHttpServer(Server& server, uint16_t port, const std::string& mcpPath,
-                  std::ostream& log);
+                  std::ostream& log,
+                  backends::IBlueprintReader* reader = nullptr,
+                  tools::EditorSubscriptions* editorSubs = nullptr);
 
 }  // namespace bpr::jsonrpc::http
