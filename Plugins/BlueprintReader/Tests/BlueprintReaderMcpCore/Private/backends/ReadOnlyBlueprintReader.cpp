@@ -535,6 +535,14 @@ IBlueprintReader::AutosaveStatusResult ReadOnlyBlueprintReader::GetAutosaveStatu
 IBlueprintReader::RecoveryStateResult ReadOnlyBlueprintReader::GetRecoveryState() {
 	return inner_->GetRecoveryState();
 }
+IBlueprintReader::SourceControlStatusResult
+ReadOnlyBlueprintReader::GetSourceControlStatus(std::string_view p) {
+	return inner_->GetSourceControlStatus(p);
+}
+IBlueprintReader::FileLockStatusResult
+ReadOnlyBlueprintReader::GetFileLockStatus(std::string_view p) {
+	return inner_->GetFileLockStatus(p);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

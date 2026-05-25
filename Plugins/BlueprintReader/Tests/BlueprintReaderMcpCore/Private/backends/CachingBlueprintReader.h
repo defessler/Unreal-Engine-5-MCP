@@ -248,6 +248,8 @@ public:
 	DataLayerStatesResult GetDataLayerStates() override;
 	AutosaveStatusResult GetAutosaveStatus() override;
 	RecoveryStateResult GetRecoveryState() override;
+	SourceControlStatusResult GetSourceControlStatus(std::string_view assetPath) override;
+	FileLockStatusResult GetFileLockStatus(std::string_view assetPath) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

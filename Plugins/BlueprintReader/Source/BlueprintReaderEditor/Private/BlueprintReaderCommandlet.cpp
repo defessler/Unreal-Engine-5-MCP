@@ -81,6 +81,8 @@
 #include "ShaderCompiler.h"            // Phase 14 — GShaderCompilingManager
 #include "ISourceControlModule.h"      // Phase 14 — SCC provider
 #include "ISourceControlProvider.h"
+#include "ISourceControlState.h"       // Phase 14 — per-file SCC state
+#include "SourceControlHelpers.h"      // package path -> filename
 #include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
 #include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
@@ -429,6 +431,8 @@ namespace
 		GetDataLayerStates,
 		GetAutosaveStatus,
 		GetRecoveryState,
+		GetSourceControlStatus,
+		GetFileLockStatus,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -636,6 +640,8 @@ namespace
 		if (OpStr.Equals(TEXT("GetDataLayerStates"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetDataLayerStates; return true; }
 		if (OpStr.Equals(TEXT("GetAutosaveStatus"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetAutosaveStatus; return true; }
 		if (OpStr.Equals(TEXT("GetRecoveryState"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetRecoveryState; return true; }
+		if (OpStr.Equals(TEXT("GetSourceControlStatus"), ESearchCase::IgnoreCase)) { OutOp = EOp::GetSourceControlStatus; return true; }
+		if (OpStr.Equals(TEXT("GetFileLockStatus"), ESearchCase::IgnoreCase))       { OutOp = EOp::GetFileLockStatus; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -6998,6 +7004,63 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetSourceControlStatusOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		bool bValid=false, bControlled=false, bCheckedOut=false,
+			 bOther=false, bModified=false, bCurrent=false;
+		ISourceControlModule& SCM = ISourceControlModule::Get();
+		if (SCM.IsEnabled() && !AssetPath.IsEmpty())
+		{
+			const FString Filename = USourceControlHelpers::PackageFilename(AssetPath);
+			FSourceControlStatePtr State =
+				SCM.GetProvider().GetState(Filename, EStateCacheUsage::Use);
+			if (State.IsValid())
+			{
+				bValid      = true;
+				bControlled = State->IsSourceControlled();
+				bCheckedOut = State->IsCheckedOut();
+				bOther      = State->IsCheckedOutOther();
+				bModified   = State->IsModified();
+				bCurrent    = State->IsCurrent();
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("controlled"), bControlled);
+		Out->SetBoolField(TEXT("checked_out"), bCheckedOut);
+		Out->SetBoolField(TEXT("checked_out_other"), bOther);
+		Out->SetBoolField(TEXT("modified"), bModified);
+		Out->SetBoolField(TEXT("current"), bCurrent);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunGetFileLockStatusOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		bool bValid=false, bOther=false;
+		FString Who;
+		ISourceControlModule& SCM = ISourceControlModule::Get();
+		if (SCM.IsEnabled() && !AssetPath.IsEmpty())
+		{
+			const FString Filename = USourceControlHelpers::PackageFilename(AssetPath);
+			FSourceControlStatePtr State =
+				SCM.GetProvider().GetState(Filename, EStateCacheUsage::Use);
+			if (State.IsValid())
+			{
+				bValid = true;
+				bOther = State->IsCheckedOutOther(&Who);
+			}
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), bValid);
+		Out->SetBoolField(TEXT("checked_out_by_other"), bOther);
+		Out->SetStringField(TEXT("other_user"), Who);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -9466,6 +9529,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetDataLayerStates,         &RunGetDataLayerStatesOp },
 		{ EOp::GetAutosaveStatus,          &RunGetAutosaveStatusOp },
 		{ EOp::GetRecoveryState,           &RunGetRecoveryStateOp },
+		{ EOp::GetSourceControlStatus,     &RunGetSourceControlStatusOp },
+		{ EOp::GetFileLockStatus,          &RunGetFileLockStatusOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
