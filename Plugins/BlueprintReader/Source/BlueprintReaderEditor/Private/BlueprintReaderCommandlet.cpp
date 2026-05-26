@@ -7804,6 +7804,32 @@ namespace
 				GetEditorEventBuffer().Push(TEXT("actor_deleted"), P);
 			});
 		}
+
+		// Tier-B (debounced): actor property edits. OnObjectPropertyChanged
+		// is a firehose across all UObjects, so we scope to level actors and
+		// time-gate to at most ~2/sec — enough for "the user is editing this
+		// actor" without flooding the buffer. Demonstrates the debounce
+		// pattern for the higher-frequency event tiers.
+		FCoreUObjectDelegates::OnObjectPropertyChanged.AddLambda(
+			[](UObject* Obj, FPropertyChangedEvent& Evt)
+			{
+				if (!IsValid(Obj) || !Obj->IsA<AActor>())
+				{
+					return;
+				}
+				static double LastEmit = 0.0;
+				const double Now = FPlatformTime::Seconds();
+				if (Now - LastEmit < 0.5)
+				{
+					return;
+				}
+				LastEmit = Now;
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("actor"), Obj->GetName());
+				P->SetStringField(TEXT("property"),
+					Evt.Property ? Evt.Property->GetName() : FString());
+				GetEditorEventBuffer().Push(TEXT("actor_property_changed"), P);
+			});
 	}
 
 	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
