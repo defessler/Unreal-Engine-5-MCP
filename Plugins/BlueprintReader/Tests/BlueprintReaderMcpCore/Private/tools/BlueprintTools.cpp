@@ -8486,6 +8486,27 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			 "[editor] Active toast notifications (FSlateNotificationManager). "
 			 "v1 stub: the manager exposes no public enumeration of live "
 			 "notifications — returns valid:false."},
+			{"get_modeling_state", "modeling",
+			 "[editor] Modeling Tools Editor Mode state (active tool, "
+			 "sub-element selection mode: vertex/edge/face/group). v1 stub: "
+			 "this is interactive-tools-context state internal to the mode "
+			 "manager, not bridged out-of-process — returns valid:false."},
+			{"get_landscape_paint_state", "landscape_paint",
+			 "[editor] Landscape edit mode paint state (active brush/target "
+			 "layer). v1 stub: landscape mode state is not bridged "
+			 "out-of-process — returns valid:false."},
+			{"get_foliage_paint_state", "foliage_paint",
+			 "[editor] Foliage edit mode paint state (selected foliage types, "
+			 "brush settings). v1 stub: foliage mode state is not bridged "
+			 "out-of-process — returns valid:false."},
+			{"get_mesh_paint_state", "mesh_paint",
+			 "[editor] Mesh paint mode state (color/weight/texture sub-mode, "
+			 "selected channel). v1 stub: mesh-paint mode state is not bridged "
+			 "out-of-process — returns valid:false."},
+			{"get_texture_paint_state", "texture_paint",
+			 "[editor] Texture paint mode state (selected texture/UV channel). "
+			 "v1 stub: texture-paint mode state is not bridged out-of-process "
+			 "— returns valid:false."},
 		};
 		for (const auto& s : kUiStubs) {
 			ToolDescriptor d;
