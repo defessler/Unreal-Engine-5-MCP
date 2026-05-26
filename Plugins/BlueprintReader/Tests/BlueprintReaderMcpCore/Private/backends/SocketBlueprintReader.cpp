@@ -2851,6 +2851,20 @@ SocketBlueprintReader::GetWorkspaceLayout() {
 	return out;
 }
 
+IBlueprintReader::TraceStateResult
+SocketBlueprintReader::GetTraceState() {
+	auto j = RunOp({"-Op=GetTraceState"});
+	TraceStateResult out;
+	if (j.is_object()) {
+		out.connected      = j.value("connected", false);
+		out.paused         = j.value("paused", false);
+		out.connectionType = j.value("connection_type", std::string{});
+		out.destination    = j.value("destination", std::string{});
+		out.activeChannels = j.value("active_channels", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

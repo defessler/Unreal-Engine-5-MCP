@@ -4484,6 +4484,20 @@ CommandletBlueprintReader::GetWorkspaceLayout() {
 	return out;
 }
 
+IBlueprintReader::TraceStateResult
+CommandletBlueprintReader::GetTraceState() {
+	auto j = RunOp({L"-Op=GetTraceState"});
+	TraceStateResult out;
+	if (j.is_object()) {
+		out.connected      = j.value("connected", false);
+		out.paused         = j.value("paused", false);
+		out.connectionType = j.value("connection_type", std::string{});
+		out.destination    = j.value("destination", std::string{});
+		out.activeChannels = j.value("active_channels", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});

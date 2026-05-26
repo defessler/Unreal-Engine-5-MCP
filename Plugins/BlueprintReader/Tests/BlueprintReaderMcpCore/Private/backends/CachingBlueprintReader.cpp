@@ -933,6 +933,9 @@ IBlueprintReader::CookTargetResult CachingBlueprintReader::GetActiveCookTarget()
 IBlueprintReader::WorkspaceLayoutResult CachingBlueprintReader::GetWorkspaceLayout() {
 	return inner_->GetWorkspaceLayout();
 }
+IBlueprintReader::TraceStateResult CachingBlueprintReader::GetTraceState() {
+	return inner_->GetTraceState();
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

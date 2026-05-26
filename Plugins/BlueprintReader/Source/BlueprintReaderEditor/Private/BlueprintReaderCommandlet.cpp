@@ -70,6 +70,7 @@
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
+#include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
 #include "EditorModes.h"
@@ -475,6 +476,7 @@ namespace
 		GetEditorEvents,
 		GetActiveCookTarget,
 		GetWorkspaceLayout,
+		GetTraceState,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -705,6 +707,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetEditorEvents"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetEditorEvents; return true; }
 		if (OpStr.Equals(TEXT("GetActiveCookTarget"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetActiveCookTarget; return true; }
 		if (OpStr.Equals(TEXT("GetWorkspaceLayout"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetWorkspaceLayout; return true; }
+		if (OpStr.Equals(TEXT("GetTraceState"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetTraceState; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7799,6 +7802,27 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	int32 RunGetTraceStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("connected"), FTraceAuxiliary::IsConnected());
+		Out->SetBoolField(TEXT("paused"),    FTraceAuxiliary::IsPaused());
+		const TCHAR* TypeStr = TEXT("none");
+		switch (FTraceAuxiliary::GetConnectionType())
+		{
+			case FTraceAuxiliary::EConnectionType::Network: TypeStr = TEXT("network"); break;
+			case FTraceAuxiliary::EConnectionType::File:    TypeStr = TEXT("file");    break;
+			default: break;
+		}
+		Out->SetStringField(TEXT("connection_type"), TypeStr);
+		Out->SetStringField(TEXT("destination"), FTraceAuxiliary::GetTraceDestinationString());
+		TStringBuilder<512> Channels;
+		FTraceAuxiliary::GetActiveChannelsString(Channels);
+		Out->SetStringField(TEXT("active_channels"), Channels.ToString());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -10290,6 +10314,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetEditorEvents,            &RunGetEditorEventsOp },
 		{ EOp::GetActiveCookTarget,        &RunGetActiveCookTargetOp },
 		{ EOp::GetWorkspaceLayout,         &RunGetWorkspaceLayoutOp },
+		{ EOp::GetTraceState,              &RunGetTraceStateOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

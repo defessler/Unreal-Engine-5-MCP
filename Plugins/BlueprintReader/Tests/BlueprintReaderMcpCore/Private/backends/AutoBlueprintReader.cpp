@@ -846,6 +846,9 @@ IBlueprintReader::CookTargetResult AutoBlueprintReader::GetActiveCookTarget() {
 IBlueprintReader::WorkspaceLayoutResult AutoBlueprintReader::GetWorkspaceLayout() {
 	FORWARD(GetWorkspaceLayout);
 }
+IBlueprintReader::TraceStateResult AutoBlueprintReader::GetTraceState() {
+	FORWARD(GetTraceState);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

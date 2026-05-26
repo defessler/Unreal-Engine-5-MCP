@@ -252,6 +252,7 @@ public:
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
+	TraceStateResult GetTraceState() override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

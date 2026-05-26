@@ -271,6 +271,7 @@ public:
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
+	TraceStateResult GetTraceState() override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
