@@ -7896,9 +7896,10 @@ namespace
 		Out->SetBoolField(TEXT("valid"), false);
 		Out->SetStringField(TEXT("reason"),
 			FString::Printf(
-				TEXT("%s state is not bridged out-of-process in this build ")
-				TEXT("(v1 stub; lives in transient editor/Slate state)"),
-				Feature.IsEmpty() ? TEXT("editor") : *Feature));
+				TEXT("%s is not available via this backend in this build ")
+				TEXT("(v1 stub — see the tool description for what a real ")
+				TEXT("implementation requires)"),
+				Feature.IsEmpty() ? TEXT("this feature") : *Feature));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
