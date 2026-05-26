@@ -234,6 +234,7 @@ public:
 	EditorEventsResult GetEditorEvents() override;
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
+	TraceStateResult GetTraceState() override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

@@ -8422,6 +8422,40 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- get_trace_state (Phase 17 — advanced state) -----
+	{
+		ToolDescriptor d;
+		d.name = "get_trace_state";
+		d.description =
+			"[editor] Unreal Insights trace connection state via FTraceAuxiliary "
+			"(Core): `connected`, `paused`, `connection_type` "
+			"(network|file|none), `destination` (host or file path), and "
+			"`active_channels` (comma-separated enabled trace channels). Reports "
+			"the responding process's own trace state (the live editor when "
+			"routed live; the commandlet otherwise).";
+		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"connected",       {{"type","boolean"}}},
+				{"paused",          {{"type","boolean"}}},
+				{"connection_type", {{"type","string"}}},
+				{"destination",     {{"type","string"}}},
+				{"active_channels", {{"type","string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			auto r = reader.GetTraceState();
+			return nlohmann::json{
+				{"connected",       r.connected},
+				{"paused",          r.paused},
+				{"connection_type", r.connectionType},
+				{"destination",     r.destination},
+				{"active_channels", r.activeChannels},
+			};
+		});
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

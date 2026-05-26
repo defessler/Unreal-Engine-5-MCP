@@ -614,6 +614,9 @@ IBlueprintReader::CookTargetResult ReadOnlyBlueprintReader::GetActiveCookTarget(
 IBlueprintReader::WorkspaceLayoutResult ReadOnlyBlueprintReader::GetWorkspaceLayout() {
 	return inner_->GetWorkspaceLayout();
 }
+IBlueprintReader::TraceStateResult ReadOnlyBlueprintReader::GetTraceState() {
+	return inner_->GetTraceState();
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 

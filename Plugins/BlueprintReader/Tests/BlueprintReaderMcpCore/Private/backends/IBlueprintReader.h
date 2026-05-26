@@ -1416,6 +1416,20 @@ public:
 		throw BlueprintReaderError("GetWorkspaceLayout not supported by this backend");
 	}
 
+	// Unreal Insights trace connection state (FTraceAuxiliary, Core module).
+	// Phase 17 — advanced. Real out-of-process (no live editor strictly
+	// required; the commandlet's own process reports its trace state).
+	struct TraceStateResult {
+		bool connected = false;
+		bool paused = false;
+		std::string connectionType;  // "network" | "file" | "none"
+		std::string destination;     // server host or file path
+		std::string activeChannels;  // comma-separated enabled channels
+	};
+	virtual TraceStateResult GetTraceState() {
+		throw BlueprintReaderError("GetTraceState not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {
