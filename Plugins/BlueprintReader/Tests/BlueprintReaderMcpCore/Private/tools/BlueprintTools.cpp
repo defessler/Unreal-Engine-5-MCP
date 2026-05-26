@@ -8348,13 +8348,13 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		ToolDescriptor d;
 		d.name = "get_editor_events";
 		d.description =
-			"[editor] Drain buffered editor events captured from UE delegates "
-			"(level_actor_selection_changed, asset_opened, pie_started, "
-			"pie_stopped). Each `{name, params}`. Draining clears the buffer. "
-			"Empty in a fresh one-shot commandlet; accumulates in a "
-			"live/daemon editor. The poll side of push (an SSE auto-push that "
-			"forwards these to notifications/editor/* is a follow-up). "
-			"Requires a live editor.";
+			"[editor] Drain buffered editor events captured from UE delegates. "
+			"Covers selection changes, asset open/remove/rename, PIE "
+			"start/stop/pause/resume, package save, map open, actor "
+			"add/delete, and Blueprint compile — each `{name, params}`. "
+			"Draining clears the buffer. Empty in a one-shot commandlet; "
+			"accumulates in a live/daemon editor and is also auto-pushed over "
+			"the HTTP SSE stream as notifications. Requires a live editor.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
 		d.output_schema = {
 			{"type","object"},
