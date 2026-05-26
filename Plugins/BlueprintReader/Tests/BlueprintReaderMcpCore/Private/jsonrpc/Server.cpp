@@ -212,12 +212,43 @@ void Server::QueueNotification(std::string method, nlohmann::json params) {
 		env["params"] = std::move(params);
 	}
 	std::lock_guard<std::mutex> lock(notifMu_);
+	// Fan out to every registered SSE session (each gets its own copy), then
+	// hand the original to the stdio queue.
+	for (auto& kv : sseSessions_) {
+		kv.second.push_back(env);
+	}
 	pendingNotifications_.push_back(std::move(env));
 }
 
 std::vector<nlohmann::json> Server::TakePendingNotifications() {
 	std::lock_guard<std::mutex> lock(notifMu_);
 	return std::exchange(pendingNotifications_, {});
+}
+
+Server::SseSessionId Server::RegisterSseSession() {
+	std::lock_guard<std::mutex> lock(notifMu_);
+	const SseSessionId id = nextSseSessionId_++;
+	sseSessions_[id];  // create an empty queue for this session
+	return id;
+}
+
+void Server::UnregisterSseSession(SseSessionId id) {
+	std::lock_guard<std::mutex> lock(notifMu_);
+	sseSessions_.erase(id);
+}
+
+std::vector<nlohmann::json> Server::TakeSseSessionNotifications(SseSessionId id) {
+	std::lock_guard<std::mutex> lock(notifMu_);
+	auto it = sseSessions_.find(id);
+	if (it == sseSessions_.end()) {
+		return {};
+	}
+	return std::exchange(it->second, {});
+}
+
+std::size_t Server::SseSessionCount() const {
+	std::lock_guard<std::mutex> lock(notifMu_);
+	return sseSessions_.size();
 }
 
 void Server::RegisterInFlight(CallContext* ctx) {

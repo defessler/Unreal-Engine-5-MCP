@@ -161,6 +161,17 @@ void StreamSse(SocketType s, Server& server, std::mutex& mtx,
 	if (!SendChunk(s, FormatRetryFrame(3000))) {
 		return;
 	}
+	// Register this connection as its own SSE session so notifications fan
+	// out to it independently of any other connected client (Phase 15 —
+	// a shared drain would let clients steal each other's events). RAII
+	// guard unregisters on every exit path below.
+	const Server::SseSessionId sessionId = server.RegisterSseSession();
+	struct SessionUnregister {
+		Server& srv;
+		Server::SseSessionId id;
+		~SessionUnregister() { srv.UnregisterSseSession(id); }
+	} sessionGuard{server, sessionId};
+
 	int idleTicks = 0;
 	int pollTicks = 0;
 	for (;;) {
@@ -189,7 +200,7 @@ void StreamSse(SocketType s, Server& server, std::mutex& mtx,
 					// Backend doesn't support events (e.g. mock) — ignore.
 				}
 			}
-			notes = server.TakePendingNotifications();
+			notes = server.TakeSseSessionNotifications(sessionId);
 		}
 		for (const nlohmann::json& note : notes) {
 			if (!SendChunk(s, FormatSseFrame("message", note))) {

@@ -16,6 +16,8 @@
 //   * MCP transport: https://modelcontextprotocol.io/specification/transports
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <map>
@@ -127,6 +129,21 @@ public:
 	// response; tests can call it directly to assert queued notifs.
 	std::vector<nlohmann::json> TakePendingNotifications();
 
+	// ----- Per-session SSE fan-out (Phase 15) ---------------------------
+	// The stdio path drains the single pendingNotifications_ queue above.
+	// Multiple concurrent SSE clients each need their OWN copy of every
+	// notification — a single shared drain would let one client steal
+	// another's. So each SSE connection registers a session with its own
+	// queue, and QueueNotification fans every notification out to all
+	// registered sessions (in addition to the stdio queue). Thread-safe
+	// via notifMu_. Editor-event polling still drains the source buffer
+	// once (GetEditorEvents clears it), so fan-out doesn't duplicate.
+	using SseSessionId = std::uint64_t;
+	SseSessionId RegisterSseSession();
+	void UnregisterSseSession(SseSessionId id);
+	std::vector<nlohmann::json> TakeSseSessionNotifications(SseSessionId id);
+	std::size_t SseSessionCount() const;
+
 	// In-flight tool call registry — used by `notifications/cancelled`
 	// to look up the CallContext for a given request id and mark it
 	// cancelled. Registration / deregistration happens around each
@@ -148,6 +165,8 @@ private:
 	std::map<std::string, Handler> handlers_;
 	mutable std::mutex notifMu_;
 	std::vector<nlohmann::json> pendingNotifications_;
+	std::uint64_t nextSseSessionId_ = 1;
+	std::map<SseSessionId, std::vector<nlohmann::json>> sseSessions_;
 	mutable std::mutex inFlightMu_;
 	std::vector<CallContext*> inFlight_;
 };
