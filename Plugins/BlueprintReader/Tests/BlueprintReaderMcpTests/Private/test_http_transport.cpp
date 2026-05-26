@@ -153,3 +153,44 @@ TEST_CASE("HTTP: FormatResponse builds spec-compliant HTTP/1.1 response") {
 	CHECK(wire.find("Content-Length: 11\r\n") != std::string::npos);
 	CHECK(wire.find(R"({"ok":true})") != std::string::npos);
 }
+
+// Phase 15 — per-session SSE fan-out. Each SSE connection registers a
+// session; QueueNotification must copy to every session (no theft) AND
+// still feed the stdio queue. This drives the Server queue mechanism
+// directly (no socket/live editor needed), the same way Dispatch is
+// tested without a real pipe.
+TEST_CASE("HTTP: SSE sessions fan out notifications per-session") {
+	jsonrpc::Server server;
+	CHECK(server.SseSessionCount() == 0);
+
+	const auto a = server.RegisterSseSession();
+	const auto b = server.RegisterSseSession();
+	CHECK(server.SseSessionCount() == 2);
+	CHECK(a != b);
+
+	server.QueueNotification("notifications/editor/selection", {{"count", 3}});
+
+	// Both sessions receive their own copy — neither steals the other's.
+	auto na = server.TakeSseSessionNotifications(a);
+	auto nb = server.TakeSseSessionNotifications(b);
+	REQUIRE(na.size() == 1);
+	REQUIRE(nb.size() == 1);
+	CHECK(na[0]["method"] == "notifications/editor/selection");
+	CHECK(na[0]["params"]["count"] == 3);
+	CHECK(nb[0]["method"] == "notifications/editor/selection");
+
+	// Draining a session is idempotent (queue emptied).
+	CHECK(server.TakeSseSessionNotifications(a).empty());
+
+	// The stdio queue ALSO received it (fan-out is additive, so the
+	// newline-delimited stdio transport is unaffected).
+	CHECK(server.TakePendingNotifications().size() == 1);
+
+	// Unregister one session; a subsequent notification reaches only the
+	// remaining session, and the unknown id drains to empty.
+	server.UnregisterSseSession(b);
+	CHECK(server.SseSessionCount() == 1);
+	server.QueueNotification("notifications/editor/pie_started", {});
+	CHECK(server.TakeSseSessionNotifications(a).size() == 1);
+	CHECK(server.TakeSseSessionNotifications(b).empty());
+}
