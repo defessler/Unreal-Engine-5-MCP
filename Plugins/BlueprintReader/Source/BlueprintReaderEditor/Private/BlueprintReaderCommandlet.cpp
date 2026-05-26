@@ -7840,8 +7840,8 @@ namespace
 		Out->SetBoolField(TEXT("valid"), false);
 		Out->SetStringField(TEXT("reason"),
 			FString::Printf(
-				TEXT("%s UI state lives in transient Slate widgets not bridged ")
-				TEXT("out-of-process (v1 stub)"),
+				TEXT("%s state is not bridged out-of-process in this build ")
+				TEXT("(v1 stub; lives in transient editor/Slate state)"),
 				Feature.IsEmpty() ? TEXT("editor") : *Feature));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
