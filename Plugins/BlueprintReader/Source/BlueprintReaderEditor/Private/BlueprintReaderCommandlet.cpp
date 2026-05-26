@@ -7748,6 +7748,36 @@ namespace
 					Package ? Package->GetName() : FString());
 				GetEditorEventBuffer().Push(TEXT("package_saved"), P);
 			});
+
+		// Map/level opened.
+		FEditorDelegates::OnMapOpened.AddLambda(
+			[](const FString& Filename, bool /*bAsTemplate*/)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("filename"), Filename);
+				GetEditorEventBuffer().Push(TEXT("map_opened"), P);
+			});
+
+		// Asset lifecycle (removal/rename fire on user actions, not the
+		// initial scan, so they're not noisy like OnAssetAdded would be).
+		{
+			FAssetRegistryModule& ARM =
+				FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+			IAssetRegistry& AR = ARM.Get();
+			AR.OnAssetRemoved().AddLambda([](const FAssetData& Data)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("asset"), Data.GetObjectPathString());
+				GetEditorEventBuffer().Push(TEXT("asset_removed"), P);
+			});
+			AR.OnAssetRenamed().AddLambda([](const FAssetData& Data, const FString& OldName)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("asset"), Data.GetObjectPathString());
+				P->SetStringField(TEXT("old_name"), OldName);
+				GetEditorEventBuffer().Push(TEXT("asset_renamed"), P);
+			});
+		}
 	}
 
 	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
