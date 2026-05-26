@@ -8507,6 +8507,47 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			 "[editor] Texture paint mode state (selected texture/UV channel). "
 			 "v1 stub: texture-paint mode state is not bridged out-of-process "
 			 "— returns valid:false."},
+			// Phase 14 system-state / SCC tails. Demand-driven surfaces with
+			// no clean out-of-process API (or env-limited); v1 stubs.
+			{"get_cook_progress", "cook_progress",
+			 "[editor] In-editor cook progress. v1 stub: no in-editor cook "
+			 "session exists to report by default, and there's no clean "
+			 "progress API — returns valid:false."},
+			{"get_ddc_state", "ddc_state",
+			 "[editor] Derived Data Cache state/usage. v1 stub: the DDC "
+			 "interface exposes only get/put, no public usage-stats accessor "
+			 "in UE 5.7 — returns valid:false."},
+			{"get_lighting_build_progress", "lighting_build",
+			 "[editor] Static lighting build progress. v1 stub: no clean "
+			 "global lighting-build progress accessor — returns valid:false."},
+			{"set_active_cook_target", "set_cook_target",
+			 "[editor] Set the active cook target platforms. v1 stub: "
+			 "ITargetPlatformManager has no runtime setter (active platforms "
+			 "derive from the launch command line) — returns valid:false. Read "
+			 "the current set with get_active_cook_target."},
+			{"list_loaded_partition_cells", "partition_cells",
+			 "[editor] Loaded World Partition runtime cells. v1 stub: cell "
+			 "enumeration uses partly-internal WorldPartition runtime-hash "
+			 "APIs not yet wired — returns valid:false. (get_streaming_sources "
+			 "+ get_world_partition_state cover the queryable parts.)"},
+			{"list_changelists", "changelists",
+			 "[editor] Source-control changelists. v1 stub: changelists are "
+			 "Perforce-centric (ISourceControlProvider::GetChangelists returns "
+			 "empty for Git/None); a real enumeration is pending — returns "
+			 "valid:false."},
+			{"get_pending_changelist", "pending_changelist",
+			 "[editor] The default/pending source-control changelist. v1 stub: "
+			 "Perforce-centric (empty for Git/None) — returns valid:false."},
+			// Phase 17 plugin-backed surfaces — real state needs linking the
+			// respective editor plugin module; v1 stubs until then.
+			{"get_take_recorder_state", "take_recorder",
+			 "[editor] Take Recorder state (recording active, current take). "
+			 "v1 stub: a real implementation must link the TakeRecorder plugin "
+			 "module (UTakeRecorder::GetActiveRecorder) — returns valid:false."},
+			{"get_render_queue", "render_queue",
+			 "[editor] Movie Render Queue pending jobs. v1 stub: a real "
+			 "implementation must link the MovieRenderPipeline plugin module "
+			 "— returns valid:false."},
 		};
 		for (const auto& s : kUiStubs) {
 			ToolDescriptor d;
