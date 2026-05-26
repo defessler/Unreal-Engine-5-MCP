@@ -7830,6 +7830,43 @@ namespace
 					Evt.Property ? Evt.Property->GetName() : FString());
 				GetEditorEventBuffer().Push(TEXT("actor_property_changed"), P);
 			});
+
+		// Tier-C (debounced): viewport camera moves, gated to ~4Hz.
+		FEditorDelegates::OnEditorCameraMoved.AddLambda(
+			[](const FVector& Loc, const FRotator& Rot, ELevelViewportType, int32)
+			{
+				static double LastEmit = 0.0;
+				const double Now = FPlatformTime::Seconds();
+				if (Now - LastEmit < 0.25)
+				{
+					return;
+				}
+				LastEmit = Now;
+				auto P = MakeShared<FJsonObject>();
+				P->SetNumberField(TEXT("x"), Loc.X);
+				P->SetNumberField(TEXT("y"), Loc.Y);
+				P->SetNumberField(TEXT("z"), Loc.Z);
+				P->SetNumberField(TEXT("pitch"), Rot.Pitch);
+				P->SetNumberField(TEXT("yaw"), Rot.Yaw);
+				P->SetNumberField(TEXT("roll"), Rot.Roll);
+				GetEditorEventBuffer().Push(TEXT("camera_moved"), P);
+			});
+
+		// Tier-C (debounced): a package became dirty, gated to ~1/sec.
+		UPackage::PackageMarkedDirtyEvent.AddLambda(
+			[](UPackage* Pkg, bool /*bWasDirty*/)
+			{
+				static double LastEmit = 0.0;
+				const double Now = FPlatformTime::Seconds();
+				if (Now - LastEmit < 1.0)
+				{
+					return;
+				}
+				LastEmit = Now;
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("package"), Pkg ? Pkg->GetName() : FString());
+				GetEditorEventBuffer().Push(TEXT("dirty_packages_changed"), P);
+			});
 	}
 
 	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
