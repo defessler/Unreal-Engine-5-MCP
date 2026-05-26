@@ -8548,6 +8548,15 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			 "[editor] Movie Render Queue pending jobs. v1 stub: a real "
 			 "implementation must link the MovieRenderPipeline plugin module "
 			 "— returns valid:false."},
+			// Phase 16 ConfigSettings — reset-to-default. v1 stub.
+			{"reset_project_setting", "reset_project_setting",
+			 "[editor] Reset a project setting to its default. v1 stub: a "
+			 "correct factory-reset needs the editor details-panel's "
+			 "default-value resolution — a config property's constructor-set "
+			 "default is unrecoverable out-of-process after config load "
+			 "(RemoveKey+ReloadConfig only drops the persisted override, "
+			 "leaving the in-memory value unchanged). Use set_project_setting "
+			 "to assign explicit values; get/set/save round-trip works."},
 		};
 		for (const auto& s : kUiStubs) {
 			ToolDescriptor d;
