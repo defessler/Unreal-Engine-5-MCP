@@ -7778,6 +7778,25 @@ namespace
 				GetEditorEventBuffer().Push(TEXT("asset_renamed"), P);
 			});
 		}
+
+		// Actor lifecycle in the editor world (spawn / delete) — a top
+		// agentic signal. UEngine multicast delegates, populated by the
+		// editor engine.
+		if (IsValid(GEngine))
+		{
+			GEngine->OnLevelActorAdded().AddLambda([](AActor* Actor)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("actor"), Actor ? Actor->GetName() : FString());
+				GetEditorEventBuffer().Push(TEXT("actor_added"), P);
+			});
+			GEngine->OnLevelActorDeleted().AddLambda([](AActor* Actor)
+			{
+				auto P = MakeShared<FJsonObject>();
+				P->SetStringField(TEXT("actor"), Actor ? Actor->GetName() : FString());
+				GetEditorEventBuffer().Push(TEXT("actor_deleted"), P);
+			});
+		}
 	}
 
 	int32 RunGetEditorEventsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
