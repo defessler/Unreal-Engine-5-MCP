@@ -849,6 +849,9 @@ IBlueprintReader::WorkspaceLayoutResult AutoBlueprintReader::GetWorkspaceLayout(
 IBlueprintReader::TraceStateResult AutoBlueprintReader::GetTraceState() {
 	FORWARD(GetTraceState);
 }
+IBlueprintReader::UiStateStubResult AutoBlueprintReader::GetUiStateStub(std::string_view feature) {
+	FORWARD(GetUiStateStub, feature);
+}
 
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,

@@ -477,6 +477,7 @@ namespace
 		GetActiveCookTarget,
 		GetWorkspaceLayout,
 		GetTraceState,
+		GetUiStateStub,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -708,6 +709,7 @@ namespace
 		if (OpStr.Equals(TEXT("GetActiveCookTarget"), ESearchCase::IgnoreCase))    { OutOp = EOp::GetActiveCookTarget; return true; }
 		if (OpStr.Equals(TEXT("GetWorkspaceLayout"), ESearchCase::IgnoreCase))     { OutOp = EOp::GetWorkspaceLayout; return true; }
 		if (OpStr.Equals(TEXT("GetTraceState"), ESearchCase::IgnoreCase))         { OutOp = EOp::GetTraceState; return true; }
+		if (OpStr.Equals(TEXT("GetUiStateStub"), ESearchCase::IgnoreCase))        { OutOp = EOp::GetUiStateStub; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7823,6 +7825,27 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// Shared responder for editor UI-state surfaces (outliner expansion,
+	// details-panel filter, active toasts, status-bar text) that live in
+	// transient Slate widgets. No out-of-process bridge yet — returns
+	// valid:false with a per-feature reason. The tool surface + schema are
+	// the stable contract; a future in-editor Slate-introspection branch can
+	// fill a given feature in here.
+	int32 RunGetUiStateStubOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Feature;
+		FParse::Value(*Params, TEXT("Feature="), Feature);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("valid"), false);
+		Out->SetStringField(TEXT("reason"),
+			FString::Printf(
+				TEXT("%s UI state lives in transient Slate widgets not bridged ")
+				TEXT("out-of-process (v1 stub)"),
+				Feature.IsEmpty() ? TEXT("editor") : *Feature));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetSnappingSettingsOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -10315,6 +10338,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetActiveCookTarget,        &RunGetActiveCookTargetOp },
 		{ EOp::GetWorkspaceLayout,         &RunGetWorkspaceLayoutOp },
 		{ EOp::GetTraceState,              &RunGetTraceStateOp },
+		{ EOp::GetUiStateStub,             &RunGetUiStateStubOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

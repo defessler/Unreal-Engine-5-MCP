@@ -253,6 +253,7 @@ public:
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
 	TraceStateResult GetTraceState() override;
+	UiStateStubResult GetUiStateStub(std::string_view feature) override;
 
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the

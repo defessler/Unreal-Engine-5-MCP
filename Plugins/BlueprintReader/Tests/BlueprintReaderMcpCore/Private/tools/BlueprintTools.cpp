@@ -8456,6 +8456,57 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
+	// ----- Editor UI-state surfaces (Phase 14/17 — documented v1 stubs) ---
+	// These live entirely in transient Slate widgets with no out-of-process
+	// bridge today, so they return `valid:false` via the shared
+	// GetUiStateStub responder (same pattern as get_hover_target /
+	// get_isolate_mode). The tool name + output shape are the stable
+	// contract for when an in-editor Slate-introspection op fills them in.
+	{
+		struct UiStub { const char* name; const char* feature; const char* desc; };
+		static const UiStub kUiStubs[] = {
+			{"get_outliner_state", "outliner",
+			 "[editor] World Outliner UI state (search text, type filter, row "
+			 "expansion, columns). v1 stub: outliner state lives in transient "
+			 "Slate widgets not bridged out-of-process — returns valid:false."},
+			{"get_pinned_actors", "pinned_actors",
+			 "[editor] Actors pinned in the World Outliner. v1 stub: pin state "
+			 "is Slate-widget-local and not bridged out-of-process — returns "
+			 "valid:false."},
+			{"get_details_panel_state", "details_panel",
+			 "[editor] Details panel UI state (search filter, expanded "
+			 "categories, pinned properties). v1 stub: this is transient "
+			 "SDetailsView state not bridged out-of-process — returns "
+			 "valid:false. (Selected objects are available via "
+			 "get_selected_actors.)"},
+			{"get_status_bar_messages", "status_bar",
+			 "[editor] Active status-bar message text. v1 stub: the status bar "
+			 "API is push-only (no public getter) — returns valid:false."},
+			{"get_active_notifications", "notifications",
+			 "[editor] Active toast notifications (FSlateNotificationManager). "
+			 "v1 stub: the manager exposes no public enumeration of live "
+			 "notifications — returns valid:false."},
+		};
+		for (const auto& s : kUiStubs) {
+			ToolDescriptor d;
+			d.name = s.name;
+			d.description = s.desc;
+			d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+			d.output_schema = {
+				{"type","object"},
+				{"properties", {
+					{"valid",  {{"type","boolean"}}},
+					{"reason", {{"type","string"}}},
+				}},
+			};
+			const std::string feature = s.feature;
+			registry.Add(std::move(d), [&reader, feature](const nlohmann::json&) {
+				auto r = reader.GetUiStateStub(feature);
+				return nlohmann::json{{"valid", r.valid}, {"reason", r.reason}};
+			});
+		}
+	}
+
 	// ===== Niagara (Stage 4) ===============================================
 
 	{

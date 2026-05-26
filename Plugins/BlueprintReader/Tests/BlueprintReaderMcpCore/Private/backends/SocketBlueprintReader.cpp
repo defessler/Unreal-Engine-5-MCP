@@ -2865,6 +2865,17 @@ SocketBlueprintReader::GetTraceState() {
 	return out;
 }
 
+IBlueprintReader::UiStateStubResult
+SocketBlueprintReader::GetUiStateStub(std::string_view feature) {
+	auto j = RunOp({"-Op=GetUiStateStub", "-Feature=" + std::string(feature)});
+	UiStateStubResult out;
+	if (j.is_object()) {
+		out.valid  = j.value("valid", false);
+		out.reason = j.value("reason", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::LiveCodingResult
 SocketBlueprintReader::LiveCodingCompile() {
 	auto j = RunOp({"-Op=LiveCodingCompile"});

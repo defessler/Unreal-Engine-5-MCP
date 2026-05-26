@@ -4498,6 +4498,17 @@ CommandletBlueprintReader::GetTraceState() {
 	return out;
 }
 
+IBlueprintReader::UiStateStubResult
+CommandletBlueprintReader::GetUiStateStub(std::string_view feature) {
+	auto j = RunOp({L"-Op=GetUiStateStub", L"-Feature=" + Widen(feature)});
+	UiStateStubResult out;
+	if (j.is_object()) {
+		out.valid  = j.value("valid", false);
+		out.reason = j.value("reason", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::SelectionResult
 CommandletBlueprintReader::GetSelectedActors() {
 	auto j = RunOp({L"-Op=GetSelectedActors"});
