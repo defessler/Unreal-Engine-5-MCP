@@ -272,6 +272,7 @@ public:
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
 	TraceStateResult GetTraceState() override;
+	UiStateStubResult GetUiStateStub(std::string_view feature) override;
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;

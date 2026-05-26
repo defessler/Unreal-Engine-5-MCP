@@ -235,6 +235,7 @@ public:
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
 	TraceStateResult GetTraceState() override;
+	UiStateStubResult GetUiStateStub(std::string_view feature) override;
 
 	// ----- Material authoring ------------------------------------------
 	// Reads (list/read) pass through; writes (add expression, connect,

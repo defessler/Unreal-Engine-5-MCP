@@ -1430,6 +1430,21 @@ public:
 		throw BlueprintReaderError("GetTraceState not supported by this backend");
 	}
 
+	// Shared responder for editor UI-state surfaces that live entirely in
+	// transient Slate widgets (World Outliner expansion, Details-panel
+	// filter, active toast notifications, status-bar text, …). An
+	// out-of-process server can't read them today; the commandlet returns
+	// `valid:false` with a reason. Routed through the backend (not a fixed
+	// constant) so a future in-editor Slate-introspection op can fill a
+	// given `feature` in without changing the tool surface. Phase 14/17.
+	struct UiStateStubResult {
+		bool valid = false;
+		std::string reason;
+	};
+	virtual UiStateStubResult GetUiStateStub(std::string_view /*feature*/) {
+		throw BlueprintReaderError("GetUiStateStub not supported by this backend");
+	}
+
 	// ----- Stage 4: Niagara / Sequencer / GAS / AnimGraph ---------------
 
 	struct NiagaraEmitterHandleInfo {

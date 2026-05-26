@@ -936,6 +936,9 @@ IBlueprintReader::WorkspaceLayoutResult CachingBlueprintReader::GetWorkspaceLayo
 IBlueprintReader::TraceStateResult CachingBlueprintReader::GetTraceState() {
 	return inner_->GetTraceState();
 }
+IBlueprintReader::UiStateStubResult CachingBlueprintReader::GetUiStateStub(std::string_view feature) {
+	return inner_->GetUiStateStub(feature);
+}
 
 // ----- Material authoring (pass-through; writes invalidate the asset) ---
 

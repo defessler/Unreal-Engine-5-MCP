@@ -272,6 +272,7 @@ public:
 	CookTargetResult GetActiveCookTarget() override;
 	WorkspaceLayoutResult GetWorkspaceLayout() override;
 	TraceStateResult GetTraceState() override;
+	UiStateStubResult GetUiStateStub(std::string_view feature) override;
 
 	// ----- Material authoring (pass-through; ReadMaterial cacheable but
 	// not yet wired — punt until staleness is a problem) -----------------

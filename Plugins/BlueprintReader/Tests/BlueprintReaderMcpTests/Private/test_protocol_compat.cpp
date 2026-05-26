@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 229);
+	REQUIRE(spec.size() == 234);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -277,7 +277,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// get_workspace_layout (FGlobalTabmanager::PersistLayout).
 	// Re-baselined 2026-05-25 at 229 tools after +1 Phase 17:
 	// get_trace_state (FTraceAuxiliary).
-	constexpr uint64_t kCurrentToolsHash = 0xA0E46A4F680F149FULL;
+	// Re-baselined 2026-05-25 at 234 tools after +5 Phase 14/17 UI-state
+	// v1 stubs (outliner/pinned/details-panel/status-bar/notifications).
+	constexpr uint64_t kCurrentToolsHash = 0x4A0B25B3D0F25A04ULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

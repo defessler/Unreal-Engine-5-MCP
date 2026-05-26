@@ -617,6 +617,9 @@ IBlueprintReader::WorkspaceLayoutResult ReadOnlyBlueprintReader::GetWorkspaceLay
 IBlueprintReader::TraceStateResult ReadOnlyBlueprintReader::GetTraceState() {
 	return inner_->GetTraceState();
 }
+IBlueprintReader::UiStateStubResult ReadOnlyBlueprintReader::GetUiStateStub(std::string_view feature) {
+	return inner_->GetUiStateStub(feature);
+}
 
 // ----- Material authoring (reads pass through, writes reject) -----------
 
