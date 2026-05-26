@@ -14,7 +14,7 @@
 
 A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
-graphs, nodes, connections, K2 metadata — through 127 tools.
+graphs, nodes, connections, K2 metadata — through 249 tools.
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -30,6 +30,9 @@ graphs, nodes, connections, K2 metadata — through 127 tools.
   into Claude Code, Claude Desktop, GitHub Copilot (VS Code), and
   ChatGPT (with the bridge required for ChatGPT).
 - **[Usage](Usage)** — what your AI of choice can do once it's wired up.
+- **[Architecture](Architecture)** — UML of the whole system: server core,
+  the `IBlueprintReader` backend decorator stack, the BPIR pivot, both UE
+  plugin modules, and end-to-end call + event sequence diagrams.
 - **[Tool Reference](Tool-Reference)** — every tool, its inputs, what it returns.
 - **[BPIR](BPIR)** — the Blueprint Intermediate Representation schema
   that powers `decompile_function` / `transpile_function` /
