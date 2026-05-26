@@ -7719,6 +7719,13 @@ namespace
 					GetEditorEventBuffer().Push(TEXT("asset_opened"), P);
 				});
 			}
+
+			// Any Blueprint finished compiling (editor-wide signal) — highly
+			// relevant for a BP-focused server. No params on this delegate.
+			GEditor->OnBlueprintCompiled().AddLambda([]()
+			{
+				GetEditorEventBuffer().Push(TEXT("blueprint_compiled"), MakeShared<FJsonObject>());
+			});
 		}
 
 		FEditorDelegates::BeginPIE.AddLambda([](bool)
