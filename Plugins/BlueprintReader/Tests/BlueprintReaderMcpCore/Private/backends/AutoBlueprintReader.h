@@ -255,6 +255,98 @@ public:
 	TraceStateResult GetTraceState() override;
 	UiStateStubResult GetUiStateStub(std::string_view feature) override;
 
+	// ----- Full editor-action + per-asset-type op surface --------------
+	// AutoBlueprintReader is the default backend; an unoverridden virtual
+	// dispatches to IBlueprintReader's throwing default ("X not supported
+	// by this backend") instead of routing to live/commandlet. These were
+	// missing, so material / data-table / widget / actor / console / etc.
+	// tools failed on the default backend. Forward them like every other op.
+	AddAnimStateResult AddAnimState(std::string_view, std::string_view, std::string_view) override;
+	AddBTNodeResult AddBTNode(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	AddComponentResult AddComponent(std::string_view assetPath, std::string_view name, std::string_view componentClass, std::string_view parentName, std::string_view socket) override;
+	AddDataRowResult AddDataRow(std::string_view assetPath, std::string_view rowName, const nlohmann::json& values, bool overwrite) override;
+	AddGameplayTagResult AddGameplayTag(std::string_view, std::string_view) override;
+	AddMaterialExpressionResult AddMaterialExpression(std::string_view, std::string_view, int, int) override;
+	AddSequenceTrackResult AddSequenceTrack(std::string_view, std::string_view, std::string_view) override;
+	AddStateTreeStateResult AddStateTreeState(std::string_view, std::string_view, std::string_view) override;
+	AddWidgetResult AddWidget(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	AttachComponentResult AttachComponent(std::string_view assetPath, std::string_view name, std::string_view newParentName, std::string_view socket) override;
+	BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	BuildLightingResult BuildLighting(std::string_view quality) override;
+	CompileAnimBlueprintResult CompileAnimBlueprint(std::string_view) override;
+	CompileBehaviorTreeResult CompileBehaviorTree(std::string_view) override;
+	CompileMaterialResult CompileMaterial(std::string_view) override;
+	CompileStateTreeResult CompileStateTree(std::string_view) override;
+	CompileWidgetBlueprintResult CompileWidgetBlueprint(std::string_view) override;
+	ConnectMaterialResult ConnectMaterialExpressions(std::string_view, std::string_view, std::string_view, std::string_view, std::string_view) override;
+	ConsoleCommandResult ConsoleCommand(std::string_view command) override;
+	CookResult CookContent(std::string_view) override;
+	CreateDataAssetResult CreateDataAsset(std::string_view, std::string_view) override;
+	CreateFolderResult CreateFolder(std::string_view folderPath) override;
+	CreateNiagaraSystemResult CreateNiagaraSystem(std::string_view) override;
+	DeleteActorResult DeleteActor(std::string_view actorName) override;
+	DeleteAssetResult DeleteAsset(std::string_view assetPath, bool force) override;
+	FindClassResult FindClass(std::string_view) override;
+	FocusActorResult FocusActor(std::string_view) override;
+	CVarValue GetCVar(std::string_view name) override;
+	AssetGraphResult GetDependencies(std::string_view assetPath) override;
+	BPRJson GetEditorState() override;
+	AssetGraphResult GetReferencers(std::string_view assetPath) override;
+	SelectionResult GetSelectedActors() override;
+	StatGroupResult GetStats(std::string_view) override;
+	ClassInfo IntrospectClass(std::string_view) override;
+	std::vector<BPAssetSummary> ListAnimBlueprints(std::string_view) override;
+	std::vector<BPAssetSummary> ListBehaviorTrees(std::string_view) override;
+	std::vector<BPAssetSummary> ListDataAssets(std::string_view) override;
+	std::vector<BPAssetSummary> ListDataTables(std::string_view path) override;
+	std::vector<ClassFunctionInfo> ListFunctions(std::string_view) override;
+	GameplayTagListResult ListGameplayTags(std::string_view) override;
+	std::vector<BPAssetSummary> ListLevelSequences(std::string_view) override;
+	std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
+	std::vector<BPAssetSummary> ListNiagaraSystems(std::string_view) override;
+	std::vector<BPAssetSummary> ListStateTrees(std::string_view) override;
+	LiveCodingResult LiveCodingCompile() override;
+	MoveAssetResult MoveAsset(std::string_view sourcePath, std::string_view destPath) override;
+	CookResult PackageProject(std::string_view, std::string_view) override;
+	PieResult PieStart(std::string_view mode) override;
+	PieResult PieStop() override;
+	AbilitySetInfo ReadAbilitySet(std::string_view) override;
+	AnimBlueprintInfo ReadAnimBlueprint(std::string_view) override;
+	BehaviorTreeInfo ReadBehaviorTree(std::string_view) override;
+	ConfigReadResult ReadConfigValue(std::string_view section, std::string_view key, std::string_view file) override;
+	DataAssetInfo ReadDataAsset(std::string_view) override;
+	DataTableInfo ReadDataTable(std::string_view assetPath) override;
+	LevelSequenceInfo ReadLevelSequence(std::string_view) override;
+	MaterialInfo ReadMaterial(std::string_view) override;
+	NiagaraSystemInfo ReadNiagaraSystem(std::string_view) override;
+	OutputLogResult ReadOutputLog(int limit, std::string_view minSeverity) override;
+	StateTreeInfo ReadStateTree(std::string_view) override;
+	WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
+	RemoveComponentResult RemoveComponent(std::string_view assetPath, std::string_view name) override;
+	AutomationRunResult RunAutomationTests(std::string_view pattern) override;
+	SaveAllResult SaveAll(bool dirtyOnly) override;
+	void SetActorTransform(std::string_view actorName, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) override;
+	SetBTNodePropertyResult SetBTNodeProperty(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	SetCameraResult SetCameraTransform(double, double, double, double, double, double) override;
+	SetComponentPropertyResult SetComponentProperty(std::string_view assetPath, std::string_view componentName, std::string_view propertyName, std::string_view value) override;
+	ConfigWriteResult SetConfigValue(std::string_view section, std::string_view key, std::string_view value, std::string_view file) override;
+	CVarValue SetCVar(std::string_view name, std::string_view value) override;
+	SetDataAssetPropertyResult SetDataAssetProperty(std::string_view, std::string_view, std::string_view) override;
+	SetDataRowValueResult SetDataRowValue(std::string_view assetPath, std::string_view rowName, std::string_view fieldName, std::string_view value) override;
+	SetMIParameterResult SetMaterialInstanceParameter(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	SetMaterialParameterResult SetMaterialParameter(std::string_view, std::string_view, std::string_view) override;
+	SetNiagaraParameterResult SetNiagaraParameter(std::string_view, std::string_view, std::string_view) override;
+	SelectionResult SetSelection(const std::vector<std::string>& actorNames, bool replace) override;
+	SetSequencePlaybackRangeResult SetSequencePlaybackRange(std::string_view, double, double) override;
+	SetShowFlagResult SetShowFlag(std::string_view, bool) override;
+	SetStateTreeTransitionResult SetStateTreeTransition(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	SpawnActorResult SpawnActor(std::string_view classPath, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) override;
+	StartProfileResult StartProfile(std::string_view) override;
+	StopProfileResult StopProfile() override;
+	ScreenshotResult TakeScreenshot(std::string_view, int, int) override;
+	ViewportScreenshotResult TakeViewportScreenshot(std::string_view) override;
+
 	// Test/diagnostic accessor: which backend would the next call use?
 	// Returns "live" or "commandlet". Forces a fresh probe if the
 	// cache has expired.

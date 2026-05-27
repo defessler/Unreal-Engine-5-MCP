@@ -266,3 +266,50 @@ TEST_CASE("Auto: live transport failure mid-op falls back to commandlet (no stra
 	CHECK_FALSE(surfacedTransport);
 	CHECK(fellBack);
 }
+
+TEST_CASE("Auto: editor-action + asset-type ops forward (not base-class 'not supported')") {
+	// Regression: AutoBlueprintReader (the default backend) was missing
+	// overrides for the editor-action and per-asset-type op families —
+	// material, data-table, widget, behavior-tree, actor, console,
+	// profiling, cook, config, etc. An unoverridden virtual dispatches to
+	// IBlueprintReader's *throwing default* ("X not supported by this
+	// backend") instead of routing to live/commandlet, so those tools failed
+	// on the default backend even though commandlet/live implement them.
+	//
+	// With no handshake file the reader routes to a synthetic commandlet
+	// that can't spawn a real editor — so each call still throws, but with a
+	// transport/spawn error, NOT the base-class "not supported" string. That
+	// difference is exactly what proves the override forwards instead of
+	// hitting the throwing default.
+	TempProject tp;
+	bpr::backends::AutoBlueprintReader reader(MakeAutoCfg(tp));
+	REQUIRE(reader.SelectBackendForTesting() == "commandlet");
+
+	auto isNotSupported = [](const std::exception& e) {
+		return std::string(e.what()).find("not supported by this backend")
+			   != std::string::npos;
+	};
+	auto forwards = [&](const char* op, auto&& call) {
+		INFO("op forwarded to backend (not base-class throw): " << op);
+		try {
+			call();
+			// A synthetic commandlet can't succeed; reaching here still means
+			// the call was dispatched rather than hitting the throwing default.
+		} catch (const std::exception& e) {
+			CHECK_FALSE(isNotSupported(e));
+		}
+	};
+
+	// The two ops the bug was reported against, plus representatives of each
+	// previously-missing family (asset-type read/write, actor, console,
+	// editor-state, config).
+	forwards("read_material",           [&] { reader.ReadMaterial("/Game/M"); });
+	forwards("add_material_expression", [&] { reader.AddMaterialExpression("/Game/M", "MaterialExpressionConstant3Vector", 0, 0); });
+	forwards("list_materials",          [&] { reader.ListMaterials("/Game"); });
+	forwards("read_data_table",         [&] { reader.ReadDataTable("/Game/DT"); });
+	forwards("add_widget",              [&] { reader.AddWidget("/Game/WBP", "Root", "TextBlock", "Label"); });
+	forwards("spawn_actor",             [&] { reader.SpawnActor("/Game/BP_A", 0, 0, 0, 0, 0, 0, 1, 1, 1); });
+	forwards("console_command",         [&] { reader.ConsoleCommand("stat fps"); });
+	forwards("get_editor_state",        [&] { reader.GetEditorState(); });
+	forwards("read_config_value",       [&] { reader.ReadConfigValue("/Script/Engine.Engine", "bSmoothFrameRate", "Engine"); });
+}

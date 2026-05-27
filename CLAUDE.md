@@ -321,7 +321,7 @@ output changed.
 
 ## Adding a new tool
 
-The pattern is consistent across all 127 tools:
+The pattern is consistent across all 249 tools:
 
 1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
    a `ParseOp` entry, a dispatch line in `RunOneOp`, and a
@@ -332,10 +332,29 @@ The pattern is consistent across all 127 tools:
 3. **MockBlueprintReader**: throw `BlueprintReaderError("...mock backend
    is read-only...")` for write tools, or hard-code from fixtures for
    read tools.
-4. **CommandletBlueprintReader / LiveBlueprintReader**: serialize args
-   + call `RunOp`. AutoBlueprintReader's forwarders are macro-driven
-   and pick this up automatically. Skip empty optional flags (FParse
-   caveat above).
+4. **Backends + decorators** — every layer of the
+   `ReadOnly → Caching → Auto → (Socket | Commandlet | Mock)` chain must
+   handle the new method, or the **default `auto` backend** dispatches to
+   `IBlueprintReader`'s *throwing default* (`"X not supported by this
+   backend"`) even though a real backend implements it. There is **no
+   compile-time guard** and **no auto-generation** — each is a
+   hand-written `override`:
+   - **CommandletBlueprintReader + SocketBlueprintReader** (the
+     `commandlet` / `live` backends): serialize args + call `RunOp`.
+     Skip empty optional flags (FParse caveat above).
+   - **AutoBlueprintReader**: one `override` whose body is
+     `FORWARD(Method, args)` (or `FORWARD_VOID` for `void` returns).
+   - **CachingBlueprintReader**: pass-through `return inner_->Method(...)`
+     for reads/live ops; forward + `InvalidateAsset(path)` for `.uasset`
+     writes.
+   - **ReadOnlyBlueprintReader**: pass-through for reads; `Reject("tool_
+     name")` for `.uasset` / persistent-settings writes.
+
+   Spot-check after adding (each must be ≥ 1):
+   `grep -c "AutoBlueprintReader::<Method>" AutoBlueprintReader.cpp`
+   (likewise `Caching`/`ReadOnly`). Skipping this is what left material /
+   data-table / widget / actor / console / etc. throwing "not supported"
+   on the default backend despite working on raw commandlet/live.
 5. **`BlueprintTools.cpp`**: register the tool with its input schema
    and a handler that pulls args from the JSON and calls the
    `IBlueprintReader` method.

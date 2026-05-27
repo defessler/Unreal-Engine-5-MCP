@@ -853,6 +853,267 @@ IBlueprintReader::UiStateStubResult AutoBlueprintReader::GetUiStateStub(std::str
 	FORWARD(GetUiStateStub, feature);
 }
 
+// ----- Full editor-action + per-asset-type op surface ---------------------
+// These forwarders were missing; without them the default "auto" backend
+// hit IBlueprintReader's throwing defaults for every material / data-table /
+// widget / behavior-tree / actor / console / profiling / cook / config op.
+
+IBlueprintReader::AddAnimStateResult AutoBlueprintReader::AddAnimState(std::string_view assetPath, std::string_view stateMachine, std::string_view stateName) {
+	FORWARD(AddAnimState, assetPath, stateMachine, stateName);
+}
+IBlueprintReader::AddBTNodeResult AutoBlueprintReader::AddBTNode(std::string_view assetPath, std::string_view parentNodeId, std::string_view nodeKind, std::string_view nodeClass) {
+	FORWARD(AddBTNode, assetPath, parentNodeId, nodeKind, nodeClass);
+}
+IBlueprintReader::AddComponentResult AutoBlueprintReader::AddComponent(std::string_view assetPath, std::string_view name, std::string_view componentClass, std::string_view parentName, std::string_view socket) {
+	FORWARD(AddComponent, assetPath, name, componentClass, parentName, socket);
+}
+IBlueprintReader::AddDataRowResult AutoBlueprintReader::AddDataRow(std::string_view assetPath, std::string_view rowName, const nlohmann::json& values, bool overwrite) {
+	FORWARD(AddDataRow, assetPath, rowName, values, overwrite);
+}
+IBlueprintReader::AddGameplayTagResult AutoBlueprintReader::AddGameplayTag(std::string_view tagName, std::string_view comment) {
+	FORWARD(AddGameplayTag, tagName, comment);
+}
+IBlueprintReader::AddMaterialExpressionResult AutoBlueprintReader::AddMaterialExpression(std::string_view assetPath, std::string_view expressionClass, int x, int y) {
+	FORWARD(AddMaterialExpression, assetPath, expressionClass, x, y);
+}
+IBlueprintReader::AddSequenceTrackResult AutoBlueprintReader::AddSequenceTrack(std::string_view assetPath, std::string_view trackClass, std::string_view trackName) {
+	FORWARD(AddSequenceTrack, assetPath, trackClass, trackName);
+}
+IBlueprintReader::AddStateTreeStateResult AutoBlueprintReader::AddStateTreeState(std::string_view assetPath, std::string_view parentStateId, std::string_view name) {
+	FORWARD(AddStateTreeState, assetPath, parentStateId, name);
+}
+IBlueprintReader::AddWidgetResult AutoBlueprintReader::AddWidget(std::string_view assetPath, std::string_view parentName, std::string_view widgetClass, std::string_view name) {
+	FORWARD(AddWidget, assetPath, parentName, widgetClass, name);
+}
+IBlueprintReader::AttachComponentResult AutoBlueprintReader::AttachComponent(std::string_view assetPath, std::string_view name, std::string_view newParentName, std::string_view socket) {
+	FORWARD(AttachComponent, assetPath, name, newParentName, socket);
+}
+IBlueprintReader::BindWidgetEventResult AutoBlueprintReader::BindWidgetEvent(std::string_view assetPath, std::string_view widgetName, std::string_view eventName, std::string_view handlerFunction) {
+	FORWARD(BindWidgetEvent, assetPath, widgetName, eventName, handlerFunction);
+}
+IBlueprintReader::BuildLightingResult AutoBlueprintReader::BuildLighting(std::string_view quality) {
+	FORWARD(BuildLighting, quality);
+}
+IBlueprintReader::CompileAnimBlueprintResult AutoBlueprintReader::CompileAnimBlueprint(std::string_view assetPath) {
+	FORWARD(CompileAnimBlueprint, assetPath);
+}
+IBlueprintReader::CompileBehaviorTreeResult AutoBlueprintReader::CompileBehaviorTree(std::string_view assetPath) {
+	FORWARD(CompileBehaviorTree, assetPath);
+}
+IBlueprintReader::CompileMaterialResult AutoBlueprintReader::CompileMaterial(std::string_view assetPath) {
+	FORWARD(CompileMaterial, assetPath);
+}
+IBlueprintReader::CompileStateTreeResult AutoBlueprintReader::CompileStateTree(std::string_view assetPath) {
+	FORWARD(CompileStateTree, assetPath);
+}
+IBlueprintReader::CompileWidgetBlueprintResult AutoBlueprintReader::CompileWidgetBlueprint(std::string_view assetPath) {
+	FORWARD(CompileWidgetBlueprint, assetPath);
+}
+IBlueprintReader::ConnectMaterialResult AutoBlueprintReader::ConnectMaterialExpressions(std::string_view assetPath, std::string_view fromNodeId, std::string_view fromPin, std::string_view toNodeId, std::string_view toPin) {
+	FORWARD(ConnectMaterialExpressions, assetPath, fromNodeId, fromPin, toNodeId, toPin);
+}
+IBlueprintReader::ConsoleCommandResult AutoBlueprintReader::ConsoleCommand(std::string_view command) {
+	FORWARD(ConsoleCommand, command);
+}
+IBlueprintReader::CookResult AutoBlueprintReader::CookContent(std::string_view platform) {
+	FORWARD(CookContent, platform);
+}
+IBlueprintReader::CreateDataAssetResult AutoBlueprintReader::CreateDataAsset(std::string_view assetPath, std::string_view className) {
+	FORWARD(CreateDataAsset, assetPath, className);
+}
+IBlueprintReader::CreateFolderResult AutoBlueprintReader::CreateFolder(std::string_view folderPath) {
+	FORWARD(CreateFolder, folderPath);
+}
+IBlueprintReader::CreateNiagaraSystemResult AutoBlueprintReader::CreateNiagaraSystem(std::string_view assetPath) {
+	FORWARD(CreateNiagaraSystem, assetPath);
+}
+IBlueprintReader::DeleteActorResult AutoBlueprintReader::DeleteActor(std::string_view actorName) {
+	FORWARD(DeleteActor, actorName);
+}
+IBlueprintReader::DeleteAssetResult AutoBlueprintReader::DeleteAsset(std::string_view assetPath, bool force) {
+	FORWARD(DeleteAsset, assetPath, force);
+}
+IBlueprintReader::FindClassResult AutoBlueprintReader::FindClass(std::string_view query) {
+	FORWARD(FindClass, query);
+}
+IBlueprintReader::FocusActorResult AutoBlueprintReader::FocusActor(std::string_view actorName) {
+	FORWARD(FocusActor, actorName);
+}
+IBlueprintReader::CVarValue AutoBlueprintReader::GetCVar(std::string_view name) {
+	FORWARD(GetCVar, name);
+}
+IBlueprintReader::AssetGraphResult AutoBlueprintReader::GetDependencies(std::string_view assetPath) {
+	FORWARD(GetDependencies, assetPath);
+}
+BPRJson AutoBlueprintReader::GetEditorState() {
+	FORWARD(GetEditorState);
+}
+IBlueprintReader::AssetGraphResult AutoBlueprintReader::GetReferencers(std::string_view assetPath) {
+	FORWARD(GetReferencers, assetPath);
+}
+IBlueprintReader::SelectionResult AutoBlueprintReader::GetSelectedActors() {
+	FORWARD(GetSelectedActors);
+}
+IBlueprintReader::StatGroupResult AutoBlueprintReader::GetStats(std::string_view group) {
+	FORWARD(GetStats, group);
+}
+IBlueprintReader::ClassInfo AutoBlueprintReader::IntrospectClass(std::string_view className) {
+	FORWARD(IntrospectClass, className);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListAnimBlueprints(std::string_view path) {
+	FORWARD(ListAnimBlueprints, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListBehaviorTrees(std::string_view path) {
+	FORWARD(ListBehaviorTrees, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListDataAssets(std::string_view path) {
+	FORWARD(ListDataAssets, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListDataTables(std::string_view path) {
+	FORWARD(ListDataTables, path);
+}
+std::vector<IBlueprintReader::ClassFunctionInfo> AutoBlueprintReader::ListFunctions(std::string_view className) {
+	FORWARD(ListFunctions, className);
+}
+IBlueprintReader::GameplayTagListResult AutoBlueprintReader::ListGameplayTags(std::string_view filter) {
+	FORWARD(ListGameplayTags, filter);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListLevelSequences(std::string_view path) {
+	FORWARD(ListLevelSequences, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListMaterials(std::string_view path) {
+	FORWARD(ListMaterials, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListNiagaraSystems(std::string_view path) {
+	FORWARD(ListNiagaraSystems, path);
+}
+std::vector<BPAssetSummary> AutoBlueprintReader::ListStateTrees(std::string_view path) {
+	FORWARD(ListStateTrees, path);
+}
+IBlueprintReader::LiveCodingResult AutoBlueprintReader::LiveCodingCompile() {
+	FORWARD(LiveCodingCompile);
+}
+IBlueprintReader::MoveAssetResult AutoBlueprintReader::MoveAsset(std::string_view sourcePath, std::string_view destPath) {
+	FORWARD(MoveAsset, sourcePath, destPath);
+}
+IBlueprintReader::CookResult AutoBlueprintReader::PackageProject(std::string_view platform, std::string_view outputDir) {
+	FORWARD(PackageProject, platform, outputDir);
+}
+IBlueprintReader::PieResult AutoBlueprintReader::PieStart(std::string_view mode) {
+	FORWARD(PieStart, mode);
+}
+IBlueprintReader::PieResult AutoBlueprintReader::PieStop() {
+	FORWARD(PieStop);
+}
+IBlueprintReader::AbilitySetInfo AutoBlueprintReader::ReadAbilitySet(std::string_view assetPath) {
+	FORWARD(ReadAbilitySet, assetPath);
+}
+IBlueprintReader::AnimBlueprintInfo AutoBlueprintReader::ReadAnimBlueprint(std::string_view assetPath) {
+	FORWARD(ReadAnimBlueprint, assetPath);
+}
+IBlueprintReader::BehaviorTreeInfo AutoBlueprintReader::ReadBehaviorTree(std::string_view assetPath) {
+	FORWARD(ReadBehaviorTree, assetPath);
+}
+IBlueprintReader::ConfigReadResult AutoBlueprintReader::ReadConfigValue(std::string_view section, std::string_view key, std::string_view file) {
+	FORWARD(ReadConfigValue, section, key, file);
+}
+IBlueprintReader::DataAssetInfo AutoBlueprintReader::ReadDataAsset(std::string_view assetPath) {
+	FORWARD(ReadDataAsset, assetPath);
+}
+IBlueprintReader::DataTableInfo AutoBlueprintReader::ReadDataTable(std::string_view assetPath) {
+	FORWARD(ReadDataTable, assetPath);
+}
+IBlueprintReader::LevelSequenceInfo AutoBlueprintReader::ReadLevelSequence(std::string_view assetPath) {
+	FORWARD(ReadLevelSequence, assetPath);
+}
+IBlueprintReader::MaterialInfo AutoBlueprintReader::ReadMaterial(std::string_view assetPath) {
+	FORWARD(ReadMaterial, assetPath);
+}
+IBlueprintReader::NiagaraSystemInfo AutoBlueprintReader::ReadNiagaraSystem(std::string_view assetPath) {
+	FORWARD(ReadNiagaraSystem, assetPath);
+}
+IBlueprintReader::OutputLogResult AutoBlueprintReader::ReadOutputLog(int limit, std::string_view minSeverity) {
+	FORWARD(ReadOutputLog, limit, minSeverity);
+}
+IBlueprintReader::StateTreeInfo AutoBlueprintReader::ReadStateTree(std::string_view assetPath) {
+	FORWARD(ReadStateTree, assetPath);
+}
+IBlueprintReader::WidgetBlueprintInfo AutoBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
+	FORWARD(ReadWidgetBlueprint, assetPath);
+}
+IBlueprintReader::RemoveComponentResult AutoBlueprintReader::RemoveComponent(std::string_view assetPath, std::string_view name) {
+	FORWARD(RemoveComponent, assetPath, name);
+}
+IBlueprintReader::AutomationRunResult AutoBlueprintReader::RunAutomationTests(std::string_view pattern) {
+	FORWARD(RunAutomationTests, pattern);
+}
+IBlueprintReader::SaveAllResult AutoBlueprintReader::SaveAll(bool dirtyOnly) {
+	FORWARD(SaveAll, dirtyOnly);
+}
+void AutoBlueprintReader::SetActorTransform(std::string_view actorName, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) {
+	FORWARD_VOID(SetActorTransform, actorName, locX, locY, locZ, rotPitch, rotYaw, rotRoll, scaleX, scaleY, scaleZ);
+}
+IBlueprintReader::SetBTNodePropertyResult AutoBlueprintReader::SetBTNodeProperty(std::string_view assetPath, std::string_view nodeId, std::string_view propertyName, std::string_view value) {
+	FORWARD(SetBTNodeProperty, assetPath, nodeId, propertyName, value);
+}
+IBlueprintReader::SetCameraResult AutoBlueprintReader::SetCameraTransform(double lx, double ly, double lz, double rp, double ry, double rr) {
+	FORWARD(SetCameraTransform, lx, ly, lz, rp, ry, rr);
+}
+IBlueprintReader::SetComponentPropertyResult AutoBlueprintReader::SetComponentProperty(std::string_view assetPath, std::string_view componentName, std::string_view propertyName, std::string_view value) {
+	FORWARD(SetComponentProperty, assetPath, componentName, propertyName, value);
+}
+IBlueprintReader::ConfigWriteResult AutoBlueprintReader::SetConfigValue(std::string_view section, std::string_view key, std::string_view value, std::string_view file) {
+	FORWARD(SetConfigValue, section, key, value, file);
+}
+IBlueprintReader::CVarValue AutoBlueprintReader::SetCVar(std::string_view name, std::string_view value) {
+	FORWARD(SetCVar, name, value);
+}
+IBlueprintReader::SetDataAssetPropertyResult AutoBlueprintReader::SetDataAssetProperty(std::string_view assetPath, std::string_view propertyName, std::string_view value) {
+	FORWARD(SetDataAssetProperty, assetPath, propertyName, value);
+}
+IBlueprintReader::SetDataRowValueResult AutoBlueprintReader::SetDataRowValue(std::string_view assetPath, std::string_view rowName, std::string_view fieldName, std::string_view value) {
+	FORWARD(SetDataRowValue, assetPath, rowName, fieldName, value);
+}
+IBlueprintReader::SetMIParameterResult AutoBlueprintReader::SetMaterialInstanceParameter(std::string_view assetPath, std::string_view parameterName, std::string_view paramType, std::string_view value) {
+	FORWARD(SetMaterialInstanceParameter, assetPath, parameterName, paramType, value);
+}
+IBlueprintReader::SetMaterialParameterResult AutoBlueprintReader::SetMaterialParameter(std::string_view assetPath, std::string_view parameterName, std::string_view value) {
+	FORWARD(SetMaterialParameter, assetPath, parameterName, value);
+}
+IBlueprintReader::SetNiagaraParameterResult AutoBlueprintReader::SetNiagaraParameter(std::string_view assetPath, std::string_view parameterName, std::string_view value) {
+	FORWARD(SetNiagaraParameter, assetPath, parameterName, value);
+}
+IBlueprintReader::SelectionResult AutoBlueprintReader::SetSelection(const std::vector<std::string>& actorNames, bool replace) {
+	FORWARD(SetSelection, actorNames, replace);
+}
+IBlueprintReader::SetSequencePlaybackRangeResult AutoBlueprintReader::SetSequencePlaybackRange(std::string_view assetPath, double startSeconds, double endSeconds) {
+	FORWARD(SetSequencePlaybackRange, assetPath, startSeconds, endSeconds);
+}
+IBlueprintReader::SetShowFlagResult AutoBlueprintReader::SetShowFlag(std::string_view flagName, bool enabled) {
+	FORWARD(SetShowFlag, flagName, enabled);
+}
+IBlueprintReader::SetStateTreeTransitionResult AutoBlueprintReader::SetStateTreeTransition(std::string_view assetPath, std::string_view fromStateId, std::string_view toStateId, std::string_view trigger) {
+	FORWARD(SetStateTreeTransition, assetPath, fromStateId, toStateId, trigger);
+}
+IBlueprintReader::SetWidgetPropertyResult AutoBlueprintReader::SetWidgetProperty(std::string_view assetPath, std::string_view widgetName, std::string_view propertyName, std::string_view value) {
+	FORWARD(SetWidgetProperty, assetPath, widgetName, propertyName, value);
+}
+IBlueprintReader::SpawnActorResult AutoBlueprintReader::SpawnActor(std::string_view classPath, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) {
+	FORWARD(SpawnActor, classPath, locX, locY, locZ, rotPitch, rotYaw, rotRoll, scaleX, scaleY, scaleZ);
+}
+IBlueprintReader::StartProfileResult AutoBlueprintReader::StartProfile(std::string_view mode) {
+	FORWARD(StartProfile, mode);
+}
+IBlueprintReader::StopProfileResult AutoBlueprintReader::StopProfile() {
+	FORWARD(StopProfile);
+}
+IBlueprintReader::ScreenshotResult AutoBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int height) {
+	FORWARD(TakeScreenshot, destPath, width, height);
+}
+IBlueprintReader::ViewportScreenshotResult AutoBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
+	FORWARD(TakeViewportScreenshot, destPath);
+}
+
 nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	// Always route to commandlet — Live has no daemon to shut down,
 	// and the user calling shutdown_daemon explicitly wants to release

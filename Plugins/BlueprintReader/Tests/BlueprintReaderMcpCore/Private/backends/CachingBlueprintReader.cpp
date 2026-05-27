@@ -1210,6 +1210,25 @@ CachingBlueprintReader::CompileAnimBlueprint(std::string_view a) {
 	return out;
 }
 
+// ----- Editor state / asset-graph / config (previously missing) -----------
+// Pass-through: live editor state is uncacheable; asset-graph + config reads
+// and build-lighting do not go through the .uasset mtime cache.
+BPRJson CachingBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
+IBlueprintReader::AssetGraphResult
+CachingBlueprintReader::GetReferencers(std::string_view a) { return inner_->GetReferencers(a); }
+IBlueprintReader::AssetGraphResult
+CachingBlueprintReader::GetDependencies(std::string_view a) { return inner_->GetDependencies(a); }
+IBlueprintReader::ConfigReadResult
+CachingBlueprintReader::ReadConfigValue(std::string_view s, std::string_view k, std::string_view f) {
+	return inner_->ReadConfigValue(s, k, f);
+}
+IBlueprintReader::ConfigWriteResult
+CachingBlueprintReader::SetConfigValue(std::string_view s, std::string_view k, std::string_view v, std::string_view f) {
+	return inner_->SetConfigValue(s, k, v, f);
+}
+IBlueprintReader::BuildLightingResult
+CachingBlueprintReader::BuildLighting(std::string_view q) { return inner_->BuildLighting(q); }
+
 // ============================================================================
 // Factory helper
 // ============================================================================
