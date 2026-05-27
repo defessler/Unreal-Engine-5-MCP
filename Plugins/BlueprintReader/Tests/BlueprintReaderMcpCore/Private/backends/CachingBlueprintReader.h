@@ -378,6 +378,18 @@ public:
 
 	// Forward to inner. Caching doesn't change which tools are
 	// reachable, only how fast they respond.
+	// ----- Editor state / asset-graph / config (previously missing) -----
+	// Pass-through forwarders that were absent, so get_editor_state /
+	// get_referencers / get_dependencies / read+set_config_value /
+	// build_lighting threw "not supported by this backend" on any chain
+	// including this decorator.
+	BPRJson GetEditorState() override;
+	AssetGraphResult GetReferencers(std::string_view) override;
+	AssetGraphResult GetDependencies(std::string_view) override;
+	ConfigReadResult ReadConfigValue(std::string_view, std::string_view, std::string_view) override;
+	ConfigWriteResult SetConfigValue(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	BuildLightingResult BuildLighting(std::string_view) override;
+
 	std::vector<std::string> UnsupportedTools() const override {
 		return inner_->UnsupportedTools();
 	}

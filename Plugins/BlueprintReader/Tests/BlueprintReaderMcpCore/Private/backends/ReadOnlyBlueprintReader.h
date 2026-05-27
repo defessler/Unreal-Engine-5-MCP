@@ -347,6 +347,17 @@ public:
 	// the unsupported-tools list is inner's responsibility. Without
 	// this forward, a ReadOnly(Mock) chain would advertise the mock's
 	// long list of unsupported tools as if they worked.
+	// ----- Editor state / asset-graph / config (previously missing) -----
+	// Reads pass through; set_config_value rejects (persistent settings
+	// write, like set_cvar); build_lighting passes through (build artifact,
+	// not a .uasset edit — matches cook/package).
+	BPRJson GetEditorState() override;
+	AssetGraphResult GetReferencers(std::string_view) override;
+	AssetGraphResult GetDependencies(std::string_view) override;
+	ConfigReadResult ReadConfigValue(std::string_view, std::string_view, std::string_view) override;
+	ConfigWriteResult SetConfigValue(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	BuildLightingResult BuildLighting(std::string_view) override;
+
 	std::vector<std::string> UnsupportedTools() const override {
 		return inner_->UnsupportedTools();
 	}

@@ -837,6 +837,24 @@ ReadOnlyBlueprintReader::CompileAnimBlueprint(std::string_view) {
 	Reject("compile_anim_blueprint");
 }
 
+// ----- Editor state / asset-graph / config (previously missing) -----------
+// Reads pass through; set_config_value rejects (persistent settings write).
+BPRJson ReadOnlyBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
+IBlueprintReader::AssetGraphResult
+ReadOnlyBlueprintReader::GetReferencers(std::string_view a) { return inner_->GetReferencers(a); }
+IBlueprintReader::AssetGraphResult
+ReadOnlyBlueprintReader::GetDependencies(std::string_view a) { return inner_->GetDependencies(a); }
+IBlueprintReader::ConfigReadResult
+ReadOnlyBlueprintReader::ReadConfigValue(std::string_view s, std::string_view k, std::string_view f) {
+	return inner_->ReadConfigValue(s, k, f);
+}
+IBlueprintReader::ConfigWriteResult
+ReadOnlyBlueprintReader::SetConfigValue(std::string_view, std::string_view, std::string_view, std::string_view) {
+	Reject("set_config_value");
+}
+IBlueprintReader::BuildLightingResult
+ReadOnlyBlueprintReader::BuildLighting(std::string_view q) { return inner_->BuildLighting(q); }
+
 // ----- factory -----------------------------------------------------------
 std::unique_ptr<IBlueprintReader>
 MaybeWrapReadOnly(std::unique_ptr<IBlueprintReader> inner, bool readOnly) {
