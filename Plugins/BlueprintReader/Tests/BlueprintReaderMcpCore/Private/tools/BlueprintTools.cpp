@@ -1194,8 +1194,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.description =
 			"[blueprint] Fetch a Blueprint function: signature (inputs/outputs), locals, "
 			"and body graph. Use `fields` to project (e.g. "
-			"[\"inputs[].name\", \"outputs[].name\"] for just the signature), "
-			"or `summary: true` to drop per-node pin arrays and the graph's "
+			"[\"inputs[].name\", \"outputs[].name\"] for just the signature). "
+			"The body graph is under the `graph` key — use `graph.nodes[].id` "
+			"(not `body.nodes[].id`) in `fields` paths. "
+			"Use `summary: true` to drop per-node pin arrays and the graph's "
 			"connections list.";
 		d.input_schema = {
 			{"type", "object"},

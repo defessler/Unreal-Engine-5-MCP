@@ -6139,6 +6139,16 @@ namespace
 
 	int32 RunOpenAssetEditorOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
+		// Opening an editor tab requires a Slate application (live editor).
+		// In commandlet mode FSlateApplication is never initialized, so
+		// UAssetDefinition_Blueprint::OpenAssets asserts on SDockTab ctor.
+		// Return a clean error rather than crashing the daemon.
+		if (IsRunningCommandlet())
+		{
+			return EmitError(OutputPath, bPretty, 1,
+				TEXT("open_asset_editor requires a running live editor; "
+				     "cannot open editor tabs from a commandlet process"));
+		}
 		const FString AssetPath = ResolveAssetPath(Params);
 		if (AssetPath.IsEmpty())
 		{
@@ -10047,7 +10057,28 @@ namespace
 			UE_LOG(LogBlueprintReader, Error, TEXT("SetVariableDefault: %s not found"), *VarName);
 			return 4;
 		}
+
+		BP->Modify();
 		BP->NewVariables[Index].DefaultValue = NewDefault;
+
+		// Propagate immediately to the CDO so that a list_variables read
+		// in the same session reflects the new value without requiring a
+		// separate compile cycle. FBPVariableDescription::DefaultValue is
+		// a compiler-hint string; the CDO is the runtime-authoritative
+		// storage and must also be updated.
+		if (IsValid(BP->GeneratedClass))
+		{
+			if (UObject* CDO = BP->GeneratedClass->GetDefaultObject(false))
+			{
+				if (FProperty* Prop = FindFProperty<FProperty>(BP->GeneratedClass, Var))
+				{
+					CDO->Modify();
+					Prop->ImportText_Direct(*NewDefault,
+						Prop->ContainerPtrToValuePtr<void>(CDO),
+						CDO, PPF_None);
+				}
+			}
+		}
 
 		if (!MaybeCompileAndSave(BP))
 		{

@@ -685,6 +685,18 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 		{
 			GenClass = Blueprint->SkeletonGeneratedClass;
 		}
+		// CDO export for default values: FBPVariableDescription::DefaultValue
+		// is a compiler-hint string that the BP compiler reads on first
+		// compile to seed the CDO, but it is NOT kept in sync afterward.
+		// The CDO is the runtime-authoritative default storage. We export
+		// from the CDO when DefaultValue is empty so that set_variable_default
+		// (which updates the CDO directly) shows up in list_variables.
+		// Use GeneratedClass specifically — the SkeletonGeneratedClass CDO
+		// is not the real CDO and may differ.
+		UClass* CdoClass   = Blueprint->GeneratedClass;
+		UObject* CDO = (IsValid(CdoClass) && IsValid(CdoClass->GetDefaultObject(false)))
+			? CdoClass->GetDefaultObject(false) : nullptr;
+
 		for (const FBPVariableDescription& Var : Blueprint->NewVariables)
 		{
 			FBPVariableInfo V = VariableDescToInfo(Var);
@@ -692,6 +704,19 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 			// the generated class so codegen can emit the matching
 			// DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params variant.
 			PopulateDelegateParams(V, GenClass);
+
+			if (V.DefaultValue.IsEmpty() && CDO && IsValid(CdoClass))
+			{
+				if (FProperty* Prop = FindFProperty<FProperty>(CdoClass, Var.VarName))
+				{
+					FString Exported;
+					Prop->ExportTextItem_Direct(Exported,
+						Prop->ContainerPtrToValuePtr<void>(CDO),
+						nullptr, CDO, PPF_None);
+					V.DefaultValue = MoveTemp(Exported);
+				}
+			}
+
 			Info.Variables.Add(MoveTemp(V));
 		}
 	}

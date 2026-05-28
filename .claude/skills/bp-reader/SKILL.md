@@ -28,30 +28,12 @@ If a request needs an `add_node` kind not in `list_node_kinds`, that
 kind has to be added to the plugin's `RunAddNodeOp` first. Say so
 directly rather than guessing.
 
-### Progressive disclosure: surface may grow mid-session
+### Full surface is always exposed
 
-If your `tools/list` includes `enable_tool_category`, the server is
-running in **progressive disclosure mode** — the initial surface is
-intentionally narrow (default `core`, ~35 tools) and you widen it as
-needed:
-
-```json
-{ "name": "enable_tool_category", "arguments": { "category": "materials" } }
-```
-
-Returns `{added: [...], newly_activated_count: N, total_active: M}`
-and the server sends `notifications/tools/list_changed`. **Refetch
-`tools/list` after calling** — the response only names what was
-added, not the full new surface.
-
-Common categories: `materials`, `widgets`, `cpp`, `editor`,
-`behavior-trees`, `niagara`, `state-trees`, `anim-bp`. Workflow
-presets: `material-tuning`, `editor-control`, `gameplay-tuning`,
-`cpp-roundtrip`, `widget-design`. Or `all` to drop the gating
-entirely.
-
-If a tool you need isn't in `tools/list` and `enable_tool_category`
-IS — that's the signal to widen, not to give up.
+The current server exposes the full tool surface on every `tools/list`
+call — tool-category gating is not active. If a tool you need isn't
+visible, the server binary is out of date or the tool hasn't been
+implemented yet; file a request rather than guessing at workarounds.
 
 ## Wire format basics
 
@@ -77,6 +59,11 @@ paths (`/Game/AI/BP_Foo.BP_Foo`) and never disk paths.
 | `"interface:IDamageable"`         | `{category:"interface", sub_category_object:"<UInterface path>"}` |
 | `"enum:EWeaponType"`              | `{category:"enum", sub_category_object:"<UEnum path>"}` |
 | `"[]float"` / `"{}int"` / `"{string:int}"` | array / set / map of the inner type |
+
+**Map type readback order:** when a variable is typed as a map (e.g.
+`{string:int}`), the wire response has `category` = **value** type and
+`sub_category` = **key** type. So `{string:int}` reads back as
+`{category:"int", sub_category:"string", is_map:true}`.
 
 **Pin IDs are GUIDs** (e.g. `8255EA22-4BA1-...`). Prefer them over
 names when wiring across multiple calls — they're stable. For a wire
@@ -107,7 +94,9 @@ tokens per byte. Use them.
   graphs or `UserConstructionScript` (UE 5's name for ConstructionScript).
 - **`get_function`** — one function's signature *and* body. Don't
   use `get_graph` for this; `get_function` parses the entry/result
-  pins into a typed signature for you.
+  pins into a typed signature for you. **`fields` projection path:**
+  the body graph is under the `graph` key, not `body` — use
+  `graph.nodes[].id`, not `body.nodes[].id`.
 - **`list_variables`** — just the member-variable table.
 - **`get_components`** — SCS component hierarchy.
 - **`find_node`** — "where is X used?". Matches on class, title, AND
@@ -157,6 +146,13 @@ add_variable {
 ```
 Idempotent — calling with an existing name returns
 `{ok:true, already_existed:true}`. Retry blindly.
+
+**`object:…` type first-call drop (live mode hazard):** the first
+`add_variable` call with an `object:`-typed variable can silently
+succeed (return `ok:true, already_existed:false`) but not actually
+create the variable, due to a transient socket-write issue. Always
+follow with `list_variables` to confirm the variable exists before
+proceeding. If it's missing, re-issue the same call.
 
 ### Refactoring helpers
 - `rename_variable` — updates references in graphs automatically.
