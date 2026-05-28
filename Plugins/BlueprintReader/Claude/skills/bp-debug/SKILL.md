@@ -116,6 +116,20 @@ may be partial.
   cold-starts the editor with on-disk state. (Note: shared daemon —
   this affects every session against this project, not just yours.)
 
+### `commandlet exit=3`: `Assertion failed: CurrentBaseApplication.IsValid()`
+Stack: `UAssetDefinition_Blueprint::OpenAssets → … → SDockTab ctor`
+
+Calling `open_asset_editor` routed through the commandlet path (no
+live editor attached). The commandlet has no Slate application, so
+any call that tries to create an editor tab assertion-fails. The
+current build guards this at the op level and returns a clean error
+instead, but older builds let it crash.
+- The daemon auto-respawns after the crash; the next tool call works.
+- If this keeps happening, confirm `BP_READER_BACKEND=auto` is set
+  and the editor is running (check the handshake file `Saved/bp-reader-live.json`).
+- Use `list_open_assets` / `get_active_asset` to query open editors
+  without triggering this path.
+
 ### `commandlet exit=3` with a plugin callstack
 A plugin's `OnAssetRegistryLoadComplete` handler crashed (Niagara,
 Animation, Substance, Wwise — anything that loads on registry-scan
@@ -233,6 +247,15 @@ leave a half-built BP. Options:
    confirm what's there.
 3. **Asset-level rollback** — if `create_blueprint` was in the batch
    and the BP is broken, `delete_asset` removes it.
+
+### `add_variable("object:…")` returned `ok:true` but `list_variables` doesn't show it
+First-call silent drop in live mode: the `add_variable` call with an
+`object:`-typed variable can return success but not persist the
+variable, due to a transient socket-write timing issue.
+- Always verify with `list_variables` after any `object:` variable creation.
+- If missing, re-issue the identical `add_variable` call — idempotent
+  (`already_existed:true` on the second call if it did persist after all).
+- No need to `shutdown_daemon`; this is transport-layer, not daemon state.
 
 ### "It worked once and now fails"
 - Daemon may have crashed → next call respawns; one transient
