@@ -60,11 +60,13 @@ namespace
 		// pin declaration order differences between a source BP and its
 		// freshly-compiled duplicate don't produce false diffs.
 		TArray<UEdGraphPin*> SortedPins = N->Pins;
-		SortedPins.Sort([](const UEdGraphPin* A, const UEdGraphPin* B)
+		// TArray<T*>::Sort dereferences the pointers via TDereferenceWrapper,
+		// so the predicate receives const UEdGraphPin& (not pointers).
+		SortedPins.Sort([](const UEdGraphPin& A, const UEdGraphPin& B)
 		{
-			int32 Cmp = A->PinName.Compare(B->PinName);
+			int32 Cmp = A.PinName.Compare(B.PinName);
 			if (Cmp != 0) { return Cmp < 0; }
-			return (A->Direction == EGPD_Input) > (B->Direction == EGPD_Input);
+			return (A.Direction == EGPD_Input) > (B.Direction == EGPD_Input);
 		});
 		for (UEdGraphPin* P : SortedPins)
 		{
