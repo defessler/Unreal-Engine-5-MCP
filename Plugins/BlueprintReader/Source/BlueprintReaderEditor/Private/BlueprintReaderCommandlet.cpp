@@ -139,6 +139,8 @@
 #include "HAL/PlatformProcess.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallArrayFunction.h"   // array library funcs need the wildcard-aware node
+#include "K2Node_GetSubsystem.h"        // add_node Kind=GetSubsystem
+#include "Subsystems/Subsystem.h"       // USubsystem base for the GetSubsystem type check
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
@@ -9634,6 +9636,41 @@ namespace
 		         Kind.Equals(TEXT("Reroute"), ESearchCase::IgnoreCase))
 		{
 			Spawned = AddNodeToGraph<UK2Node_Knot>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("GetSubsystem"), ESearchCase::IgnoreCase))
+		{
+			FString SubsystemClass;
+			FParse::Value(*Params, TEXT("SubsystemClass="), SubsystemClass);
+			if (SubsystemClass.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode GetSubsystem requires -SubsystemClass=<USubsystem subclass path or short name>"));
+				return 1;
+			}
+			UClass* SubCls = ResolveClass(SubsystemClass);
+			if (!IsValid(SubCls))
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode GetSubsystem: class %s not found"), *SubsystemClass);
+				return 1;
+			}
+			if (!SubCls->IsChildOf(USubsystem::StaticClass()))
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode GetSubsystem: %s is not a USubsystem subclass"), *SubsystemClass);
+				return 1;
+			}
+			// Initialize() sets CustomClass, which AllocateDefaultPins reads to
+			// build the correctly-typed output pin — so it must run first.
+			// UK2Node_GetSubsystem covers GameInstance/World/Engine subsystems;
+			// LocalPlayer subsystems use UK2Node_GetSubsystemFromPC/FromLP.
+			UK2Node_GetSubsystem* Sub = NewObject<UK2Node_GetSubsystem>(Graph);
+			Sub->Initialize(SubCls);
+			Sub->CreateNewGuid();
+			Sub->NodePosX = X; Sub->NodePosY = Y;
+			Graph->AddNode(Sub, false, false);
+			Sub->PostPlacedNewNode();
+			Sub->AllocateDefaultPins();
+			Spawned = Sub;
 		}
 		else
 		{

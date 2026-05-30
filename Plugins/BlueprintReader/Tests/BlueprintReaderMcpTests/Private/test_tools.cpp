@@ -147,7 +147,7 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
 	Fixture f;
 	auto out = f.Call("list_node_kinds", json::object());
 	REQUIRE(out.is_array());
-	CHECK(out.size() == 12);
+	CHECK(out.size() == 13);
 	std::vector<std::string> kinds;
 	for (auto& k : out)
 	{
@@ -158,7 +158,7 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
 	};
 	for (const char* k : {"Branch","Sequence","VariableGet","VariableSet","CallFunction",
 						  "CustomEvent","Cast","Self","MakeArray","MakeStruct",
-						  "FormatText","Knot"}) {
+						  "FormatText","Knot","GetSubsystem"}) {
 		CHECK(has(k));
 	}
 	// CallFunction declares its required extras.

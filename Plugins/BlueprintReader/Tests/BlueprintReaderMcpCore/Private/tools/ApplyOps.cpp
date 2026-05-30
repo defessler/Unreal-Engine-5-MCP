@@ -412,7 +412,9 @@ nlohmann::json OpSetPinDefault(backends::IBlueprintReader& reader,
 		throw std::invalid_argument(R"(set_pin_default op requires "node_id")");
 	}
 	std::string node  = ResolveNodeRef(*nIt, slots, "node_id");
-	std::string pin   = GetString(op, "pin_name");
+	// Accept `pin_name` (this op's field) or `pin` (the standalone tool's
+	// field) so the two surfaces are interchangeable.
+	std::string pin   = op.contains("pin_name") ? GetString(op, "pin_name") : GetString(op, "pin");
 	std::string value = OptStr(op, "value", "");
 	reader.SetPinDefault(asset, graph, node, pin, value);
 	return {{"ok", true}};
@@ -692,7 +694,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 			throw std::invalid_argument(R"(set_pin_default requires "node_id")");
 		}
 		(void)ResolveNodeRef(*nIt, slots, "node_id");
-		(void)GetString(op, "pin_name");
+		(void)(op.contains("pin_name") ? GetString(op, "pin_name") : GetString(op, "pin"));
 		noteAsset(asset);
 		return;
 	}
