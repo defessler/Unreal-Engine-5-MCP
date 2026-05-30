@@ -381,8 +381,19 @@ int RunServerLoop() {
 	// front. Compatible with BP_READER_TOOLS — if both are set, the
 	// static filter wins (progressive mode then operates against the
 	// statically-filtered superset).
+	// Tool-search mode (BP_READER_TOOL_SEARCH=1) is the even-narrower
+	// alternative to progressive disclosure; computed up front so
+	// progressive can defer to it (mutually exclusive — tool search wins).
+	const bool toolSearchMode =
+		env::BoolOrDefault("BP_READER_TOOL_SEARCH", false, std::cerr);
+	// Progressive disclosure is ON BY DEFAULT (opt out with
+	// BP_READER_PROGRESSIVE=0). It advertises the ~35-tool `core` surface
+	// plus the lazy-discovery meta-tools instead of the full ~249, cutting
+	// the tools/list token cost dramatically. Agents reach the long tail
+	// via `call_tool(name, arguments)` (no widening needed) or by widening
+	// the advertised set with `enable_tool_category`.
 	const bool progressiveMode =
-		env::BoolOrDefault("BP_READER_PROGRESSIVE", false, std::cerr);
+		env::BoolOrDefault("BP_READER_PROGRESSIVE", true, std::cerr) && !toolSearchMode;
 	std::vector<std::string> allowSpec =
 		splitCSV(env::GetOrDefault("BP_READER_TOOLS"));
 	std::vector<std::string> denySpec =
@@ -426,6 +437,16 @@ int RunServerLoop() {
 		// Explicitly activate the meta-tool so the agent can use it to
 		// widen the surface themselves.
 		registry.ActivateToken("enable_tool_category");
+		// Also surface the lazy-discovery meta-tools so the agent has a
+		// `call_tool` escape hatch — dispatch ANY tool in the full surface
+		// by name without first widening — plus list_toolsets /
+		// describe_toolset for discovery. RegisterToolsetMetaTools is
+		// idempotent, so this is safe whether or not they're already
+		// registered as part of the main surface.
+		tools::RegisterToolsetMetaTools(registry);
+		registry.ActivateToken("list_toolsets");
+		registry.ActivateToken("describe_toolset");
+		registry.ActivateToken("call_tool");
 		// Clear the list-changed flag set by ActivateToken — there's no
 		// client connected yet to receive a notification.
 		registry.TakeListChangedFlag();
@@ -448,8 +469,6 @@ int RunServerLoop() {
 	// Mutually exclusive with progressive disclosure — they're competing
 	// models for the same problem. If both are set, tool search wins
 	// because its surface is even narrower.
-	const bool toolSearchMode =
-		env::BoolOrDefault("BP_READER_TOOL_SEARCH", false, std::cerr);
 	if (toolSearchMode) {
 		tools::RegisterToolsetMetaTools(registry);
 		tools::EnableToolSearchMode(registry);
