@@ -1094,7 +1094,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetGraph(asset, graph));
 			});
-			if (summary) {
+			if (summary && ctl.fields.empty()) {  // explicit `fields` wins over `summary`
 				// Drop pin detail from each node + the global connections
 				// array. Node identity (id, kind, title, comment, position)
 				// is preserved — enough to map the graph's structure
@@ -1223,7 +1223,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetFunction(asset, fn));
 			});
-			if (summary) {
+			if (summary && ctl.fields.empty()) {  // explicit `fields` wins over `summary`
 				if (body.contains("graph") && body["graph"].is_object()) {
 					auto& g = body["graph"];
 					if (g.contains("nodes") && g["nodes"].is_array()) {
@@ -1500,10 +1500,13 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		d.name = "add_node";
 		d.description =
 			"[blueprint] Spawn a new K2 (Blueprint) node in a Blueprint graph. NOT for UMG widgets (`add_widget`), Behavior Tree (`add_bt_node`), AnimBP state (`add_anim_state`), StateTree (`add_state_tree_state`), Material expressions (`add_material_expression`), or Level Sequence tracks (`add_sequence_track`). `kind` is one of: "
-			"Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent. "
+			"Common kinds: Branch, Sequence, VariableGet, VariableSet, CallFunction, "
+			"CustomEvent, Cast, Self, MakeArray, MakeStruct, FormatText, Knot, GetSubsystem. "
+			"Call list_node_kinds for the authoritative set + required arg(s) per kind. "
 			"Kind-specific args: VariableGet/VariableSet -> `variable`; "
 			"CallFunction -> `function` + `function_owner` (UClass path or short name); "
-			"CustomEvent -> `event_name`. Returns {ok, node_id, pins:[...]}. "
+			"CustomEvent -> `event_name`; Cast -> `target_class`; "
+			"GetSubsystem -> `subsystem_class`. Returns {ok, node_id, pins:[...]}. "
 			"The `pins` array carries each pin's name/guid/direction/type so "
 			"you can wire it without a follow-up get_graph call.";
 		d.input_schema = {
@@ -1520,6 +1523,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"event_name",     {{"type","string"}}},
 				{"target_class",   {{"type","string"}}},
 				{"struct_type",    {{"type","string"}}},
+				{"subsystem_class",{{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","graph_name","kind","x","y"})},
 		};
@@ -1544,6 +1548,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			put("event_name",     "EventName");
 			put("target_class",   "TargetClass");
 			put("struct_type",    "StructType");
+			put("subsystem_class", "SubsystemClass");
 			std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
 
 			// Post-fetch the graph to extract the new node's pins. The
@@ -2121,17 +2126,20 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"node_id",    {{"type","string"},
 								{"description","Target node's GUID."}}},
 				{"pin",        {{"type","string"},
-								{"description","Pin GUID (preferred) or pin name."}}},
+								{"description","Pin GUID (preferred) or pin name. Alias: `pin_name` is also accepted, for parity with the apply_ops set_pin_default op."}}},
 				{"value",      {{"type","string"},
 								{"description","Literal value as a string; editor parses per pin type."}}},
 			}},
-			{"required", nlohmann::json::array({"asset_path","node_id","pin","value"})},
+			{"required", nlohmann::json::array({"asset_path","node_id","value"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			const std::string asset = RequireString(args, "asset_path");
 			const std::string graph = OptString(args, "graph_name", "EventGraph");
 			const std::string node  = RequireString(args, "node_id");
-			const std::string pin   = RequireString(args, "pin");
+			// Accept `pin` (this tool's field) or `pin_name` (the apply_ops
+			// op's field) so the two surfaces are interchangeable.
+			std::string pin = OptString(args, "pin", "");
+			if (pin.empty()) { pin = RequireString(args, "pin_name"); }
 			const std::string value = RequireString(args, "value");
 			reader.SetPinDefault(asset, graph, node, pin, value);
 			return nlohmann::json{{"ok", true}};
@@ -2454,7 +2462,16 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [](const nlohmann::json&) {
 			return nlohmann::json::array({
 				nlohmann::json{
-					{"kind", "Branch"},
+					{"kind", "GetSubsystem"},
+						{"class", "K2Node_GetSubsystem"},
+						{"description", "Get a USubsystem instance (GameInstance / World / Engine subsystem). The output pin is typed to the subsystem class. (LocalPlayer subsystems use a different node and aren't covered.)"},
+						{"extras", nlohmann::json::array({
+							nlohmann::json{{"name","subsystem_class"}, {"required",true},
+										   {"description","USubsystem subclass — UClass path (/Script/Module.MySubsystem) or short name."}}
+						})},
+					},
+					nlohmann::json{
+						{"kind", "Branch"},
 					{"class", "K2Node_IfThenElse"},
 					{"description", "Two-way exec branch on a bool condition pin."},
 					{"extras", nlohmann::json::array()},

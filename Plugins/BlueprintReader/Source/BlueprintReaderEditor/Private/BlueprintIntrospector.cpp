@@ -25,6 +25,9 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
+#include "WidgetBlueprint.h"        // #7: surface BindWidget members as known vars
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
@@ -718,6 +721,39 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 			}
 
 			Info.Variables.Add(MoveTemp(V));
+		}
+	}
+
+	// UMG widget blueprints expose their named designer widgets (anything
+	// marked "Is Variable", which includes every BindWidget/BindWidgetOptional
+	// member) as accessible member variables. They aren't in NewVariables, so
+	// without this they look undeclared — e.g. find_dangling_references would
+	// flag a legitimate BindWidget reference as a "missing variable". Surface
+	// them as the real members they are, tagged "Widget Bindings" so callers
+	// can tell them apart from author-declared variables.
+	if (UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(Blueprint))
+	{
+		if (UWidgetTree* Tree = WidgetBP->WidgetTree)
+		{
+			TArray<UWidget*> AllWidgets;
+			Tree->GetAllWidgets(AllWidgets);
+			for (UWidget* W : AllWidgets)
+			{
+				if (!IsValid(W) || !W->bIsVariable)
+				{
+					continue;
+				}
+				FBPVariableInfo V;
+				V.Name = W->GetName();
+				V.Category = TEXT("Widget Bindings");
+				FEdGraphPinType WidgetPinType;
+				WidgetPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+				WidgetPinType.PinSubCategoryObject = W->GetClass();
+				V.Type = FBlueprintIntrospector::FormatPinType(WidgetPinType);
+				V.StructuredType = FBlueprintIntrospector::MakeStructuredPinType(WidgetPinType);
+				V.bIsBlueprintReadOnly = true;
+				Info.Variables.Add(MoveTemp(V));
+			}
 		}
 	}
 
