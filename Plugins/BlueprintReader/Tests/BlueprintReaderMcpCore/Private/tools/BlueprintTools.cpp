@@ -1081,7 +1081,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"summary", {{"type", "boolean"},
 							 {"description", "When true, omits per-node pin arrays and the "
 							  "top-level connections array. Keeps {id, kind, title, "
-							  "comment, position} per node. Default false."}}},
+							  "comment, position} per node. Default TRUE (lean reads); pass "
+				  "false for the full graph with pin arrays + connections."}}},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
@@ -1089,7 +1090,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string graph = OptString(args, "graph_name", "EventGraph");
-			const bool summary = args.value("summary", false);
+			// Lean by default: graph reads return the summary shape (node
+		// identity, no per-node pin arrays or the connections list) unless
+		// the caller asks for full detail with summary:false. Big token
+		// savings on the common "what's the shape of this graph" read.
+		const bool summary = args.value("summary", true);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetGraph(asset, graph));
@@ -1210,7 +1215,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 							 {"description", "When true, the body graph's nodes drop their "
 							  "pin arrays and the graph's connections list is omitted. "
 							  "Function signature (inputs/outputs/locals) is unchanged. "
-							  "Default false."}}},
+							  "Default TRUE (lean reads); pass false for the full body graph."}}},
 				{"fields", FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path", "function_name"})},
@@ -1218,7 +1223,11 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string fn = RequireString(args, "function_name");
-			const bool summary = args.value("summary", false);
+			// Lean by default: graph reads return the summary shape (node
+		// identity, no per-node pin arrays or the connections list) unless
+		// the caller asks for full detail with summary:false. Big token
+		// savings on the common "what's the shape of this graph" read.
+		const bool summary = args.value("summary", true);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetFunction(asset, fn));
