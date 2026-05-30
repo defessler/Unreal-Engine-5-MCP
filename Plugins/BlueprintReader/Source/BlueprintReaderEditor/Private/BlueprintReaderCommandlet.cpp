@@ -138,6 +138,7 @@
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CallArrayFunction.h"   // array library funcs need the wildcard-aware node
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
@@ -801,6 +802,53 @@ namespace
 		thread_local FString OverrideJson;          // already-serialized JSON body
 	}    // namespace LoadFailure
 
+	// Auto-checkout: under source control, programmatically check `Package`
+	// out (non-interactively) before we modify/save it. A not-checked-out
+	// asset is read-only on disk, so in a *live* editor the modification
+	// either fails the save outright or — with "prompt for checkout on
+	// modification" enabled — pops a modal "Check Out?" dialog. That modal
+	// blocks the game thread, the MCP call hangs, and the client (e.g.
+	// Copilot) concludes the tool broke. The provider API does the checkout
+	// with no UI. Best-effort: we never fail the op here — if the file isn't
+	// under source control it isn't read-only and the normal save path works;
+	// if checkout genuinely can't happen (e.g. locked by another user) the
+	// existing SavePackage error path reports it. Opt out with
+	// BP_READER_AUTO_CHECKOUT=0.
+	void EnsureCheckedOutForWrite(UPackage* Package)
+	{
+		if (!IsValid(Package))
+		{
+			return;
+		}
+		const FString Opt =
+			FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_AUTO_CHECKOUT"));
+		if (Opt == TEXT("0") || Opt.Equals(TEXT("false"), ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+		ISourceControlModule& SCM = ISourceControlModule::Get();
+		if (!SCM.IsEnabled() || !SCM.GetProvider().IsAvailable())
+		{
+			return;  // No source control → file isn't read-only; normal save.
+		}
+		const FString Filename =
+			USourceControlHelpers::PackageFilename(Package->GetName());
+		if (Filename.IsEmpty())
+		{
+			return;
+		}
+		// CheckOutFile is non-interactive and a no-op when already checked
+		// out; it returns false (deliberately ignored) when the file isn't
+		// under source control or can't be checked out.
+		if (!USourceControlHelpers::CheckOutFile(Filename, /*bSilent=*/true))
+		{
+			UE_LOG(LogBlueprintReader, Verbose,
+				TEXT("Auto-checkout: %s not checked out (not under source "
+				     "control or checkout failed); proceeding with save."),
+				*Filename);
+		}
+	}
+
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
 		FString Resolved = AssetPath;
@@ -870,6 +918,11 @@ namespace
 				return nullptr;
 			}
 		}
+		// Check the asset out of source control now — before any caller
+		// marks it dirty — so a live editor never needs the interactive
+		// "Check Out?" modal (which blocks the game thread and makes the MCP
+		// call look like it hung). Best-effort + gated; see the helper above.
+		EnsureCheckedOutForWrite(BP->GetOutermost());
 		return BP;
 	}
 
@@ -9476,7 +9529,18 @@ namespace
 					*FunctionName, *OwnerClass->GetPathName());
 				return 1;
 			}
-			UK2Node_CallFunction* Call = NewObject<UK2Node_CallFunction>(Graph);
+			// Array library functions (Clear/Add/Remove/Contains/…) carry the
+			// `ArrayParm` metadata and must be spawned as a
+			// UK2Node_CallArrayFunction — that subclass owns the wildcard
+			// TargetArray type-propagation (it conforms the wildcard to the
+			// connected array's element type when a pin is wired). A plain
+			// UK2Node_CallFunction leaves TargetArray a permanent wildcard, so
+			// the BP fails to compile with "The type of Target Array is
+			// undetermined" no matter how the pin is connected.
+			UK2Node_CallFunction* Call =
+				Fn->HasMetaData(FBlueprintMetadata::MD_ArrayParam)
+					? NewObject<UK2Node_CallArrayFunction>(Graph)
+					: NewObject<UK2Node_CallFunction>(Graph);
 			Call->SetFromFunction(Fn);
 			Call->CreateNewGuid();
 			Call->NodePosX = X; Call->NodePosY = Y;
@@ -10622,6 +10686,15 @@ int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString
     // — read this id to look up their context in the registry. Restored
     // on scope exit so nested or re-entrant calls behave correctly.
     BlueprintReader::FConnectionScope Scope(ConnectionId);
+    // Suppress interactive editor dialogs (notably the source-control
+    // "Check Out?" modal) for the duration of a live-backend op. This runs
+    // on the game thread (the live server dispatches via
+    // AsyncTask(GameThread,...)), and a modal there blocks that thread — the
+    // MCP call then appears to hang and the client concludes the tool broke.
+    // Under unattended script the editor takes the non-interactive default
+    // instead. Scoped + restored per op; the commandlet backend already runs
+    // unattended, so this is a no-op there.
+    TGuardValue<bool> UnattendedGuard(GIsRunningUnattendedScript, true);
     return RunOneOp(Params);
 }
 
