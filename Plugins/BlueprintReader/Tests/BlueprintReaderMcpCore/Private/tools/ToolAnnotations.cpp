@@ -83,6 +83,7 @@ const std::set<std::string>& WriteSet() {
 		"auto_layout_graph",
 		// BP-level
 		"create_blueprint", "duplicate_blueprint", "save_all",
+		"clone_graph", "implement_interface",
 		// Components
 		"add_component", "attach_component", "remove_component",
 		"set_component_property",

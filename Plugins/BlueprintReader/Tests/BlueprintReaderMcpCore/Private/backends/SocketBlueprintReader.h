@@ -114,7 +114,13 @@ public:
 	void SetVariableDefault(std::string_view assetPath, std::string_view name,
 							std::string_view newDefault) override;
 	CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
-										  std::string_view parentClass) override;
+										  std::string_view parentClass,
+										  std::string_view blueprintType) override;
+	CloneGraphResult CloneGraph(std::string_view sourcePath,
+								std::string_view targetPath,
+								std::string_view graphName) override;
+	void ImplementInterface(std::string_view assetPath,
+							std::string_view interfacePath) override;
 	void SetPinDefault(std::string_view assetPath, std::string_view graphName,
 					   std::string_view nodeId, std::string_view pinSpec,
 					   std::string_view value) override;

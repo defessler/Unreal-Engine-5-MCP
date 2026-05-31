@@ -104,7 +104,7 @@ TEST_CASE("CommandletBlueprintReader: recreate player-character skeleton (read -
 	// Fresh start: remove any leftover recreation, then build from scratch.
 	(void)reader->DeleteAsset(recreated, /*force=*/true);
 	try {
-		reader->CreateBlueprint(recreated, src->ParentClass);
+		reader->CreateBlueprint(recreated, src->ParentClass, "");
 	} catch (const bpr::backends::BlueprintReaderError& e) {
 		MESSAGE("parent class '" << src->ParentClass
 				<< "' not creatable standalone (" << e.what() << ") -- skipping");

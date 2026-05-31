@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 249 tools (248 prior + Phase 16 reset_project_setting v1 stub) with input schemas") {
+TEST_CASE("ToolRegistry exposes 251 tools (249 prior + clone_graph + implement_interface) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 249);
+	CHECK(spec.size() == 251);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -208,6 +208,13 @@ TEST_CASE("Write tools throw on the mock backend (read-only by design)") {
 	CHECK_THROWS_AS(f.Call("delete_node", json{
 		{"asset_path","/Game/AI/BP_Enemy"}, {"graph_name","EventGraph"},
 		{"node_id","00000000-0000-0000-0000-000000000000"}
+	}), bpr::backends::BlueprintReaderError);
+	CHECK_THROWS_AS(f.Call("clone_graph", json{
+		{"source","/Game/AI/BP_Enemy"}, {"target","/Game/AI/BP_Other"},
+		{"graph","EventGraph"}
+	}), bpr::backends::BlueprintReaderError);
+	CHECK_THROWS_AS(f.Call("implement_interface", json{
+		{"asset","/Game/AI/BP_Enemy"}, {"interface","/Game/Interfaces/BPI_Damageable"}
 	}), bpr::backends::BlueprintReaderError);
 }
 

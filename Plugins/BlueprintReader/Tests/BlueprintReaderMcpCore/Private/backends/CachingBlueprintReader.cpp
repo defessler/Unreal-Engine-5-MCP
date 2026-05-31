@@ -392,11 +392,28 @@ void CachingBlueprintReader::SetVariableDefault(std::string_view assetPath, std:
 
 IBlueprintReader::CreateBlueprintResult
 CachingBlueprintReader::CreateBlueprint(std::string_view assetPath,
-										std::string_view parentClass) {
-	auto out = inner_->CreateBlueprint(assetPath, parentClass);
+										std::string_view parentClass,
+										std::string_view blueprintType) {
+	auto out = inner_->CreateBlueprint(assetPath, parentClass, blueprintType);
 	// New asset → drop ListBlueprints cache and any stale entries for this path.
 	InvalidateAsset(assetPath);
 	return out;
+}
+
+IBlueprintReader::CloneGraphResult
+CachingBlueprintReader::CloneGraph(std::string_view sourcePath,
+								   std::string_view targetPath,
+								   std::string_view graphName) {
+	auto out = inner_->CloneGraph(sourcePath, targetPath, graphName);
+	// Nodes copied into the target BP → its cached reads are stale.
+	InvalidateAsset(targetPath);
+	return out;
+}
+
+void CachingBlueprintReader::ImplementInterface(std::string_view assetPath,
+												std::string_view interfacePath) {
+	inner_->ImplementInterface(assetPath, interfacePath);
+	InvalidateAsset(assetPath);
 }
 
 void CachingBlueprintReader::SetPinDefault(std::string_view assetPath,

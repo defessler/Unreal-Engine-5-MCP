@@ -160,13 +160,26 @@ public:
 	void SetVariableDefault(std::string_view a, std::string_view n, std::string_view) override {
 		Note("SetVariableDefault", std::string(a), std::string(n));
 	}
-	CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p) override {
-		Note("CreateBlueprint", std::string(a), std::string(p));
+	CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p,
+										  std::string_view bt) override {
+		Note("CreateBlueprint", std::string(a),
+			 bt.empty() ? std::string(p) : std::string(p) + "/" + std::string(bt));
 		// Pretend it worked: return alreadyExisted=false, echo parent.
 		CreateBlueprintResult r;
 		r.alreadyExisted = false;
 		r.parentClass = std::string(p);
 		return r;
+	}
+	CloneGraphResult CloneGraph(std::string_view s, std::string_view t,
+								std::string_view g) override {
+		Note("CloneGraph", std::string(s), std::string(t) + ":" + std::string(g));
+		CloneGraphResult r;
+		r.ok = true;
+		r.importedNodes = 0;
+		return r;
+	}
+	void ImplementInterface(std::string_view a, std::string_view i) override {
+		Note("ImplementInterface", std::string(a), std::string(i));
 	}
 	void SetPinDefault(std::string_view a, std::string_view, std::string_view,
 					   std::string_view pin, std::string_view value) override {
