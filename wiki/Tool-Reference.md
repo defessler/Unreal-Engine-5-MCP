@@ -1,10 +1,11 @@
 # Tool Reference
 
-127 tools — 12 read, 22 write, 3 meta, 3 batch, 3 transpile, 13 project /
-content-browser, 15 live editor, 1 automation, 7 material, 5 widget,
-5 behavior tree, 4 data asset, 5 state tree, 4 profiling, 2 cook,
-3 class introspection, 4 viewport, 4 Niagara, 4 Sequencer, 3 GAS, 4
-AnimGraph. All use snake_case JSON keys; nullable string fields emit
+~249 tools spanning Blueprint read/write, batch generation, 6 BP↔C++
+transpile tools, project / content-browser ops, live-editor control,
+material / widget / behavior-tree / data-asset / state-tree / Niagara /
+Sequencer / GAS / AnimGraph authoring, profiling, cook, class
+introspection, viewport, and ~120 editor-state / situational-awareness
+read tools. All use snake_case JSON keys; nullable string fields emit
 `null`; `BPNode.meta` is a real nested object (not a string-of-JSON).
 Wire shapes are pinned in
 `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`.
@@ -223,6 +224,10 @@ entries. Replaces the manual `list_blueprints` + N×`read_blueprint` loop.
 (`/Script/Engine.Character`).
 
 ## Write tools
+
+> **Read-only by default.** Every write tool below is rejected unless
+> you set `BP_READER_ALLOW_WRITE=1` (or `BP_READER_READ_ONLY=0`) in the
+> server's `env` block. See [Configuration](Configuration).
 
 All write tools recompile and save the blueprint. They return the new
 state (variable list, node GUID, etc.) on success. Successful writes
@@ -666,6 +671,11 @@ separately — until then this keeps generated graphs from overlapping.
 Returns `{ok, placed, strategy: "grid"}`.
 
 ## Transpile tools
+
+> **Gated.** The 6 transpile tools are off by default — set
+> `BP_READER_ALLOW_TRANSPILE=1` to enable them. Without it they stay
+> listed in `tools/list` but each call returns a `transpile_disabled`
+> error. See [Configuration](Configuration).
 
 The BP↔C++ pipeline. A versioned **Blueprint Intermediate Representation
 (BPIR)** sits in the middle — a JSON AST that BPs lower into and that

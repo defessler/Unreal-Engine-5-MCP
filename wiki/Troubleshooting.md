@@ -117,6 +117,13 @@ If the daemon genuinely dies and the server doesn't notice, the next
 call falls back to a one-shot subprocess and surfaces no error. Set
 `BP_READER_DAEMON=0` to force one-shot mode while debugging.
 
+## Every write tool returns a read-only error
+
+The server is **read-only by default**. If every mutation tool is
+rejected with a read-only error, set `BP_READER_ALLOW_WRITE=1` (or
+`BP_READER_READ_ONLY=0`) in the server's `env` block and restart the
+client. See [Configuration](Configuration).
+
 ## Commandlet write op failed — how do I read the diagnostic?
 
 The commandlet backend now classifies write failures into three

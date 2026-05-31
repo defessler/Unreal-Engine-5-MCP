@@ -5,6 +5,16 @@ JSON-RPC to Claude) and the **BlueprintReader UE plugin** (the editor-side
 half that actually reads your `.uasset` files). The mock backend lets you
 skip the plugin entirely — useful for smoke-testing the server.
 
+> **Bring your own UE project.** This repo tracks the
+> `BlueprintReader` plugin + docs, not a full game project — a fresh
+> clone has no `LyraStarterGame.uproject`. Mount
+> `Plugins/BlueprintReader/` into your own UE 5.7 project's `Plugins/`
+> folder (any UE 5.7 project works; Lyra is a convenient host), then
+> build that project's editor target. The commands below reference
+> `LyraStarterGame.uproject` / `LyraEditor` because that's the
+> maintainer's local build host — substitute `<your-project>.uproject`
+> and `<YourEditor>` throughout.
+
 ## Requirements
 
 | Component              | Required for | Notes                                                   |
@@ -26,11 +36,13 @@ a separate CMake toolchain.
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
-cd UE5_MCP
+# Copy the plugin into your UE 5.7 project, then build from there:
+Copy-Item -Recurse UE5_MCP\Plugins\BlueprintReader <YourProject>\Plugins\
+cd <YourProject>
 # Build the MCP server + the doctest suite via UBT:
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
   -EngineDir "<Path>\UnrealEngine" `
-  -ProjectFile "$PWD\LyraStarterGame.uproject"
+  -ProjectFile "$PWD\<your-project>.uproject"
 # Run the suite:
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
@@ -41,7 +53,7 @@ cases skip without engine env vars set — that's expected.
 The exe you'll point Claude at lives at:
 
 ```
-UE5_MCP\Binaries\Win64\BlueprintReaderMcp.exe
+<YourProject>\Binaries\Win64\BlueprintReaderMcp.exe
 ```
 
 If you only want the mock backend (you don't have a UE project to point at,
@@ -123,12 +135,14 @@ Generate project files:
     -game -rocket -progress
 ```
 
-Then build the editor target:
+Then build the editor target (substitute your own editor-target name +
+`.uproject`; the `LyraEditor` / `LyraStarterGame.uproject` values below
+are the maintainer's local build host):
 
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" `
-    LyraEditor Win64 Development `
-    -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
+    <YourEditor> Win64 Development `
+    -project="<Absolute>\<your-project>.uproject" `
     -waitmutex
 ```
 
@@ -192,6 +206,10 @@ Other client formats:
 - `--client=claude-desktop` (same JSON shape, used in `claude_desktop_config.json`)
 - `--client=copilot` (uses the `"servers"` key VS Code expects)
 
+> The server is **read-only by default** — reads work immediately but
+> every write tool is rejected until you add `BP_READER_ALLOW_WRITE=1`
+> (or `BP_READER_READ_ONLY=0`) to the server's `env` block.
+
 If the auto-discovered values look wrong (or you need to override), the
 manual path + per-client conventions are documented below.
 
@@ -250,13 +268,14 @@ manual-launch details.
 
 ## Test blueprints
 
-The repo seeds two test BPs (`BP_TestEnemy`, `BP_TestPickup`) into
-`Content/AI/`. They should already be present after cloning. To
-regenerate:
+The repo tracks two test BPs (`BP_TestEnemy`, `BP_TestPickup`) under
+`Content/AI/` — they're present after cloning. To regenerate (run
+against whatever project hosts the plugin; substitute your own
+`.uproject`):
 
 ```powershell
 & "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
-    "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
+    "<Absolute>\<your-project>.uproject" `
     -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
 

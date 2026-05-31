@@ -1,17 +1,20 @@
 # Claude project guidance — UE5_MCP
 
-**Project state.** The repository ships as a Lyra Starter Game
-project (`LyraStarterGame.uproject` at the root) on UE 5.7.4. The
-historical `UE5_MCP.uproject` is gone — build commands target
-`LyraEditor`, env vars target `LyraStarterGame.uproject`. All 302
-Lyra blueprints have C++ companion classes under
-`Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
-(17 full transpiles + 285 stubs); the editor target builds clean
-and `LyraEditor-Cmd.exe` commandlet runs successfully. Details +
-recipe in
+**Project state.** This git repository tracks the **`BlueprintReader`
+plugin + docs only** — not a full game project. Development happens
+inside a **local, untracked** Lyra Starter Game build host
+(`LyraStarterGame.uproject`, `Source/Lyra*`, `Plugins/LyraGenerated`
+and the other Lyra plugins) on UE 5.7.4 that lives on the maintainer's
+disk but is *not* in the repo — a fresh clone gets the plugin only.
+Build/test commands below target `LyraEditor` / `LyraStarterGame.uproject`
+because that's the maintainer's local host; substitute your own editor
+target + `.uproject` to build elsewhere. The Lyra BP→C++ conversion
+work (302 companion classes, recipe + lessons-learned) is documented in
 [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md).
+The old `setup.bat` + Lyra asset-restoration flow is no longer in the
+repo (kept locally only; see "Asset restoration" below).
 
-UE 5.7.4 project plus a standalone MCP server that exposes 127
+A standalone MCP server that exposes ~249
 Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
 tools to MCP
 clients (Claude Code, Claude Desktop, Copilot, ChatGPT bridge). Two
@@ -71,11 +74,11 @@ means a fresh plugin pull always brings matching docs.
 ## Repo layout
 
 ```
-UE5_MCP/                                      ← project root
-├── LyraStarterGame.uproject
-├── Source/LyraGame, LyraEditor                  Lyra project modules
-├── Plugins/LyraGenerated/                       302 BP→C++ companion classes
-├── Plugins/BlueprintReader/                    plugin ships as one unit
+UE5_MCP/                                      ← repo root (tracks plugin + docs only)
+├── LyraStarterGame.uproject                     (untracked — local build host)
+├── Source/LyraGame, LyraEditor                  (untracked — local build host)
+├── Plugins/LyraGenerated/                       (untracked — local build host: 302 BP→C++ companions)
+├── Plugins/BlueprintReader/                    plugin ships as one unit (tracked)
 │   ├── BlueprintReader.uplugin
 │   ├── Scripts/Build-MCPServer.ps1             UBT-wrapper convenience script
 │   ├── Source/BlueprintReaderRuntime/          runtime BP introspection (loads in cooked builds)
@@ -103,11 +106,11 @@ UE5_MCP/                                      ← project root
 │       │   ├── Private/                        441 cases (mock + live)
 │       │   └── fixtures/                       BP_*.json mock-backend data
 │       └── ThirdParty/                         vendored: nlohmann_json, fmt, doctest
-├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset
+├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
 │                                               (regenerable; see "Reseed test BPs" below)
-│                                               All other Content/ is restored on demand
-│                                               by setup.bat — see "Asset restoration"
-│                                               below for the hybrid local/release flow.
+│                                               Other Lyra Content/ is NOT tracked — it lives
+│                                               in the local build host only (the legacy
+│                                               setup.bat restoration flow is no longer in the repo).
 ├── README.md                                   user-facing setup + tool table
 └── wiki/                                       source of truth for the GitHub Wiki
                                                 (manually pushed to <repo>.wiki.git)
@@ -391,48 +394,20 @@ the discoverability list in lockstep.
   `_meta: {elapsed_ms, tool}` per the MCP 2024-11-05 spec extension
   point.
 
-## Asset restoration
+## Asset restoration (legacy — no longer in the repo)
 
-Lyra's bundled assets are not tracked in this repo — `setup.bat` at
-the repo root restores them on demand. **Windows-only** (uses
-robocopy, certutil, and Epic Games Launcher's
-`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`).
-Defaults to hybrid: try the local EGL Lyra install first; fall back
-to the GitHub Release bundle (`lyra-assets-v1.tar.zst`, ~1.7 GB
-compressed). Bundle download is resumable (`curl --continue-at -`)
-and skips entirely if a previous partial in `%TEMP%` already
-matches the published SHA-256.
+The Lyra asset-restoration flow — `setup.bat` at the old project root,
+`Scripts/lyra-assets-manifest.json`, `Scripts/Publish-LyraAssetsRelease.ps1`,
+the `-Source` / `-Repair` / `-Clean` / `-VerifyOnly` flags, and the
+`lyra-assets-vN` GitHub Release bundle — is **no longer tracked in this
+repo**. It lives only in the maintainer's local build host. Now that the
+repo tracks the plugin + docs (not a Lyra project), a fresh clone has no
+Lyra content to restore: you bring your own UE 5.7 host project and mount
+`Plugins/BlueprintReader/` into its `Plugins/`. The only tracked content
+is the two test BPs under `Content/AI/` (regenerable via `-run=BPRSeed`).
 
-Useful flags:
-- `setup.bat -VerifyOnly` — re-check the working tree against the
-  committed manifest.
-- `setup.bat -Repair` — restore just the missing/mismatched files
-  instead of doing a full re-run; for the release source, downloads
-  the bundle once and uses `tar -T` to extract only the broken
-  paths. Cheap after a partial-restore failure.
-- `setup.bat -LyraInstallRoot <path>` — point at an arbitrary
-  Lyra checkout when EGL isn't an option (manual download, separate
-  drive, etc.). Implies `-Source local`.
-- `setup.bat -Clean` — inverse of restore; deletes every manifest
-  file (preserves tracked test BPs + `Content/Recreated/`).
-- `setup.bat -DryRun` — print the plan, touch nothing. Composes
-  with any other flag.
-
-`Scripts/lyra-assets-manifest.json` is the committed source of
-truth (8,686 entries, ~2 MB JSON, sorted by path with size +
-SHA-256). Run `Scripts/Publish-LyraAssetsRelease.ps1` (operator-only,
-requires `gh` auth) to rebuild and republish the bundle when upstream
-Lyra content changes.
-
-CI: `.github/workflows/test-lyra-asset-scripts.yml` runs the
-LyraAssetCommon unit tests (21 cases) + parse-check + dry-run
-smoke tests on every push to main and every PR that touches the
-asset scripts. Windows runners only.
-
-Stripping the assets in the first place is the procedure in
-[`docs/superpowers/plans/2026-05-19-strip-lyra-assets.md`](docs/superpowers/plans/2026-05-19-strip-lyra-assets.md);
-the rewrite uses `git filter-repo` against
-`Scripts/strip-lyra-paths.txt`.
+Any historical references to `setup.bat` in older docs/plans under
+`docs/` are kept for provenance and do not apply to a fresh clone.
 
 ## See also
 
