@@ -3,12 +3,18 @@
 
 #include <doctest/doctest.h>
 
+#include "backends/BackendFactory.h"
 #include "backends/MockBlueprintReader.h"
 #include "backends/ReadOnlyBlueprintReader.h"
 
 #include "test_helpers.h"
 
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
 
 using namespace bpr;
 using namespace bpr::backends;
@@ -19,6 +25,46 @@ std::unique_ptr<IBlueprintReader> MakeReadOnly() {
 	auto inner = test::MakeMockReaderUnique();
 	return std::make_unique<ReadOnlyBlueprintReader>(std::move(inner));
 }
+
+// RAII env-var override that restores the prior value (or unsets) on scope
+// exit, so these process-global tweaks don't leak across test cases. Pass
+// an empty value to unset for the duration. _dupenv_s/_putenv_s on MSVC;
+// getenv/setenv elsewhere — mirrors Env.cpp's platform split.
+struct ScopedEnv {
+	std::string                key_;
+	std::optional<std::string> prev_;
+	ScopedEnv(const char* key, const char* value) : key_(key) {
+#ifdef _MSC_VER
+		char*       buf = nullptr;
+		std::size_t len = 0;
+		if (_dupenv_s(&buf, &len, key) == 0 && buf != nullptr) {
+			prev_ = buf;
+			std::free(buf);
+		}
+		_putenv_s(key, value ? value : "");
+#else
+		if (const char* p = std::getenv(key)) {
+			prev_ = p;
+		}
+		if (value && *value) {
+			setenv(key, value, 1);
+		} else {
+			unsetenv(key);
+		}
+#endif
+	}
+	~ScopedEnv() {
+#ifdef _MSC_VER
+		_putenv_s(key_.c_str(), prev_ ? prev_->c_str() : "");
+#else
+		if (prev_) {
+			setenv(key_.c_str(), prev_->c_str(), 1);
+		} else {
+			unsetenv(key_.c_str());
+		}
+#endif
+	}
+};
 
 }    // namespace test_read_only_detail
 using namespace test_read_only_detail;
@@ -46,7 +92,10 @@ TEST_CASE("ReadOnly: every write tool throws BlueprintReaderError mentioning the
 			FAIL("expected throw");
 		} catch (const BlueprintReaderError& e) {
 			std::string msg = e.what();
+			// Message names both the read-only switch and the opt-in so the
+			// agent learns how to enable writes from the error alone.
 			CHECK(msg.find("BP_READER_READ_ONLY") != std::string::npos);
+			CHECK(msg.find("BP_READER_ALLOW_WRITE") != std::string::npos);
 		} catch (...) {
 			FAIL("expected BlueprintReaderError, got something else");
 		}
@@ -95,6 +144,37 @@ TEST_CASE("ReadOnly: BeginBatch/EndBatch pass through (apply_ops with all-read o
 	r->BeginBatch();
 	auto ack = r->EndBatch();
 	CHECK(ack.is_object());
+}
+
+TEST_CASE("ConfigFromEnv: read-only is the default; ALLOW_WRITE / READ_ONLY=0 opt in") {
+	std::ostringstream    log;
+	// A path with no .uproject anywhere above it -> no project discovery,
+	// no engine/registry lookups; readOnly is computed before any of that.
+	std::filesystem::path noProject = "C:/__bpr_no_uproject_here__/Binaries/Win64";
+
+	SUBCASE("nothing set -> read-only (the safe default)") {
+		ScopedEnv allow("BP_READER_ALLOW_WRITE", "");  // ensure unset
+		ScopedEnv ro("BP_READER_READ_ONLY", "");       // ensure unset
+		auto      cfg = ConfigFromEnv(noProject, log);
+		CHECK(cfg.readOnly == true);
+	}
+	SUBCASE("BP_READER_ALLOW_WRITE=1 -> writes enabled") {
+		ScopedEnv allow("BP_READER_ALLOW_WRITE", "1");
+		ScopedEnv ro("BP_READER_READ_ONLY", "");
+		auto      cfg = ConfigFromEnv(noProject, log);
+		CHECK(cfg.readOnly == false);
+	}
+	SUBCASE("BP_READER_READ_ONLY=0 -> writes enabled") {
+		ScopedEnv ro("BP_READER_READ_ONLY", "0");
+		auto      cfg = ConfigFromEnv(noProject, log);
+		CHECK(cfg.readOnly == false);
+	}
+	SUBCASE("explicit BP_READER_READ_ONLY=1 wins over ALLOW_WRITE=1") {
+		ScopedEnv allow("BP_READER_ALLOW_WRITE", "1");
+		ScopedEnv ro("BP_READER_READ_ONLY", "1");
+		auto      cfg = ConfigFromEnv(noProject, log);
+		CHECK(cfg.readOnly == true);
+	}
 }
 
 TEST_CASE("MaybeWrapReadOnly: false returns the inner unchanged") {
