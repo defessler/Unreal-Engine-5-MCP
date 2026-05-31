@@ -215,6 +215,14 @@ private:
 	FThreadSafeCounter64 LastDisconnectAtUnix;
 	int32                IdleSeconds = 300;
 
+	// Hard max-lifetime backstop (defense-in-depth). Idle-shutdown can't
+	// fire if a client connection wedges open (ActiveConnections never
+	// returns to 0); this caps total wall-clock lifetime regardless of
+	// activity. Off by default (0). Env BP_READER_DAEMON_MAX_LIFETIME_SECONDS
+	// enables it; StartedAtUnix is stamped in Start().
+	int32                MaxLifetimeSeconds = 0;
+	int64                StartedAtUnix      = 0;
+
 	// Monotonic counter handing each accepted socket a unique
 	// ConnectionId. Used by FBatchRegistry to key per-session state so
 	// two clients can run concurrent BeginBatch/EndBatch cycles without
