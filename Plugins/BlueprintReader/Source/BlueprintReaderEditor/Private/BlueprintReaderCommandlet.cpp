@@ -63,7 +63,9 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "EdGraphUtilities.h"
 #include "EdGraphSchema_K2.h"
+#include "UObject/TopLevelAssetPath.h"
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/Blueprint.h"
@@ -254,6 +256,12 @@ namespace
 		AddFunctionOutput,
 		DeleteFunction,
 		SetVariableDefault,
+		// Clone a whole graph's nodes (all classes, losslessly) from a source
+		// BP into a target BP via UE's node export/import — recreate-identical
+		// for graphs that add_node/BPIR can't reconstruct node-by-node.
+		CloneGraph,
+		// Add an implemented interface to a Blueprint (no prior tool existed).
+		ImplementInterface,
 		// Batch sentinels (A1): wrap a sequence of write ops so the
 		// expensive CompileBlueprint + SavePackage runs once per affected
 		// BP at EndBatch instead of once per op.
@@ -510,6 +518,8 @@ namespace
 		if (OpStr.Equals(TEXT("AddFunctionOutput"), ESearchCase::IgnoreCase))  { OutOp = EOp::AddFunctionOutput; return true; }
 		if (OpStr.Equals(TEXT("DeleteFunction"), ESearchCase::IgnoreCase))     { OutOp = EOp::DeleteFunction; return true; }
 		if (OpStr.Equals(TEXT("SetVariableDefault"), ESearchCase::IgnoreCase)) { OutOp = EOp::SetVariableDefault; return true; }
+		if (OpStr.Equals(TEXT("CloneGraph"), ESearchCase::IgnoreCase))         { OutOp = EOp::CloneGraph; return true; }
+		if (OpStr.Equals(TEXT("ImplementInterface"), ESearchCase::IgnoreCase)) { OutOp = EOp::ImplementInterface; return true; }
 		if (OpStr.Equals(TEXT("BeginBatch"), ESearchCase::IgnoreCase))         { OutOp = EOp::BeginBatch; return true; }
 		if (OpStr.Equals(TEXT("EndBatch"), ESearchCase::IgnoreCase))           { OutOp = EOp::EndBatch; return true; }
 		if (OpStr.Equals(TEXT("CreateBlueprint"), ESearchCase::IgnoreCase))    { OutOp = EOp::CreateBlueprint; return true; }
@@ -9373,6 +9383,197 @@ namespace
 		return EmitOk(OutputPath, bPretty);
 	}
 
+	// Add an implemented interface to a Blueprint. Needed so that interface
+	// event nodes (e.g. an AnimMotionEffect override) are valid on the target
+	// -- otherwise the compiler demotes them to plain custom events.
+	int32 RunImplementInterfaceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString Interface;
+		FParse::Value(*Params, TEXT("Interface="), Interface);
+		if (AssetPath.IsEmpty() || Interface.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("ImplementInterface requires -Asset= -Interface="));
+			return 1;
+		}
+		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
+		if (!IsValid(BP)) { return 4; }
+		const bool bAdded = FBlueprintEditorUtils::ImplementNewInterface(BP, FTopLevelAssetPath(Interface));
+		const bool bOk = CompileAndSaveBlueprint(BP);
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), bOk);
+		Out->SetBoolField(TEXT("added"), bAdded);
+		Out->SetStringField(TEXT("interface"), Interface);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// Reconstruct an entire graph's nodes from a source BP into a target BP,
+	// losslessly, via UE's own node export/import (the clipboard format). This
+	// covers EVERY K2 node class -- macros, promotable/commutative operators,
+	// events, etc. -- that add_node and the BPIR decompiler can't rebuild
+	// node-by-node. The target must already have the same variables, parent,
+	// and (for functions) the function declared, so the reconstructed nodes'
+	// references resolve.
+	int32 RunCloneGraphOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString SourcePath, TargetPath, GraphName;
+		FParse::Value(*Params, TEXT("Source="), SourcePath);
+		FParse::Value(*Params, TEXT("Target="), TargetPath);
+		FParse::Value(*Params, TEXT("Graph="),  GraphName);
+		if (SourcePath.IsEmpty() || TargetPath.IsEmpty() || GraphName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CloneGraph requires -Source= -Target= -Graph="));
+			return 1;
+		}
+		UBlueprint* SrcBP = LoadMutableBlueprint(SourcePath);
+		UBlueprint* DstBP = LoadMutableBlueprint(TargetPath);
+		if (!IsValid(SrcBP) || !IsValid(DstBP)) { return 4; }
+		UEdGraph* SrcGraph = FindGraphByName(SrcBP, GraphName);
+		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
+		if (!IsValid(SrcGraph) || !IsValid(DstGraph))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CloneGraph: graph '%s' not found in source or target"), *GraphName);
+			return 4;
+		}
+
+		// Function graphs: the function-entry node (with its user-defined
+		// input pins + local variables) and result node are NOT part of the
+		// clipboard export. Reproduce the signature + locals on the
+		// destination entry FIRST so the imported body nodes bind to the right
+		// params/locals, then re-link entry/result connections afterwards.
+		auto FindEntryIn = [](UEdGraph* G) -> UK2Node_FunctionEntry*
+		{
+			for (UEdGraphNode* N : G->Nodes)
+			{
+				if (UK2Node_FunctionEntry* E = Cast<UK2Node_FunctionEntry>(N)) { return E; }
+			}
+			return nullptr;
+		};
+		UK2Node_FunctionEntry* SrcEntry = FindEntryIn(SrcGraph);
+		UK2Node_FunctionEntry* DstEntry = FindEntryIn(DstGraph);
+		UK2Node_FunctionResult* SrcResult = nullptr;
+		for (UEdGraphNode* N : SrcGraph->Nodes)
+		{
+			if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N)) { SrcResult = R; break; }
+		}
+		if (SrcEntry && DstEntry)
+		{
+			DstEntry->UserDefinedPins.Empty();
+			for (const TSharedPtr<FUserPinInfo>& Src : SrcEntry->UserDefinedPins)
+			{
+				DstEntry->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Src));
+			}
+			DstEntry->LocalVariables = SrcEntry->LocalVariables;
+			DstEntry->ReconstructNode();
+		}
+
+		// 1. Export every source-graph node to UE's clipboard text format.
+		TSet<UObject*> ToExport;
+		for (UEdGraphNode* N : SrcGraph->Nodes) { if (IsValid(N)) { ToExport.Add(N); } }
+		FString ExportText;
+		FEdGraphUtilities::ExportNodesToText(ToExport, ExportText);
+
+		// 2. Clear the destination graph's deletable nodes (function entry /
+		//    result + default event ghosts are kept by the schema).
+		TArray<UEdGraphNode*> Existing = DstGraph->Nodes;
+		int32 Removed = 0;
+		for (UEdGraphNode* N : Existing)
+		{
+			if (IsValid(N) && N->CanUserDeleteNode())
+			{
+				FBlueprintEditorUtils::RemoveNode(DstBP, N, /*bDontRecompile=*/true);
+				++Removed;
+			}
+		}
+
+		// 3. Reconstruct the source nodes into the destination graph.
+		TSet<UEdGraphNode*> Imported;
+		FEdGraphUtilities::ImportNodesFromText(DstGraph, ExportText, Imported);
+
+		// 4. Build a position -> imported-node map (ImportNodesFromText
+		//    preserves NodePosX/Y) to re-link connections the clipboard
+		//    dropped, and a helper that copies one source node's links onto a
+		//    destination node by position+pin-name matching.
+		TMap<FIntPoint, UEdGraphNode*> ByPos;
+		for (UEdGraphNode* N : Imported)
+		{
+			if (IsValid(N)) { ByPos.Add(FIntPoint(N->NodePosX, N->NodePosY), N); }
+		}
+		auto Relink = [&ByPos](UEdGraphNode* SrcNode, UEdGraphNode* DstNode)
+		{
+			if (!SrcNode || !DstNode) { return; }
+			for (UEdGraphPin* SrcPin : SrcNode->Pins)
+			{
+				UEdGraphPin* DstPin = DstNode->FindPin(SrcPin->PinName, SrcPin->Direction);
+				if (!DstPin) { continue; }
+				for (UEdGraphPin* Linked : SrcPin->LinkedTo)
+				{
+					UEdGraphNode* SrcOther = Linked ? Linked->GetOwningNode() : nullptr;
+					if (!SrcOther) { continue; }
+					if (UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcOther->NodePosX, SrcOther->NodePosY)))
+					{
+						if (UEdGraphPin* DstOther = (*Imp)->FindPin(Linked->PinName, Linked->Direction))
+						{
+							DstPin->MakeLinkTo(DstOther);
+						}
+					}
+				}
+			}
+		};
+
+		// 4a. Function entry/result connections.
+		if (SrcEntry && DstEntry)
+		{
+			Relink(SrcEntry, DstEntry);
+			if (SrcResult)
+			{
+				UK2Node_FunctionResult* DstResult = nullptr;
+				for (UEdGraphNode* N : DstGraph->Nodes)
+				{
+					if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N)) { DstResult = R; break; }
+				}
+				Relink(SrcResult, DstResult);
+			}
+		}
+
+		// 4b. Override/interface events: the clipboard import demotes a
+		//     K2Node_Event to a K2Node_CustomEvent (it can't re-bind the
+		//     overridden function on paste). For each such demoted event,
+		//     replace it with a proper event node bound to the same function
+		//     and re-link its body connections.
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_Event* SrcEvt = Cast<UK2Node_Event>(SrcNode);
+			if (!SrcEvt || !SrcEvt->bOverrideFunction) { continue; }
+			const FIntPoint Pos(SrcNode->NodePosX, SrcNode->NodePosY);
+			UEdGraphNode** Imp = ByPos.Find(Pos);
+			if (!Imp || !IsValid(*Imp) || !(*Imp)->IsA<UK2Node_CustomEvent>()) { continue; }
+			FBlueprintEditorUtils::RemoveNode(DstBP, *Imp, /*bDontRecompile=*/true);
+			ByPos.Remove(Pos);
+			UK2Node_Event* NewEvt = NewObject<UK2Node_Event>(DstGraph);
+			NewEvt->EventReference    = SrcEvt->EventReference;
+			NewEvt->bOverrideFunction = SrcEvt->bOverrideFunction;
+			NewEvt->NodePosX = SrcNode->NodePosX;
+			NewEvt->NodePosY = SrcNode->NodePosY;
+			NewEvt->CreateNewGuid();
+			DstGraph->AddNode(NewEvt, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+			NewEvt->PostPlacedNewNode();
+			NewEvt->AllocateDefaultPins();
+			Relink(SrcEvt, NewEvt);
+		}
+
+		const bool bOk = CompileAndSaveBlueprint(DstBP);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), bOk);
+		Out->SetStringField(TEXT("graph"), GraphName);
+		Out->SetNumberField(TEXT("source_nodes"), ToExport.Num());
+		Out->SetNumberField(TEXT("removed_stub_nodes"), Removed);
+		Out->SetNumberField(TEXT("imported_nodes"), Imported.Num());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunDeleteNodeOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -10413,6 +10614,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::AddFunctionOutput,          &RunAddFunctionOutputOp },
 		{ EOp::DeleteFunction,             &RunDeleteFunctionOp },
 		{ EOp::SetVariableDefault,         &RunSetVariableDefaultOp },
+		{ EOp::CloneGraph,                 &RunCloneGraphOp },
+		{ EOp::ImplementInterface,         &RunImplementInterfaceOp },
 		{ EOp::BeginBatch,                 &RunBeginBatchOp },
 		{ EOp::EndBatch,                   &RunEndBatchOp },
 		{ EOp::CreateBlueprint,            &RunCreateBlueprintOp },
