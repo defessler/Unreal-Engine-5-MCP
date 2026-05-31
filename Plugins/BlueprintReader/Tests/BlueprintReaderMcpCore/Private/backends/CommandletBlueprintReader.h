@@ -58,6 +58,11 @@ public:
 												   // variant the daemon launches.
 		std::string editorExtraArgs;               // appended to commandlet command
 												   // line, whitespace-separated
+		std::string pluginDenylist;                // comma-separated plugin names;
+												   // each becomes -DisablePlugin=<name>
+												   // so a known-bad plugin (e.g. one
+												   // that crashes in StartupModule)
+												   // can be skipped non-interactively
 		bool useDaemon = false;
 
 		// Test hook: when set, EnsureDaemonAttached invokes this instead

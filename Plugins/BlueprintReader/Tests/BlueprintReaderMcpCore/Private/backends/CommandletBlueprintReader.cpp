@@ -125,6 +125,28 @@ std::vector<std::wstring> SplitArgs(const std::string& s) {
 	return out;
 }
 
+// Each comma-separated plugin name in `csv` becomes a `-DisablePlugin=<name>`
+// editor arg, so a known-bad plugin can be skipped non-interactively (e.g. one
+// that crashes in StartupModule and would otherwise kill a headless
+// commandlet before it publishes its handshake). Caveat: UE's -DisablePlugin
+// does NOT override plugins force-enabled by the .uproject — those must be
+// disabled in the project/target instead.
+std::vector<std::wstring> DisablePluginArgs(const std::string& csv) {
+	std::vector<std::wstring> out;
+	std::istringstream iss(csv);
+	std::string name;
+	while (std::getline(iss, name, ',')) {
+		const auto b = name.find_first_not_of(" \t");
+		if (b == std::string::npos)
+		{
+			continue;  // empty / whitespace-only entry
+		}
+		const auto e = name.find_last_not_of(" \t");
+		out.push_back(L"-DisablePlugin=" + Widen(name.substr(b, e - b + 1)));
+	}
+	return out;
+}
+
 struct ProcResult {
 	bool launched = false;
 	bool timedOut = false;
@@ -683,6 +705,10 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	{
 		args.push_back(std::move(extra));
 	}
+	for (auto& dis : DisablePluginArgs(cfg_.pluginDenylist))
+	{
+		args.push_back(std::move(dis));
+	}
 
 	const auto t0 = std::chrono::steady_clock::now();
 	auto r = RunChild(editorCmdExe_.wstring(), args, cfg_.timeout);
@@ -875,8 +901,14 @@ void CommandletBlueprintReader::PollForHandshake(std::chrono::seconds timeout) {
 			DWORD code = 0;
 			GetExitCodeProcess(daemonProcess_, &code);
 			throw BlueprintReaderError(fmt::format(
-				"daemon child exited before publishing handshake "
-				"(code={}); check {} for engine log tail",
+				"daemon child exited before publishing handshake (code={}). "
+				"The headless editor failed to start — most often a plugin "
+				"failed to load or crashed in StartupModule. Remedies: set "
+				"BP_READER_EDITOR_ARGS=-EnableAllPlugins (makes missing "
+				"plugin modules non-fatal), or "
+				"BP_READER_PLUGIN_DENYLIST=<PluginName> to skip a plugin that "
+				"crashes on init (e.g. DLSS). Check {} for the engine log "
+				"tail.",
 				code,
 				(std::filesystem::temp_directory_path() /
 				 "bp-reader-mcp-daemon-failure.log").string()));
@@ -969,8 +1001,12 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 #endif    // defined(_WIN32)
 		throw BlueprintReaderError(fmt::format(
 			"commandlet daemon: spawn-lock {}, handshake never appeared "
-			"within {}s (bump BP_READER_STARTUP_TIMEOUT_SECONDS for "
-			"slower projects); check {} for engine log tail",
+			"within {}s. If the project is just slow to load, bump "
+			"BP_READER_STARTUP_TIMEOUT_SECONDS. If a plugin fails to load or "
+			"crashes during editor startup, set "
+			"BP_READER_EDITOR_ARGS=-EnableAllPlugins (missing modules become "
+			"non-fatal) or BP_READER_PLUGIN_DENYLIST=<PluginName> (skip a "
+			"plugin that crashes on init). Check {} for the engine log tail.",
 			acquired ? "acquired" : "contended",
 			cfg_.startupTimeout.count(),
 			(std::filesystem::temp_directory_path() /
@@ -1058,6 +1094,9 @@ void CommandletBlueprintReader::SpawnDaemon() {
 	args.push_back(L"-stdout");
 	for (auto& extra : SplitArgs(cfg_.editorExtraArgs)) {
 		args.push_back(std::move(extra));
+	}
+	for (auto& dis : DisablePluginArgs(cfg_.pluginDenylist)) {
+		args.push_back(std::move(dis));
 	}
 	std::wstring cmd = BuildCommandLine(editorCmdExe_.wstring(), args);
 

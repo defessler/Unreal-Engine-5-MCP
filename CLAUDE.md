@@ -141,6 +141,7 @@ commandlet (editor closed).
 | `BP_READER_ALLOW_WRITE`       | `0` (off)                          | Discoverable inverse of `BP_READER_READ_ONLY` — set `1` to enable write tools. An explicit `BP_READER_READ_ONLY` wins if both are set. |
 | `BP_READER_ALLOW_TRANSPILE`  | `0` (off)                          | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
 | `BP_READER_AUTO_CHECKOUT`    | `1` (on)                           | Before a write op mutates an asset, auto-check-it-out of source control (Perforce/Git) non-interactively. Stops a live editor from popping a blocking "Check Out?" modal mid-call. Set `0` to manage checkouts yourself. |
+| `BP_READER_PLUGIN_DENYLIST`  | (empty)                            | Comma-separated plugin names; each becomes a `-DisablePlugin=<name>` arg on the headless editor spawn. Use to skip a plugin that crashes in `StartupModule` (e.g. DLSS) and would otherwise kill the commandlet before handshake. Caveat: `-DisablePlugin` does **not** override `.uproject`-force-enabled plugins. |
 
 For local dev, the mock backend works against a fresh checkout with no
 UE setup — useful for iterating on the MCP server itself.
