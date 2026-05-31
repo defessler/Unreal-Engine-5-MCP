@@ -350,6 +350,18 @@ bool FCmdletServer::WantsShutdown() const
 		return true;
 	}
 
+	// Hard max-lifetime backstop (off by default). Fires regardless of
+	// activity — covers the case where a wedged-open connection keeps
+	// ActiveConnections > 0 so the idle path below can never trigger.
+	if (MaxLifetimeSeconds > 0 && StartedAtUnix > 0)
+	{
+		const int64 Now = FDateTime::UtcNow().ToUnixTimestamp();
+		if (Now - StartedAtUnix >= static_cast<int64>(MaxLifetimeSeconds))
+		{
+			return true;
+		}
+	}
+
 	// Idle check: only fire once at least one client has fully
 	// connected + disconnected. Otherwise a fresh daemon with no
 	// clients yet would shut itself down immediately on the first
@@ -503,6 +515,31 @@ bool FCmdletServer::Start(int32 Port)
 				UE_LOG(LogBlueprintReaderCmdlet, Warning,
 					TEXT("FCmdletServer: BP_READER_DAEMON_IDLE_SECONDS=%s rejected (must be >= 5); using default %d s"),
 					*IdleStr, IdleSeconds);
+			}
+		}
+	}
+
+	// Hard max-lifetime backstop (off by default). Stamp the start time and
+	// read the optional cap. When set, WantsShutdown() fires after this many
+	// wall-clock seconds even if a connection never closes — so a wedged
+	// daemon can't outlive its usefulness.
+	{
+		StartedAtUnix = FDateTime::UtcNow().ToUnixTimestamp();
+		FString MaxStr = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_DAEMON_MAX_LIFETIME_SECONDS"));
+		if (!MaxStr.IsEmpty())
+		{
+			const int32 Parsed = FCString::Atoi(*MaxStr);
+			if (Parsed > 0)
+			{
+				MaxLifetimeSeconds = Parsed;
+				UE_LOG(LogBlueprintReaderCmdlet, Display,
+					TEXT("FCmdletServer: hard max lifetime %d s (env override)"), MaxLifetimeSeconds);
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Warning,
+					TEXT("FCmdletServer: BP_READER_DAEMON_MAX_LIFETIME_SECONDS=%s rejected (must be > 0); backstop disabled"),
+					*MaxStr);
 			}
 		}
 	}
