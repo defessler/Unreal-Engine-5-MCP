@@ -144,9 +144,12 @@
 #include "K2Node_CallArrayFunction.h"   // array library funcs need the wildcard-aware node
 #include "K2Node_GetSubsystem.h"        // add_node Kind=GetSubsystem
 #include "Subsystems/Subsystem.h"       // USubsystem base for the GetSubsystem type check
+#include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_Tunnel.h"
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_FormatText.h"
 #include "K2Node_FunctionEntry.h"
@@ -9470,35 +9473,22 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
-	// Reconstruct an entire graph's nodes from a source BP into a target BP,
-	// losslessly, via UE's own node export/import (the clipboard format). This
-	// covers EVERY K2 node class -- macros, promotable/commutative operators,
-	// events, etc. -- that add_node and the BPIR decompiler can't rebuild
-	// node-by-node. The target must already have the same variables, parent,
-	// and (for functions) the function declared, so the reconstructed nodes'
-	// references resolve.
-	int32 RunCloneGraphOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	// Stats for the top-level clone (recursion fills its own, which are ignored).
+	struct FCloneGraphStats { int32 SourceNodes = 0; int32 Removed = 0; int32 Imported = 0; };
+
+	// Recursive worker: reproduce SrcGraph's contents into DstGraph via UE's node
+	// export/import (the clipboard format) -- covering EVERY K2 node class -- then
+	// fix up function entry/result + macro/composite tunnel signatures, cast
+	// purity/pin-types, and override events, and RECURSE into K2Node_Composite
+	// BoundGraphs + locally-defined macro graphs (which the clipboard does not
+	// carry). Does not compile/save; the op does that once after the whole
+	// recursion. Visited guards graph cycles; MacroMap dedupes local macros so
+	// repeated instances share one reproduced macro graph.
+	void CloneGraphContents(UBlueprint* SrcBP, UBlueprint* DstBP, UEdGraph* SrcGraph, UEdGraph* DstGraph,
+	                        TSet<UEdGraph*>& Visited, TMap<FName, UEdGraph*>& MacroMap, FCloneGraphStats* OutStats)
 	{
-		FString SourcePath, TargetPath, GraphName;
-		FParse::Value(*Params, TEXT("Source="), SourcePath);
-		FParse::Value(*Params, TEXT("Target="), TargetPath);
-		FParse::Value(*Params, TEXT("Graph="),  GraphName);
-		if (SourcePath.IsEmpty() || TargetPath.IsEmpty() || GraphName.IsEmpty())
-		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("CloneGraph requires -Source= -Target= -Graph="));
-			return 1;
-		}
-		UBlueprint* SrcBP = LoadMutableBlueprint(SourcePath);
-		UBlueprint* DstBP = LoadMutableBlueprint(TargetPath);
-		if (!IsValid(SrcBP) || !IsValid(DstBP)) { return 4; }
-		UEdGraph* SrcGraph = FindGraphByName(SrcBP, GraphName);
-		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
-		if (!IsValid(SrcGraph) || !IsValid(DstGraph))
-		{
-			UE_LOG(LogBlueprintReader, Error,
-				TEXT("CloneGraph: graph '%s' not found in source or target"), *GraphName);
-			return 4;
-		}
+		if (!IsValid(SrcGraph) || !IsValid(DstGraph) || Visited.Contains(SrcGraph)) { return; }
+		Visited.Add(SrcGraph);
 
 		// Function graphs: the function-entry node (with its user-defined
 		// input pins + local variables) and result node are NOT part of the
@@ -9540,6 +9530,43 @@ namespace
 			DstEntry->FunctionReference = SrcEntry->FunctionReference;
 			DstEntry->SetExtraFlags(SrcEntry->GetExtraFlags());
 			DstEntry->ReconstructNode();
+		}
+
+		// Macro / composite BoundGraphs use UK2Node_Tunnel terminals (an input-sink
+		// with outputs + an output-source with inputs) instead of FunctionEntry/
+		// Result; their user-defined pins ARE the macro/composite signature and are
+		// NOT carried by the clipboard. Reproduce them on the destination tunnels so
+		// the body binds and the parent macro-instance / composite node regenerates
+		// matching pins. (No-op on function/ubergraphs, which have no bare tunnels.)
+		{
+			auto FindTunnel = [](UEdGraph* G, bool bWantOutputs) -> UK2Node_Tunnel*
+			{
+				for (UEdGraphNode* N : G->Nodes)
+				{
+					// Exact UK2Node_Tunnel only — exclude the MacroInstance / Composite
+					// subclasses that also derive from it.
+					if (N && N->GetClass() == UK2Node_Tunnel::StaticClass())
+					{
+						UK2Node_Tunnel* T = static_cast<UK2Node_Tunnel*>(N);
+						if (bWantOutputs ? T->bCanHaveOutputs : T->bCanHaveInputs) { return T; }
+					}
+				}
+				return nullptr;
+			};
+			for (bool bOutputs : { true, false })
+			{
+				UK2Node_Tunnel* SrcTun = FindTunnel(SrcGraph, bOutputs);
+				UK2Node_Tunnel* DstTun = FindTunnel(DstGraph, bOutputs);
+				if (SrcTun && DstTun)
+				{
+					DstTun->UserDefinedPins.Empty();
+					for (const TSharedPtr<FUserPinInfo>& Src : SrcTun->UserDefinedPins)
+					{
+						DstTun->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Src));
+					}
+					DstTun->ReconstructNode();
+				}
+			}
 		}
 
 		// 1. Export every source-graph node to UE's clipboard text format.
@@ -9651,6 +9678,29 @@ namespace
 			}
 		}
 
+		// 4a2. Macro/composite tunnel connections. The input-sink / output-source
+		//      tunnels are not part of the clipboard export (they're the dst graph's
+		//      own terminals), so the body's links TO them were dropped on import.
+		//      Relink them from the source tunnels (whose pins were reproduced above).
+		{
+			auto FindTun = [](UEdGraph* G, bool bWantOutputs) -> UK2Node_Tunnel*
+			{
+				for (UEdGraphNode* N : G->Nodes)
+				{
+					if (N && N->GetClass() == UK2Node_Tunnel::StaticClass())
+					{
+						UK2Node_Tunnel* T = static_cast<UK2Node_Tunnel*>(N);
+						if (bWantOutputs ? T->bCanHaveOutputs : T->bCanHaveInputs) { return T; }
+					}
+				}
+				return nullptr;
+			};
+			for (bool bOut : { true, false })
+			{
+				Relink(FindTun(SrcGraph, bOut), FindTun(DstGraph, bOut));
+			}
+		}
+
 		// 4b. Override/interface events: the clipboard import demotes a
 		//     K2Node_Event to a K2Node_CustomEvent (it can't re-bind the
 		//     overridden function on paste). For each such demoted event,
@@ -9677,34 +9727,176 @@ namespace
 			Relink(SrcEvt, NewEvt);
 		}
 
-		// 4c. Restore K2Node_DynamicCast input ("Object") pin type. The pin is
-		//     allocated as wildcard and only hardens to the connected type via
-		//     NotifyPinConnectionListChanged, which doesn't re-fire after the clone's
-		//     late import/relink — so a source `object` input comes back `wildcard`.
-		//     Copy the source cast's input PinType directly (matched by position):
-		//     deterministic and connection-independent. Runs last so nothing
-		//     re-allocates the pin afterward.
+		// 4c. Restore pin types that came back as wildcard. Several node classes
+		//     (DynamicCast's Object input, CallArrayFunction's TargetArray, Select,
+		//     etc.) allocate wildcard pins that only harden to a concrete type via
+		//     NotifyPinConnectionListChanged — which doesn't re-fire after the clone's
+		//     late import/relink, so a source `object`/`Vector[]` pin comes back
+		//     `wildcard`. For each imported node matched to its source by position,
+		//     copy the source pin's type onto any dst pin that is STILL wildcard
+		//     (deterministic, connection-independent, and a no-op for already-correct
+		//     pins). Runs last so nothing re-allocates the pin afterward.
 		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
 		{
-			UK2Node_DynamicCast* SrcCast = Cast<UK2Node_DynamicCast>(SrcNode);
-			if (!SrcCast) { continue; }
 			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
 			if (!Imp || !IsValid(*Imp)) { continue; }
-			UK2Node_DynamicCast* DstCast = Cast<UK2Node_DynamicCast>(*Imp);
-			if (!DstCast) { continue; }
-			UEdGraphPin* SrcIn = SrcCast->GetCastSourcePin();
-			UEdGraphPin* DstIn = DstCast->GetCastSourcePin();
-			if (SrcIn && DstIn) { DstIn->PinType = SrcIn->PinType; }
+			UEdGraphNode* DstNode = *Imp;
+			for (UEdGraphPin* SrcPin : SrcNode->Pins)
+			{
+				if (!SrcPin || SrcPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard) { continue; }
+				UEdGraphPin* DstPin = DstNode->FindPin(SrcPin->PinName, SrcPin->Direction);
+				if (DstPin && DstPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
+				{
+					DstPin->PinType = SrcPin->PinType;
+				}
+			}
 		}
 
-		const bool bOk = CompileAndSaveBlueprint(DstBP);
+		// 5. Recurse into K2Node_Composite BoundGraphs — the clipboard does not
+		//    carry a composite's nested sub-graph, so reproduce it explicitly.
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_Composite* SrcComp = Cast<UK2Node_Composite>(SrcNode);
+			if (!SrcComp || !IsValid(SrcComp->BoundGraph)) { continue; }
+			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
+			if (!Imp || !IsValid(*Imp)) { continue; }
+			UK2Node_Composite* DstComp = Cast<UK2Node_Composite>(*Imp);
+			if (!DstComp) { continue; }
+			// The import may or may not have brought a BoundGraph; normalize to one
+			// owned by DstBP, then reproduce its contents (tunnels + body) via the
+			// recursive worker. ReconstructNode regenerates the composite's pins from
+			// the (now-populated) tunnels.
+			UEdGraph* DstBound = DstComp->BoundGraph;
+			if (!IsValid(DstBound))
+			{
+				DstBound = FBlueprintEditorUtils::CreateNewGraph(
+					DstBP, SrcComp->BoundGraph->GetFName(),
+					UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+				DstComp->BoundGraph = DstBound;
+			}
+			DstGraph->SubGraphs.AddUnique(DstBound);
+			CloneGraphContents(SrcBP, DstBP, SrcComp->BoundGraph, DstBound, Visited, MacroMap, nullptr);
+			// Force the bound-graph name to the source's so the composite's title
+			// (which mirrors the bound-graph name) matches — the clipboard paste
+			// suffixes it (e.g. "CreatePolygon" -> "CreatePolygon_2").
+			const FString WantBound = SrcComp->BoundGraph->GetName();
+			if (DstBound->GetName() != WantBound)
+			{
+				if (UObject* Clash = StaticFindObjectFast(nullptr, DstBound->GetOuter(), FName(*WantBound)))
+				{
+					if (Clash != DstBound)
+					{
+						Clash->Rename(nullptr, GetTransientPackage(),
+							REN_DontCreateRedirectors | REN_DoNotDirty | REN_NonTransactional);
+					}
+				}
+				DstBound->Rename(*WantBound, DstBound->GetOuter(),
+					REN_DontCreateRedirectors | REN_DoNotDirty | REN_NonTransactional);
+			}
+			DstComp->ReconstructNode();
+		}
 
+		// 6. Recurse into locally-defined macro graphs referenced by a
+		//    K2Node_MacroInstance. External macro-library macros resolve by
+		//    reference after import and are left alone.
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_MacroInstance* SrcInst = Cast<UK2Node_MacroInstance>(SrcNode);
+			if (!SrcInst) { continue; }
+			UEdGraph* SrcMacro = SrcInst->GetMacroGraph();
+			if (!IsValid(SrcMacro) || SrcMacro->GetTypedOuter<UBlueprint>() != SrcBP) { continue; }
+
+			// Ensure the dest BP has a same-named macro graph, reproduced once.
+			const FName MacroName = SrcMacro->GetFName();
+			UEdGraph* DstMacro = MacroMap.FindRef(MacroName);
+			if (!IsValid(DstMacro))
+			{
+				DstMacro = FindGraphByName(DstBP, MacroName.ToString());
+				if (!IsValid(DstMacro))
+				{
+					DstMacro = FBlueprintEditorUtils::CreateNewGraph(
+						DstBP, MacroName, UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+					FBlueprintEditorUtils::AddMacroGraph(DstBP, DstMacro, /*bIsUserCreated=*/true, /*SignatureFromClass=*/nullptr);
+				}
+				MacroMap.Add(MacroName, DstMacro);
+				CloneGraphContents(SrcBP, DstBP, SrcMacro, DstMacro, Visited, MacroMap, nullptr);
+			}
+
+			// The clipboard DROPS a macro instance that references a LOCAL (private)
+			// macro of the source BP ("Illegal TEXT reference to a private object in
+			// external package"), so it never imports. Re-create the instance fresh,
+			// pointing at the dest macro, and relink its body connections (mirrors the
+			// override-event rebuild above). If the import DID keep it, just retarget.
+			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
+			UK2Node_MacroInstance* DstInst = (Imp && IsValid(*Imp)) ? Cast<UK2Node_MacroInstance>(*Imp) : nullptr;
+			if (DstInst)
+			{
+				DstInst->SetMacroGraph(DstMacro);
+				DstInst->ReconstructNode();
+			}
+			else
+			{
+				DstInst = NewObject<UK2Node_MacroInstance>(DstGraph);
+				DstInst->SetMacroGraph(DstMacro);
+				DstInst->NodePosX = SrcNode->NodePosX;
+				DstInst->NodePosY = SrcNode->NodePosY;
+				DstInst->CreateNewGuid();
+				DstGraph->AddNode(DstInst, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+				DstInst->PostPlacedNewNode();
+				DstInst->AllocateDefaultPins();
+				ByPos.Add(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY), DstInst);
+				Relink(SrcInst, DstInst);
+			}
+		}
+
+		if (OutStats)
+		{
+			OutStats->SourceNodes = ToExport.Num();
+			OutStats->Removed      = Removed;
+			OutStats->Imported     = Imported.Num();
+		}
+	}
+
+	// Reconstruct an entire graph's nodes from a source BP into a target BP,
+	// losslessly, via UE's own node export/import (the clipboard format) plus
+	// recursive reproduction of composite sub-graphs + local macro graphs. The
+	// target must already have the same variables, parent, and (for functions) the
+	// function declared, so the reconstructed nodes' references resolve.
+	int32 RunCloneGraphOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString SourcePath, TargetPath, GraphName;
+		FParse::Value(*Params, TEXT("Source="), SourcePath);
+		FParse::Value(*Params, TEXT("Target="), TargetPath);
+		FParse::Value(*Params, TEXT("Graph="),  GraphName);
+		if (SourcePath.IsEmpty() || TargetPath.IsEmpty() || GraphName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CloneGraph requires -Source= -Target= -Graph="));
+			return 1;
+		}
+		UBlueprint* SrcBP = LoadMutableBlueprint(SourcePath);
+		UBlueprint* DstBP = LoadMutableBlueprint(TargetPath);
+		if (!IsValid(SrcBP) || !IsValid(DstBP)) { return 4; }
+		UEdGraph* SrcGraph = FindGraphByName(SrcBP, GraphName);
+		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
+		if (!IsValid(SrcGraph) || !IsValid(DstGraph))
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("CloneGraph: graph '%s' not found in source or target"), *GraphName);
+			return 4;
+		}
+
+		FCloneGraphStats Stats;
+		TSet<UEdGraph*> Visited;
+		TMap<FName, UEdGraph*> MacroMap;
+		CloneGraphContents(SrcBP, DstBP, SrcGraph, DstGraph, Visited, MacroMap, &Stats);
+
+		const bool bOk = CompileAndSaveBlueprint(DstBP);
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), bOk);
 		Out->SetStringField(TEXT("graph"), GraphName);
-		Out->SetNumberField(TEXT("source_nodes"), ToExport.Num());
-		Out->SetNumberField(TEXT("removed_stub_nodes"), Removed);
-		Out->SetNumberField(TEXT("imported_nodes"), Imported.Num());
+		Out->SetNumberField(TEXT("source_nodes"), Stats.SourceNodes);
+		Out->SetNumberField(TEXT("removed_stub_nodes"), Stats.Removed);
+		Out->SetNumberField(TEXT("imported_nodes"), Stats.Imported);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
