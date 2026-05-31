@@ -761,16 +761,45 @@ void SocketBlueprintReader::SetVariableDefault(std::string_view a, std::string_v
 }
 
 IBlueprintReader::CreateBlueprintResult
-SocketBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p) {
-	auto j = RunOp({
+SocketBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p,
+									   std::string_view bt) {
+	std::vector<std::string> args = {
 		"-Op=CreateBlueprint",
 		"-Asset=" + std::string(a),
 		"-ParentClass=" + std::string(p),
-	});
+	};
+	if (!bt.empty()) {
+		args.push_back("-BlueprintType=" + std::string(bt));
+	}
+	auto j = RunOp(args);
 	CreateBlueprintResult out;
 	out.alreadyExisted = j.value("already_existed", false);
 	out.parentClass    = j.value("parent_class",    std::string{});
 	return out;
+}
+
+IBlueprintReader::CloneGraphResult
+SocketBlueprintReader::CloneGraph(std::string_view source, std::string_view target,
+								  std::string_view graph) {
+	auto j = RunOp({
+		"-Op=CloneGraph",
+		"-Source=" + std::string(source),
+		"-Target=" + std::string(target),
+		"-Graph="  + std::string(graph),
+	});
+	CloneGraphResult out;
+	out.ok            = j.is_object() && j.value("ok", false);
+	out.importedNodes = j.is_object() ? j.value("imported_nodes", 0) : 0;
+	return out;
+}
+
+void SocketBlueprintReader::ImplementInterface(std::string_view a,
+											   std::string_view iface) {
+	(void)RunOp({
+		"-Op=ImplementInterface",
+		"-Asset="     + std::string(a),
+		"-Interface=" + std::string(iface),
+	});
 }
 
 void SocketBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,

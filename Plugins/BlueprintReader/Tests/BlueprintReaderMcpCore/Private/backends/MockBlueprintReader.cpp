@@ -260,9 +260,20 @@ void MockBlueprintReader::SetVariableDefault(std::string_view, std::string_view,
 }
 
 IBlueprintReader::CreateBlueprintResult
-MockBlueprintReader::CreateBlueprint(std::string_view, std::string_view) {
+MockBlueprintReader::CreateBlueprint(std::string_view, std::string_view, std::string_view) {
 	throw BlueprintReaderError(
 		"CreateBlueprint: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+IBlueprintReader::CloneGraphResult
+MockBlueprintReader::CloneGraph(std::string_view, std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"CloneGraph: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+void MockBlueprintReader::ImplementInterface(std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"ImplementInterface: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
 void MockBlueprintReader::SetPinDefault(std::string_view, std::string_view,

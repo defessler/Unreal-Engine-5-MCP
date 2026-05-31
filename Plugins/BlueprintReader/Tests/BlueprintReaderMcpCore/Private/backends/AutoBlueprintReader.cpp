@@ -467,8 +467,17 @@ void AutoBlueprintReader::SetVariableDefault(std::string_view a, std::string_vie
 	FORWARD_VOID(SetVariableDefault, a, n, d);
 }
 IBlueprintReader::CreateBlueprintResult
-AutoBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p) {
-	FORWARD(CreateBlueprint, a, p);
+AutoBlueprintReader::CreateBlueprint(std::string_view a, std::string_view p,
+									 std::string_view bt) {
+	FORWARD(CreateBlueprint, a, p, bt);
+}
+IBlueprintReader::CloneGraphResult
+AutoBlueprintReader::CloneGraph(std::string_view s, std::string_view t,
+								std::string_view g) {
+	FORWARD(CloneGraph, s, t, g);
+}
+void AutoBlueprintReader::ImplementInterface(std::string_view a, std::string_view i) {
+	FORWARD_VOID(ImplementInterface, a, i);
 }
 void AutoBlueprintReader::SetPinDefault(std::string_view a, std::string_view g,
 										std::string_view n, std::string_view p,

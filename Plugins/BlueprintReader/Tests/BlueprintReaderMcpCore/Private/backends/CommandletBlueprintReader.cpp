@@ -1502,11 +1502,15 @@ void CommandletBlueprintReader::SetVariableDefault(std::string_view assetPath,
 
 IBlueprintReader::CreateBlueprintResult
 CommandletBlueprintReader::CreateBlueprint(std::string_view assetPath,
-										   std::string_view parentClass) {
+										   std::string_view parentClass,
+										   std::string_view blueprintType) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=CreateBlueprint");
 	args.push_back(L"-Asset=" + Widen(assetPath));
 	args.push_back(L"-ParentClass=" + Widen(parentClass));
+	if (!blueprintType.empty()) {
+		args.push_back(L"-BlueprintType=" + Widen(blueprintType));
+	}
 	auto result = RunOp(args);
 	CreateBlueprintResult out;
 	if (result.is_object()) {
@@ -1514,6 +1518,33 @@ CommandletBlueprintReader::CreateBlueprint(std::string_view assetPath,
 		out.parentClass    = result.value("parent_class",   std::string{});
 	}
 	return out;
+}
+
+IBlueprintReader::CloneGraphResult
+CommandletBlueprintReader::CloneGraph(std::string_view sourcePath,
+									  std::string_view targetPath,
+									  std::string_view graphName) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=CloneGraph");
+	args.push_back(L"-Source=" + Widen(sourcePath));
+	args.push_back(L"-Target=" + Widen(targetPath));
+	args.push_back(L"-Graph="  + Widen(graphName));
+	auto result = RunOp(args);
+	CloneGraphResult out;
+	if (result.is_object()) {
+		out.ok            = result.value("ok",             false);
+		out.importedNodes = result.value("imported_nodes", 0);
+	}
+	return out;
+}
+
+void CommandletBlueprintReader::ImplementInterface(std::string_view assetPath,
+												   std::string_view interfacePath) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=ImplementInterface");
+	args.push_back(L"-Asset="     + Widen(assetPath));
+	args.push_back(L"-Interface=" + Widen(interfacePath));
+	(void)RunOp(args);
 }
 
 void CommandletBlueprintReader::SetPinDefault(std::string_view assetPath,

@@ -1369,6 +1369,8 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 								  {"description","Must start with /Game/. Example: /Game/AI/BP_Boss"}}},
 				{"parent_class", {{"type","string"},
 								  {"description","UClass short name or full path. Example: Actor or /Script/Engine.Actor"}}},
+				{"blueprint_type", {{"type","string"},
+								  {"description","Optional EBlueprintType name (e.g. BPTYPE_Interface, BPTYPE_FunctionLibrary, BPTYPE_MacroLibrary). Omit for a normal BP derived from parent_class."}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","parent_class"})},
 		};
@@ -1385,13 +1387,92 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset  = RequireString(args, "asset_path");
 			std::string parent = RequireString(args, "parent_class");
-			auto r = reader.CreateBlueprint(asset, parent);
+			std::string bpType = OptString(args, "blueprint_type", "");
+			auto r = reader.CreateBlueprint(asset, parent, bpType);
 			return nlohmann::json{
 				{"ok", true},
 				{"asset_path", asset},
 				{"already_existed", r.alreadyExisted},
 				{"parent_class", r.parentClass.empty() ? parent : r.parentClass},
 			};
+		});
+	}
+
+	// ----- clone_graph -----------------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "clone_graph";
+		d.description =
+			"[blueprint] Copy every node in `graph` from the `source` Blueprint "
+			"into the same-named graph of the `target` Blueprint, preserving "
+			"wiring. The `target` must already have a graph named `graph` (create "
+			"the function/event graph first with `add_function` if needed). Used "
+			"by the BP-recreate flow to reproduce a graph wholesale. Recompiles + "
+			"saves the target.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"source", {{"type","string"},
+							{"description","Source BP package path. Example: /Game/AI/BP_Src"}}},
+				{"target", {{"type","string"},
+							{"description","Target BP package path. Example: /Game/AI/BP_Dst"}}},
+				{"graph",  {{"type","string"},
+							{"description","Graph name present in both BPs. Example: EventGraph or MyFunction"}}},
+			}},
+			{"required", nlohmann::json::array({"source","target","graph"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",             {{"type","boolean"}}},
+				{"imported_nodes", {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","imported_nodes"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string source = RequireString(args, "source");
+			std::string target = RequireString(args, "target");
+			std::string graph  = RequireString(args, "graph");
+			auto r = reader.CloneGraph(source, target, graph);
+			return nlohmann::json{
+				{"ok", r.ok},
+				{"imported_nodes", r.importedNodes},
+			};
+		});
+	}
+
+	// ----- implement_interface ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "implement_interface";
+		d.description =
+			"[blueprint] Add `interface` to the implemented-interfaces list of "
+			"the `asset` Blueprint, generating the stub function graphs the "
+			"interface requires. `interface` accepts a BP-interface package path "
+			"(/Game/...) or a native UInterface path (/Script/...). Recompiles + "
+			"saves the BP.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset",     {{"type","string"},
+							   {"description","BP package path. Example: /Game/AI/BP_Boss"}}},
+				{"interface", {{"type","string"},
+							   {"description","Interface path. Example: /Game/Interfaces/BPI_Damageable or /Script/Engine.SomeInterface"}}},
+			}},
+			{"required", nlohmann::json::array({"asset","interface"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset");
+			std::string iface = RequireString(args, "interface");
+			reader.ImplementInterface(asset, iface);
+			return nlohmann::json{{"ok", true}};
 		});
 	}
 
