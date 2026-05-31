@@ -9465,6 +9465,17 @@ namespace
 				DstEntry->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Src));
 			}
 			DstEntry->LocalVariables = SrcEntry->LocalVariables;
+			// If the source function *overrides* a parent virtual (e.g.
+			// GameplayCueNotify::OnExecute, GameplayAbility::K2_CanActivateAbility),
+			// its entry references the parent UFunction and the inherited parameter
+			// pins (Parameters, ActorInfo, MyTarget, ...) are derived from that
+			// signature — they are NOT user-defined pins, so the copy above misses
+			// them. Propagating FunctionReference + ExtraFlags makes ReconstructNode
+			// regenerate the inherited params/flags on the destination entry so it
+			// matches the original (the function graph was created as a plain user
+			// function by add_function; this promotes it to a true override).
+			DstEntry->FunctionReference = SrcEntry->FunctionReference;
+			DstEntry->SetExtraFlags(SrcEntry->GetExtraFlags());
 			DstEntry->ReconstructNode();
 		}
 
@@ -9500,6 +9511,27 @@ namespace
 		{
 			if (IsValid(N)) { ByPos.Add(FIntPoint(N->NodePosX, N->NodePosY), N); }
 		}
+
+		// 3a. Restore K2Node_DynamicCast purity. The clipboard paste resets cast
+		//     nodes to impure (re-adding the exec/CastFailed pins), so a source
+		//     *pure* cast (data pins only) comes back impure and differs
+		//     structurally. Match each imported cast to its source counterpart by
+		//     position and set purity to match (SetPurity reconstructs the node,
+		//     preserving the still-valid data-pin links).
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_DynamicCast* SrcCast = Cast<UK2Node_DynamicCast>(SrcNode);
+			if (!SrcCast) { continue; }
+			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
+			if (!Imp || !IsValid(*Imp)) { continue; }
+			if (UK2Node_DynamicCast* DstCast = Cast<UK2Node_DynamicCast>(*Imp))
+			{
+				if (DstCast->IsNodePure() != SrcCast->IsNodePure())
+				{
+					DstCast->SetPurity(SrcCast->IsNodePure());
+				}
+			}
+		}
 		auto Relink = [&ByPos](UEdGraphNode* SrcNode, UEdGraphNode* DstNode)
 		{
 			if (!SrcNode || !DstNode) { return; }
@@ -9532,6 +9564,25 @@ namespace
 				for (UEdGraphNode* N : DstGraph->Nodes)
 				{
 					if (UK2Node_FunctionResult* R = Cast<UK2Node_FunctionResult>(N)) { DstResult = R; break; }
+				}
+				if (DstResult)
+				{
+					// Mirror the entry treatment onto the result node: for an
+					// override function the out-params / return value come from the
+					// parent signature (NOT user-defined pins), so reset the
+					// user-defined pins to the source's and propagate the
+					// FunctionReference, then reconstruct. This regenerates inherited
+					// outputs (e.g. CanActivateAbility's RelevantTags + bool) exactly
+					// once — without the reset they collide with the clipboard-imported
+					// pins (RelevantTags1, ReturnValue1). User-function results (where
+					// the outputs ARE user-defined) round-trip unchanged.
+					DstResult->UserDefinedPins.Empty();
+					for (const TSharedPtr<FUserPinInfo>& Src : SrcResult->UserDefinedPins)
+					{
+						DstResult->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Src));
+					}
+					DstResult->FunctionReference = SrcResult->FunctionReference;
+					DstResult->ReconstructNode();
 				}
 				Relink(SrcResult, DstResult);
 			}
