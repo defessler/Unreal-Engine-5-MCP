@@ -379,6 +379,85 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_dirty_packages", "get_focused_window",
 		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 		"get_focused_widget",
+
+		// ---------------------------------------------------------------
+		// Live-editor-dependent surface the mock backend does not serve.
+		// These have no UClass / fixture analog and would otherwise fall
+		// through to IBlueprintReader's throwing default ("not supported
+		// by this backend") on a real mock server. Grouped by family.
+		// ---------------------------------------------------------------
+
+		// Package saving — no editor package state to flush
+		"save_all",
+		// Asset-editor windows — no editor host to open/close/inspect
+		"open_asset_editor", "close_asset_editor",
+		// Sub-editor live state — needs the corresponding open editor
+		"get_anim_editor_state", "get_niagara_module_selection",
+		"get_curve_editor_selection", "get_sequencer_state",
+		"get_cinematic_camera", "get_mesh_preview_state",
+		"get_material_editor_state", "get_umg_editor_state",
+		"get_static_mesh_info", "get_material_instance_params",
+		"get_blueprint_editor_state",
+		// Viewport / level-editor state — no viewport without an editor
+		"get_visible_actors", "get_hidden_layers", "set_view_mode",
+		"set_gizmo_mode", "get_camera_bookmarks", "get_hover_target",
+		"get_isolate_mode", "get_hidden_actors", "get_snapping_settings",
+		"get_active_viewport", "get_buffer_visualization_mode",
+		"get_gizmo_state", "get_viewport_realtime",
+		"get_viewport_camera_settings", "get_camera_transform",
+		"get_view_mode", "get_show_flags",
+		// Gameplay-ability-system actor pulls — need a live actor
+		"list_actor_attributes", "list_actor_gameplay_effects",
+		"list_actor_abilities", "list_actor_gameplay_tags",
+		// Plugins / game features — need the live plugin manager
+		"list_plugins", "get_plugin_descriptor", "get_plugin_dependencies",
+		"list_game_features", "get_game_feature_state",
+		"activate_game_feature", "deactivate_game_feature",
+		// Slate / desktop UI introspection — no Slate app in a CLI mock
+		"ui_snapshot", "ui_find", "list_desktop_windows",
+		// Content-browser + asset selection — needs the editor UI
+		"get_selected_assets", "set_selected_assets", "get_selected_folders",
+		"get_content_browser_path", "set_content_browser_path",
+		"get_selected_components",
+		// Component CRUD — mutates a live actor/SCS, not a fixture
+		"add_component", "remove_component", "attach_component",
+		"set_component_property",
+		// Compile / shader / cook async state — no live build pipeline
+		"get_async_compile_state", "get_shader_compile_state",
+		"get_active_cook_target", "set_active_cook_target",
+		"get_cook_progress", "get_ddc_state", "get_lighting_build_progress",
+		// Level / world state — no loaded world in a CLI mock
+		"get_current_level", "list_loaded_levels", "get_data_layer_states",
+		"get_streaming_sources", "list_loaded_partition_cells",
+		// Source control — no live SCM provider
+		"get_source_control_provider", "get_source_control_status",
+		"get_file_lock_status", "list_changelists", "get_pending_changelist",
+		// Asset registry / recent-asset live state
+		"get_asset_registry_state", "get_recently_opened_assets",
+		"get_recently_saved_packages",
+		// Save / recovery / autosave editor state
+		"get_autosave_status", "get_recovery_state",
+		// Editor environment introspection
+		"get_active_culture", "get_editor_theme", "get_monitor_info",
+		"get_live_coding_state",
+		// Stats / debugging live state — needs a running session
+		"get_active_stats", "get_watched_pins", "get_blueprint_breakpoints",
+		"get_debug_instance",
+		// Project-setting reads + writes — needs the live settings registry
+		"list_project_settings", "get_project_setting_values",
+		"set_project_setting", "reset_project_setting",
+		// Automation / events / workspace / trace editor state
+		"list_automation_tests", "get_editor_events", "get_workspace_layout",
+		"get_trace_state",
+		// Outliner / details / status-bar / notifications editor UI
+		"get_outliner_state", "get_pinned_actors", "get_details_panel_state",
+		"get_status_bar_messages", "get_active_notifications",
+		// Modeling / painting tool live state
+		"get_modeling_state", "get_landscape_paint_state",
+		"get_foliage_paint_state", "get_mesh_paint_state",
+		"get_texture_paint_state",
+		// Take recorder / render queue editor state
+		"get_take_recorder_state", "get_render_queue",
 	};
 }
 
