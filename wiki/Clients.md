@@ -5,6 +5,16 @@ Copilot, and ChatGPT. The server is a Windows-only stdio JSON-RPC
 process — every MCP client below understands stdio except ChatGPT,
 which needs a bridge (covered last).
 
+> **Two things to adjust in every example below.** (1) The hardcoded
+> `D:\Projects\UE5_MCP\...` exe path and `BP_READER_PROJECT` /
+> `BP_READER_ENGINE_DIR` values are the maintainer's local build host —
+> point the exe path and `BP_READER_PROJECT` at *your* project's
+> `Binaries\Win64\BlueprintReaderMcp.exe` and `.uproject`. (2) The
+> server is **read-only by default**; none of the sample `env` blocks
+> enable writes. Add `"BP_READER_ALLOW_WRITE": "1"` (or
+> `"BP_READER_READ_ONLY": "0"`) to a server's `env` block to allow
+> Blueprint mutation.
+
 ## Starting the server
 
 You almost never need to start it yourself — every supported client

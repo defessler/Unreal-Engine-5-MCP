@@ -1,14 +1,14 @@
 # UE5_MCP Wiki
 
-> **Status update — Lyra integration complete.** The repo root ships
-> as a Lyra Starter Game project (`LyraStarterGame.uproject`) on
-> UE 5.7.4. **All 302 Lyra blueprints have C++ companion classes**
-> under `Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
-> (17 full transpiles + 285 stubs); `LyraEditor` builds clean and
-> `LyraEditor-Cmd.exe` commandlet runs successfully. The plugin is
+> **What this repo is.** It tracks the **`BlueprintReader` plugin + its
+> docs** — not a full game project. You mount
+> `Plugins/BlueprintReader/` into your own UE 5.7 project's `Plugins/`
+> folder and build that project's editor target. The plugin is
 > project-agnostic; set `BP_READER_PROJECT` and `BP_READER_EDITOR_TARGET`
-> when invoking against any project (Lyra = `LyraEditor`). The
-> conversion recipe + lessons-learned live in
+> when invoking against any project. The maintainer develops against a
+> local (untracked) Lyra Starter Game host on UE 5.7.4, where
+> `transpile_blueprint` produced C++ companion classes for all 302 Lyra
+> blueprints — that conversion recipe + lessons-learned live in
 > [`docs/research/lyra-bp-to-cpp-conversion.md`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/research/lyra-bp-to-cpp-conversion.md).
 
 
@@ -46,16 +46,21 @@ graphs, nodes, connections, K2 metadata — through 249 tools.
 
 If you just want Claude to read your Blueprints:
 
-1. [Set up + build the engine](Installation#2-build-the-engine) — 1–3 hours
+1. Copy `Plugins/BlueprintReader/` from this repo into your own UE 5.7
+   project's `Plugins/` folder (a fresh clone has no `.uproject` of its own).
+2. [Set up + build the engine](Installation#2-build-the-engine) — 1–3 hours
    first time (UE source build).
-2. [Build the editor target + MCP server](Installation#3-build-the-ue-plugin)
+3. [Build the editor target + MCP server](Installation#3-build-the-ue-plugin)
    — both halves are UBT targets in the same plugin; the
    `Build-MCPServer.ps1` wrapper builds them in one shot.
-3. Launch your client from the project directory — the shipped
+4. Launch your client from the project directory — the shipped
    [`.mcp.json`](Clients#claude-code-recommended) wires Claude Code
    automatically. For Copilot, drop a `.vscode/mcp.json`. For ChatGPT,
    bridge via HTTPS — see [Clients](Clients).
-4. Ask the AI: *"What variables are on `/Game/AI/BP_TestEnemy`?"*
+5. Ask the AI: *"What variables are on `/Game/AI/BP_TestEnemy`?"*
+
+> Reads work out of the box. The server is **read-only by default** —
+> set `BP_READER_ALLOW_WRITE=1` to enable Blueprint mutation.
 
 Want to skip UE and just kick the tires? [Build the MCP server
 standalone](Installation#1-build-the-mcp-server) and use the mock backend

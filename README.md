@@ -1,18 +1,24 @@
 # UE5_MCP — Blueprint Reader MCP
 
-> **Project state.** Repository now ships as a Lyra Starter Game
-> project (`LyraStarterGame.uproject`) on UE 5.7.4. All 302 Lyra
-> blueprints have C++ companion classes under
-> `Plugins/LyraGenerated/Source/LyraGenerated/Private/Generated/`
-> (17 full transpiles + 285 stubs); `LyraEditor` builds clean and
-> `LyraEditor-Cmd.exe` commandlet runs. See
-> [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md)
-> for the recipe + lessons-learned.
+> **Project state.** This repository tracks the **`BlueprintReader`
+> plugin + its docs** — it is *not* a full game project. Development
+> happens inside a local Lyra Starter Game build host (UE 5.7.4) that
+> lives on the maintainer's disk but is **not tracked here**; a fresh
+> clone gets the plugin only. To build or use it, mount
+> `Plugins/BlueprintReader/` into any UE 5.7 project's `Plugins/`
+> folder (Lyra is a convenient host, but any UE 5.7 project works) and
+> build that project's editor target. The build commands below target
+> `LyraEditor` / `LyraStarterGame.uproject` because that's the
+> maintainer's local host — substitute your own editor target +
+> `.uproject`. A worked Lyra BP→C++ conversion recipe lives in
+> [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md).
 
-A standalone MCP server that lets Claude (or any MCP client) read **and edit**
-Unreal Engine 5 Blueprint assets — variables, graphs, nodes, connections, K2
-metadata — and **round-trip BPs to/from C++** via 127 tools backed by the
-bundled `BlueprintReader` UE plugin.
+A standalone MCP server that lets Claude (or any MCP client) read (**and
+optionally edit**) Unreal Engine 5 Blueprint assets — variables, graphs,
+nodes, connections, K2 metadata — and **round-trip BPs to/from C++** via
+~249 tools backed by the bundled `BlueprintReader` UE plugin. The server
+is **read-only by default**; enable mutation with `BP_READER_ALLOW_WRITE=1`
+(see [Configuration](#configuration-env-vars)).
 
 ```
 ┌─────────────────┐  JSON-RPC/stdio  ┌─────────────────┐  CreateProcessW  ┌──────────────────┐
@@ -21,13 +27,18 @@ bundled `BlueprintReader` UE plugin.
 └─────────────────┘                 └─────────────────┘  result JSON     └──────────────────┘
 ```
 
-Two backends:
+Four backends:
 - **`mock`** — fixture-backed; no UE required. Used for unit tests and
   bring-up. Three handcrafted JSON fixtures under `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/fixtures/`.
 - **`commandlet`** — drives a real `UnrealEditor-Cmd.exe -run=BPR`
   to read live `.uasset` files from a UE project. Defaults to **daemon mode**
   (one editor process reused across calls) so per-call cost is ~30 ms after
   the initial ~5 s editor cold start.
+- **`live`** — talks to a TCP listener inside a **running** editor, so
+  it sees unsaved edits and never fights the editor for a file write lock.
+- **`auto`** — the **default** when a `.uproject` is auto-discovered.
+  Probes per call and routes to `live` (editor open) or `commandlet`
+  (editor closed); falls back to `mock` when no project is found.
 
 The plugin ships as two modules with proper isolation:
 - **`BlueprintReaderEditor`** (`Type:"Editor"`) — full BP introspection
@@ -46,9 +57,11 @@ The plugin ships as two modules with proper isolation:
 
 ## Tools
 
-127 tools across 22 categories — see the
+~249 tools — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
-for every input/output shape with examples.
+for every input/output shape with examples. The table below summarizes the
+main authoring categories; the full surface (including ~120 editor-state /
+situational-awareness read tools) is enumerated in the wiki Tool Reference.
 
 | Category | Tools | What they do |
 |----------|-------|--------------|
@@ -103,6 +116,10 @@ scratch. See [Tool Reference → Batch tools](https://github.com/defessler/Unrea
 A versioned **Blueprint Intermediate Representation (BPIR)** sits between
 the BP graph and any source language. C++ ships today; Lua / Python / JS
 drop in as additional codegen + parser pairs without touching the IR.
+
+> The 6 transpile tools are gated behind `BP_READER_ALLOW_TRANSPILE=1`
+> (off by default). Without it they stay listed but each call returns a
+> `transpile_disabled` error.
 
 ```
                         ┌──────────────┐
@@ -161,55 +178,33 @@ legacy non-EnhancedInput nodes, raw pointer arithmetic. See
 [Tool Reference → Transpile tools](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference#transpile-tools)
 and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
 
-## First-time setup (after clone)
+## Quick start
 
-Lyra's bundled assets (~8,686 `.uasset` / `.umap` files, ~2.4 GB) are
-**not tracked** in this repo — keeping clones fast. After cloning,
-run from the repo root:
+The repo ships the plugin; you supply a UE 5.7 project to host it.
 
-    setup.bat
+1. **Mount the plugin.** Copy (or symlink) `Plugins/BlueprintReader/`
+   into your UE 5.7 project's `Plugins/` folder. Lyra is a convenient
+   host, but any UE 5.7 project works.
+2. **Build the editor target once.** The plugin's `PreBuildSteps` hook
+   builds `BlueprintReaderMcp.exe` alongside the editor module in the
+   same invocation:
 
-`setup.bat` auto-detects Lyra installed via Epic Games Launcher and
-mirrors its `Content/` and `Plugins/*/Content/` dirs into this repo
-via robocopy. If no local install is found, it downloads a bundle
-from this repo's GitHub Release `lyra-assets-v1` (~700-900 MB
-compressed), verifies SHA-256, and extracts it.
+   ```pwsh
+   "<Engine>\Engine\Build\BatchFiles\Build.bat" `
+     <YourEditor> Win64 Development `
+     -project="<Absolute>\YourProject.uproject" -waitmutex
+   ```
 
-| Flag                  | Effect                                                                  |
-|-----------------------|-------------------------------------------------------------------------|
-| `-Source local`       | Force the local Epic install path; fail if not found                    |
-| `-Source release`     | Force the GitHub Release download path                                  |
-| `-LyraInstallRoot <path>` | Bypass Epic Games Launcher detection; mirror from an explicit Lyra checkout (e.g. `D:\Projects\LyraStarterGame`). Implies `-Source local`. |
-| `-DryRun`             | Print the plan; touch nothing                                           |
-| `-VerifyOnly`         | Re-validate the current working tree against `Scripts/lyra-assets-manifest.json` |
-| `-Repair`             | Identify missing/mismatched files via manifest check + restore just those. From `release`, downloads the bundle (or reuses the TEMP cache) then `tar -T` extracts only the broken paths — much cheaper than a full re-run after a partial failure |
-| `-Clean`              | Inverse of restore — delete every manifest file from the working tree (keeps tracked test BPs); useful before packaging or as a "what does a fresh clone look like" probe |
-| `-Force`              | Bypass the uncommitted-changes pre-flight                               |
+3. **Point your MCP client at the exe.** Use
+   `<YourProject>/Binaries/Win64/BlueprintReaderMcp.exe` — it
+   auto-discovers the project + engine from its own location. Reads work
+   immediately; the server is **read-only by default**.
+4. **Enable writes** when you want mutation: set `BP_READER_ALLOW_WRITE=1`
+   in the server's `env` block (or `BP_READER_READ_ONLY=0`).
 
-The manifest (`Scripts/lyra-assets-manifest.json`) is the committed
-source of truth for what `setup.bat` expects to restore — 8,686
-entries, ~2 MB JSON, sorted by path, with size + SHA-256 per file.
+Smoke test: `list_blueprints /Game` should return your project's BPs.
 
-**Refreshing the manifest** (after pulling a newer Lyra into your
-working tree):
-
-```pwsh
-pwsh -NoProfile -File Scripts/Publish-LyraAssetsRelease.ps1 -BuildManifestOnly
-```
-
-This rebuilds `Scripts/lyra-assets-manifest.json` from the current
-working tree without packing or uploading. Commit + push when ready;
-add `-Upload` to also publish a new `lyra-assets-vN` GitHub Release.
-
-**Windows-only.** `setup.bat` shells out to `robocopy`, `certutil`,
-and `cmd`; the path-detection logic reads Epic Games Launcher's
-`%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat`. No
-macOS / Linux equivalent ships today — file a request or use Git
-LFS / a separate clone if you need one. Requires PowerShell 7+
-(`pwsh`) on `PATH`; install from
-<https://github.com/PowerShell/PowerShell/releases> if missing.
-
-## Quick start: hooking it up to Claude
+## Hooking it up to Claude (detailed)
 
 ### 1. Build the MCP server
 
@@ -323,6 +318,7 @@ Claude calls `read_blueprint` → `find_node`, gets back canonical JSON.
 | `BP_READER_CACHE_TTL_SECONDS` | `30`                                   | How long the server memoizes read-tool responses for. AI clients flurry repeated reads on the same BP — caching short-circuits the duplicates. `0` disables. Writes invalidate the affected asset's entries. |
 | `BP_READER_READ_ONLY`         | `1` (on, **default**)                  | **Read-only by default.** Every write tool is rejected with a clear error pointing at the opt-in. Guards against two processes mutating the same `.uasset` concurrently (the common footgun when a UE editor is open). Set `0` (or `BP_READER_ALLOW_WRITE=1`) to enable writes. |
 | `BP_READER_ALLOW_WRITE`       | `0` (off)                              | Discoverable inverse of `BP_READER_READ_ONLY` — `1`/`true`/`yes`/`on` enables write tools. An explicit `BP_READER_READ_ONLY` wins if both are set. |
+| `BP_READER_ALLOW_TRANSPILE`   | `0` (off)                              | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
 | `BP_READER_AUTO_CHECKOUT`     | `1` (on)                               | When the project is under source control (Perforce/Git), auto-check-out an asset before the server mutates it — non-interactively, so a *live* editor never pops a blocking "Check Out?" modal that stalls the tool call. Set `0` to manage checkouts yourself. |
 | `BP_READER_LIVE_PORT`         | auto (kernel-picked ephemeral)         | TCP port for the `live` backend. **Plugin defaults to picking an ephemeral port and publishing it via `<Project>/Saved/bp-reader-live.json`**, which the MCP server auto-discovers — no manual env-var plumbing in the typical case. Set explicitly in BOTH processes only if you need a fixed port. |
 | `BP_READER_LIVE_TOKEN`        | auto (random GUID per editor session)  | Shared secret for live-backend auth. **Plugin defaults to a random 256-bit token written to the handshake file**; MCP server reads it from there. Set explicitly only when the env-var route is preferred (e.g. CI). |
@@ -350,11 +346,16 @@ The plugin is fully self-contained — drop `Plugins\BlueprintReader\` into
 any UE project's `Plugins\` folder and it builds (UE plugin module + MCP
 server) as one unit.
 
+Only `Plugins\BlueprintReader\`, the docs, and the two test BPs are
+tracked. The Lyra Starter Game scaffold below (`.uproject`, `Source\`,
+the other plugins) is the maintainer's **local, untracked build host** —
+it stays on disk here but a fresh clone won't have it.
+
 ```
 UE5_MCP\
-├── LyraStarterGame.uproject
-├── Source\                                project runtime module
-├── Plugins\BlueprintReader\               plugin (everything ships together)
+├── LyraStarterGame.uproject               local build host — untracked, not in the repo
+├── Source\                                local build host — untracked, not in the repo
+├── Plugins\BlueprintReader\               plugin (tracked — everything ships together)
 │   ├── BlueprintReader.uplugin
 │   ├── Scripts\Build-MCPServer.ps1        UBT-wrapper convenience script
 │   ├── Source\BlueprintReaderEditor\
@@ -381,7 +382,7 @@ UE5_MCP\
 │       ├── BlueprintReaderMcpTests\      doctest suite → BlueprintReaderMcpTests.exe
 │       │   └── Private\                   441 cases (mock + live commandlet)
 │       └── ThirdParty\                    vendored: nlohmann_json, fmt, doctest
-├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset
+├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
                                            (engine source lives outside this repo
                                             at D:\Projects\Unreal Engine 5\)
 └── README.md
@@ -489,10 +490,13 @@ or running the live tests:
 | `BP_READER_EDITOR_TARGET` | Editor-target name for projects that use `TargetBuildEnvironment.Unique` (e.g. `LyraEditor`). The plugin looks for `<Project>/Binaries/Win64/<TargetName>-Cmd.exe` before falling back to the engine's `UnrealEditor-Cmd.exe`. |
 | `BP_READER_EDITOR_CMD` | Full path to a `-Cmd.exe` binary that overrides both. |
 
-The `LyraStarterGame.uproject` checked in at the repo root demonstrates
-the Lyra Starter Game integration — see `GeneratedFromBP/` for 270+
-.h/.cpp pairs auto-emitted from Lyra's BP-style assets via
-`transpile_blueprint`.
+The plugin is project-agnostic — no `.uproject` is checked into this
+repo. Mount `Plugins/BlueprintReader/` into your own UE 5.7 project's
+`Plugins/` folder and set the env vars above. The maintainer develops
+against a local (untracked) Lyra Starter Game host, where
+`transpile_blueprint` emitted 270+ .h/.cpp pairs from Lyra's BP-style
+assets — see [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md)
+for that worked example.
 
 ## Engine setup (only needed for the `commandlet` backend)
 
@@ -585,7 +589,10 @@ the script after a fresh engine clone.
 
 ```csharp
 DefaultBuildSettings = BuildSettingsVersion.V6;
-BuildEnvironment = TargetBuildEnvironment.Shared;
+BuildEnvironment = TargetBuildEnvironment.Unique;
+// Lyra requires Unique because of its warning-override settings.
+// With Unique env, launch LyraEditor-Cmd.exe (not UnrealEditor-Cmd.exe)
+// so the matching LyraEditor-*.dll plugin modules load.
 ```
 
 ### Build flags for small page files
