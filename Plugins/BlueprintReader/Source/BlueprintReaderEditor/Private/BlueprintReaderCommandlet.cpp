@@ -69,6 +69,7 @@
 #include "Editor.h"
 #include "EditorViewportClient.h"
 #include "Engine/Blueprint.h"
+#include "UObject/Interface.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
@@ -1331,11 +1332,13 @@ namespace
 		const FString AssetPath = ResolveAssetPath(Params);
 		FString ParentClassSpec;
 		FParse::Value(*Params, TEXT("ParentClass="), ParentClassSpec);
+		FString BlueprintTypeSpec;
+		FParse::Value(*Params, TEXT("BlueprintType="), BlueprintTypeSpec);
 
-		if (AssetPath.IsEmpty() || ParentClassSpec.IsEmpty())
+		if (AssetPath.IsEmpty())
 		{
 			UE_LOG(LogBlueprintReader, Error,
-				TEXT("CreateBlueprint requires -Asset=/Game/... and -ParentClass=<UClass path or short name>"));
+				TEXT("CreateBlueprint requires -Asset=/Game/..."));
 			return 1;
 		}
 		if (!AssetPath.StartsWith(TEXT("/Game/")))
@@ -1343,6 +1346,29 @@ namespace
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("CreateBlueprint: -Asset must be under /Game/ (got: %s)"), *AssetPath);
 			return 1;
+		}
+
+		// Optional -BlueprintType= (default BPTYPE_Normal). Accepts the StaticEnum
+		// name ("BPTYPE_Interface") or the short form ("Interface") — the recreator
+		// passes the introspector's emitted EBlueprintType name straight through so
+		// e.g. a Blueprint Interface is recreated as a real interface (no EventGraph).
+		EBlueprintType BlueprintType = BPTYPE_Normal;
+		if (!BlueprintTypeSpec.IsEmpty())
+		{
+			FString TypeName = BlueprintTypeSpec;
+			if (!TypeName.StartsWith(TEXT("BPTYPE_")))
+			{
+				TypeName = FString(TEXT("BPTYPE_")) + TypeName;
+			}
+			const UEnum* TypeEnum = StaticEnum<EBlueprintType>();
+			const int64 TypeVal = TypeEnum ? TypeEnum->GetValueByNameString(TypeName) : INDEX_NONE;
+			if (TypeVal == INDEX_NONE)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("CreateBlueprint: unknown -BlueprintType=%s"), *BlueprintTypeSpec);
+				return 1;
+			}
+			BlueprintType = static_cast<EBlueprintType>(TypeVal);
 		}
 
 		// Idempotency probe — if the asset already exists, short-circuit.
@@ -1356,12 +1382,29 @@ namespace
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 		}
 
-		UClass* ParentClass = ResolveParentClass(ParentClassSpec);
-		if (!IsValid(ParentClass))
+		// Resolve the parent. A Blueprint Interface may omit -ParentClass= and
+		// defaults to UInterface (mirrors UBlueprintInterfaceFactory). Other types
+		// still require an explicit parent.
+		UClass* ParentClass = nullptr;
+		if (!ParentClassSpec.IsEmpty())
+		{
+			ParentClass = ResolveParentClass(ParentClassSpec);
+			if (!IsValid(ParentClass))
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("CreateBlueprint: parent class not found: %s"), *ParentClassSpec);
+				return 4;
+			}
+		}
+		else if (BlueprintType == BPTYPE_Interface)
+		{
+			ParentClass = UInterface::StaticClass();
+		}
+		else
 		{
 			UE_LOG(LogBlueprintReader, Error,
-				TEXT("CreateBlueprint: parent class not found: %s"), *ParentClassSpec);
-			return 4;
+				TEXT("CreateBlueprint requires -ParentClass= for non-interface blueprint types"));
+			return 1;
 		}
 
 		// Derive package name + asset short name from the asset path.
@@ -1379,6 +1422,7 @@ namespace
 
 		UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
 		Factory->ParentClass = ParentClass;
+		Factory->BlueprintType = BlueprintType;
 
 		UBlueprint* BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
 			UBlueprint::StaticClass(), Package, *AssetName,
@@ -1405,6 +1449,11 @@ namespace
 		Obj->SetBoolField(TEXT("already_existed"), false);
 		Obj->SetStringField(TEXT("asset_path"), AssetPath);
 		Obj->SetStringField(TEXT("parent_class"), ParentClass->GetPathName());
+		if (const UEnum* TypeEnum = StaticEnum<EBlueprintType>())
+		{
+			Obj->SetStringField(TEXT("blueprint_type"),
+				TypeEnum->GetNameStringByValue(static_cast<int64>(BlueprintType)));
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -9626,6 +9675,26 @@ namespace
 			NewEvt->PostPlacedNewNode();
 			NewEvt->AllocateDefaultPins();
 			Relink(SrcEvt, NewEvt);
+		}
+
+		// 4c. Restore K2Node_DynamicCast input ("Object") pin type. The pin is
+		//     allocated as wildcard and only hardens to the connected type via
+		//     NotifyPinConnectionListChanged, which doesn't re-fire after the clone's
+		//     late import/relink — so a source `object` input comes back `wildcard`.
+		//     Copy the source cast's input PinType directly (matched by position):
+		//     deterministic and connection-independent. Runs last so nothing
+		//     re-allocates the pin afterward.
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_DynamicCast* SrcCast = Cast<UK2Node_DynamicCast>(SrcNode);
+			if (!SrcCast) { continue; }
+			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
+			if (!Imp || !IsValid(*Imp)) { continue; }
+			UK2Node_DynamicCast* DstCast = Cast<UK2Node_DynamicCast>(*Imp);
+			if (!DstCast) { continue; }
+			UEdGraphPin* SrcIn = SrcCast->GetCastSourcePin();
+			UEdGraphPin* DstIn = DstCast->GetCastSourcePin();
+			if (SrcIn && DstIn) { DstIn->PinType = SrcIn->PinType; }
 		}
 
 		const bool bOk = CompileAndSaveBlueprint(DstBP);
