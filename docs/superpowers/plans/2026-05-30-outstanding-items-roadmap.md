@@ -10,24 +10,24 @@
 
 ## Progress — 2026-05-30 (autonomous PR-per-step run)
 
-Landed on `main` this run:
+Landed on `main` this run (9 PRs + a history purge):
 - **0.1 `.gitignore`** — `Temp/ tmp/ tpc-data/` ignored (folded into the cleanup PR). ✅
 - **D.3 repo cleanup** — repo scoped to plugin + docs (PR #174, untrack 2092 files), then a **`git filter-repo` history purge**: `.git` **1.41 GiB → 3.41 MiB** (~400×). The Lyra build host stays on disk locally (untracked); `origin/backup/pre-purge-main` retains the full old history as a recovery point — **delete it to finalize the size reduction**. ✅
-- **1.6 default to read-only** — `BP_READER_ALLOW_WRITE` opt-in; verified the ReadOnly decorator covers all 217 interface methods (audit's "2 gaps" did not hold); full mock suite 801/801 green (PR #175). ✅
+- **1.6 default to read-only** — `BP_READER_ALLOW_WRITE` opt-in; verified the ReadOnly decorator covers all 217 interface methods (audit's "2 gaps" did not hold); mock suite 801/801 green (PR #175). ✅
 - **D.1 docs audit + D.2 quick start** — README + CLAUDE + 6 wiki pages reconciled to the plugin-only repo + read-only default; new top-of-README Quick start; tool counts 127 → ~249 (PR #176). ✅
+- **1.4 plugin-crash resilience** — `BP_READER_PLUGIN_DENYLIST` (→ `-DisablePlugin=<name>`) so a plugin that crashes in `StartupModule` (e.g. DLSS) is skipped non-interactively; actionable child-exit-before-handshake errors. Compiles, mock 801/801 (PR #178). ✅ *(runtime needs a live editor)*
+- **2.1 bp-roundtrip Stage 4 (increment)** — replaced the pass-through cheat with a real per-function `EmitCppFunction`→`ParseCppFunction` re-parse + graceful fallback (PR #179). Whole-class header re-parse is the remaining piece. ✅ *(partial)*
+- **1.7 player-char recreate-roundtrip test** — env-gated live test: read `B_Hero_Default` → recreate skeleton via write tools (not duplicate) → `bp_structural_diff` (PR #180). Compiles + auto-skips; end-to-end live run pending a working backend. ✅ *(test compiled, not run live)*
+- **1.5 lifetime** — opt-in `BP_READER_DAEMON_MAX_LIFETIME_SECONDS` hard backstop (daemon self-exits regardless of activity); documented IDLE_SECONDS. Editor builds clean (PR #181). ✅ *(runtime needs a live daemon; deliberately NOT a Job Object — would orphan a shared daemon)*
 - **1.3 set/map node kinds** — confirmed a non-issue (no work), per the feasibility audit. ✅ (dropped)
-- **1.2 bpir↔LyraGenerated header collision** — **mooted by the cleanup**: a consumer project that mounts the plugin has no `LyraGenerated`, so the UHT basename collision can't occur. It now only affects the maintainer's local Lyra build host when running the gated `[roundtrip][bpir]` compile tests. Deprioritized; reopen only if running those gated tests locally.
+- **1.2 bpir↔LyraGenerated header collision** — **mooted by the cleanup**: a consumer project that mounts the plugin has no `LyraGenerated`, so the UHT basename collision can't occur. Now only affects the maintainer's local build host's gated `[roundtrip][bpir]` tests. Deprioritized.
 
-**Remaining — blocked on a live UE editor or large-feature scope (not safely auto-mergeable):**
-- **1.1 daemon handshake fix** — an interactive debugging task (diagnose the UE engine-init stall in a running daemon); needs a live editor + log inspection.
-- **1.4 plugin resilience** — Tier-1 (`-EnableAllPlugins` via `BP_READER_EDITOR_ARGS`) already exists + is documented; Tier-2 (crash-detect + auto-disable retry) needs a crashing-plugin project to verify.
-- **1.5 lifetime** — chiefly a verification task on the existing mechanism (idle-shutdown / `TerminateProcess` / lock); the optional Job Object interacts with the daemon-singleton-reuse model and needs runtime testing.
-- **1.7 player-char recreate-roundtrip** — meaningful only on a live/commandlet backend (the mock backend can't recreate via write tools); needs a working editor (gated by 1.1).
-- **2.1 bp-roundtrip Stage 4** — ~500–1000 LOC whole-class C++→BPIR parser; needs roundtrip verification (its own focused effort).
-- **2.2 cancellation + progress** — prerequisite: un-stub cook/package; live cancellation is cooperative-only; needs runtime.
-- **3.1 anim/persona selection → real** — needs the 1-line `bUseRTTI=true` build change **plus** a live editor to verify the sidecar.
+**Remaining — require live-editor development + verification (a blind merge would be unverified or fake-progress):**
+- **1.1 daemon handshake fix** — interactive debugging of the UE engine-init stall in a running daemon (needs a live editor + log inspection). Note: tools already work via the slow one-shot fallback, so this is a reliability/perf task, not a breakage. My 1.4 work (`-EnableAllPlugins`/denylist guidance + retry-worthy errors) may help projects whose stall is plugin-load-related.
+- **2.2 cancellation + progress** — prerequisite: un-stub cook/package (they return `started=false` today); live cancellation is cooperative-only and needs a long op + runtime to verify.
+- **3.1 anim/persona selection → real** — confirmed: needs `bUseRTTI=true` **plus** intricate, version-specific Persona preview-scene access (selected bone/socket) developed against a *running* anim editor. A compile-only version would return `valid:true` with garbage — worse than the honest `valid:false` stub. The `bUseRTTI` enabler alone is inert. Real work, live-only.
 
-These all share a hard dependency on a running editor (which item 1.1 itself is about, and which is documented-flaky) or are large features that warrant focused, verified work rather than a blind merge to `main`.
+Each of these three is gated on a running editor (which item 1.1 itself addresses, and which is documented-flaky). They warrant focused, live-verified work — not a blind merge to `main` that ships unverified process-control, an unfinished parser, or garbage editor-state data.
 
 ---
 
