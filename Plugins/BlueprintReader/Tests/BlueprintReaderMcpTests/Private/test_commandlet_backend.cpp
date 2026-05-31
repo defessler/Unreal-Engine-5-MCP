@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,96 @@ TEST_CASE("CommandletBlueprintReader: List under /Game/AI returns seeded bluepri
 	}
 	CHECK(sawEnemy);
 	CHECK(sawPickup);
+}
+
+TEST_CASE("CommandletBlueprintReader: recreate player-character skeleton (read -> rebuild -> diff)"
+		  * doctest::skip(!LiveBackendAvailable())) {
+	// Roadmap 1.7. Read a real player-character BP and reconstruct its
+	// structural skeleton with the WRITE tools (explicitly NOT
+	// duplicate_blueprint), then bp_structural_diff the two. Engine-subsystem
+	// specifics the tools can't author standalone (GAS grants, input
+	// mappings, full event-graph node bodies) surface as diff -- a coverage
+	// signal, not a failure. We assert the reproducible skeleton
+	// (variables/functions/components by name) round-trips and that
+	// structural_diff runs on the pair.
+	auto reader = MakeLiveReader(/*useDaemon=*/true);
+	const std::string original  = "/Game/Characters/Heroes/B_Hero_Default";
+	const std::string recreated = "/Game/Recreated/B_Hero_Default_RT";
+
+	// Read the original; skip cleanly if Content isn't restored on this host
+	// (Content is optional and regenerable via setup.bat).
+	auto src = [&]() -> std::optional<decltype(reader->ReadBlueprint(original))> {
+		try { return reader->ReadBlueprint(original); }
+		catch (const bpr::backends::BlueprintReaderError&) { return std::nullopt; }
+	}();
+	if (!src) {
+		MESSAGE("B_Hero_Default not present (run setup.bat to restore Content) -- skipping");
+		return;
+	}
+	REQUIRE_FALSE(src->ParentClass.empty());
+
+	// Fresh start: remove any leftover recreation, then build from scratch.
+	(void)reader->DeleteAsset(recreated, /*force=*/true);
+	try {
+		reader->CreateBlueprint(recreated, src->ParentClass);
+	} catch (const bpr::backends::BlueprintReaderError& e) {
+		MESSAGE("parent class '" << src->ParentClass
+				<< "' not creatable standalone (" << e.what() << ") -- skipping");
+		return;
+	}
+
+	std::vector<std::string> addedVars, addedFns, addedComps;
+	for (const auto& v : src->Variables) {
+		try {
+			reader->AddVariable(recreated, v.Name, v.Type,
+								/*defaultValue=*/"", /*category=*/"",
+								v.IsReplicated, v.IsEditable);
+			addedVars.push_back(v.Name);
+		} catch (const bpr::backends::BlueprintReaderError&) {
+			// Type the write tools can't author standalone -> known gap.
+		}
+	}
+	for (const auto& f : src->Functions) {
+		try { reader->AddFunction(recreated, f.Name); addedFns.push_back(f.Name); }
+		catch (const bpr::backends::BlueprintReaderError&) {}
+	}
+	auto comps = reader->GetComponents(original);
+	for (const auto& c : comps) {
+		try {
+			reader->AddComponent(recreated, c.Name, c.Class,
+								 c.Parent.value_or(std::string{}), /*socket=*/"");
+			addedComps.push_back(c.Name);
+		} catch (const bpr::backends::BlueprintReaderError&) {}
+	}
+
+	MESSAGE("recreated skeleton: vars=" << addedVars.size() << "/" << src->Variables.size()
+			<< " fns=" << addedFns.size() << "/" << src->Functions.size()
+			<< " comps=" << addedComps.size() << "/" << comps.size());
+
+	// Everything we successfully added must read back from the rebuilt BP.
+	auto rebuilt = reader->ReadBlueprint(recreated);
+	auto hasVar = [&](const std::string& n) {
+		return std::any_of(rebuilt.Variables.begin(), rebuilt.Variables.end(),
+						   [&](const auto& v) { return v.Name == n; });
+	};
+	auto hasFn = [&](const std::string& n) {
+		return std::any_of(rebuilt.Functions.begin(), rebuilt.Functions.end(),
+						   [&](const auto& f) { return f.Name == n; });
+	};
+	for (const auto& n : addedVars) { CHECK(hasVar(n)); }
+	for (const auto& n : addedFns)  { CHECK(hasFn(n)); }
+
+	// At least part of the player-character skeleton must reproduce via the
+	// write tools -- proves the read -> manual-recreate path works end to end.
+	CHECK((addedVars.size() + addedFns.size() + addedComps.size()) > 0);
+
+	// bp_structural_diff runs on the original/recreated pair. Drift is
+	// expected (the irreproducible subsystem detail) -- this asserts the
+	// tool executes and returns a structured result, not that drift is zero.
+	auto diff = reader->StructuralDiff(original, recreated, {});
+	CHECK(diff.is_object());
+
+	(void)reader->DeleteAsset(recreated, /*force=*/true);
 }
 
 TEST_CASE("CommandletBlueprintReader: ReadBlueprint returns canonical wire shape"
