@@ -1,4 +1,0 @@
-# Roundtrip clones (regenerable, gitignored)
-*
-!.gitignore
-!.gitkeep
