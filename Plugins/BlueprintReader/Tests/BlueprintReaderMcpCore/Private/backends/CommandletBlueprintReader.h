@@ -65,6 +65,13 @@ public:
 												   // can be skipped non-interactively
 		bool useDaemon = false;
 
+		// Cooperative cancellation poll. When set, a long one-shot op's
+		// subprocess wait loop calls this periodically and kills the child
+		// if it returns true. Wired by main.cpp to the ambient jsonrpc
+		// CallContext::IsCancelled() so a client's notifications/cancelled
+		// aborts a slow one-shot. Empty (production default) = never cancels.
+		std::function<bool()> cancelCheck;
+
 		// Test hook: when set, EnsureDaemonAttached invokes this instead
 		// of the built-in Win32 CreateProcessW spawn. Lets the spawn-race
 		// unit test (test_daemon_lifecycle.cpp) verify that two-lock

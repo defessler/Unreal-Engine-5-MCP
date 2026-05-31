@@ -19,6 +19,7 @@
 #include "backends/MockBlueprintReader.h"
 #include "Diagnostics.h"
 #include "Env.h"
+#include "jsonrpc/CallContext.h"
 #include "jsonrpc/Mcp.h"
 #include "jsonrpc/Server.h"
 #include "jsonrpc/HttpServerMain.h"
@@ -298,6 +299,15 @@ int RunServerLoop() {
 
 	auto exeDir = ExecutableDir();
 	auto cfg = backends::ConfigFromEnv(exeDir, std::cerr);
+
+	// Cooperative cancellation: wire the long one-shot subprocess wait loop to
+	// the ambient per-call CallContext so a client's notifications/cancelled
+	// kills a slow in-flight commandlet op (the fallback path when the daemon
+	// is down). No-op when there's no active call or the client didn't cancel.
+	cfg.cancelCheck = [] {
+		auto* ctx = bpr::jsonrpc::CallContext::Current();
+		return ctx != nullptr && ctx->IsCancelled();
+	};
 
 	// Note: single-instance enforcement used to live here, but the
 	// commandlet daemon now owns its own per-project lock at
