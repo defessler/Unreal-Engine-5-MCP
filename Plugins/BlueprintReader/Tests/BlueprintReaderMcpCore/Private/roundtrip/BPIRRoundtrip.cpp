@@ -34,6 +34,8 @@
 #include "tools/Decompile.h"
 #include "tools/TypeShorthand.h"
 #include "tools/codegen/CppClassEmit.h"
+#include "tools/codegen/CppEmit.h"
+#include "tools/parse/CppParse.h"
 
 namespace bpr::roundtrip {
 
@@ -206,15 +208,41 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 		}
 	}
 
-	// Stage 4: parse emitted C++ back to BPIR.
-	// MINIMAL impl: pass bpir_before through as bpir_after. The class-
-	// metadata + variable list survive untouched (we KNOW our codegen
-	// produces them faithfully — see CppClassEmit + Decompile tests).
-	// Per-function body re-parsing via tools::ParseCppFunction is a
-	// future iteration's work; this baseline at least makes bpir_after
-	// non-null so callers can verify the pipeline orchestration ran
-	// end-to-end.
+	// Stage 4: re-parse each function's emitted C++ back to BPIR — a real
+	// BPIR -> C++ -> BPIR round-trip of the function logic, replacing the
+	// earlier pass-through cheat. Class-level metadata + the variable and
+	// component lists are carried from bpir_before unchanged (our codegen
+	// emits those faithfully — see CppClassEmit + Decompile tests; whole-
+	// class HEADER re-parsing remains future work). Per-function fallback:
+	// any function that doesn't survive the C++-subset round-trip keeps its
+	// original BPIR so Stage 5 can still materialize it — the asymmetry is
+	// recorded as a soft note, never fatal. Worst case this degrades to the
+	// old pass-through behavior (every function falls back); best case the
+	// function bodies are genuinely round-tripped through C++.
 	res.bpir_after = res.bpir_before;
+	if (res.bpir_after.is_object() && res.bpir_after.contains("functions")
+	    && res.bpir_after["functions"].is_array()) {
+		for (auto& fn : res.bpir_after["functions"]) {
+			if (!fn.is_object()) {
+				continue;
+			}
+			const std::string fname = fn.value("name", std::string{});
+			try {
+				const tools::CppEmitResult emitted = tools::EmitCppFunction(fn);
+				nlohmann::json reparsed = tools::ParseCppFunction(emitted.source);
+				if (reparsed.is_object()) {
+					fn = std::move(reparsed);
+				}
+			} catch (const std::exception& e) {
+				// Not fatal — a function outside the parser's C++ subset just
+				// keeps its decompiled BPIR. Record so the round-trip report
+				// shows where fidelity was carried rather than re-derived.
+				res.body_compile_failures.push_back(
+					std::string{"Stage4 reparse "} + fname + ": " + e.what() +
+					" (kept original BPIR)");
+			}
+		}
+	}
 
 	// Stage 5: materialize bpir_after as a fresh BP at output_package_path.
 	// Skeleton-only impl: create the BP, add variables, add function
