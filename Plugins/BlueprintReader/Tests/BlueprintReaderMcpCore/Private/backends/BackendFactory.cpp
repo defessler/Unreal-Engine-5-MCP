@@ -248,6 +248,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.editorConfig    = cfg.editorConfig;
 			cc.editorExtraArgs = cfg.editorExtraArgs;
 			cc.pluginDenylist  = cfg.pluginDenylist;
+			cc.cancelCheck     = cfg.cancelCheck;
 			auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
 			if (cfg.prewarm && cfg.useDaemon) {
 				r->Prewarm();
@@ -293,6 +294,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.editorConfig    = cfg.editorConfig;
 			cc.editorExtraArgs = cfg.editorExtraArgs;
 			cc.pluginDenylist  = cfg.pluginDenylist;
+			cc.cancelCheck     = cfg.cancelCheck;
 			ac.commandletConfig = std::move(cc);
 			ac.prewarmCommandlet = cfg.prewarm && cfg.useDaemon;
 			return std::make_unique<AutoBlueprintReader>(std::move(ac));

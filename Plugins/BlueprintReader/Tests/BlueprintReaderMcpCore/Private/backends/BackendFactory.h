@@ -6,6 +6,7 @@
 #include "backends/IBlueprintReader.h"
 
 #include <filesystem>
+#include <functional>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -41,6 +42,9 @@ struct BackendConfig {
 								  // (e.g. one that crashes in StartupModule) is
 								  // skipped non-interactively. Set via
 								  // BP_READER_PLUGIN_DENYLIST.
+	std::function<bool()> cancelCheck;  // cooperative-cancel poll for long one-shot
+										// ops; wired by main.cpp to the ambient
+										// CallContext::IsCancelled(). Empty = off.
 	bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
 	bool prewarm    = false;      // commandlet+daemon-only; opt in via BP_READER_PREWARM=1.
 								  // Spawns the editor daemon on startup in a background

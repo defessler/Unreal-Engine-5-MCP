@@ -150,6 +150,7 @@ std::vector<std::wstring> DisablePluginArgs(const std::string& csv) {
 struct ProcResult {
 	bool launched = false;
 	bool timedOut = false;
+	bool cancelled = false;   // client sent notifications/cancelled mid-op
 	DWORD exitCode = 0;
 	std::string stdoutTail;
 	std::string stderrTail;
@@ -221,7 +222,8 @@ template <typename F> ScopeGuard<F> MakeScopeGuard(F f) { return ScopeGuard<F>(s
 
 ProcResult RunChild(const std::wstring& exe,
 					const std::vector<std::wstring>& args,
-					std::chrono::seconds timeout) {
+					std::chrono::seconds timeout,
+					const std::function<bool()>& cancelCheck = {}) {
 	ProcResult res;
 
 	SECURITY_ATTRIBUTES sa{};
@@ -313,6 +315,17 @@ ProcResult RunChild(const std::wstring& exe,
 			res.failureReason = "timeout";
 			break;
 		}
+		// Cooperative cancellation: the client sent notifications/cancelled
+		// for this in-flight tools/call. Kill the subprocess so a slow
+		// one-shot op (the fallback path when the daemon is down) doesn't
+		// keep running after the agent abandoned it. No-op unless wired.
+		if (cancelCheck && cancelCheck()) {
+			TerminateProcess(pi.hProcess, 9);
+			WaitForSingleObject(pi.hProcess, 2000);
+			res.cancelled = true;
+			res.failureReason = "cancelled by client";
+			break;
+		}
 	}
 	// Final drain after the wait loop exits — anything written between the
 	// last in-loop drain and process exit/terminate would otherwise be lost
@@ -350,7 +363,8 @@ struct ProcResult {
 	std::string failureReason;
 };
 
-ProcResult RunChild(const std::wstring&, const std::vector<std::wstring>&, std::chrono::seconds) {
+ProcResult RunChild(const std::wstring&, const std::vector<std::wstring>&, std::chrono::seconds,
+					const std::function<bool()>& = {}) {
 	ProcResult r;
 	r.failureReason = "CommandletBlueprintReader is Windows-only.";
 	return r;
@@ -711,7 +725,7 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	}
 
 	const auto t0 = std::chrono::steady_clock::now();
-	auto r = RunChild(editorCmdExe_.wstring(), args, cfg_.timeout);
+	auto r = RunChild(editorCmdExe_.wstring(), args, cfg_.timeout, cfg_.cancelCheck);
 	const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now() - t0).count();
 
@@ -731,6 +745,11 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 		cleanup();
 		throw BlueprintReaderError(fmt::format(
 			"failed to launch UnrealEditor-Cmd.exe: {}", r.failureReason));
+	}
+	if (r.cancelled) {
+		cleanup();
+		throw BlueprintReaderError(
+			"operation cancelled by client (notifications/cancelled)");
 	}
 	if (r.timedOut) {
 		cleanup();
