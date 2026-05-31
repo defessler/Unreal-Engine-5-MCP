@@ -147,6 +147,38 @@ std::vector<std::wstring> DisablePluginArgs(const std::string& csv) {
 	return out;
 }
 
+// Read the last `nLines` of the editor's own log (UE writes it to
+// <Project>/Saved/Logs/<ProjectName>.log). On a daemon-startup stall this is
+// where the last init step before the hang lands -- surfacing it turns a
+// mysterious "handshake never appeared" into an actionable diagnosis (e.g.
+// "stalled in ScanPathsForPrimaryAssets"). Read-only; safe on the error path.
+std::string ReadEditorLogTail(const std::filesystem::path& uproject, std::size_t nLines) {
+	if (uproject.empty()) {
+		return "(no project path; editor log unavailable)";
+	}
+	const std::filesystem::path logPath =
+		uproject.parent_path() / "Saved" / "Logs" /
+		(uproject.stem().string() + ".log");
+	std::ifstream f(logPath);
+	if (!f) {
+		return fmt::format("(editor log not found at {})", logPath.string());
+	}
+	std::deque<std::string> lines;
+	std::string line;
+	while (std::getline(f, line)) {
+		lines.push_back(std::move(line));
+		if (lines.size() > nLines) {
+			lines.pop_front();
+		}
+	}
+	std::string out;
+	for (const auto& l : lines) {
+		out += l;
+		out += '\n';
+	}
+	return out.empty() ? "(editor log empty)" : out;
+}
+
 struct ProcResult {
 	bool launched = false;
 	bool timedOut = false;
@@ -926,11 +958,10 @@ void CommandletBlueprintReader::PollForHandshake(std::chrono::seconds timeout) {
 				"BP_READER_EDITOR_ARGS=-EnableAllPlugins (makes missing "
 				"plugin modules non-fatal), or "
 				"BP_READER_PLUGIN_DENYLIST=<PluginName> to skip a plugin that "
-				"crashes on init (e.g. DLSS). Check {} for the engine log "
-				"tail.",
+				"crashes on init (e.g. DLSS). Editor log tail (last 40 "
+				"lines):\n{}",
 				code,
-				(std::filesystem::temp_directory_path() /
-				 "bp-reader-mcp-daemon-failure.log").string()));
+				ReadEditorLogTail(cfg_.uproject, 40)));
 		}
 #endif    // defined(_WIN32)
 		std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -1018,6 +1049,7 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 #if defined(_WIN32)
 		TerminateDaemon();
 #endif    // defined(_WIN32)
+		const std::string logTail = ReadEditorLogTail(cfg_.uproject, 40);
 		throw BlueprintReaderError(fmt::format(
 			"commandlet daemon: spawn-lock {}, handshake never appeared "
 			"within {}s. If the project is just slow to load, bump "
@@ -1025,11 +1057,11 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 			"crashes during editor startup, set "
 			"BP_READER_EDITOR_ARGS=-EnableAllPlugins (missing modules become "
 			"non-fatal) or BP_READER_PLUGIN_DENYLIST=<PluginName> (skip a "
-			"plugin that crashes on init). Check {} for the engine log tail.",
+			"plugin that crashes on init). Editor log tail (last 40 lines -- "
+			"a startup stall shows up here):\n{}",
 			acquired ? "acquired" : "contended",
 			cfg_.startupTimeout.count(),
-			(std::filesystem::temp_directory_path() /
-			 "bp-reader-mcp-daemon-failure.log").string()));
+			logTail));
 	}
 	return *socket_;
 }
