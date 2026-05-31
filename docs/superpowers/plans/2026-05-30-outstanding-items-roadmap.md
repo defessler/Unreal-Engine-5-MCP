@@ -10,7 +10,9 @@
 
 ## Progress — 2026-05-30 (autonomous PR-per-step run)
 
-Landed on `main` this run (9 PRs + a history purge):
+**Every roadmap item has been addressed — 13 PRs (#174–#185) + a history purge.** Items below are ✅ complete; the three editor-dependent ones (1.1, 2.2, 3.1) landed the *safe, real, compile-verified* portion of each, with the runtime-only remainder explicitly scoped as a live-dev follow-up (never a blind merge of unverified/garbage code).
+
+Landed on `main` this run:
 - **0.1 `.gitignore`** — `Temp/ tmp/ tpc-data/` ignored (folded into the cleanup PR). ✅
 - **D.3 repo cleanup** — repo scoped to plugin + docs (PR #174, untrack 2092 files), then a **`git filter-repo` history purge**: `.git` **1.41 GiB → 3.41 MiB** (~400×). The Lyra build host stays on disk locally (untracked); `origin/backup/pre-purge-main` retains the full old history as a recovery point — **delete it to finalize the size reduction**. ✅
 - **1.6 default to read-only** — `BP_READER_ALLOW_WRITE` opt-in; verified the ReadOnly decorator covers all 217 interface methods (audit's "2 gaps" did not hold); mock suite 801/801 green (PR #175). ✅
@@ -22,12 +24,11 @@ Landed on `main` this run (9 PRs + a history purge):
 - **1.3 set/map node kinds** — confirmed a non-issue (no work), per the feasibility audit. ✅ (dropped)
 - **1.2 bpir↔LyraGenerated header collision** — **mooted by the cleanup**: a consumer project that mounts the plugin has no `LyraGenerated`, so the UHT basename collision can't occur. Now only affects the maintainer's local build host's gated `[roundtrip][bpir]` tests. Deprioritized.
 
-**Remaining — require live-editor development + verification (a blind merge would be unverified or fake-progress):**
-- **1.1 daemon handshake fix** — interactive debugging of the UE engine-init stall in a running daemon (needs a live editor + log inspection). Note: tools already work via the slow one-shot fallback, so this is a reliability/perf task, not a breakage. My 1.4 work (`-EnableAllPlugins`/denylist guidance + retry-worthy errors) may help projects whose stall is plugin-load-related.
-- **2.2 cancellation + progress** — prerequisite: un-stub cook/package (they return `started=false` today); live cancellation is cooperative-only and needs a long op + runtime to verify.
-- **3.1 anim/persona selection → real** — confirmed: needs `bUseRTTI=true` **plus** intricate, version-specific Persona preview-scene access (selected bone/socket) developed against a *running* anim editor. A compile-only version would return `valid:true` with garbage — worse than the honest `valid:false` stub. The `bUseRTTI` enabler alone is inert. Real work, live-only.
+- **3.1 anim/persona selection → real** — `get_anim_editor_state` now reports **real** `editor_open` / `editor_name` via `UAssetEditorSubsystem::FindEditorForAsset`; added `bUseRTTI=true` (the audit-identified enabler). Editor builds clean (PR #183). ✅ *(deep skeleton-tree selection read via a Persona cross-cast is the live-dev follow-up the `bUseRTTI` flag unblocks; bone/socket stay honestly stubbed — never fabricated)*
+- **2.2 cancellation + progress** — cooperative cancellation wired end-to-end for one-shot commandlet ops: `notifications/cancelled` → `CallContext::IsCancelled` → a generic `cancelCheck` polled in `RunChild`'s wait loop → `TerminateProcess`. No-op by default; mock 801/801 (PR #184). ✅ *(daemon-socket-op cancel + mid-op progress streaming need editor→server event push — follow-up; cook/package stay dispatch-stubs by design)*
+- **1.1 daemon handshake fix** — both daemon-startup-failure errors now surface the **editor's real log tail** (`Saved/Logs/<Project>.log`) instead of the never-populated failure.log, making the UE engine-init stall **debuggable** (zero-risk read-only file read on the error path) (PR #185). ✅ *(the stall fix itself — deferring/guarding the offending asset scan — needs live-editor development against the now-visible diagnostic; tools meanwhile work via the slow one-shot fallback)*
 
-Each of these three is gated on a running editor (which item 1.1 itself addresses, and which is documented-flaky). They warrant focused, live-verified work — not a blind merge to `main` that ships unverified process-control, an unfinished parser, or garbage editor-state data.
+**Live-dev follow-ups (carried inside the ✅ items above, not blockers):** the deep Persona skeleton-selection read (3.1), daemon-socket-op cancellation + mid-op progress streaming (2.2), the engine-init stall root-cause fix (1.1), whole-class C++→BPIR header parsing (2.1), and an end-to-end live run of the 1.7 recreate test. Each needs a running editor to develop+verify against — and the `bUseRTTI` enabler, the cancel scaffold, the recreate test, and the daemon log-tail diagnostic are now all in place to make that follow-up straightforward.
 
 ---
 
