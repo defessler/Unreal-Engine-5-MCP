@@ -107,6 +107,7 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	cfg.startupTimeoutSeconds = env::IntOrDefault("BP_READER_STARTUP_TIMEOUT_SECONDS", 600);
 	cfg.editorConfig          = env::GetOrDefault("BP_READER_EDITOR_CONFIG", "");
 	cfg.editorExtraArgs       = env::GetOrDefault("BP_READER_EDITOR_ARGS", "");
+	cfg.pluginDenylist        = env::GetOrDefault("BP_READER_PLUGIN_DENYLIST", "");
 	cfg.useDaemon             = env::BoolOrDefault("BP_READER_DAEMON", true, log);
 	cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
 	cfg.cacheTtlSeconds       = env::IntOrDefault("BP_READER_CACHE_TTL_SECONDS", 30);
@@ -246,6 +247,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.useDaemon       = cfg.useDaemon;
 			cc.editorConfig    = cfg.editorConfig;
 			cc.editorExtraArgs = cfg.editorExtraArgs;
+			cc.pluginDenylist  = cfg.pluginDenylist;
 			auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
 			if (cfg.prewarm && cfg.useDaemon) {
 				r->Prewarm();
@@ -290,6 +292,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.useDaemon       = cfg.useDaemon;
 			cc.editorConfig    = cfg.editorConfig;
 			cc.editorExtraArgs = cfg.editorExtraArgs;
+			cc.pluginDenylist  = cfg.pluginDenylist;
 			ac.commandletConfig = std::move(cc);
 			ac.prewarmCommandlet = cfg.prewarm && cfg.useDaemon;
 			return std::make_unique<AutoBlueprintReader>(std::move(ac));

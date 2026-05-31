@@ -36,6 +36,11 @@ struct BackendConfig {
 								  // -EnableAllPlugins when a project enables
 								  // plugins whose binaries aren't built. Set
 								  // via BP_READER_EDITOR_ARGS.
+	std::string pluginDenylist;   // comma-separated plugin names, each emitted as
+								  // -DisablePlugin=<name> so a known-bad plugin
+								  // (e.g. one that crashes in StartupModule) is
+								  // skipped non-interactively. Set via
+								  // BP_READER_PLUGIN_DENYLIST.
 	bool useDaemon = true;        // commandlet-only; opt out via BP_READER_DAEMON=0
 	bool prewarm    = false;      // commandlet+daemon-only; opt in via BP_READER_PREWARM=1.
 								  // Spawns the editor daemon on startup in a background
