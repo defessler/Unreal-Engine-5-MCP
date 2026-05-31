@@ -1,2 +1,0 @@
-// AUTO-GENERATED stub by bp-reader.
-#include "ABP_Manny_PostProcess.h"
