@@ -1873,6 +1873,20 @@ namespace
 				UE_LOG(LogBlueprintReader, Display,
 					TEXT("DeleteAsset: file does not exist at %s"), *PackageFilename);
 			}
+
+			// Force a GC pass so the just-deleted Blueprint's generated class and
+			// (crucially) its custom-event function names are released right away.
+			// ForceDeleteObjects nulls references but leaves the object alive until
+			// the next GC; if we recreate into the same path before then, the
+			// freshly-imported custom events collide with the lingering names and
+			// get silently demoted to generic "CustomEvent" nodes. That showed up
+			// as a run-to-run flake (first recreate over an existing target lost
+			// event names, a second pass succeeded). A full purge here makes
+			// recreate-over-existing deterministic.
+			if (bDeleted)
+			{
+				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, /*bPerformFullPurge=*/true);
+			}
 		}
 
 		auto Out = MakeShared<FJsonObject>();
