@@ -407,6 +407,13 @@ TSharedRef<FJsonObject> FBlueprintReaderWireJson::MetadataToJson(const FBlueprin
 	Obj->SetStringField(TEXT("asset_path"), ToPackagePath(Info.Path));
 	Obj->SetStringField(TEXT("name"), Info.Name);
 	Obj->SetStringField(TEXT("parent_class"), Info.ParentClassPath);
+	// Blueprint kind (BPTYPE_Normal / BPTYPE_Interface / BPTYPE_MacroLibrary / ...).
+	// The recreator feeds this back into create_blueprint's -BlueprintType= so a
+	// Blueprint Interface is rebuilt as a real interface (no auto EventGraph).
+	if (!Info.BlueprintType.IsEmpty())
+	{
+		Obj->SetStringField(TEXT("blueprint_type"), Info.BlueprintType);
+	}
 
 	TArray<TSharedPtr<FJsonValue>> Interfaces;
 	for (const FBPInterfaceInfo& I : Info.Interfaces)
