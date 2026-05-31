@@ -134,6 +134,8 @@ commandlet (editor closed).
 | `BP_READER_LIVE_PORT/TOKEN`   | auto from handshake file           | Editor publishes; MCP server reads |
 | `BP_READER_TIMEOUT_SECONDS`   | `120`                              | Per-call subprocess timeout |
 | `BP_READER_DAEMON`            | `1` (on)                           | Set `0` to opt out of daemon mode |
+| `BP_READER_READ_ONLY`         | `1` (on, **default**)              | Read-only by default — every write tool is rejected with a clear error. Guards against two processes mutating the same `.uasset` concurrently. Set `0` (or `BP_READER_ALLOW_WRITE=1`) to enable writes. |
+| `BP_READER_ALLOW_WRITE`       | `0` (off)                          | Discoverable inverse of `BP_READER_READ_ONLY` — set `1` to enable write tools. An explicit `BP_READER_READ_ONLY` wins if both are set. |
 | `BP_READER_ALLOW_TRANSPILE`  | `0` (off)                          | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
 | `BP_READER_AUTO_CHECKOUT`    | `1` (on)                           | Before a write op mutates an asset, auto-check-it-out of source control (Perforce/Git) non-interactively. Stops a live editor from popping a blocking "Check Out?" modal mid-call. Set `0` to manage checkouts yourself. |
 

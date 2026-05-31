@@ -110,7 +110,18 @@ BackendConfig ConfigFromEnv(const std::filesystem::path& executableDir,
 	cfg.useDaemon             = env::BoolOrDefault("BP_READER_DAEMON", true, log);
 	cfg.prewarm               = env::BoolOrDefault("BP_READER_PREWARM", false, log);
 	cfg.cacheTtlSeconds       = env::IntOrDefault("BP_READER_CACHE_TTL_SECONDS", 30);
-	cfg.readOnly              = env::BoolOrDefault("BP_READER_READ_ONLY", false, log);
+	// Read-only is the DEFAULT posture (safety): mutation tools are rejected
+	// unless the user opts into writes. Protects against two processes
+	// mutating the same .uasset concurrently (the common footgun when a UE
+	// editor is open). Two equivalent opt-ins; BP_READER_ALLOW_WRITE is the
+	// discoverable one, BP_READER_READ_ONLY the explicit override (and it
+	// wins if both are set):
+	//   (nothing set)            -> read-only  (safe default)
+	//   BP_READER_ALLOW_WRITE=1  -> writes enabled
+	//   BP_READER_READ_ONLY=0    -> writes enabled
+	//   BP_READER_READ_ONLY=1    -> read-only (always)
+	const bool allowWrite     = env::BoolOrDefault("BP_READER_ALLOW_WRITE", false, log);
+	cfg.readOnly              = env::BoolOrDefault("BP_READER_READ_ONLY", !allowWrite, log);
 	cfg.liveHost              = env::GetOrDefault("BP_READER_LIVE_HOST", "127.0.0.1");
 	cfg.liveProcPort          = env::IntOrDefault("BP_READER_LIVE_PORT", 0);
 	cfg.liveToken             = env::GetOrDefault("BP_READER_LIVE_TOKEN", "");
