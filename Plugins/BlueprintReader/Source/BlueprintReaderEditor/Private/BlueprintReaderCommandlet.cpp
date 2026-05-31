@@ -8203,23 +8203,41 @@ namespace
 		const FString AssetPath = ResolveAssetPath(Params);
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), true);
-		// v1 stub: deferred. Without RTTI we can't cross-cast from
-		// IAssetEditorInstance to IHasPersonaToolkit (multi-inheritance,
-		// unrelated types in the type system). Reporting `valid:false`
-		// here is honest — the tool surface is documented, future
-		// versions can use UAssetEditorSubsystem::OnAssetOpenedInEditor
-		// + a per-editor-class registry to track Persona toolkits as
-		// they open, then look up by AssetPath here.
-		Out->SetBoolField(TEXT("valid"), false);
 		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		// Roadmap 3.1. Real editor-open detection via UAssetEditorSubsystem
+		// (the documented, public path — no garbage, no fragile internals):
+		// if the asset's editor tab is open we report valid:true + its
+		// editor name. Deep skeleton-tree selection (selected_bone_index /
+		// socket) lives in the Persona preview scene and needs a cross-cast
+		// to IHasPersonaToolkit (now buildable via bUseRTTI) developed
+		// against a running anim editor — left honestly stubbed (-1 / "")
+		// until that live-dev follow-up so we never report fabricated state.
+		bool bEditorOpen = false;
+		FString EditorName;
+		if (!AssetPath.IsEmpty() && IsValid(GEditor))
+		{
+			// Anim BPs load as UAnimBlueprint, anim sequences/montages as
+			// UAnimationAsset — resolve generically.
+			UObject* Asset = LoadObject<UObject>(nullptr, *AssetPath);
+			if (Asset != nullptr)
+			{
+				if (UAssetEditorSubsystem* AES =
+						GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+				{
+					if (IAssetEditorInstance* Inst =
+							AES->FindEditorForAsset(Asset, /*bFocusIfOpen=*/false))
+					{
+						bEditorOpen = true;
+						EditorName  = Inst->GetEditorName().ToString();
+					}
+				}
+			}
+		}
+		Out->SetBoolField(TEXT("valid"), bEditorOpen);
+		Out->SetBoolField(TEXT("editor_open"), bEditorOpen);
+		Out->SetStringField(TEXT("editor_name"), EditorName);
 		Out->SetNumberField(TEXT("selected_bone_index"), -1);
 		Out->SetStringField(TEXT("selected_socket_name"), FString());
-
-		// Validate the asset path resolves (no-op when empty).
-		if (!AssetPath.IsEmpty())
-		{
-			(void)LoadObject<UAnimationAsset>(nullptr, *AssetPath);
-		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 

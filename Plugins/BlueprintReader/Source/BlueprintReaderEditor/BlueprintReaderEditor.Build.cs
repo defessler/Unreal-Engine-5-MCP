@@ -59,6 +59,14 @@ public class BlueprintReaderEditor : ModuleRules
 
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		// Enable RTTI so per-asset-editor selection tools can cross-cast an
+		// IAssetEditorInstance* to the public toolkit interfaces (e.g.
+		// IHasPersonaToolkit / IAnimationBlueprintEditor) for deep editor
+		// state. Roadmap 3.1: open-detection (FindEditorForAsset) lands now;
+		// the skeleton-selection read via the cross-cast is the live-dev
+		// follow-up this flag unblocks. Pattern matches BlueprintReaderMcpCore.
+		bUseRTTI = true;
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
