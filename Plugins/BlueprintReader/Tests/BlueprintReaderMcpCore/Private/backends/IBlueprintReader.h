@@ -144,8 +144,29 @@ public:
 		bool alreadyExisted = false;
 		std::string parentClass;  // resolved full path, for echo
 	};
+	// `blueprintType` is an optional EBlueprintType name (e.g.
+	// "BPTYPE_Interface") — empty means the plugin's default (a normal
+	// actor/object BP derived from `parentClass`).
 	virtual CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
-												  std::string_view parentClass) = 0;
+												  std::string_view parentClass,
+												  std::string_view blueprintType = "") = 0;
+
+	// Clone every node in `graphName` from the `sourcePath` BP into the
+	// same-named graph of the `targetPath` BP, preserving wiring. Used by
+	// the BP recreate flow to copy a function/event-graph wholesale.
+	struct CloneGraphResult {
+		bool ok = false;
+		int  importedNodes = 0;
+	};
+	virtual CloneGraphResult CloneGraph(std::string_view sourcePath,
+										std::string_view targetPath,
+										std::string_view graphName) = 0;
+
+	// Add `interfacePath` (a BP-interface or native UInterface) to the
+	// implemented-interfaces list of the `assetPath` BP, generating the
+	// stub function graphs the interface requires.
+	virtual void ImplementInterface(std::string_view assetPath,
+									std::string_view interfacePath) = 0;
 
 	// Set the literal default value on a node's pin (B1). Used by
 	// compile_function's {lit:value} support — UE has no first-class

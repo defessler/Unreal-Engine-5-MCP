@@ -105,8 +105,17 @@ void ReadOnlyBlueprintReader::SetVariableDefault(std::string_view, std::string_v
 	Reject("set_variable_default");
 }
 IBlueprintReader::CreateBlueprintResult
-ReadOnlyBlueprintReader::CreateBlueprint(std::string_view, std::string_view) {
+ReadOnlyBlueprintReader::CreateBlueprint(std::string_view, std::string_view,
+										 std::string_view) {
 	Reject("create_blueprint");
+}
+IBlueprintReader::CloneGraphResult
+ReadOnlyBlueprintReader::CloneGraph(std::string_view, std::string_view,
+									std::string_view) {
+	Reject("clone_graph");
+}
+void ReadOnlyBlueprintReader::ImplementInterface(std::string_view, std::string_view) {
+	Reject("implement_interface");
 }
 void ReadOnlyBlueprintReader::SetPinDefault(std::string_view, std::string_view,
 											std::string_view, std::string_view,

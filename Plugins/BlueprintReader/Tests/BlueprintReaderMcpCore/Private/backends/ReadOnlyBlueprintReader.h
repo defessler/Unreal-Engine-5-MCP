@@ -59,7 +59,11 @@ public:
 						   const BPPinType&) override;
 	void DeleteFunction(std::string_view, std::string_view) override;
 	void SetVariableDefault(std::string_view, std::string_view, std::string_view) override;
-	CreateBlueprintResult CreateBlueprint(std::string_view, std::string_view) override;
+	CreateBlueprintResult CreateBlueprint(std::string_view, std::string_view,
+										  std::string_view) override;
+	CloneGraphResult CloneGraph(std::string_view, std::string_view,
+								std::string_view) override;
+	void ImplementInterface(std::string_view, std::string_view) override;
 	void SetPinDefault(std::string_view, std::string_view, std::string_view,
 					   std::string_view, std::string_view) override;
 	void RetypeVariable(std::string_view, std::string_view,

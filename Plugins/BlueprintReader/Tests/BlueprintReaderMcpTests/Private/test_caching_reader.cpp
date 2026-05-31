@@ -107,8 +107,16 @@ public:
 							std::string_view d) override {
 		inner_.SetVariableDefault(a, n, d);
 	}
-	CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p) override {
-		return inner_.CreateBlueprint(a, p);
+	CreateBlueprintResult CreateBlueprint(std::string_view a, std::string_view p,
+										  std::string_view bt) override {
+		return inner_.CreateBlueprint(a, p, bt);
+	}
+	CloneGraphResult CloneGraph(std::string_view s, std::string_view t,
+								std::string_view g) override {
+		return inner_.CloneGraph(s, t, g);
+	}
+	void ImplementInterface(std::string_view a, std::string_view i) override {
+		inner_.ImplementInterface(a, i);
 	}
 	void SetPinDefault(std::string_view a, std::string_view g, std::string_view n,
 					   std::string_view pin, std::string_view v) override {
