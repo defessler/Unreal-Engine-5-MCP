@@ -9709,22 +9709,54 @@ namespace
 		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
 		{
 			UK2Node_Event* SrcEvt = Cast<UK2Node_Event>(SrcNode);
-			if (!SrcEvt || !SrcEvt->bOverrideFunction) { continue; }
+			if (!SrcEvt) { continue; }
 			const FIntPoint Pos(SrcNode->NodePosX, SrcNode->NodePosY);
 			UEdGraphNode** Imp = ByPos.Find(Pos);
+			// Only act when the import actually demoted the event to a CustomEvent;
+			// a K2Node_Event that round-trips intact is left alone. This covers both
+			// override events (bOverrideFunction) and non-override events bound to an
+			// inherited delegate (e.g. the third-person template's touch/thumbstick
+			// events), which the clipboard can't re-bind on paste.
 			if (!Imp || !IsValid(*Imp) || !(*Imp)->IsA<UK2Node_CustomEvent>()) { continue; }
 			FBlueprintEditorUtils::RemoveNode(DstBP, *Imp, /*bDontRecompile=*/true);
 			ByPos.Remove(Pos);
-			UK2Node_Event* NewEvt = NewObject<UK2Node_Event>(DstGraph);
+			UK2Node_Event* NewEvt = NewObject<UK2Node_Event>(DstGraph, SrcEvt->GetClass());
 			NewEvt->EventReference    = SrcEvt->EventReference;
+			NewEvt->CustomFunctionName = SrcEvt->CustomFunctionName;
 			NewEvt->bOverrideFunction = SrcEvt->bOverrideFunction;
+			NewEvt->bInternalEvent    = SrcEvt->bInternalEvent;
 			NewEvt->NodePosX = SrcNode->NodePosX;
 			NewEvt->NodePosY = SrcNode->NodePosY;
 			NewEvt->CreateNewGuid();
 			DstGraph->AddNode(NewEvt, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 			NewEvt->PostPlacedNewNode();
 			NewEvt->AllocateDefaultPins();
+			ByPos.Add(Pos, NewEvt);
 			Relink(SrcEvt, NewEvt);
+		}
+
+		// 4d. Restore K2Node_CustomEvent parameter pins. Under name collisions / GC
+		//     pressure in a long-lived process, the clipboard occasionally imports a
+		//     custom event WITHOUT its user-defined parameters (a flake: fine in
+		//     isolation, dropped after many ops in one session — e.g. MontageHit,
+		//     Fire, LoadIntoExperience). Reproduce them deterministically from the
+		//     source (matched by position) and relink the body. No-op when the import
+		//     already kept them.
+		for (UEdGraphNode* SrcNode : SrcGraph->Nodes)
+		{
+			UK2Node_CustomEvent* SrcCE = Cast<UK2Node_CustomEvent>(SrcNode);
+			if (!SrcCE) { continue; }
+			UEdGraphNode** Imp = ByPos.Find(FIntPoint(SrcNode->NodePosX, SrcNode->NodePosY));
+			if (!Imp || !IsValid(*Imp)) { continue; }
+			UK2Node_CustomEvent* DstCE = Cast<UK2Node_CustomEvent>(*Imp);
+			if (!DstCE || DstCE->UserDefinedPins.Num() == SrcCE->UserDefinedPins.Num()) { continue; }
+			DstCE->UserDefinedPins.Empty();
+			for (const TSharedPtr<FUserPinInfo>& Src : SrcCE->UserDefinedPins)
+			{
+				DstCE->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Src));
+			}
+			DstCE->ReconstructNode();
+			Relink(SrcCE, DstCE);
 		}
 
 		// 4c. Restore pin types that came back as wildcard. Several node classes
