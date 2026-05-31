@@ -8,6 +8,29 @@
 
 ---
 
+## Progress — 2026-05-30 (autonomous PR-per-step run)
+
+Landed on `main` this run:
+- **0.1 `.gitignore`** — `Temp/ tmp/ tpc-data/` ignored (folded into the cleanup PR). ✅
+- **D.3 repo cleanup** — repo scoped to plugin + docs (PR #174, untrack 2092 files), then a **`git filter-repo` history purge**: `.git` **1.41 GiB → 3.41 MiB** (~400×). The Lyra build host stays on disk locally (untracked); `origin/backup/pre-purge-main` retains the full old history as a recovery point — **delete it to finalize the size reduction**. ✅
+- **1.6 default to read-only** — `BP_READER_ALLOW_WRITE` opt-in; verified the ReadOnly decorator covers all 217 interface methods (audit's "2 gaps" did not hold); full mock suite 801/801 green (PR #175). ✅
+- **D.1 docs audit + D.2 quick start** — README + CLAUDE + 6 wiki pages reconciled to the plugin-only repo + read-only default; new top-of-README Quick start; tool counts 127 → ~249 (PR #176). ✅
+- **1.3 set/map node kinds** — confirmed a non-issue (no work), per the feasibility audit. ✅ (dropped)
+- **1.2 bpir↔LyraGenerated header collision** — **mooted by the cleanup**: a consumer project that mounts the plugin has no `LyraGenerated`, so the UHT basename collision can't occur. It now only affects the maintainer's local Lyra build host when running the gated `[roundtrip][bpir]` compile tests. Deprioritized; reopen only if running those gated tests locally.
+
+**Remaining — blocked on a live UE editor or large-feature scope (not safely auto-mergeable):**
+- **1.1 daemon handshake fix** — an interactive debugging task (diagnose the UE engine-init stall in a running daemon); needs a live editor + log inspection.
+- **1.4 plugin resilience** — Tier-1 (`-EnableAllPlugins` via `BP_READER_EDITOR_ARGS`) already exists + is documented; Tier-2 (crash-detect + auto-disable retry) needs a crashing-plugin project to verify.
+- **1.5 lifetime** — chiefly a verification task on the existing mechanism (idle-shutdown / `TerminateProcess` / lock); the optional Job Object interacts with the daemon-singleton-reuse model and needs runtime testing.
+- **1.7 player-char recreate-roundtrip** — meaningful only on a live/commandlet backend (the mock backend can't recreate via write tools); needs a working editor (gated by 1.1).
+- **2.1 bp-roundtrip Stage 4** — ~500–1000 LOC whole-class C++→BPIR parser; needs roundtrip verification (its own focused effort).
+- **2.2 cancellation + progress** — prerequisite: un-stub cook/package; live cancellation is cooperative-only; needs runtime.
+- **3.1 anim/persona selection → real** — needs the 1-line `bUseRTTI=true` build change **plus** a live editor to verify the sidecar.
+
+These all share a hard dependency on a running editor (which item 1.1 itself is about, and which is documented-flaky) or are large features that warrant focused, verified work rather than a blind merge to `main`.
+
+---
+
 ## Cross-cutting constraints (read first — they shape sequencing)
 
 1. **Locked production exe.** Any *server-side* change relinks `BlueprintReaderMcp.exe`, held open (LNK1104) while it serves a live MCP client. Workflow per server change: force-close the bp-reader server → relink → restart the client. (`[[mcp-exe-locked-during-session]]`)
