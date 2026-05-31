@@ -12,11 +12,11 @@ namespace read_only_blueprint_reader_detail {
 [[noreturn]] void Reject(const char* op) {
 	throw BlueprintReaderError(
 		std::string("write tool '") + op +
-		"' is disabled: this MCP server is running in read-only mode "
-		"(BP_READER_READ_ONLY=1). This mode is intended for coexistence "
-		"with an open UE editor — two processes mutating the same .uasset "
-		"concurrently corrupts state. To make changes, edit in the editor "
-		"directly, or unset BP_READER_READ_ONLY and restart the MCP server.");
+		"' is disabled: this MCP server is in read-only mode (the default). "
+		"Read-only protects against two processes mutating the same .uasset "
+		"concurrently (the common footgun when a UE editor is open). To enable "
+		"writes, set BP_READER_ALLOW_WRITE=1 (or BP_READER_READ_ONLY=0) and "
+		"restart the MCP server — or make changes in the editor directly.");
 }
 
 }    // namespace read_only_blueprint_reader_detail
