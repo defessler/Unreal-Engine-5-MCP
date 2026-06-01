@@ -12,7 +12,10 @@
 
 namespace bpr::backends {
 
-class MockBlueprintReader final : public IBlueprintReader {
+// Not `final`: tests subclass this to override a single method (e.g.
+// FindAsset) and drive a tool handler without stubbing the whole
+// IBlueprintReader surface.
+class MockBlueprintReader : public IBlueprintReader {
 public:
 	explicit MockBlueprintReader(const std::filesystem::path& fixturesDir);
 

@@ -334,6 +334,15 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 // segment of the requested path and search by substring against
 // asset names + full package paths. Cap at 3 candidates to keep the
 // error message digestible.
+//
+// Client feedback #6: the old version could suggest the *exact path the
+// caller asked for* — which happens when the asset genuinely exists but
+// isn't the type this tool reads (e.g. read_blueprint on a level / actor
+// instance / data asset). Repeating the input as a suggestion is
+// misleading and wastes a turn. So: when an exact-path match exists we
+// report its real class ("exists but is a <Class>, not a Blueprint")
+// instead of suggesting it, and we never list the input path among the
+// fuzzy suggestions.
 std::string ComputeDidYouMeanHint(backends::IBlueprintReader& reader,
 								  std::string_view assetPath) {
 	if (assetPath.empty()) {
@@ -346,23 +355,71 @@ std::string ComputeDidYouMeanHint(backends::IBlueprintReader& reader,
 	if (basename.empty()) {
 		return {};
 	}
+	// Normalize an object path (/Game/X.X) to its package form (/Game/X)
+	// so the exact-match comparison against registry rows lines up.
+	auto toPackage = [](std::string_view p) -> std::string {
+		auto s = p.find_last_of('/');
+		auto d = p.find_last_of('.');
+		if (d != std::string_view::npos &&
+			(s == std::string_view::npos || d > s)) {
+			p = p.substr(0, d);
+		}
+		return std::string(p);
+	};
+	auto iequals = [](const std::string& a, const std::string& b) {
+		if (a.size() != b.size()) { return false; }
+		for (std::size_t i = 0; i < a.size(); ++i) {
+			if (std::tolower(static_cast<unsigned char>(a[i])) !=
+				std::tolower(static_cast<unsigned char>(b[i]))) {
+				return false;
+			}
+		}
+		return true;
+	};
+	const std::string wantPkg = toPackage(assetPath);
 	try {
 		auto matches = reader.FindAsset(basename, "/Game");
 		if (matches.entries.empty()) {
 			return {};
 		}
-		std::string list;
+		std::string exactClass;   // class of an exact-path match, if any
+		std::string list;         // fuzzy suggestions (excluding the input)
 		constexpr std::size_t kMax = 3;
 		std::size_t count = 0;
 		for (const auto& e : matches.entries) {
+			if (iequals(e.assetPath, wantPkg)) {
+				// The asset exists at the requested path. If it's a different
+				// type than a Blueprint, that's the useful fact to report; if
+				// it somehow IS a Blueprint, say nothing (a "not a Blueprint"
+				// note would be nonsensical). Either way, never suggest the
+				// input path back to the caller.
+				if (!iequals(e.className, "Blueprint")) {
+					exactClass = e.className;
+				}
+				continue;
+			}
 			if (count >= kMax) {
-				break;
+				continue;
 			}
 			if (!list.empty()) {
 				list += ", ";
 			}
 			list += e.assetPath;
 			++count;
+		}
+		if (!exactClass.empty()) {
+			// The asset is really there, just not a Blueprint. Say so, and
+			// fold in any other near-matches.
+			std::string hint = fmt::format(
+				" — '{}' exists but is a {}, not a Blueprint",
+				wantPkg, exactClass);
+			if (!list.empty()) {
+				hint += fmt::format("; did you mean: {}?", list);
+			}
+			return hint;
+		}
+		if (list.empty()) {
+			return {};   // nothing useful to suggest — don't echo the input
 		}
 		return fmt::format(" — did you mean: {}?", list);
 	} catch (...) {
@@ -458,7 +515,13 @@ nlohmann::json BuildScreenshotResponse(
 		std::move(structured));
 }
 
-void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+// RegisterBlueprintTools is split across several RegisterTools_NN helpers
+// below purely to keep any single function small enough for MSVC's
+// front-end heap (a single 8k-line function trips C1060 "out of heap
+// space" on memory-limited CI runners). The split points are arbitrary
+// tool boundaries; each helper takes the same (registry, reader). The
+// public RegisterBlueprintTools at the bottom calls them in order.
+static void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- list_assets -----------------------------------------------------
 	// General-purpose asset enumeration. The list_blueprints / list_materials
 	// / list_widgets typed family answers "give me every X"; list_assets
@@ -1481,7 +1544,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- add_variable ----------------------------------------------------
+}
+
+static void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- add_variable----------------------------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "add_variable";
@@ -2516,7 +2582,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- set_variable_default --------------------------------------------
+}
+
+static void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- set_variable_default--------------------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "set_variable_default";
@@ -2749,9 +2818,35 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"BP_READER_READ_ONLY=1 if you want to keep the MCP server running "
 			"for queries while you work in the editor.\n\n"
 			"Returns {ok, was_running, hint}. Idempotent: calling when no "
-			"daemon is alive returns was_running:false without erroring.";
-		d.input_schema = {{"type", "object"}, {"properties", nlohmann::json::object()}};
-		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			"daemon is alive returns was_running:false without erroring.\n\n"
+			"GUARD: because this affects every session, you must pass "
+			"`force_shared:true` to actually tear it down — a default-deny "
+			"safeguard against accidentally killing other sessions' daemon.";
+		d.input_schema = {{"type", "object"}, {"properties", {
+			{"force_shared", {
+				{"type", "boolean"},
+				{"description",
+				 "Required confirmation. shutdown_daemon terminates the daemon "
+				 "shared by EVERY MCP session on this project, not just yours. "
+				 "Must be true to proceed; omitting it (default-deny) returns an "
+				 "error explaining the blast radius rather than tearing down."},
+			}},
+		}}};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			// Client feedback #5: the shared-daemon model means this kills the
+			// daemon for ALL sessions. Default-deny so a routine "clean up my
+			// session" call can't blindside other sessions; require explicit
+			// force_shared:true to proceed.
+			const bool forceShared = args.is_object() && args.value("force_shared", false);
+			if (!forceShared) {
+				throw std::invalid_argument(
+					"shutdown_daemon tears down the editor daemon shared by EVERY "
+					"MCP session on this project (releasing its file locks), not "
+					"just yours — other sessions then pay a cold-start respawn. If "
+					"that's what you intend, call again with force_shared:true. To "
+					"keep querying while you open the full editor instead, set "
+					"BP_READER_READ_ONLY=1 and leave the daemon running.");
+			}
 			return reader.ShutdownDaemon();
 		});
 	}
@@ -3547,7 +3642,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- get_active_asset -----------------------------------------------
+}
+
+static void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- get_active_asset-----------------------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "get_active_asset";
@@ -4591,7 +4689,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- get_cinematic_camera (Phase 12 Wave 2) ----------------------
+}
+
+static void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- get_cinematic_camera(Phase 12 Wave 2) ----------------------
 	{
 		ToolDescriptor d;
 		d.name = "get_cinematic_camera";
@@ -5652,7 +5753,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- get_camera_transform ------------------------------------------
+}
+
+static void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- get_camera_transform------------------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "get_camera_transform";
@@ -6329,7 +6433,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- connect_material_expressions ----------------------------------
+}
+
+static void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- connect_material_expressions----------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "connect_material_expressions";
@@ -7459,7 +7566,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- take_annotated_screenshot --------------------------------------
+}
+
+static void RegisterTools_07(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- take_annotated_screenshot--------------------------------------
 	// Captures the viewport + composes structured spatial metadata in one
 	// call: camera transform, selected actors, optional broader editor
 	// state. The image itself is written to disk (same as
@@ -7727,7 +7837,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- get_asset_registry_state -----
+}
+
+static void RegisterTools_08(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- get_asset_registry_state-----
 	{
 		ToolDescriptor d;
 		d.name = "get_asset_registry_state";
@@ -9062,7 +9175,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 		});
 	}
 
-	// ----- bp_structural_diff ---------------------------------------------
+}
+
+static void RegisterTools_09(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	// ----- bp_structural_diff---------------------------------------------
 	{
 		ToolDescriptor d;
 		d.name = "bp_structural_diff";
@@ -9103,6 +9219,22 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 	// dispatch tables are bigger than the per-tool handlers above.
 	RegisterApplyOps(registry, reader);
 	RegisterCompileFunction(registry, reader);
+}
+
+// Public entry point — registers every tool by fanning out to the
+// RegisterTools_NN chunks (split only to keep each function within
+// MSVC's front-end heap; see the note on RegisterTools_00).
+void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+	RegisterTools_00(registry, reader);
+	RegisterTools_01(registry, reader);
+	RegisterTools_02(registry, reader);
+	RegisterTools_03(registry, reader);
+	RegisterTools_04(registry, reader);
+	RegisterTools_05(registry, reader);
+	RegisterTools_06(registry, reader);
+	RegisterTools_07(registry, reader);
+	RegisterTools_08(registry, reader);
+	RegisterTools_09(registry, reader);
 }
 
 void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry) {

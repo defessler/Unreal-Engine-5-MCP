@@ -87,6 +87,31 @@ situational-awareness read tools) is enumerated in the wiki Tool Reference.
 | **AnimGraph** (4) | `list_anim_blueprints`, `read_anim_blueprint`, `add_anim_state`, `compile_anim_blueprint` | Discover UAnimBlueprint + read parent class + compile via FKismetEditorUtilities. State-machine authoring scaffolded; full graph needs AnimGraph module. |
 | **Discoverability + meta** (3) | `list_node_kinds`, `list_pin_categories`, `shutdown_daemon` | Self-describing surface so the agent can ask "what's a valid `add_node` kind?" or "what does a struct-ref BPPinType look like?" without scanning docs. |
 
+### Which tool to reach for
+
+The verb prefixes are consistent — once you know them the ~251-tool surface
+is navigable without scanning the whole list:
+
+| Prefix | Means | Examples |
+|--------|-------|----------|
+| `list_*` | Enumerate every asset of a kind under a path (Asset-Registry-backed, no load) | `list_blueprints`, `list_materials`, `list_data_tables` |
+| `find_*` | Search by substring / filter; returns matching rows (paginated) | `find_asset`, `find_node`, `find_overriders` |
+| `read_*` | Fully load **one** asset of a specific type and return its whole structure | `read_blueprint`, `read_material`, `read_data_table` |
+| `get_*` | Pull one focused slice — a sub-object, a single field, or live editor state | `get_graph`, `get_function`, `get_components`, `get_editor_state` |
+| `summarize_*` | Cheap orientation: the shape of an asset without the full payload | `summarize_blueprint` |
+
+Type-shaped, not generic: `read_blueprint` loads a `UBlueprint` (its
+variables/graphs/functions/components). It is **not** a generic asset reader —
+pointing it at a level, a non-Blueprint asset, or a placed actor instance
+returns `BlueprintNotFound` (with the asset's real class, when it exists at
+that path). For "what type is this and where is it?" use `find_asset`; for
+non-Blueprint assets reach for the typed reader (`read_material`,
+`read_data_asset`, `read_data_table`, …).
+
+Start broad, then narrow: `summarize_blueprint` (orientation) →
+`read_blueprint` / `get_graph` / `list_variables` (detail), and add `fields`
+to drop keys you don't need.
+
 Wire shapes are pinned in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/BlueprintReaderTypes.h`. Snake_case
 keys, nullable string fields emit `null`, `BPNode.meta` is a real nested object.
 
