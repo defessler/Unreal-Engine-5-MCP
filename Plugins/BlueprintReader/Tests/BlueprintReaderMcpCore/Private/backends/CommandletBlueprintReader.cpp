@@ -1038,17 +1038,39 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 		// their spawn during our (zero or non-zero) wait.
 		socket_ = TryAttachExistingDaemon();
 		if (!socket_) {
-			// Production path uses the built-in Win32 SpawnDaemon. The
-			// test hook (Config::spawnDaemonHook) lets a unit test
-			// simulate spawn latency + handshake-file publication
-			// without actually launching UnrealEditor-Cmd.exe.
-			if (cfg_.spawnDaemonHook) {
-				cfg_.spawnDaemonHook(cfg_.uproject);
-			} else {
-				SpawnDaemon();
+			// Daemon cold-start transiently fails ~30% of the time when a
+			// plugin crashes in StartupModule (e.g. DLSS) — an immediate
+			// respawn usually succeeds (client feedback #4). Retry a few
+			// times; each retry tears down the crashed/hung child first so we
+			// don't orphan it. Configurable via
+			// BP_READER_DAEMON_SPAWN_RETRIES (default 1 retry = 2 attempts; 0
+			// disables retry). We hold the spawn lock throughout, so a second
+			// MCP server can't double-spawn while we retry.
+			int attempts = 2;
+			if (const char* rawRetries = std::getenv("BP_READER_DAEMON_SPAWN_RETRIES")) {
+				if (*rawRetries) {
+					const int n = std::atoi(rawRetries);
+					if (n >= 0) { attempts = n + 1; }
+				}
 			}
-			PollForHandshake(cfg_.startupTimeout);
-			socket_ = TryAttachExistingDaemon();
+			for (int attempt = 0; attempt < attempts && !socket_; ++attempt) {
+				if (attempt > 0) {
+#if defined(_WIN32)
+					TerminateDaemon();   // reap the failed child before respawning
+#endif    // defined(_WIN32)
+				}
+				// Production path uses the built-in Win32 SpawnDaemon. The
+				// test hook (Config::spawnDaemonHook) lets a unit test
+				// simulate spawn latency + handshake-file publication
+				// without actually launching UnrealEditor-Cmd.exe.
+				if (cfg_.spawnDaemonHook) {
+					cfg_.spawnDaemonHook(cfg_.uproject);
+				} else {
+					SpawnDaemon();
+				}
+				PollForHandshake(cfg_.startupTimeout);
+				socket_ = TryAttachExistingDaemon();
+			}
 		}
 		// SpawnLock destructor releases the lock when this scope
 		// exits — release happens AFTER PollForHandshake returns, so a
@@ -2091,8 +2113,10 @@ CommandletBlueprintReader::SetComponentProperty(std::string_view assetPath,
 	out.componentName = std::string(componentName);
 	out.propertyName  = std::string(propertyName);
 	if (j.is_object()) {
-		out.oldValue = j.value("old_value", std::string{});
-		out.newValue = j.value("new_value", std::string{});
+		out.oldValue     = j.value("old_value", std::string{});
+		out.newValue     = j.value("new_value", std::string{});
+		out.defaultValue = j.value("default_value", std::string{});
+		out.hasOverride  = j.value("has_override", true);
 	}
 	return out;
 }

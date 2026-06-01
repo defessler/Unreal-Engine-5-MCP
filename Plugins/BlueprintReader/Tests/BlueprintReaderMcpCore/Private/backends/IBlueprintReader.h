@@ -431,6 +431,11 @@ public:
 		std::string propertyName;
 		std::string oldValue;
 		std::string newValue;
+		// #8: the component class-default for this property + whether the
+		// template now differs from it. Disambiguates new_value:"" ("set to
+		// the default, no override stored") from an actually-empty value.
+		std::string defaultValue;
+		bool        hasOverride = true;
 	};
 	virtual SetComponentPropertyResult SetComponentProperty(
 		std::string_view assetPath, std::string_view componentName,
