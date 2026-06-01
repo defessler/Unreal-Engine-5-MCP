@@ -1486,6 +1486,10 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 			"\"object:Actor\", \"struct:FVector\", \"[]float\", "
 			"\"{string:int}\") or the canonical BPPinType object "
 			"{category, sub_category, sub_category_object, is_array, is_set, is_map}. "
+			"For a TMap the main fields are the KEY and a nested `value_type` "
+			"{category, sub_category, sub_category_object} object gives the VALUE "
+			"(e.g. {category:object, sub_category_object:/Script/Engine.Pawn, is_map:true, "
+			"value_type:{category:object, sub_category_object:/Game/.../IndicatorDescriptor.IndicatorDescriptor_C}}). "
 			"Idempotent: if a variable with this name already exists, returns "
 			"{ok:true, already_existed:true} without modifying it.";
 		d.input_schema = {
@@ -2713,7 +2717,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 				{"containers", nlohmann::json::array({
 					nlohmann::json{{"flag","is_array"}, {"description","TArray<T>"}},
 					nlohmann::json{{"flag","is_set"},   {"description","TSet<T>"}},
-					nlohmann::json{{"flag","is_map"},   {"description","TMap<K,V> — note: only the key type is exposed via BPPinType today."}},
+					nlohmann::json{{"flag","is_map"},   {"description","TMap<K,V> — the main fields are the key; add a nested `value_type` {category, sub_category, sub_category_object} for the value (or use shorthand {K:V})."}},
 				})},
 			};
 		});

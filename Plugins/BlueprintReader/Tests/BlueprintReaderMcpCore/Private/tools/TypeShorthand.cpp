@@ -82,19 +82,22 @@ BPPinType ParseTypeShorthand(std::string_view input) {
 			body.remove_prefix(1);
 			body.remove_suffix(1);
 		} else {
-			// Map: {K:V} — encoded in BPPinType as the value type with
-			// IsMap=true, plus the key squeezed into SubCategory. The
-			// commandlet accepts that shape.
+			// Map: {K:V} — the KEY goes in the main fields and the VALUE in the
+			// Value* fields, IsMap=true. This matches the editor's wire model
+			// (PinCategory/PinSubCategoryObject = key, PinValueType = value).
+			// Note: object keys/values via shorthand are best-effort — the split
+			// is on the FIRST ':', so an object subref in the key (e.g.
+			// {object:Pawn:int}) is ambiguous; use the canonical object form with
+			// a nested `value_type` for object-typed map keys/values.
 			std::string_view keyPart   = inner.substr(0, colon);
 			std::string_view valuePart = inner.substr(colon + 1);
 			BPPinType key   = ParseTypeShorthand(keyPart);
 			BPPinType value = ParseTypeShorthand(valuePart);
-			value.IsMap = true;
-			// Sneak the key category in via SubCategory's slot — this
-			// matches what the commandlet's BPPinType-from-wire reader
-			// expects for map keys.
-			value.SubCategory = key.Category;
-			return value;
+			key.IsMap = true;
+			key.ValueCategory          = value.Category;
+			key.ValueSubCategory       = value.SubCategory;
+			key.ValueSubCategoryObject = value.SubCategoryObject;
+			return key;
 		}
 	} else if (body.size() >= 2 && body[0] == '{' && body[1] == '}') {
 		out.IsSet = true;
@@ -161,6 +164,18 @@ BPPinType ParseTypeArg(const nlohmann::json& value) {
 	type.IsArray = value.value("is_array", false);
 	type.IsSet   = value.value("is_set",   false);
 	type.IsMap   = value.value("is_map",   false);
+	// Map value terminal type (nested object). Mirrors the editor wire shape.
+	if (auto it = value.find("value_type"); it != value.end() && it->is_object()) {
+		if (auto c = it->find("category"); c != it->end() && c->is_string()) {
+			type.ValueCategory = c->get<std::string>();
+		}
+		if (auto sc = it->find("sub_category"); sc != it->end() && sc->is_string()) {
+			type.ValueSubCategory = sc->get<std::string>();
+		}
+		if (auto so = it->find("sub_category_object"); so != it->end() && so->is_string()) {
+			type.ValueSubCategoryObject = so->get<std::string>();
+		}
+	}
 	return type;
 }
 
