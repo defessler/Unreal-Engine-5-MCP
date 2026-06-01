@@ -7,8 +7,9 @@
 > implemented).
 
 ## 1. Purpose & shape
-- Standalone MCP server: JSON-RPC 2.0 over stdio, exposing **~249 → 251** Blueprint
-  introspection / mutation / BP↔C++ transpile / editor-control tools. [established]
+- Standalone MCP server: JSON-RPC 2.0 over stdio, exposing a large set of Blueprint
+  introspection / mutation / BP↔C++ transpile / editor-control tools (exact count +
+  catalog: generated [`docs/TOOLS.md`](TOOLS.md)). [established]
 - Two-module UE plugin — `BlueprintReaderEditor` (Type=Editor, full read+write via
   `UBPRCommandlet -run=BPR` + `BlueprintReaderLiveServer`) and
   `BlueprintReaderRuntime` (Type=Runtime, read-only reflection, loads in cooked
@@ -32,7 +33,7 @@
 ## 3. Tool-availability contract (core requirement)
 - **Every tool is registered and dispatches to a DEFINED response in every mode —
   never a `"not supported by this backend"` fallthrough.** [established as goal;
-  audit shows 0 fallthroughs today for the 249]
+  audit shows 0 fallthroughs today across the full surface]
 - **Every `IBlueprintReader` virtual is overridden in every production backend**
   (Commandlet, Socket/live, Auto, Caching, ReadOnly). The `AutoBlueprintReader`
   `FORWARD` is the critical one — a missing forward breaks the *default* backend even
