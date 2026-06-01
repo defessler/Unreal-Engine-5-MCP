@@ -55,3 +55,12 @@ jobs:
           & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcpTests.exe"
           if ($LASTEXITCODE -ne 0) { Write-Host "doctest suite failed ($LASTEXITCODE)"; exit 1 }
           Write-Host "doctest suite passed."
+
+      - name: Tool catalog drift check
+        # Fails if a tool was added/changed without regenerating the catalog
+        # (docs/TOOLS.md + docs/tools.json). Keeps the single source of truth
+        # for tool counts/names honest. Regenerate with the same script sans
+        # -Check. Descriptor output is build-config-independent, so the CI
+        # Debug exe produces the same catalog as a local RelWithDebInfo build.
+        shell: pwsh
+        run: pwsh Plugins/BlueprintReader/Scripts/Dump-Tools.ps1 -Check
