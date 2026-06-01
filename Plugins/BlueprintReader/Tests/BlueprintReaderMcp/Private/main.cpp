@@ -327,6 +327,16 @@ int RunServerLoop() {
 		return ctx != nullptr && ctx->IsCancelled();
 	};
 
+	// Relay mid-op progress frames (from the daemon, for long ops) to the
+	// ambient call's notifications/progress. total<=0 means unknown-duration.
+	cfg.progressSink = [](double cur, double total, const std::string& msg) {
+		if (auto* ctx = bpr::jsonrpc::CallContext::Current()) {
+			ctx->EmitProgress(cur,
+							  total > 0.0 ? std::optional<double>(total) : std::nullopt,
+							  msg);
+		}
+	};
+
 	// Note: single-instance enforcement used to live here, but the
 	// commandlet daemon now owns its own per-project lock at
 	// <Project>/Saved/bp-reader-cmdlet.lock. Multiple MCP clients

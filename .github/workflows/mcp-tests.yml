@@ -40,11 +40,12 @@ jobs:
         run: cmake -S Plugins/BlueprintReader/Tests -B build/mcp -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build (MCP server + doctest suite)
-        # -j 2: several heavy TUs (BlueprintTools.cpp, test_editor_subscriptions.cpp)
-        # each need a lot of compiler heap; the default all-cores parallelism makes
-        # them coincide and exhaust the hosted runner's RAM (C1060). Two concurrent
-        # jobs keep peak memory in bounds while staying reasonably fast.
-        run: cmake --build build/mcp -j 2
+        # -j 1 (serial): several heavy TUs (BlueprintTools.cpp, ToolsetMeta.cpp,
+        # test_editor_subscriptions.cpp) each need a lot of compiler heap. Even
+        # -j 2 intermittently pairs two of them and exhausts the hosted runner's
+        # RAM (C1060). Serial guarantees one cl at a time so each gets the full
+        # runner memory. Slower (~8-10 min) but reliable; CI correctness over speed.
+        run: cmake --build build/mcp -j 1
 
       - name: Run doctest suite (mock backend)
         shell: pwsh
