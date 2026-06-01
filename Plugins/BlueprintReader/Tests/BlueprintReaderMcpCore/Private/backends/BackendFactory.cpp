@@ -249,6 +249,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.editorExtraArgs = cfg.editorExtraArgs;
 			cc.pluginDenylist  = cfg.pluginDenylist;
 			cc.cancelCheck     = cfg.cancelCheck;
+			cc.progressSink    = cfg.progressSink;
 			auto r = std::make_unique<CommandletBlueprintReader>(std::move(cc));
 			if (cfg.prewarm && cfg.useDaemon) {
 				r->Prewarm();
@@ -272,7 +273,11 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 				// implementing a wire op for it.
 				lc.projectPath = cfg.uproject.string();
 			}
-			return std::make_unique<SocketBlueprintReader>(std::move(lc));
+			auto live = std::make_unique<SocketBlueprintReader>(std::move(lc));
+			if (cfg.progressSink) {
+				live->SetProgressSink(cfg.progressSink);
+			}
+			return live;
 		}
 		if (cfg.backend == "auto") {
 			// Auto-routes per call: probe the live handshake; if the
@@ -295,6 +300,7 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			cc.editorExtraArgs = cfg.editorExtraArgs;
 			cc.pluginDenylist  = cfg.pluginDenylist;
 			cc.cancelCheck     = cfg.cancelCheck;
+			cc.progressSink    = cfg.progressSink;
 			ac.commandletConfig = std::move(cc);
 			ac.prewarmCommandlet = cfg.prewarm && cfg.useDaemon;
 			return std::make_unique<AutoBlueprintReader>(std::move(ac));
