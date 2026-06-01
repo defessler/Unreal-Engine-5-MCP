@@ -37,6 +37,13 @@ if(MSVC)
     # doctest CHECK(...) cases in test_cpp_class.cpp rely on.
     add_compile_options(/W4 /permissive- /Zc:__cplusplus /Zc:preprocessor /utf-8 /EHsc /bigobj)
     add_definitions(-DNOMINMAX -D_CRT_SECURE_NO_WARNINGS)
+    # Debug here exists only for CI correctness — the exe is run, never
+    # debugged. Drop /Zi (+/RTC1): on the huge BlueprintTools.cpp TU the
+    # in-memory PDB symbol accumulation is the dominant contributor to C1060
+    # ("compiler is out of heap space") on the memory-limited hosted runner.
+    # Without debug-info generation the TU compiles comfortably. (Only affects
+    # the Debug config CI uses; the local RelWithDebInfo build is untouched.)
+    set(CMAKE_CXX_FLAGS_DEBUG "/Od /Ob0")
 else()
     add_compile_options(-Wall -Wextra)
 endif()
