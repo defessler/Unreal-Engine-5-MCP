@@ -106,6 +106,66 @@ TEST_CASE("ApplyProjection: nonexistent path is silently ignored") {
 	CHECK(doc.empty());
 }
 
+// --- Field aliasing (client feedback #2) -----------------------------
+// Callers guess the bare adjective; the wire key carries an is_ / verbose
+// form. Aliasing keeps the real key instead of silently dropping it.
+
+TEST_CASE("ApplyProjection: `editable` alias keeps is_editable") {
+	json doc = json{{"name","Health"},{"is_editable",true},{"is_replicated",false}};
+	ApplyProjection(doc, {"name", "editable"});
+	CHECK(doc.size() == 2);
+	CHECK(doc["name"] == "Health");
+	CHECK(doc["is_editable"] == true);
+	CHECK_FALSE(doc.contains("is_replicated"));
+}
+
+TEST_CASE("ApplyProjection: `replicated` alias keeps is_replicated") {
+	json doc = json{{"name","Health"},{"is_editable",true},{"is_replicated",true}};
+	ApplyProjection(doc, {"replicated"});
+	CHECK(doc.size() == 1);
+	CHECK(doc["is_replicated"] == true);
+}
+
+TEST_CASE("ApplyProjection: generic is_ prefix aliases an arbitrary bool flag") {
+	json doc = json{{"name","X"},{"is_transient",true},{"other",1}};
+	ApplyProjection(doc, {"transient"});
+	CHECK(doc.size() == 1);
+	CHECK(doc["is_transient"] == true);
+}
+
+TEST_CASE("ApplyProjection: static-table alias `exposed` keeps expose_on_spawn") {
+	json doc = json{{"name","X"},{"expose_on_spawn",true},{"category","Default"}};
+	ApplyProjection(doc, {"exposed"});
+	CHECK(doc.size() == 1);
+	CHECK(doc["expose_on_spawn"] == true);
+}
+
+TEST_CASE("ApplyProjection: alias works per-element inside an array") {
+	json doc = json{{"variables", json::array({
+		{{"name","Health"},{"is_editable",true},{"is_replicated",true}},
+		{{"name","Speed"}, {"is_editable",false},{"is_replicated",false}},
+	})}};
+	ApplyProjection(doc, {"variables[].name", "variables[].editable"});
+	REQUIRE(doc["variables"].is_array());
+	CHECK(doc["variables"].size() == 2);
+	for (auto& v : doc["variables"]) {
+		CHECK(v.size() == 2);
+		CHECK(v.contains("name"));
+		CHECK(v.contains("is_editable"));
+		CHECK_FALSE(v.contains("is_replicated"));
+	}
+}
+
+TEST_CASE("ApplyProjection: alias never fabricates an absent key") {
+	// `expose_on_spawn` is conditionally emitted; if it's absent, asking
+	// for `exposed` keeps nothing (and must not invent it).
+	json doc = json{{"name","X"},{"is_editable",true}};
+	ApplyProjection(doc, {"exposed"});
+	CHECK(doc.is_object());
+	CHECK(doc.empty());
+	CHECK_FALSE(doc.contains("expose_on_spawn"));
+}
+
 TEST_CASE("ApplyProjection: missing array still keeps unrelated keys") {
 	json doc = SampleBlueprint();
 	ApplyProjection(doc, {"name", "macros[].name"});

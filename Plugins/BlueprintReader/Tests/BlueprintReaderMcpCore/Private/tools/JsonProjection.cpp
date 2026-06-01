@@ -1,5 +1,6 @@
 #include "tools/JsonProjection.h"
 
+#include <map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -40,6 +41,40 @@ std::vector<std::string> SplitPath(const std::string& path) {
 	}
 	flushCur();
 	return out;
+}
+
+// Map a small set of well-known field shorthands to their canonical
+// wire key. Callers routinely guess the bare adjective (`editable`,
+// `replicated`) when the wire key carries an `is_` / verbose form
+// (`is_editable`, `expose_on_spawn`). Without this the projection would
+// silently drop the unmatched name and the caller draws a wrong
+// conclusion ("the BP has no editable flag"). Resolved at *match time*
+// against the actual doc keys, so we only ever keep a key that exists —
+// never invent one. See client feedback #2.
+const std::map<std::string, std::string>& FieldAliases() {
+	static const std::map<std::string, std::string> kAliases = {
+		{"editable", "is_editable"},
+		{"instance_editable", "is_editable"},
+		{"replicated", "is_replicated"},
+		{"exposed", "expose_on_spawn"},
+		{"expose", "expose_on_spawn"},
+		{"rep_notify", "rep_notify_func"},
+		{"repnotify", "rep_notify_func"},
+		{"replication_condition", "rep_condition"},
+	};
+	return kAliases;
+}
+
+// True if a requested field name should keep the actual doc key. Matches
+// exactly, via the static alias table, or via the generic `is_<field>`
+// boolean-flag convention — all doc-aware (the `actualKey` is a real key
+// present in the body), so aliasing can never fabricate a field.
+bool RequestMatchesKey(const std::string& requested, const std::string& actualKey) {
+	if (requested == actualKey) { return true; }
+	auto it = FieldAliases().find(requested);
+	if (it != FieldAliases().end() && it->second == actualKey) { return true; }
+	if ("is_" + requested == actualKey) { return true; }
+	return false;
 }
 
 // One internal node: at this level, keep these keys, and for some keys
@@ -90,9 +125,16 @@ void Apply(nlohmann::json& body, const Node& filter) {
 		return;
 	}
 
-	// Drop unwanted keys.
+	// Drop unwanted keys. A key is wanted if any requested field matches
+	// it exactly or via an alias (`editable` -> `is_editable`, etc.).
 	for (auto it = body.begin(); it != body.end();) {
-		if (filter.keep.count(it.key()) == 0) {
+		bool wanted = filter.keep.count(it.key()) != 0;
+		if (!wanted) {
+			for (const auto& req : filter.keep) {
+				if (RequestMatchesKey(req, it.key())) { wanted = true; break; }
+			}
+		}
+		if (!wanted) {
 			it = body.erase(it);
 		} else {
 			++it;
