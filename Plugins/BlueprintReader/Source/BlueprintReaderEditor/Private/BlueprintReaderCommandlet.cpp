@@ -120,6 +120,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "Factories/BlueprintFactory.h"
+#include "Factories/BlueprintFunctionLibraryFactory.h"
 #include "FileHelpers.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
@@ -1423,13 +1424,33 @@ namespace
 		}
 		Package->FullyLoad();
 
-		UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
-		Factory->ParentClass = ParentClass;
-		Factory->BlueprintType = BlueprintType;
+		UBlueprint* BP = nullptr;
+		if (BlueprintType == BPTYPE_FunctionLibrary)
+		{
+			// A function-library parent (UBlueprintFunctionLibrary) is abstract
+			// and lacks the IsBlueprintBase metadata, so CanCreateBlueprintOfClass
+			// rejects it and the plain UBlueprintFactory::FactoryCreateNew returns
+			// null. The engine ships a dedicated UBlueprintFunctionLibraryFactory
+			// (a UBlueprintFactory subclass) whose FactoryCreateNew handles exactly
+			// this case — use it for function libraries.
+			UBlueprintFunctionLibraryFactory* Factory = NewObject<UBlueprintFunctionLibraryFactory>();
+			Factory->ParentClass = ParentClass;
+			// UBlueprintFunctionLibraryFactory overrides the 7-arg FactoryCreateNew
+			// (with a trailing CallingContext), which hides the 6-arg base overload.
+			BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
+				UBlueprint::StaticClass(), Package, *AssetName,
+				RF_Public | RF_Standalone, nullptr, GWarn, NAME_None));
+		}
+		else
+		{
+			UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
+			Factory->ParentClass = ParentClass;
+			Factory->BlueprintType = BlueprintType;
 
-		UBlueprint* BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
-			UBlueprint::StaticClass(), Package, *AssetName,
-			RF_Public | RF_Standalone, nullptr, GWarn));
+			BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
+				UBlueprint::StaticClass(), Package, *AssetName,
+				RF_Public | RF_Standalone, nullptr, GWarn));
+		}
 		if (!IsValid(BP))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("FactoryCreateNew failed: %s"), *PackageName);
@@ -9933,12 +9954,33 @@ namespace
 		UBlueprint* DstBP = LoadMutableBlueprint(TargetPath);
 		if (!IsValid(SrcBP) || !IsValid(DstBP)) { return 4; }
 		UEdGraph* SrcGraph = FindGraphByName(SrcBP, GraphName);
-		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
-		if (!IsValid(SrcGraph) || !IsValid(DstGraph))
+		if (!IsValid(SrcGraph))
 		{
 			UE_LOG(LogBlueprintReader, Error,
-				TEXT("CloneGraph: graph '%s' not found in source or target"), *GraphName);
+				TEXT("CloneGraph: graph '%s' not found in source"), *GraphName);
 			return 4;
+		}
+		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
+		if (!IsValid(DstGraph))
+		{
+			// A top-level macro graph (the macros that make up a macro library)
+			// has no counterpart in a freshly-created target: AddFunction and the
+			// default event graph cover functions + ubergraphs, but nothing creates
+			// macros. Create the macro graph here so CloneGraph can reproduce a
+			// macro library. CloneGraphContents reconciles the default tunnels the
+			// same way the local-macro path below does.
+			if (SrcBP->MacroGraphs.Contains(SrcGraph))
+			{
+				DstGraph = FBlueprintEditorUtils::CreateNewGraph(
+					DstBP, SrcGraph->GetFName(), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+				FBlueprintEditorUtils::AddMacroGraph(DstBP, DstGraph, /*bIsUserCreated=*/true, /*SignatureFromClass=*/nullptr);
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("CloneGraph: graph '%s' not found in target"), *GraphName);
+				return 4;
+			}
 		}
 
 		FCloneGraphStats Stats;
