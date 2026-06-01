@@ -36,6 +36,7 @@
 #include "backends/IBlueprintReader.h"
 
 #include <chrono>
+#include <functional>
 #include <mutex>
 #include <string>
 
@@ -412,6 +413,15 @@ public:
 		return RunOp(args);
 	}
 
+	// Mid-op progress sink. When set, a `{"type":"progress", ...}` frame the
+	// daemon sends BEFORE the result frame (for long ops — cook/package/
+	// automation/lighting) is forwarded here as (current, total, message) so
+	// the MCP layer can relay it as notifications/progress. No-op when unset;
+	// progress frames are always consumed regardless (the read loop keeps going
+	// until the result/error frame).
+	using ProgressSink = std::function<void(double current, double total, const std::string& message)>;
+	void SetProgressSink(ProgressSink sink) { progressSink_ = std::move(sink); }
+
 private:
 	// Send op-args, read result, return parsed `json` field. Throws
 	// BlueprintReaderError on any wire/protocol/handler failure.
@@ -447,6 +457,7 @@ private:
 	intptr_t   socket_ = -1;  // typed as intptr_t to avoid winsock2.h in header
 	bool       handshakeOk_ = false;
 	int        nextRequestId_ = 1;
+	ProgressSink progressSink_;
 };
 
 }    // namespace bpr::backends
