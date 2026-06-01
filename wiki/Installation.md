@@ -8,8 +8,8 @@ skip the plugin entirely — useful for smoke-testing the server.
 > **Bring your own UE project.** This repo tracks the
 > `BlueprintReader` plugin + docs, not a full game project — a fresh
 > clone has no `LyraStarterGame.uproject`. Mount
-> `Plugins/BlueprintReader/` into your own UE 5.7 project's `Plugins/`
-> folder (any UE 5.7 project works; Lyra is a convenient host), then
+> `Plugins/BlueprintReader/` into your own UE 5.8 project's `Plugins/`
+> folder (any UE 5.8 project works; Lyra is a convenient host), then
 > build that project's editor target. The commands below reference
 > `LyraStarterGame.uproject` / `LyraEditor` because that's the
 > maintainer's local build host — substitute `<your-project>.uproject`
@@ -21,7 +21,7 @@ skip the plugin entirely — useful for smoke-testing the server.
 |------------------------|--------------|---------------------------------------------------------|
 | Windows 10/11, x64     | All          | The codebase is Windows-only today (`CreateProcessW`).  |
 | Visual Studio 2022     | All          | "Game development with C++" workload + Win10/11 SDK.    |
-| UE 5.7 source build    | All          | Source build, not the launcher binary build. Required to build the MCP server now that it's a UE Program target. |
+| UE 5.8 source build    | All          | Source build, not the launcher binary build. Required to build the MCP server now that it's a UE Program target. |
 | ~120 GB disk           | All          | UE source ~70 GB pulled by `Setup.bat`.                 |
 
 **No network, no git, no vcpkg required for the MCP server.** Third-party
@@ -36,7 +36,7 @@ a separate CMake toolchain.
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
-# Copy the plugin into your UE 5.7 project, then build from there:
+# Copy the plugin into your UE 5.8 project, then build from there:
 Copy-Item -Recurse UE5_MCP\Plugins\BlueprintReader <YourProject>\Plugins\
 cd <YourProject>
 # Build the MCP server + the doctest suite via UBT:
@@ -61,14 +61,14 @@ or you're just testing the server), **you're done — skip to step 4**.
 
 ## 2. Build the engine
 
-The plugin requires a source-built UE 5.7 because it ships its own
+The plugin requires a source-built UE 5.8 because it ships its own
 `UnrealEd`-linking module. Launcher (binary) builds won't work.
 
 ```powershell
 # Pick a directory OUTSIDE this repo — engine source is ~100 GB.
 # Convention: a sibling of UE5_MCP.
 cd "D:\Projects\Unreal Engine 5"
-git clone -b 5.7 https://github.com/EpicGames/UnrealEngine.git .
+git clone -b 5.8 https://github.com/EpicGames/UnrealEngine.git .
 .\Setup.bat
 .\GenerateProjectFiles.bat
 ```
@@ -81,7 +81,7 @@ in *Development Editor / Win64*. Coffee + lunch — first build is 1–3 hours.
 
 ### Engine source patches
 
-UE 5.7's GitHub source has three modules whose `Build.cs` declares
+UE 5.8's GitHub source has three modules whose `Build.cs` declares
 `PrivateIncludePaths` relative to `Engine/Source/` instead of the module
 directory. That breaks project-target builds with `fatal error C1083`.
 
