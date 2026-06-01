@@ -61,11 +61,15 @@ Plugins/BlueprintReader/Source/BPRoundtripModule/Private/*
 /Platforms/
 /Scripts/
 # .github was untracked with the Lyra scaffold (#174). Re-allow only the MCP
-# server CI workflow; everything else under .github stays local.
+# server CI workflow + the deployed Copilot instructions (a copy of the
+# plugin's AGENTS.md, refreshed by Install-ClaudeAssets.ps1 — tracked so a
+# fresh clone gives GitHub Copilot guidance without running the installer);
+# everything else under .github stays local.
 /.github/*
 !/.github/workflows/
 /.github/workflows/*
 !/.github/workflows/mcp-tests.yml
+!/.github/copilot-instructions.md
 /setup.bat
 
 # All plugins except BlueprintReader (LyraGenerated + the Lyra game features).
