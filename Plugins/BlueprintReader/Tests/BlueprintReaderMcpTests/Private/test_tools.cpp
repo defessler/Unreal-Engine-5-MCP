@@ -462,6 +462,78 @@ TEST_CASE("read_blueprint: AssetNotFound unmodified when FindAsset throws (mock 
 	}
 }
 
+// --- did-you-mean hint quality (client feedback #6) ------------------------
+// The hint must never echo the exact path the caller asked for. When the
+// asset exists but isn't a Blueprint, report its real class instead. Drive
+// the real read_blueprint handler with a backend whose FindAsset returns
+// controlled rows (mock's FindAsset default throws, so subclass it).
+
+namespace did_you_mean_detail {
+
+struct HintReader : backends::MockBlueprintReader {
+	std::vector<backends::IBlueprintReader::AssetRegistryEntry> rows;
+	explicit HintReader(std::vector<backends::IBlueprintReader::AssetRegistryEntry> r)
+		: backends::MockBlueprintReader(test::FixturesDir()), rows(std::move(r)) {}
+	backends::IBlueprintReader::AssetRegistryListResult
+	FindAsset(std::string_view, std::string_view) override {
+		backends::IBlueprintReader::AssetRegistryListResult res;
+		res.entries = rows;
+		return res;
+	}
+};
+
+std::string ReadBlueprintError(HintReader& reader, const std::string& path) {
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	const auto* fn = registry.Find("read_blueprint");
+	REQUIRE(fn != nullptr);
+	try {
+		(*fn)(json{{"asset_path", path}});
+	} catch (const backends::AssetNotFound& e) {
+		return e.what();
+	}
+	return "<no throw>";
+}
+
+}    // namespace did_you_mean_detail
+using namespace did_you_mean_detail;
+
+TEST_CASE("did-you-mean: exact-path match reports the real class, never self-suggests") {
+	HintReader reader({{"/Game/Maps/Lobby", "Lobby", "World"}});
+	auto msg = ReadBlueprintError(reader, "/Game/Maps/Lobby");
+	CHECK(msg.find("exists but is a World") != std::string::npos);
+	CHECK(msg.find("not a Blueprint") != std::string::npos);
+	CHECK(msg.find("did you mean: /Game/Maps/Lobby") == std::string::npos);
+}
+
+TEST_CASE("did-you-mean: exact match + other near-matches lists the others, not the input") {
+	HintReader reader({
+		{"/Game/Maps/Lobby",  "Lobby",    "World"},
+		{"/Game/AI/BP_Lobby", "BP_Lobby", "Blueprint"},
+	});
+	auto msg = ReadBlueprintError(reader, "/Game/Maps/Lobby");
+	CHECK(msg.find("exists but is a World") != std::string::npos);
+	CHECK(msg.find("/Game/AI/BP_Lobby") != std::string::npos);
+	CHECK(msg.find("did you mean: /Game/Maps/Lobby") == std::string::npos);
+}
+
+TEST_CASE("did-you-mean: no exact match falls back to fuzzy suggestions") {
+	// Use a path with no fixture so read_blueprint actually throws.
+	HintReader reader({{"/Game/AI/BP_Enemy2", "BP_Enemy2", "Blueprint"}});
+	auto msg = ReadBlueprintError(reader, "/Game/AI/BP_Enemyzzz");
+	CHECK(msg.find("did you mean: /Game/AI/BP_Enemy2") != std::string::npos);
+}
+
+TEST_CASE("did-you-mean: only the input matches (as a Blueprint) => no misleading echo") {
+	// Exact-path row whose class IS Blueprint (and a non-fixture path so the
+	// read actually fails): we neither suggest it back nor emit a nonsensical
+	// "is a Blueprint, not a Blueprint" note.
+	HintReader reader({{"/Game/AI/BP_Ghost", "BP_Ghost", "Blueprint"}});
+	auto msg = ReadBlueprintError(reader, "/Game/AI/BP_Ghost");
+	CHECK(msg.find("did you mean") == std::string::npos);
+	CHECK(msg.find("exists but is a") == std::string::npos);
+}
+
 TEST_CASE("find_overriders: requires at least one filter") {
 	Fixture f;
 	CHECK_THROWS_AS(f.Call("find_overriders", json{{"path","/Game"}}),
@@ -571,11 +643,20 @@ TEST_CASE("add_variable accepts type shorthand string (still throws on mock writ
 
 // ===== auto_layout_graph ===================================================
 
-TEST_CASE("shutdown_daemon on mock backend returns ok+was_running:false (no daemon to kill)") {
+TEST_CASE("shutdown_daemon: force_shared:true returns ok+was_running:false (no daemon to kill)") {
 	Fixture f;
-	auto out = f.Call("shutdown_daemon", json::object());
+	auto out = f.Call("shutdown_daemon", json{{"force_shared", true}});
 	CHECK(out["ok"] == true);
 	CHECK(out["was_running"] == false);
+}
+
+TEST_CASE("shutdown_daemon: default-deny without force_shared (client feedback #5)") {
+	// Shared-daemon blast radius: without explicit force_shared:true the tool
+	// must refuse rather than kill every session's daemon.
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("shutdown_daemon", json::object()), std::invalid_argument);
+	CHECK_THROWS_AS(f.Call("shutdown_daemon", json{{"force_shared", false}}),
+					std::invalid_argument);
 }
 
 TEST_CASE("auto_layout_graph: throws on read-only mock (records intent)") {
