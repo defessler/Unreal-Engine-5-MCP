@@ -193,7 +193,12 @@ nlohmann::json FieldsProperty() {
 		 "Optional response projection. Each entry is a dotted field path; "
 		 "use `[]` to apply the path to every element of an array. Example: "
 		 "[\"name\", \"variables[].name\"] returns just the BP name and the "
-		 "names of its variables. Omit to get the full payload."},
+		 "names of its variables. Omit to get the full payload. Field names "
+		 "must match the response keys: variable flags are `is_editable`, "
+		 "`is_replicated`, `expose_on_spawn`, `rep_condition`, "
+		 "`rep_notify_func`. Common shorthands are aliased (`editable`, "
+		 "`replicated`, `exposed`, and any bare `foo` for an `is_foo` flag), "
+		 "but an unrecognized name still projects nothing."},
 	};
 }
 nlohmann::json LimitProperty() {
