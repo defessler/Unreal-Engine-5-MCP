@@ -2350,7 +2350,7 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"get_ddc_state", "ddc_state",
 			 "[editor] Derived Data Cache state/usage. v1 stub: the DDC "
 			 "interface exposes only get/put, no public usage-stats accessor "
-			 "in UE 5.7 — returns valid:false."},
+			 "— returns valid:false."},
 			{"get_lighting_build_progress", "lighting_build",
 			 "[editor] Static lighting build progress. v1 stub: no clean "
 			 "global lighting-build progress accessor — returns valid:false."},

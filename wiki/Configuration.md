@@ -182,7 +182,7 @@ Response:
   "added": ["list_materials", "read_material", "add_material_expression", ...],
   "newly_activated_count": 7,
   "total_active": 43,
-  "total_registered": 249
+  "total_registered": 252
 }
 ```
 

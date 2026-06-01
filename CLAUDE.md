@@ -4,7 +4,7 @@
 plugin + docs only** — not a full game project. Development happens
 inside a **local, untracked** Lyra Starter Game build host
 (`LyraStarterGame.uproject`, `Source/Lyra*`, `Plugins/LyraGenerated`
-and the other Lyra plugins) on UE 5.7.4 that lives on the maintainer's
+and the other Lyra plugins) on UE 5.8 that lives on the maintainer's
 disk but is *not* in the repo — a fresh clone gets the plugin only.
 Build/test commands below target `LyraEditor` / `LyraStarterGame.uproject`
 because that's the maintainer's local host; substitute your own editor
@@ -103,7 +103,7 @@ UE5_MCP/                                      ← repo root (tracks plugin + doc
 │       │       └── backends/                   Mock, Commandlet, Live, Auto, Caching, ReadOnly
 │       ├── BlueprintReaderMcpTests/            doctest suite → BlueprintReaderMcpTests.exe
 │       │   ├── BlueprintReaderMcpTests.{Target,Build}.cs
-│       │   ├── Private/                        441 cases (mock + live)
+│       │   ├── Private/                        800+ cases (mock + live)
 │       │   └── fixtures/                       BP_*.json mock-backend data
 │       └── ThirdParty/                         vendored: nlohmann_json, fmt, doctest
 ├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
@@ -171,7 +171,7 @@ explicit (heavier, less often needed):
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
-:: doctest suite (~441 cases) — not pulled in automatically:
+:: doctest suite (800+ cases) — not pulled in automatically:
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcpTests Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
@@ -352,7 +352,7 @@ output changed.
   (`/Game/AI/BP_Foo`). `BlueprintReaderWireJson::ToPackagePath` strips
   the suffix; honor that consistently if you add new wire shapes.
 
-- **`UserConstructionScript` vs `ConstructionScript`.** UE 5.7's actual
+- **`UserConstructionScript` vs `ConstructionScript`.** UE 5.8's actual
   graph name for the construction script is `UserConstructionScript`.
   The introspector classifies both names as `WireType="Construction"`
   and the metadata serializer surfaces it as a graph entry rather than
@@ -462,7 +462,7 @@ the `-Source` / `-Repair` / `-Clean` / `-VerifyOnly` flags, and the
 `lyra-assets-vN` GitHub Release bundle — is **no longer tracked in this
 repo**. It lives only in the maintainer's local build host. Now that the
 repo tracks the plugin + docs (not a Lyra project), a fresh clone has no
-Lyra content to restore: you bring your own UE 5.7 host project and mount
+Lyra content to restore: you bring your own UE 5.8 host project and mount
 `Plugins/BlueprintReader/` into its `Plugins/`. The only tracked content
 is the two test BPs under `Content/AI/` (regenerable via `-run=BPRSeed`).
 
