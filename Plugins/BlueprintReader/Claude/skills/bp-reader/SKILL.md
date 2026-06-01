@@ -6,7 +6,7 @@ description: Use this skill when the user asks to inspect, edit, transpile, or o
 # bp-reader — using the Blueprint MCP tools
 
 The `bp-reader` MCP server reads, mutates, and round-trips
-`.uasset` Blueprint files in a UE 5.7.4 project. This skill covers
+`.uasset` Blueprint files in a UE5 project. This skill covers
 *how to use them well*. For *building or maintaining* the server,
 see the project's CLAUDE.md.
 
@@ -28,12 +28,21 @@ If a request needs an `add_node` kind not in `list_node_kinds`, that
 kind has to be added to the plugin's `RunAddNodeOp` first. Say so
 directly rather than guessing.
 
-### Full surface is always exposed
+### Progressive disclosure — widen the surface as needed
 
-The current server exposes the full tool surface on every `tools/list`
-call — tool-category gating is not active. If a tool you need isn't
-visible, the server binary is out of date or the tool hasn't been
-implemented yet; file a request rather than guessing at workarounds.
+By default `tools/list` advertises a small `core` set plus the
+lazy-discovery meta-tools (`enable_tool_category`, `list_toolsets`,
+`describe_toolset`, `call_tool`) — **not** the whole surface — to keep
+token cost down. To reach a tool that isn't currently visible:
+
+- `call_tool("<name>", { …args… })` — invoke *any* tool directly without
+  widening (cheapest when you know the name), or
+- `enable_tool_category("<category>")` — widen the advertised `tools/list`
+  (a `notifications/tools/list_changed` follows).
+
+`list_toolsets` / `describe_toolset` enumerate what exists. If a tool
+genuinely isn't there, say so rather than guessing at workarounds.
+(Set `BP_READER_PROGRESSIVE=0` to advertise the full surface up front.)
 
 ## Wire format basics
 
