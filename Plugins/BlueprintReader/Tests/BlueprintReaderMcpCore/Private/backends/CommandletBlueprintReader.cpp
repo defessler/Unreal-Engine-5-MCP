@@ -1319,6 +1319,16 @@ void CommandletBlueprintReader::AddVariable(std::string_view assetPath,
 	if (type.IsMap)
 	{
 		args.push_back(L"-TypeIsMap");
+		// Map value terminal type (the -Type* flags above describe the key).
+		if (type.ValueCategory.has_value() && !type.ValueCategory->empty()) {
+			args.push_back(L"-TypeValueCategory=" + Widen(*type.ValueCategory));
+		}
+		if (type.ValueSubCategory.has_value() && !type.ValueSubCategory->empty()) {
+			args.push_back(L"-TypeValueSubCategory=" + Widen(*type.ValueSubCategory));
+		}
+		if (type.ValueSubCategoryObject.has_value() && !type.ValueSubCategoryObject->empty()) {
+			args.push_back(L"-TypeValueSubCategoryObject=" + Widen(*type.ValueSubCategoryObject));
+		}
 	}
 	if (!defaultValue.empty()) {
 		args.push_back(L"-Default=" + Widen(defaultValue));

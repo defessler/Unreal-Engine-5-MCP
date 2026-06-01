@@ -38,6 +38,12 @@ struct BPPinType
 	bool IsArray = false;
 	bool IsSet   = false;
 	bool IsMap   = false;
+	// Map VALUE terminal type. Category/SubCategory/SubCategoryObject above are
+	// the map KEY; these describe the value. Empty for non-map types. Mirrors the
+	// editor wire's `value_type` object (BlueprintReaderEditor's FBPStructuredPinType).
+	BPROptionalString ValueCategory;
+	BPROptionalString ValueSubCategory;
+	BPROptionalString ValueSubCategoryObject;
 };
 
 // ----- BPPin ----------------------------------------------------------------
@@ -252,6 +258,15 @@ inline void to_json(nlohmann::json& j, const BPPinType& v)
 		{"is_set",              v.IsSet},
 		{"is_map",              v.IsMap},
 	};
+	// Emit the map value terminal type only when present (map types).
+	if (v.ValueCategory.has_value() && !v.ValueCategory->empty())
+	{
+		j["value_type"] = nlohmann::json{
+			{"category",            *v.ValueCategory},
+			{"sub_category",        v.ValueSubCategory},
+			{"sub_category_object", v.ValueSubCategoryObject},
+		};
+	}
 }
 inline void from_json(const nlohmann::json& j, BPPinType& v)
 {
@@ -261,6 +276,21 @@ inline void from_json(const nlohmann::json& j, BPPinType& v)
 	j.at("is_array").get_to(v.IsArray);
 	j.at("is_set").get_to(v.IsSet);
 	j.at("is_map").get_to(v.IsMap);
+	if (auto it = j.find("value_type"); it != j.end() && it->is_object())
+	{
+		if (auto c = it->find("category"); c != it->end() && c->is_string())
+		{
+			v.ValueCategory = c->get<std::string>();
+		}
+		if (auto sc = it->find("sub_category"); sc != it->end() && sc->is_string())
+		{
+			v.ValueSubCategory = sc->get<std::string>();
+		}
+		if (auto so = it->find("sub_category_object"); so != it->end() && so->is_string())
+		{
+			v.ValueSubCategoryObject = so->get<std::string>();
+		}
+	}
 }
 
 inline void to_json(nlohmann::json& j, const BPPinLink& v)

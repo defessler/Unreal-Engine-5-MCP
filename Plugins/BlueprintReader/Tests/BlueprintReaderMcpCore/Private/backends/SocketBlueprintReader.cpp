@@ -574,6 +574,19 @@ void SocketBlueprintReader::AddVariable(std::string_view a, std::string_view n,
 	if (t.IsMap)
 	{
 		args.push_back("-TypeIsMap");
+		// Map value terminal type (the -Type* flags above describe the key).
+		if (t.ValueCategory && !t.ValueCategory->empty())
+		{
+			args.push_back("-TypeValueCategory=" + *t.ValueCategory);
+		}
+		if (t.ValueSubCategory && !t.ValueSubCategory->empty())
+		{
+			args.push_back("-TypeValueSubCategory=" + *t.ValueSubCategory);
+		}
+		if (t.ValueSubCategoryObject && !t.ValueSubCategoryObject->empty())
+		{
+			args.push_back("-TypeValueSubCategoryObject=" + *t.ValueSubCategoryObject);
+		}
 	}
 	if (!dv.empty())
 	{

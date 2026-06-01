@@ -95,11 +95,33 @@ TEST_CASE("Shorthand: set container") {
 }
 
 TEST_CASE("Shorthand: map container") {
+	// {K:V} — key in the main fields, value in the Value* fields (matches the
+	// editor wire model: PinCategory = key, PinValueType = value).
 	auto t = ParseTypeShorthand("{string:int}");
 	CHECK(t.IsMap);
-	CHECK(t.Category == "int");
-	REQUIRE(t.SubCategory.has_value());
-	CHECK(*t.SubCategory == "string");
+	CHECK(t.Category == "string");                 // key
+	REQUIRE(t.ValueCategory.has_value());
+	CHECK(*t.ValueCategory == "int");              // value
+}
+
+TEST_CASE("Shorthand/object: map value_type round-trips") {
+	// Canonical object form with a nested value_type (object-valued map).
+	nlohmann::json j = {
+		{"category", "object"},
+		{"sub_category_object", "/Script/Engine.Pawn"},
+		{"is_map", true},
+		{"value_type", {{"category", "object"},
+		                {"sub_category_object", "/Script/Engine.Actor"}}},
+	};
+	auto t = ParseTypeArg(j);
+	CHECK(t.IsMap);
+	CHECK(t.Category == "object");
+	REQUIRE(t.SubCategoryObject.has_value());
+	CHECK(*t.SubCategoryObject == "/Script/Engine.Pawn");   // key
+	REQUIRE(t.ValueCategory.has_value());
+	CHECK(*t.ValueCategory == "object");
+	REQUIRE(t.ValueSubCategoryObject.has_value());
+	CHECK(*t.ValueSubCategoryObject == "/Script/Engine.Actor");   // value
 }
 
 TEST_CASE("Shorthand: errors on unknown / malformed") {
