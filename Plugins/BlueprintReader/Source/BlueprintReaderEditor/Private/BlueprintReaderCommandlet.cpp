@@ -5473,20 +5473,20 @@ namespace
 						const FString* LName = nullptr;
 						for (const auto& Pair : Entry->Values)
 						{
-							if (Pair.Key.Contains(TEXT("Class")) ||
-							    Pair.Key.Contains(TEXT("Ability")))
+							if (FString(*Pair.Key).Contains(TEXT("Class")) ||
+							    FString(*Pair.Key).Contains(TEXT("Ability")))
 							{
 								FString S;
 								Pair.Value->TryGetString(S);
 								E->SetStringField(TEXT("class"), S);
-								CName = &Pair.Key;
+								(void)Pair.Key;
 							}
-							else if (Pair.Key.Contains(TEXT("Level")))
+							else if (FString(*Pair.Key).Contains(TEXT("Level")))
 							{
 								int32 L = 1;
 								Pair.Value->TryGetNumber(L);
 								E->SetNumberField(TEXT("level"), L);
-								LName = &Pair.Key;
+								(void)Pair.Key;
 							}
 						}
 						(void)CName; (void)LName;
