@@ -63,14 +63,24 @@ inline bool LiveBackendAvailable() {
 }
 
 // The bpir-roundtrip cases below run a full UBT compile of the emitted
-// C++ to verify it builds. On a project that ALSO ships LyraGenerated
-// companion classes, that compile fails with a UHT "two headers with the
-// same name" collision (BPRoundtripModule and LyraGenerated both emit
-// BP_<Name>.h for the same BPs). These cases are WIP ("stages 4-5
-// deferred"), so they're gated behind an opt-in flag: skipped by default
-// even when the live backend is available, run only when
-// BP_READER_RUN_BPIR_COMPILE is set (and the LyraGenerated collision is
-// resolved). This keeps the default live suite green.
+// C++ to verify it builds. Gated behind BP_READER_RUN_BPIR_COMPILE (opt-in,
+// skipped by default) because the compile is slow (a real UBT build) and has
+// two environmental requirements:
+//
+//  1. The original LyraGenerated header collision (BPRoundtripModule and
+//     LyraGenerated both emit BP_<Name>.h) is RESOLVED on a host that doesn't
+//     build LyraGenerated — verified 2026-06-01 on UE 5.8 with LyraGenerated
+//     disabled in the .uproject: the BP_TestEnemy roundtrip now reaches the
+//     LINK stage (the emitted C++ compiles clean), no more UHT duplicate-header
+//     error.
+//  2. The UBT compile RELINKS UnrealEditor-BlueprintReaderEditor.dll, which
+//     fails with LNK1104 ("cannot open file") if an editor/daemon holds that
+//     DLL open. So the roundtrip must run with NO concurrent editor/daemon
+//     during its compile stage. With useDaemon=true the many skeleton-build ops
+//     keep a daemon alive (and locking the DLL) — RunBPIRRoundtrip would need to
+//     shut the daemon down before the compile to run green here. (Follow-up.)
+//
+// Keeps the default live suite green either way.
 inline bool BpirCompileEnabled() {
 	return LiveBackendAvailable() && !GetEnv("BP_READER_RUN_BPIR_COMPILE").empty();
 }
