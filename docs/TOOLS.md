@@ -177,7 +177,7 @@
 | `get_curve_editor_selection` | Generic curve editor selection. v1 is a documented stub returning `valid:false`. The curve editor is a SCurveEditor widget hosted inside 5+ different editors (Anim, Sequencer, Particle, Material), ... |
 | `get_cvar` | Read a console variable's current value. Returns `{exists, value, help}` — `exists:false` if the CVar isn't registered. |
 | `get_data_layer_states` | World Partition data layers + per-layer effective runtime state (Unloaded/Loaded/Activated). Each: `{short_name, full_name, runtime_state}`. `has_world_partition:false` on non-partitioned maps (lay... |
-| `get_ddc_state` | Derived Data Cache state/usage. v1 stub: the DDC interface exposes only get/put, no public usage-stats accessor in UE 5.7 — returns valid:false. |
+| `get_ddc_state` | Derived Data Cache state/usage. v1 stub: the DDC interface exposes only get/put, no public usage-stats accessor — returns valid:false. |
 | `get_debug_instance` | PIE-attached debug object for a Blueprint (`UBlueprint::GetObjectBeingDebugged`): `{valid, has_debug_object, debug_object_name, debug_object_path}`. `has_debug_object:false` when nothing is attache... |
 | `get_details_panel_state` | Details panel UI state (search filter, expanded categories, pinned properties). v1 stub: this is transient SDetailsView state not bridged out-of-process — returns valid:false. (Selected objects a... |
 | `get_dirty_packages` | List loaded packages with unsaved changes. Pairs with `save_all` — agents that just mutated multiple BPs use this to confirm there's nothing unsaved before disconnecting. Each entry flags `is_con... |

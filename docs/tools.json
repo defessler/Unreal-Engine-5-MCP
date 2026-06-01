@@ -6156,7 +6156,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Derived Data Cache state/usage. v1 stub: the DDC interface exposes only get/put, no public usage-stats accessor in UE 5.7 — returns valid:false.",
+    "description": "[editor] Derived Data Cache state/usage. v1 stub: the DDC interface exposes only get/put, no public usage-stats accessor — returns valid:false.",
     "input_schema": {
       "properties": {},
       "type": "object"

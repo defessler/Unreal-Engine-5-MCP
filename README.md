@@ -2,11 +2,11 @@
 
 > **Project state.** This repository tracks the **`BlueprintReader`
 > plugin + its docs** — it is *not* a full game project. Development
-> happens inside a local Lyra Starter Game build host (UE 5.7.4) that
+> happens inside a local Lyra Starter Game build host (UE 5.8) that
 > lives on the maintainer's disk but is **not tracked here**; a fresh
 > clone gets the plugin only. To build or use it, mount
-> `Plugins/BlueprintReader/` into any UE 5.7 project's `Plugins/`
-> folder (Lyra is a convenient host, but any UE 5.7 project works) and
+> `Plugins/BlueprintReader/` into any UE 5.8 project's `Plugins/`
+> folder (Lyra is a convenient host, but any UE 5.8 project works) and
 > build that project's editor target. The build commands below target
 > `LyraEditor` / `LyraStarterGame.uproject` because that's the
 > maintainer's local host — substitute your own editor target +
@@ -214,11 +214,11 @@ and [BPIR schema](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR).
 
 ## Quick start
 
-The repo ships the plugin; you supply a UE 5.7 project to host it.
+The repo ships the plugin; you supply a UE 5.8 project to host it.
 
 1. **Mount the plugin.** Copy (or symlink) `Plugins/BlueprintReader/`
-   into your UE 5.7 project's `Plugins/` folder. Lyra is a convenient
-   host, but any UE 5.7 project works.
+   into your UE 5.8 project's `Plugins/` folder. Lyra is a convenient
+   host, but any UE 5.8 project works.
 2. **Build the editor target once.** The plugin's `PreBuildSteps` hook
    builds `BlueprintReaderMcp.exe` alongside the editor module in the
    same invocation:
@@ -271,7 +271,7 @@ tool required.
 
 > **Tests:** `Build.bat BlueprintReaderMcpTests Win64 Development -project=...`
 > produces `<ProjectDir>/Binaries/Win64/BlueprintReaderMcpTests.exe` —
-> 441 doctest cases, ~5 s to run; the 12 live-only cases auto-skip when
+> 800+ doctest cases, ~5 s to run; the live-only cases auto-skip when
 > the UE editor env vars aren't set.
 
 ### 2. Install the Claude skills (optional but recommended)
@@ -417,7 +417,7 @@ UE5_MCP\
 │       │       │   └── parse\               CppLex, CppParse (C++ → BPIR)
 │       │       └── backends\                IBlueprintReader, MockReader, CommandletReader
 │       ├── BlueprintReaderMcpTests\      doctest suite → BlueprintReaderMcpTests.exe
-│       │   └── Private\                   441 cases (mock + live commandlet)
+│       │   └── Private\                   800+ cases (mock + live commandlet)
 │       └── ThirdParty\                    vendored: nlohmann_json, fmt, doctest
 ├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
                                            (engine source lives outside this repo
@@ -477,7 +477,7 @@ $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 
-Binaries\Win64\BlueprintReaderMcpTests.exe   # all 441 cases (12 live-only auto-skip)
+Binaries\Win64\BlueprintReaderMcpTests.exe   # the full suite (live-only cases auto-skip)
 ```
 
 The legacy smoke scripts that lived under `mcp-server/scripts/` were
@@ -518,7 +518,7 @@ to disable the auto-build entirely.
 ## Working with non-UE5_MCP projects (Lyra)
 
 The plugin is now project-agnostic. Drop `Plugins/BlueprintReader/` into
-any UE 5.7 project and set these env vars when invoking the MCP server
+any UE 5.8 project and set these env vars when invoking the MCP server
 or running the live tests:
 
 | Variable | Purpose |
@@ -528,18 +528,29 @@ or running the live tests:
 | `BP_READER_EDITOR_CMD` | Full path to a `-Cmd.exe` binary that overrides both. |
 
 The plugin is project-agnostic — no `.uproject` is checked into this
-repo. Mount `Plugins/BlueprintReader/` into your own UE 5.7 project's
+repo. Mount `Plugins/BlueprintReader/` into your own UE 5.8 project's
 `Plugins/` folder and set the env vars above. The maintainer develops
 against a local (untracked) Lyra Starter Game host, where
 `transpile_blueprint` emitted 270+ .h/.cpp pairs from Lyra's BP-style
 assets — see [`docs/research/lyra-bp-to-cpp-conversion.md`](docs/research/lyra-bp-to-cpp-conversion.md)
 for that worked example.
 
-## Engine setup (only needed for the `commandlet` backend)
+## Engine setup (only needed for the `commandlet` / `live` backends)
 
 The mock backend works against a fresh clone with no UE setup. To run the
-commandlet backend you need a source-built UE 5.7.4 + this project's editor
-target compiled.
+`commandlet` / `live` backends (real `.uasset` work) you need a UE 5.8 engine
++ this project's editor target compiled. **Either a source build or an
+installed / Launcher build works:**
+
+- **Source engine** — UBT builds everything (editor module *and* the MCP
+  server's Program targets). The full path below.
+- **Installed / Launcher engine** — UBT refuses Program targets, so build the
+  MCP server with the **CMake fallback** (`cmake -S Plugins/BlueprintReader/Tests
+  -B Saved/mcp-build -G Ninja && cmake --build Saved/mcp-build`); the editor
+  module still builds via your installed engine's UBT. Details:
+  [wiki Installation → CMake fallback](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Installation#installed--launcher-engine-build-the-mcp-server-with-cmake).
+
+The source-engine build below is the maintainer's host setup.
 
 ### Engine build
 
@@ -591,7 +602,7 @@ Build the editor target:
 
 ### Engine source patches required
 
-The 5.7.4 GitHub source has three modules whose `Build.cs` declares
+The 5.8 GitHub source has three modules whose `Build.cs` declares
 `PrivateIncludePaths` relative to `Engine/Source/` instead of the module dir.
 That breaks project-target builds with `fatal error C1083`.
 
@@ -668,6 +679,6 @@ For local pre-push verification, run the test target:
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-441 cases including the mock-backend coverage; the 12 live-only cases
+800+ cases including the mock-backend coverage; the live-only cases
 auto-skip when the UE editor env vars aren't set.
 

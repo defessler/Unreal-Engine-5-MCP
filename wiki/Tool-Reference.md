@@ -469,8 +469,12 @@ empty means root. `socket` applies to `SceneComponent` children only.
 Set a property on a component's template (the BP-author default
 values — what the BP Details panel shows for that component). Same
 string→type coercion as `set_data_row_value`
-(`FProperty::ImportText`). Returns pre-set and post-set
-ExportText'd values for verification.
+(`FProperty::ImportText`). Returns `{ok, asset_path, component,
+property, old_value, new_value, default_value, has_override}` — the
+pre/post-set ExportText'd values plus the component class-default and
+whether the template now differs from it, so a `new_value` that equals
+the default (which exports as the default's text, e.g. `""` / `"False"`)
+isn't misread as "cleared".
 
 ```json
 { "asset_path": "/Game/AI/BP_Enemy",
@@ -1783,8 +1787,13 @@ registry, `.uasset` handles) release. Use when you want to launch the
 full UE editor without daemon contention. The next read tool call
 auto-respawns the daemon (cold-start cost on first call after).
 
+**Default-deny guard:** in the shared-daemon model one daemon serves
+*every* MCP session on the project, so this affects all of them — you
+must pass `force_shared: true` to actually tear it down. Calling with `{}`
+returns an error explaining the blast radius instead.
+
 ```json
-{}
+{ "force_shared": true }
 ```
 
 Returns `{ok, was_running, hint}`. Idempotent: calling when no daemon

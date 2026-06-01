@@ -19,10 +19,10 @@ skip the plugin entirely — useful for smoke-testing the server.
 
 | Component              | Required for | Notes                                                   |
 |------------------------|--------------|---------------------------------------------------------|
-| Windows 10/11, x64     | All          | The codebase is Windows-only today (`CreateProcessW`).  |
-| Visual Studio 2022     | All          | "Game development with C++" workload + Win10/11 SDK.    |
-| UE 5.8 source build    | All          | Source build, not the launcher binary build. Required to build the MCP server now that it's a UE Program target. |
-| ~120 GB disk           | All          | UE source ~70 GB pulled by `Setup.bat`.                 |
+| Windows 10/11, x64     | Everything   | Windows-only today (`CreateProcessW`).                  |
+| Visual Studio 2022 (MSVC) | Building the server | "Desktop development with C++" (for the CMake build) **or** "Game development with C++" (for the UBT build), plus a Win10/11 SDK. |
+| A UE 5.8 install — **source _or_ Launcher/installed** | The `commandlet` + `live` backends (working real `.uasset` files) | **Not needed for the mock backend** (fixture-only server testing). A *source* engine builds everything through UBT (editor module + MCP server). A *Launcher / installed* engine works too: the editor module still builds via UBT, and the MCP server builds engine-free via the [CMake fallback](#installed--launcher-engine-build-the-mcp-server-with-cmake). |
+| Disk: ~120 GB *(source engine)* / a few GB *(installed engine)* | Per engine choice | A source build pulls ~70 GB of UE source via `Setup.bat`; an installed engine needs only the Launcher download + the build output. |
 
 **No network, no git, no vcpkg required for the MCP server.** Third-party
 deps (nlohmann_json, fmt, doctest) are vendored under
@@ -30,9 +30,11 @@ deps (nlohmann_json, fmt, doctest) are vendored under
 
 ## 1. Build the MCP server
 
-The MCP server is now a UE Program target — UBT builds it alongside
-the rest of the plugin (with UBA cache, ninja, etc.) instead of running
-a separate CMake toolchain.
+The MCP server is a UE Program target. **On a source-built engine**, UBT
+builds it alongside the rest of the plugin (UBA cache, ninja, etc.) — use
+`Build-MCPServer.ps1` below. **On a Launcher / installed engine**, UBT
+refuses Program targets, so build the server with CMake instead — jump to
+[the CMake fallback](#installed--launcher-engine-build-the-mcp-server-with-cmake).
 
 ```powershell
 git clone https://github.com/defessler/Unreal-Engine-5-MCP.git UE5_MCP
@@ -47,7 +49,7 @@ cd <YourProject>
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-The test exe run takes ~5 s. 441 cases pass; the 12 commandlet-backed
+The test exe run takes ~5 s. 800+ cases pass; the live-only
 cases skip without engine env vars set — that's expected.
 
 The exe you'll point Claude at lives at:
@@ -56,13 +58,48 @@ The exe you'll point Claude at lives at:
 <YourProject>\Binaries\Win64\BlueprintReaderMcp.exe
 ```
 
+### Installed / Launcher engine? Build the MCP server with CMake
+
+A Launcher / installed engine (e.g. `…\Epic Games\UE_5.8`) **refuses to
+build UE Program targets** via UBT (`Program targets are not currently
+supported from this engine distribution`), so `Build-MCPServer.ps1` won't
+work there. But the MCP server + test suite are pure standalone C++20
+(`bCompileAgainstEngine=false`, vendored `json`/`fmt`/`doctest`) and link
+against **no engine at all** — so build them directly with CMake + Ninja +
+the system MSVC toolchain:
+
+```powershell
+# From an "x64 Native Tools for VS 2022" shell (so cl + ninja are on PATH),
+# at the repo root:
+cmake -S Plugins/BlueprintReader/Tests -B Saved/mcp-build -G Ninja
+cmake --build Saved/mcp-build
+```
+
+This emits the same `Binaries\Win64\BlueprintReaderMcp.exe` +
+`BlueprintReaderMcpTests.exe` as the UBT path. The binary is
+**engine-version-independent** — it drives a UE 5.8 editor/daemon exactly
+like a UBT-built one. (The one non-obvious flag, `/Zc:preprocessor`, is
+already set in `Tests/CMakeLists.txt`.) You still build the **editor plugin
+module** with your installed engine's UBT in [step 3](#3-build-the-ue-plugin);
+only the standalone Program targets need this fallback.
+
 If you only want the mock backend (you don't have a UE project to point at,
 or you're just testing the server), **you're done — skip to step 4**.
 
 ## 2. Build the engine
 
-The plugin requires a source-built UE 5.8 because it ships its own
-`UnrealEd`-linking module. Launcher (binary) builds won't work.
+> **On a Launcher / installed engine? Skip this entire section.** You only
+> need a *source* engine if you want UBT to build the MCP server's Program
+> targets. With an installed engine, build the server via the
+> [CMake fallback](#installed--launcher-engine-build-the-mcp-server-with-cmake)
+> (step 1) and the editor module with your installed engine's UBT (step 3) —
+> the plugin's editor module builds fine against a binary engine.
+
+This section is the **source-engine** path: it gives you the full UBT
+pipeline (one build covers the editor module *and* the MCP server's Program
+targets). A source build is required only for that UBT server path — not for
+the plugin's editor module, and not at all if you use the CMake fallback
+above.
 
 ```powershell
 # Pick a directory OUTSIDE this repo — engine source is ~100 GB.
@@ -122,7 +159,7 @@ This writes a stable GUID-style entry under
 `HKCU\SOFTWARE\Epic Games\Unreal Engine\Builds` and updates the project's
 `EngineAssociation` field to match. (Hand-editing the registry is brittle
 — Rider / VS / UBT all want this exact format. See
-[Troubleshooting](Troubleshooting#rider-says-load-failed--failed-to-locate-unreal-engine).)
+[Troubleshooting](Troubleshooting#failed-to-locate-unreal-engine-associated-with-the-project-file).)
 
 ## 3. Build the UE plugin
 
