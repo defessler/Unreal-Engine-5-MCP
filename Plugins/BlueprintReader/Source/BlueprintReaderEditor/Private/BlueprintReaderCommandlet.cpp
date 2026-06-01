@@ -3480,16 +3480,38 @@ namespace
 			Prop->ContainerPtrToValuePtr<void>(Template),
 			/*Defaults=*/nullptr, /*OwnerObject=*/Template, PPF_None);
 
+		// Disambiguate "now empty" vs "set to the class default" (client
+		// feedback #8): a value equal to the component default exports as the
+		// default's text (often "" for empty strings / structs), which reads
+		// like the property was cleared. Export the class-default value + a
+		// has_override flag (template now differs from its CDO) so the caller
+		// can tell "set to default (no stored override)" from "actually empty".
+		UObject* CDO = Template->GetClass() ? Template->GetClass()->GetDefaultObject() : nullptr;
+		FString DefaultText;
+		if (CDO)
+		{
+			Prop->ExportText_Direct(DefaultText,
+				Prop->ContainerPtrToValuePtr<void>(CDO),
+				/*Defaults=*/nullptr, /*OwnerObject=*/CDO, PPF_None);
+		}
+		const bool bHasOverride = CDO
+			? !Prop->Identical(
+				Prop->ContainerPtrToValuePtr<void>(Template),
+				Prop->ContainerPtrToValuePtr<void>(CDO), PPF_DeepComparison)
+			: true;
+
 		FBlueprintEditorUtils::MarkBlueprintAsModified(BP);
 		CompileAndSaveBlueprint(BP);
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
-		Obj->SetStringField(TEXT("asset_path"), AssetPath);
-		Obj->SetStringField(TEXT("component"),  ComponentName);
-		Obj->SetStringField(TEXT("property"),   PropertyName);
-		Obj->SetStringField(TEXT("old_value"),  OldText);
-		Obj->SetStringField(TEXT("new_value"),  NewText);
+		Obj->SetStringField(TEXT("asset_path"),    AssetPath);
+		Obj->SetStringField(TEXT("component"),     ComponentName);
+		Obj->SetStringField(TEXT("property"),      PropertyName);
+		Obj->SetStringField(TEXT("old_value"),     OldText);
+		Obj->SetStringField(TEXT("new_value"),     NewText);
+		Obj->SetStringField(TEXT("default_value"), DefaultText);
+		Obj->SetBoolField(TEXT("has_override"),    bHasOverride);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

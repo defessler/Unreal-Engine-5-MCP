@@ -202,6 +202,57 @@ TEST_CASE("CommandletBackend: simultaneous spawn attempts coalesce to one") {
 	std::filesystem::remove_all(tempProjectDir, ec);
 }
 
+// Client feedback #4: a daemon cold-start that transiently fails (a plugin
+// crashes in StartupModule, no handshake published) should be retried
+// internally rather than surfacing as a hard error on the first try.
+TEST_CASE("CommandletBackend: transient spawn failure is retried") {
+	std::atomic<int> spawnCount{0};
+	auto tempProjectDir = std::filesystem::temp_directory_path() /
+		("bp-reader-spawn-retry-" +
+		 std::to_string(reinterpret_cast<std::uintptr_t>(&spawnCount)));
+	std::filesystem::create_directories(tempProjectDir / "Saved");
+	auto uproject = tempProjectDir / "Fake.uproject";
+	{ std::ofstream f(uproject); f << "{}"; }
+	auto engineDir = tempProjectDir / "EngineFake";
+	auto binDir = engineDir / "Engine" / "Binaries" / "Win64";
+	std::filesystem::create_directories(binDir);
+	{ std::ofstream f(binDir / "UnrealEditor-Cmd.exe"); f << ""; }
+
+	StubListener listener;
+	const int listenerPort = listener.port();
+
+	// First spawn "crashes" — writes no handshake. The second publishes a
+	// valid handshake pointing at the in-test listener.
+	auto flakySpawn = [&](const std::filesystem::path& proj) {
+		const int n = ++spawnCount;
+		if (n < 2) { return; }    // attempt 1: simulated StartupModule crash
+		nlohmann::json hs = {
+			{"version", 1}, {"host", "127.0.0.1"}, {"port", listenerPort},
+			{"token", "fake-token"}, {"pid", static_cast<int>(::GetCurrentProcessId())},
+		};
+		std::ofstream f(proj.parent_path() / "Saved" / "bp-reader-cmdlet.json");
+		f << hs.dump();
+	};
+
+	CommandletBlueprintReader::Config cfg;
+	cfg.engineDir       = engineDir;
+	cfg.uproject        = uproject;
+	cfg.useDaemon       = true;
+	cfg.startupTimeout  = 1s;      // attempt 1 times out fast, then we retry
+	cfg.spawnDaemonHook = flakySpawn;
+	auto reader = std::make_unique<CommandletBlueprintReader>(std::move(cfg));
+
+	// Downstream protocol throws (the stub doesn't speak it) — we only care
+	// that the spawn was retried after the first attempt produced no daemon.
+	try { (void)reader->ListBlueprints("/Game"); } catch (...) {}
+
+	CHECK(spawnCount.load() == 2);   // first attempt failed, retry succeeded
+
+	reader.reset();
+	std::error_code ec;
+	std::filesystem::remove_all(tempProjectDir, ec);
+}
+
 // Stale-handshake recovery: a handshake file from a crashed previous
 // daemon (its pid no longer exists) must NOT be reused. The pid-alive
 // check in TryAttachExistingDaemon should reject it, and the

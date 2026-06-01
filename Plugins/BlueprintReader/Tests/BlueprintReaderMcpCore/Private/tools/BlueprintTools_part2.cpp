@@ -2662,7 +2662,11 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"`set_widget_property`; for behavior tree nodes use "
 			"`set_bt_node_property`. Same string→type coercion as "
 			"`set_data_row_value` (FProperty::ImportText). Returns "
-			"pre-set and post-set ExportText'd values for verification.";
+			"pre-set and post-set ExportText'd values for verification, plus "
+			"`default_value` (the component class-default for this property) "
+			"and `has_override` — so a `new_value` that equals the default "
+			"(which exports as the default's text, e.g. \"\" / \"False\") isn't "
+			"misread as cleared.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -2681,11 +2685,13 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			auto r = reader.SetComponentProperty(asset, comp, prop, value);
 			return nlohmann::json{
 				{"ok", true},
-				{"asset_path",    r.assetPath},
-				{"component",     r.componentName},
-				{"property",      r.propertyName},
-				{"old_value",     r.oldValue},
-				{"new_value",     r.newValue},
+				{"asset_path",     r.assetPath},
+				{"component",      r.componentName},
+				{"property",       r.propertyName},
+				{"old_value",      r.oldValue},
+				{"new_value",      r.newValue},
+				{"default_value",  r.defaultValue},
+				{"has_override",   r.hasOverride},
 			};
 		});
 	}

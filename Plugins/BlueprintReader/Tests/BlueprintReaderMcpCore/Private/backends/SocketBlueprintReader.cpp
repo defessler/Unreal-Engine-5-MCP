@@ -1360,8 +1360,10 @@ SocketBlueprintReader::SetComponentProperty(std::string_view assetPath,
 	out.componentName = std::string(componentName);
 	out.propertyName  = std::string(propertyName);
 	if (j.is_object()) {
-		out.oldValue = j.value("old_value", std::string{});
-		out.newValue = j.value("new_value", std::string{});
+		out.oldValue     = j.value("old_value", std::string{});
+		out.newValue     = j.value("new_value", std::string{});
+		out.defaultValue = j.value("default_value", std::string{});
+		out.hasOverride  = j.value("has_override", true);
 	}
 	return out;
 }
