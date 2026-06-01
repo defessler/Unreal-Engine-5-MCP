@@ -405,6 +405,12 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	}
 
 	auto& buf = BufFor(s).b;
+	// Read frames until the terminal result/error. The daemon may precede the
+	// result with any number of {"type":"progress"} frames for a long op
+	// (cook/package/automation/lighting); forward each to progressSink_ and
+	// keep reading. A normal op sends exactly one result frame, so this loops
+	// once.
+	for (;;) {
 	std::string response;
 	try {
 		response = RecvLine(s, buf);
@@ -422,6 +428,15 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 		// an application error.
 		throw SocketTransportError(
 			"SocketBlueprintReader: server response wasn't a JSON object");
+	}
+	if (j.value("type", "") == "progress") {
+		// Mid-op progress; forward (if a sink is set) and keep reading.
+		if (progressSink_) {
+			progressSink_(j.value("progress", 0.0),
+						  j.value("total",    0.0),
+						  j.value("message",  std::string()));
+		}
+		continue;
 	}
 	if (j.value("type", "") == "error") {
 		throw BlueprintReaderError(fmt::format(
@@ -474,6 +489,7 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 		return nlohmann::json::object();
 	}
 	return *jit;
+	}  // for (;;) — terminal result/error frame returns/throws above
 }
 
 // ----- read tools --------------------------------------------------------

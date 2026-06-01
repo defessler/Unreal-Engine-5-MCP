@@ -210,6 +210,44 @@ TEST_CASE("LiveBackend: server returns error frame surfaces as BlueprintReaderEr
 	}
 }
 
+TEST_CASE("LiveBackend: progress frames before the result are forwarded to the sink") {
+	MockServer mock([](SOCKET s) {
+		SendLine(s, R"({"type":"hello","version":"1"})");
+		(void)ReadLine(s);
+		SendLine(s, R"({"type":"auth_ok"})");
+		std::string opLine = ReadLine(s);
+		auto op = nlohmann::json::parse(opLine, nullptr, false);
+		int id = op["id"].get<int>();
+		// Two progress frames, then the terminal result frame.
+		SendLine(s, nlohmann::json{{"type","progress"},{"id",id},
+			{"progress",0.25},{"total",1.0},{"message","quarter"}}.dump());
+		SendLine(s, nlohmann::json{{"type","progress"},{"id",id},
+			{"progress",0.75},{"total",1.0},{"message","three-quarter"}}.dump());
+		SendLine(s, nlohmann::json{{"type","result"},{"id",id},
+			{"code",0},{"json",nlohmann::json::array()}}.dump());
+	});
+
+	SocketBlueprintReader::Config cfg;
+	cfg.host = "127.0.0.1";
+	cfg.port = mock.port();
+	cfg.token = "tok";
+	SocketBlueprintReader reader(cfg);
+
+	std::vector<std::pair<double, std::string>> got;
+	reader.SetProgressSink([&](double cur, double /*total*/, const std::string& msg) {
+		got.emplace_back(cur, msg);
+	});
+
+	// ListBlueprints sends -Op=List; the empty json array result returns {}.
+	auto result = reader.ListBlueprints("/Game");
+	CHECK(result.empty());
+	REQUIRE(got.size() == 2);
+	CHECK(got[0].first == doctest::Approx(0.25));
+	CHECK(got[0].second == "quarter");
+	CHECK(got[1].first == doctest::Approx(0.75));
+	CHECK(got[1].second == "three-quarter");
+}
+
 TEST_CASE("LiveBackend: missing token in config throws at construction") {
 	SocketBlueprintReader::Config cfg;
 	cfg.host = "127.0.0.1";
