@@ -105,7 +105,10 @@ Usage:
 							   with auto-discovered paths filled in.
   bp-reader-mcp config --client=claude-code     Same, formatted for Claude Code (.mcp.json).
   bp-reader-mcp config --client=claude-desktop  Same, for Claude Desktop config.
+  bp-reader-mcp config --client=cursor          Same, for Cursor (.cursor/mcp.json).
+  bp-reader-mcp config --client=windsurf        Same, for Windsurf (mcp_config.json).
   bp-reader-mcp config --client=copilot         Same, for VS Code Copilot (.vscode/mcp.json).
+  bp-reader-mcp config --client=vscode          Alias of copilot (VS Code native MCP).
   bp-reader-mcp config --mock                   Emit a mock-backend-only snippet — no UE project
 												or engine required. For fixture-backed testing
 												of MCP client integrations.
@@ -237,7 +240,14 @@ R"(      "env": {{
 									? ""
 									: fmt::format(",\n        \"BP_READER_EDITOR_CONFIG\": \"{}\"", cfgName)));
 
-	if (client == "claude-code" || client == "claude-desktop") {
+	// Clients split into two config shapes:
+	//   * `mcpServers` map — Claude Code (.mcp.json), Claude Desktop, Cursor
+	//     (.cursor/mcp.json), Windsurf (~/.codeium/windsurf/mcp_config.json).
+	//   * `servers` map with explicit "type":"stdio" — VS Code Copilot
+	//     (.vscode/mcp.json) and VS Code's native MCP support.
+	const char* placement = nullptr;
+	if (client == "claude-code" || client == "claude-desktop" ||
+		client == "cursor" || client == "windsurf") {
 		std::cout << fmt::format(
 R"({{
   "mcpServers": {{
@@ -248,7 +258,11 @@ R"({{
   }}
 }}
 )", fmt::arg("exe", exePath), fmt::arg("env", envBlock));
-	} else if (client == "copilot") {
+		if (client == "claude-code")    placement = "<project>/.mcp.json";
+		else if (client == "claude-desktop") placement = "claude_desktop_config.json (Settings > Developer > Edit Config)";
+		else if (client == "cursor")    placement = "<project>/.cursor/mcp.json (or ~/.cursor/mcp.json for global)";
+		else if (client == "windsurf")  placement = "~/.codeium/windsurf/mcp_config.json";
+	} else if (client == "copilot" || client == "vscode") {
 		std::cout << fmt::format(
 R"({{
   "servers": {{
@@ -260,10 +274,14 @@ R"({{
   }}
 }}
 )", fmt::arg("exe", exePath), fmt::arg("env", envBlock));
+		placement = "<project>/.vscode/mcp.json";
 	} else {
 		std::cerr << "config: unknown --client='" << client
-				  << "' (try claude-code, claude-desktop, or copilot)\n";
+				  << "' (try claude-code, claude-desktop, cursor, windsurf, copilot, or vscode)\n";
 		return 1;
+	}
+	if (placement) {
+		std::cerr << "\n# Place this in: " << placement << "\n";
 	}
 
 	if (mockMode) {
