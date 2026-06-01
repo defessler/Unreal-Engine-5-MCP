@@ -291,27 +291,31 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	}
 	return ctl;
 }
+// Sort a JSON array in place by the `name` or `asset_path` field
+// ("natural" / non-arrays are a no-op). Factored so both
+// ApplyResponseControls and BuildPaginatedBody page against the same view.
+void SortJsonArray(nlohmann::json& body, const std::string& sort) {
+	if (!body.is_array() || (sort != "name" && sort != "path")) {
+		return;
+	}
+	const std::string key = (sort == "name") ? "name" : "asset_path";
+	std::stable_sort(body.begin(), body.end(),
+		[&key](const nlohmann::json& a, const nlohmann::json& b) {
+			if (a.is_string() && b.is_string()) {
+				return a.get<std::string>() < b.get<std::string>();
+			}
+			const bool aHas = a.is_object() && a.contains(key) && a[key].is_string();
+			const bool bHas = b.is_object() && b.contains(key) && b[key].is_string();
+			if (!aHas && !bHas) return false;
+			if (!aHas) return false;  // a goes to end
+			if (!bHas) return true;
+			return a[key].get<std::string>() < b[key].get<std::string>();
+		});
+}
+
 void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 	// Sort first — page through the sorted view, not the raw view.
-	if (body.is_array() && (ctl.sort == "name" || ctl.sort == "path")) {
-		const std::string key = (ctl.sort == "name") ? "name" : "asset_path";
-		std::stable_sort(body.begin(), body.end(),
-			[&key](const nlohmann::json& a, const nlohmann::json& b) {
-				// Defensive: entries without the key sort to the end so
-				// a heterogeneous response doesn't crash with an
-				// undefined comparison. Bare strings (no object shape)
-				// fall back to direct string compare.
-				if (a.is_string() && b.is_string()) {
-					return a.get<std::string>() < b.get<std::string>();
-				}
-				const bool aHas = a.is_object() && a.contains(key) && a[key].is_string();
-				const bool bHas = b.is_object() && b.contains(key) && b[key].is_string();
-				if (!aHas && !bHas) return false;
-				if (!aHas) return false;  // a goes to end
-				if (!bHas) return true;
-				return a[key].get<std::string>() < b[key].get<std::string>();
-			});
-	}
+	SortJsonArray(body, ctl.sort);
 	if (body.is_array() && (ctl.offset > 0 || ctl.limit >= 0)) {
 		std::size_t off = std::min<std::size_t>(ctl.offset, body.size());
 		std::size_t end = (ctl.limit < 0)
@@ -325,6 +329,42 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 		body = std::move(sliced);
 	}
 	ApplyProjection(body, ctl.fields);
+}
+
+// Build a self-describing paginated response from a full result set. A broad
+// query (e.g. find_asset "Elevator") can match thousands of rows; returning
+// them all produces a response the MCP client rejects as "Output too large"
+// before the caller learns to paginate. Cap at a default page size
+// (overridable via `limit`) and report total / has_more / next_cursor so the
+// caller can walk the rest. `fields` still projects each row. The default
+// applies only when no explicit `limit` was passed. See client feedback #3.
+nlohmann::json BuildPaginatedBody(nlohmann::json rows,
+								  const ResponseControls& ctl,
+								  int defaultLimit) {
+	SortJsonArray(rows, ctl.sort);
+	const std::size_t total = rows.is_array() ? rows.size() : 0;
+	const std::size_t off =
+		std::min<std::size_t>(static_cast<std::size_t>(std::max(ctl.offset, 0)), total);
+	const std::size_t effLimit = (ctl.limit >= 0)
+									  ? static_cast<std::size_t>(ctl.limit)
+									  : static_cast<std::size_t>(std::max(defaultLimit, 0));
+	const std::size_t end = std::min<std::size_t>(off + effLimit, total);
+	nlohmann::json results = nlohmann::json::array();
+	for (std::size_t i = off; i < end; ++i) {
+		results.push_back(std::move(rows[i]));
+	}
+	ApplyProjection(results, ctl.fields);
+	const bool hasMore = end < total;
+	return nlohmann::json{
+		{"total",       static_cast<int>(total)},
+		{"count",       static_cast<int>(results.size())},
+		{"offset",      static_cast<int>(off)},
+		{"has_more",    hasMore},
+		{"next_cursor", hasMore
+							? nlohmann::json(EncodeCursor(static_cast<std::int64_t>(end)))
+							: nlohmann::json(nullptr)},
+		{"results",     std::move(results)},
+	};
 }
 
 // On AssetNotFound, run a fuzzy basename lookup against the asset
