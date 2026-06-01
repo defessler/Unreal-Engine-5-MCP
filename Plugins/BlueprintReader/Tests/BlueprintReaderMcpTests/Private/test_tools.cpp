@@ -864,3 +864,95 @@ TEST_CASE("compile_function v2: if/else with following stmt fans both tails into
 	}
 	CHECK(wiresToBaz == 2);
 }
+
+// --- find_asset pagination (client feedback #3) ----------------------------
+// A broad query (e.g. "Elevator") used to return an unbounded array the MCP
+// client rejected as "Output too large". find_asset now caps at a default
+// page size and reports total / has_more / next_cursor so the caller pages.
+// The mock backend's FindAsset is the throwing default, so we drive the
+// handler with a tiny subclass that returns N synthetic rows.
+
+namespace find_asset_pagination_detail {
+
+struct ManyAssetsReader : backends::MockBlueprintReader {
+	int count;
+	explicit ManyAssetsReader(int n)
+		: backends::MockBlueprintReader(test::FixturesDir()), count(n) {}
+	backends::IBlueprintReader::AssetRegistryListResult
+	FindAsset(std::string_view query, std::string_view path) override {
+		(void)query; (void)path;
+		backends::IBlueprintReader::AssetRegistryListResult r;
+		for (int i = 0; i < count; ++i) {
+			backends::IBlueprintReader::AssetRegistryEntry e;
+			e.assetPath = "/Game/Lift/Elevator_" + std::to_string(i);
+			e.name      = "Elevator_" + std::to_string(i);
+			e.className = "Blueprint";
+			r.entries.push_back(std::move(e));
+		}
+		return r;
+	}
+};
+
+json CallFindAsset(int totalCount, json args) {
+	ManyAssetsReader reader(totalCount);
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	const auto* fn = registry.Find("find_asset");
+	REQUIRE(fn != nullptr);
+	args["query"] = "Elevator";
+	return (*fn)(args);
+}
+
+}    // namespace find_asset_pagination_detail
+using namespace find_asset_pagination_detail;
+
+TEST_CASE("find_asset: caps at default page size and reports pagination") {
+	auto out = CallFindAsset(120, json::object());
+	CHECK(out["total"]    == 120);
+	CHECK(out["count"]    == 50);
+	CHECK(out["offset"]   == 0);
+	CHECK(out["has_more"] == true);
+	CHECK(out["next_cursor"].is_string());
+	REQUIRE(out["results"].is_array());
+	CHECK(out["results"].size() == 50);
+	CHECK(out["query"] == "Elevator");
+}
+
+TEST_CASE("find_asset: last page sets has_more=false + null next_cursor") {
+	auto out = CallFindAsset(30, json::object());
+	CHECK(out["total"]    == 30);
+	CHECK(out["count"]    == 30);
+	CHECK(out["has_more"] == false);
+	CHECK(out["next_cursor"].is_null());
+}
+
+TEST_CASE("find_asset: explicit limit overrides the default page size") {
+	auto out = CallFindAsset(120, json{{"limit", 10}});
+	CHECK(out["count"]    == 10);
+	CHECK(out["has_more"] == true);
+}
+
+TEST_CASE("find_asset: next_cursor walks subsequent pages to exhaustion") {
+	auto p1 = CallFindAsset(120, json::object());
+	REQUIRE(p1["next_cursor"].is_string());
+	auto p2 = CallFindAsset(120, json{{"cursor", p1["next_cursor"]}});
+	CHECK(p2["offset"]   == 50);
+	CHECK(p2["count"]    == 50);
+	CHECK(p2["has_more"] == true);
+	REQUIRE(p2["next_cursor"].is_string());
+	auto p3 = CallFindAsset(120, json{{"cursor", p2["next_cursor"]}});
+	CHECK(p3["offset"]   == 100);
+	CHECK(p3["count"]    == 20);
+	CHECK(p3["has_more"] == false);
+	CHECK(p3["next_cursor"].is_null());
+}
+
+TEST_CASE("find_asset: fields projects each result row") {
+	auto out = CallFindAsset(5, json{{"fields", json::array({"asset_path"})}});
+	REQUIRE(out["results"].is_array());
+	CHECK(out["results"].size() == 5);
+	for (auto& row : out["results"]) {
+		CHECK(row.size() == 1);
+		CHECK(row.contains("asset_path"));
+	}
+}
