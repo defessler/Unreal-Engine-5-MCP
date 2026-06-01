@@ -1,5 +1,6 @@
 #include "BlueprintReaderCmdletServer.h"
 
+#include "DaemonProgress.h"
 #include "Async/Async.h"
 #include "Common/TcpListener.h"
 #include "Dom/JsonObject.h"
@@ -191,13 +192,39 @@ public:
 			int32 Code = -1;
 			FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
 			const uint64 ConnId = ConnectionId;
+			// Register a progress queue for this op so the game-thread dispatch
+			// (FScopedProgressCapture) can push FScopedSlowTask progress to us.
+			BlueprintReader::RegisterProgressQueue(ConnId);
 			AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
 			{
 				Code = RunOneOpFromLiveServer(ConnId, Params);
 				DoneEvent->Trigger();
 			});
-			DoneEvent->Wait();
+			// Poll-drain progress while the op runs: send {"type":"progress"}
+			// frames before the result. ~50ms latency; one drain after completion
+			// catches any final frame. A normal (fast, no-slow-task) op just
+			// drains nothing and the result follows immediately.
+			auto DrainAndSendProgress = [this, RequestId, ConnId]()
+			{
+				for (const BlueprintReader::FDaemonProgressEntry& P : BlueprintReader::DrainProgress(ConnId))
+				{
+					FString Msg = P.Message;
+					Msg.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
+					Msg.ReplaceInline(TEXT("\""), TEXT("\\\""));
+					Msg.ReplaceInline(TEXT("\n"), TEXT(" "));
+					Msg.ReplaceInline(TEXT("\r"), TEXT(" "));
+					SendRaw(FString::Printf(
+						TEXT("{\"type\":\"progress\",\"id\":%d,\"progress\":%f,\"total\":%f,\"message\":\"%s\"}\n"),
+						RequestId, P.Current, P.Total, *Msg));
+				}
+			};
+			while (!DoneEvent->Wait(50))
+			{
+				DrainAndSendProgress();
+			}
+			DrainAndSendProgress();
 			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+			BlueprintReader::UnregisterProgressQueue(ConnId);
 
 			// Read the JSON the dispatch wrote to OutPath.
 			FString JsonBody;

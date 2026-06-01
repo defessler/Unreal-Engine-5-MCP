@@ -1,6 +1,7 @@
 #include "BlueprintReaderCommandlet.h"
 
 #include "BatchContext.h"
+#include "DaemonProgress.h"
 #include "BlueprintIntrospector.h"
 #include "BlueprintReaderCmdletServer.h"
 #include "BlueprintReaderJson.h"
@@ -11438,6 +11439,10 @@ int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString
     // — read this id to look up their context in the registry. Restored
     // on scope exit so nested or re-entrant calls behave correctly.
     BlueprintReader::FConnectionScope Scope(ConnectionId);
+    // Capture FScopedSlowTask progress (cook/package/lighting/compile/save) and
+    // relay it to the connection as {"type":"progress"} frames for the duration
+    // of this op. No-op for the one-shot commandlet (ConnectionId==0).
+    BlueprintReader::FScopedProgressCapture ProgressCapture(ConnectionId);
     // Suppress interactive editor dialogs (notably the source-control
     // "Check Out?" modal) for the duration of a live-backend op. This runs
     // on the game thread (the live server dispatches via
