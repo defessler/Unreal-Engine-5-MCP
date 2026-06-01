@@ -55,6 +55,15 @@ namespace
 		Obj->SetBoolField(TEXT("is_array"), T.bIsArray);
 		Obj->SetBoolField(TEXT("is_set"), T.bIsSet);
 		Obj->SetBoolField(TEXT("is_map"), T.bIsMap);
+		if (T.bIsMap)
+		{
+			// Map value terminal type (the rest of this object is the key).
+			auto V = MakeShared<FJsonObject>();
+			V->SetStringField(TEXT("category"), T.ValueCategory);
+			SetStringOrNull(V, TEXT("sub_category"), T.ValueSubCategory);
+			SetStringOrNull(V, TEXT("sub_category_object"), T.ValueSubCategoryObject);
+			Obj->SetObjectField(TEXT("value_type"), V);
+		}
 		return Obj;
 	}
 
@@ -738,6 +747,37 @@ bool FBlueprintReaderWireJson::ParseWirePinType(const TSharedPtr<FJsonObject>& J
 	else if (bSet) OutType.ContainerType = EPinContainerType::Set;
 	else if (bMap) OutType.ContainerType = EPinContainerType::Map;
 	else           OutType.ContainerType = EPinContainerType::None;
+
+	// Map value terminal type. The fields parsed above describe the key; an
+	// object-valued map (TMap<Pawn, UIndicatorDescriptor>) needs PinValueType
+	// set too, or it falls back to the wildcard default (int). The value's
+	// sub_category_object is always a full path here (introspector emits
+	// GetPathName()), so a direct StaticLoadObject suffices.
+	if (bMap)
+	{
+		const TSharedPtr<FJsonObject>* ValueObj = nullptr;
+		if (Json->TryGetObjectField(TEXT("value_type"), ValueObj) && ValueObj && (*ValueObj).IsValid())
+		{
+			FString VCat;
+			if ((*ValueObj)->TryGetStringField(TEXT("category"), VCat) && !VCat.IsEmpty())
+			{
+				OutType.PinValueType.TerminalCategory = FName(*VCat);
+				FString VSub;
+				if ((*ValueObj)->TryGetStringField(TEXT("sub_category"), VSub) && !VSub.IsEmpty())
+				{
+					OutType.PinValueType.TerminalSubCategory = FName(*VSub);
+				}
+				FString VObjPath;
+				if ((*ValueObj)->TryGetStringField(TEXT("sub_category_object"), VObjPath) && !VObjPath.IsEmpty())
+				{
+					UObject* R = StaticLoadObject(UClass::StaticClass(), nullptr, *VObjPath);
+					if (!IsValid(R)) { R = StaticLoadObject(UScriptStruct::StaticClass(), nullptr, *VObjPath); }
+					if (!IsValid(R)) { R = StaticLoadObject(UEnum::StaticClass(), nullptr, *VObjPath); }
+					if (IsValid(R)) { OutType.PinValueType.TerminalSubCategoryObject = R; }
+				}
+			}
+		}
+	}
 
 	return true;
 }

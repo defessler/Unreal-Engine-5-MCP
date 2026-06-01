@@ -197,6 +197,39 @@ UBA acceleration. After the first full build, incremental rebuilds are
 fast (5–10 s for plugin-only changes; ~10 s for an MCP-server-only
 incremental rebuild).
 
+### Installed-engine fallback (CMake) for the MCP Program targets
+
+An **installed / Launcher engine** (e.g. a `D:\…\Epic Games\UE_5.8`
+binary install) **refuses to build UE Program targets at all** — UBT
+fails with `Program targets are not currently supported from this
+engine distribution`. That blocks `BlueprintReaderMcp` and
+`BlueprintReaderMcpTests` (both `Type=Program`) via UBT, even though
+the editor plugin modules build fine. The server + tests are pure
+standalone C++20 (`bCompileAgainstEngine=false`, vendored
+`json`/`fmt`/`doctest`) and need no engine, so on installed-engine
+hosts build them directly with CMake/Ninja + the system MSVC toolchain,
+bypassing UBT:
+
+```pwsh
+Plugins\BlueprintReader\Scripts\..\..\..\Saved\build-mcp-cmake.ps1   # local helper, or:
+# cmake -S Plugins/BlueprintReader/Tests -B Saved/mcp-build -G Ninja
+# cmake --build Saved/mcp-build
+```
+
+`Plugins/BlueprintReader/Tests/CMakeLists.txt` (recovered + remapped
+from the pre-UBT CMake build, removed in commit `74ac475f`) GLOBs the
+sources and emits `BlueprintReaderMcp.exe` + `BlueprintReaderMcpTests.exe`
+into `Binaries/Win64`. The one non-obvious flag is **`/Zc:preprocessor`**
+(the conforming preprocessor, which UBT enables by default): the legacy
+MSVC preprocessor mis-tokenizes the raw-string literals
+(`R"(...\"...)"`) that `test_cpp_class.cpp` passes as doctest `CHECK`
+macro arguments, so without it the test build fails with
+`C2017/C3688/C2661`. The resulting exes are engine-version-independent —
+a binary built this way drives a UE 5.8 editor/daemon exactly as a
+UBT-built one would. On a **source engine**, prefer the documented UBT
+path above (the CMake build is the installed-engine fallback, not a
+replacement).
+
 ### Build invariants
 
 - `Source/LyraEditor.Target.cs` must declare:
@@ -207,6 +240,19 @@ incremental rebuild).
   // When using Unique env, launch LyraEditor-Cmd.exe (not UnrealEditor-Cmd.exe)
   // so the matching LyraEditor-*.dll plugin modules load.
   ```
+  **Installed-engine variant.** A binary/Launcher engine forbids a
+  Unique build environment (`Targets with a unique build environment
+  cannot be built with an installed engine`). On an installed engine,
+  drop `BuildEnvironment = Unique` and instead add
+  `bOverrideBuildEnvironment = true;` *after*
+  `ApplySharedLyraTargetSettings(this)` (Lyra's warning-level overrides
+  otherwise trip `modifies shared settings … not allowed`). With the
+  Shared env the project module DLLs are built as
+  `UnrealEditor-LyraGame.dll` / `UnrealEditor-LyraEditor.dll` and loaded
+  by the **engine's** `UnrealEditor-Cmd.exe` — there is no
+  `LyraEditor-Cmd.exe`, so launch `<Engine>/Binaries/Win64/UnrealEditor-Cmd.exe`
+  with the `.uproject`. (`LyraEditor.Target.cs` is part of the untracked
+  local build host, so this is host config, not a tracked change.)
   The MCP server auto-build is handled inside the plugin via
   `BlueprintReader.uplugin`'s `PreBuildSteps` block (which invokes
   `Plugins/BlueprintReader/Scripts/PreBuildHook.ps1`). No project-side

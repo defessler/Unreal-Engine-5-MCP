@@ -120,6 +120,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "Factories/BlueprintFactory.h"
+#include "Factories/BlueprintFunctionLibraryFactory.h"
 #include "FileHelpers.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
@@ -1423,13 +1424,33 @@ namespace
 		}
 		Package->FullyLoad();
 
-		UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
-		Factory->ParentClass = ParentClass;
-		Factory->BlueprintType = BlueprintType;
+		UBlueprint* BP = nullptr;
+		if (BlueprintType == BPTYPE_FunctionLibrary)
+		{
+			// A function-library parent (UBlueprintFunctionLibrary) is abstract
+			// and lacks the IsBlueprintBase metadata, so CanCreateBlueprintOfClass
+			// rejects it and the plain UBlueprintFactory::FactoryCreateNew returns
+			// null. The engine ships a dedicated UBlueprintFunctionLibraryFactory
+			// (a UBlueprintFactory subclass) whose FactoryCreateNew handles exactly
+			// this case — use it for function libraries.
+			UBlueprintFunctionLibraryFactory* Factory = NewObject<UBlueprintFunctionLibraryFactory>();
+			Factory->ParentClass = ParentClass;
+			// UBlueprintFunctionLibraryFactory overrides the 7-arg FactoryCreateNew
+			// (with a trailing CallingContext), which hides the 6-arg base overload.
+			BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
+				UBlueprint::StaticClass(), Package, *AssetName,
+				RF_Public | RF_Standalone, nullptr, GWarn, NAME_None));
+		}
+		else
+		{
+			UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
+			Factory->ParentClass = ParentClass;
+			Factory->BlueprintType = BlueprintType;
 
-		UBlueprint* BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
-			UBlueprint::StaticClass(), Package, *AssetName,
-			RF_Public | RF_Standalone, nullptr, GWarn));
+			BP = Cast<UBlueprint>(Factory->FactoryCreateNew(
+				UBlueprint::StaticClass(), Package, *AssetName,
+				RF_Public | RF_Standalone, nullptr, GWarn));
+		}
 		if (!IsValid(BP))
 		{
 			UE_LOG(LogBlueprintReader, Error, TEXT("FactoryCreateNew failed: %s"), *PackageName);
@@ -5473,20 +5494,20 @@ namespace
 						const FString* LName = nullptr;
 						for (const auto& Pair : Entry->Values)
 						{
-							if (Pair.Key.Contains(TEXT("Class")) ||
-							    Pair.Key.Contains(TEXT("Ability")))
+							if (FString(*Pair.Key).Contains(TEXT("Class")) ||
+							    FString(*Pair.Key).Contains(TEXT("Ability")))
 							{
 								FString S;
 								Pair.Value->TryGetString(S);
 								E->SetStringField(TEXT("class"), S);
-								CName = &Pair.Key;
+								(void)Pair.Key;
 							}
-							else if (Pair.Key.Contains(TEXT("Level")))
+							else if (FString(*Pair.Key).Contains(TEXT("Level")))
 							{
 								int32 L = 1;
 								Pair.Value->TryGetNumber(L);
 								E->SetNumberField(TEXT("level"), L);
-								LName = &Pair.Key;
+								(void)Pair.Key;
 							}
 						}
 						(void)CName; (void)LName;
@@ -9360,6 +9381,11 @@ namespace
 		FParse::Value(*Params, TEXT("TypeCategory="),         TypeCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategory="),      TypeSubCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategoryObject="), TypeSubObject);
+		// Map value terminal type (the -Type* flags above describe the key).
+		FString TypeValueCategory, TypeValueSubCategory, TypeValueSubObject;
+		FParse::Value(*Params, TEXT("TypeValueCategory="),         TypeValueCategory);
+		FParse::Value(*Params, TEXT("TypeValueSubCategory="),      TypeValueSubCategory);
+		FParse::Value(*Params, TEXT("TypeValueSubCategoryObject="), TypeValueSubObject);
 
 		if (AssetPath.IsEmpty() || VarName.IsEmpty() || TypeCategory.IsEmpty())
 		{
@@ -9378,9 +9404,24 @@ namespace
 		{
 			TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
 		}
+		const bool bTypeIsMap = FParse::Param(*Params, TEXT("TypeIsMap"));
 		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
 		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
-		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
+		TypeJson->SetBoolField(TEXT("is_map"),   bTypeIsMap);
+		if (bTypeIsMap && !TypeValueCategory.IsEmpty())
+		{
+			auto VJson = MakeShared<FJsonObject>();
+			VJson->SetStringField(TEXT("category"), TypeValueCategory);
+			if (!TypeValueSubCategory.IsEmpty())
+			{
+				VJson->SetStringField(TEXT("sub_category"), TypeValueSubCategory);
+			}
+			if (!TypeValueSubObject.IsEmpty())
+			{
+				VJson->SetStringField(TEXT("sub_category_object"), TypeValueSubObject);
+			}
+			TypeJson->SetObjectField(TEXT("value_type"), VJson);
+		}
 
 		FEdGraphPinType PinType;
 		if (!FBlueprintReaderWireJson::ParseWirePinType(TypeJson, PinType))
@@ -9933,12 +9974,33 @@ namespace
 		UBlueprint* DstBP = LoadMutableBlueprint(TargetPath);
 		if (!IsValid(SrcBP) || !IsValid(DstBP)) { return 4; }
 		UEdGraph* SrcGraph = FindGraphByName(SrcBP, GraphName);
-		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
-		if (!IsValid(SrcGraph) || !IsValid(DstGraph))
+		if (!IsValid(SrcGraph))
 		{
 			UE_LOG(LogBlueprintReader, Error,
-				TEXT("CloneGraph: graph '%s' not found in source or target"), *GraphName);
+				TEXT("CloneGraph: graph '%s' not found in source"), *GraphName);
 			return 4;
+		}
+		UEdGraph* DstGraph = FindGraphByName(DstBP, GraphName);
+		if (!IsValid(DstGraph))
+		{
+			// A top-level macro graph (the macros that make up a macro library)
+			// has no counterpart in a freshly-created target: AddFunction and the
+			// default event graph cover functions + ubergraphs, but nothing creates
+			// macros. Create the macro graph here so CloneGraph can reproduce a
+			// macro library. CloneGraphContents reconciles the default tunnels the
+			// same way the local-macro path below does.
+			if (SrcBP->MacroGraphs.Contains(SrcGraph))
+			{
+				DstGraph = FBlueprintEditorUtils::CreateNewGraph(
+					DstBP, SrcGraph->GetFName(), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+				FBlueprintEditorUtils::AddMacroGraph(DstBP, DstGraph, /*bIsUserCreated=*/true, /*SignatureFromClass=*/nullptr);
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("CloneGraph: graph '%s' not found in target"), *GraphName);
+				return 4;
+			}
 		}
 
 		FCloneGraphStats Stats;
