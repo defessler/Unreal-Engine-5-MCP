@@ -148,6 +148,10 @@ nlohmann::json ReadOnlyBlueprintReader::StructuralDiff(
 	// Diff is a read op — passes through.
 	return inner_->StructuralDiff(a, b, opts);
 }
+nlohmann::json ReadOnlyBlueprintReader::ReadActorInstance(std::string_view assetPath) {
+	// Read op — passes through.
+	return inner_->ReadActorInstance(assetPath);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

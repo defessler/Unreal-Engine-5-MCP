@@ -505,6 +505,9 @@ nlohmann::json AutoBlueprintReader::StructuralDiff(
 	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
 	FORWARD(StructuralDiff, a, b, opts);
 }
+nlohmann::json AutoBlueprintReader::ReadActorInstance(std::string_view assetPath) {
+	FORWARD(ReadActorInstance, assetPath);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

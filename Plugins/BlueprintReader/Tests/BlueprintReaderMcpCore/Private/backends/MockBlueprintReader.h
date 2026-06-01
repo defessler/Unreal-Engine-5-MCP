@@ -79,6 +79,10 @@ public:
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
 
+	// Not supported on the mock backend (no UObject world); throws. Listed
+	// in UnsupportedTools() so the catalog hides it under the mock.
+	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
+
 	// Capability advertisement — the mock backend has no editor and no
 	// asset registry, so a long tail of tools the catalog otherwise
 	// advertises just throws "not supported by this backend" when

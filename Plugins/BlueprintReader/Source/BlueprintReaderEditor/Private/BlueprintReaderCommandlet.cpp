@@ -303,6 +303,7 @@ namespace
 		SpawnActor,
 		SetActorTransform,
 		DeleteActor,
+		ReadActorInstance,
 		ReadOutputLog,
 		GetEditorState,
 		RunPythonScript,
@@ -552,6 +553,7 @@ namespace
 		if (OpStr.Equals(TEXT("SpawnActor"), ESearchCase::IgnoreCase))          { OutOp = EOp::SpawnActor; return true; }
 		if (OpStr.Equals(TEXT("SetActorTransform"), ESearchCase::IgnoreCase))   { OutOp = EOp::SetActorTransform; return true; }
 		if (OpStr.Equals(TEXT("DeleteActor"), ESearchCase::IgnoreCase))         { OutOp = EOp::DeleteActor; return true; }
+		if (OpStr.Equals(TEXT("ReadActorInstance"), ESearchCase::IgnoreCase))   { OutOp = EOp::ReadActorInstance; return true; }
 		if (OpStr.Equals(TEXT("ReadOutputLog"), ESearchCase::IgnoreCase))       { OutOp = EOp::ReadOutputLog; return true; }
 		if (OpStr.Equals(TEXT("GetEditorState"), ESearchCase::IgnoreCase))      { OutOp = EOp::GetEditorState; return true; }
 		if (OpStr.Equals(TEXT("RunPythonScript"), ESearchCase::IgnoreCase))     { OutOp = EOp::RunPythonScript; return true; }
@@ -4528,6 +4530,154 @@ namespace
 		Obj->SetStringField(TEXT("class"),      DA->GetClass()->GetName());
 		Obj->SetObjectField(TEXT("properties"), Props);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// /Mount/__ExternalActors__/<level...>/<a>/<bb>/<guid> -> /Mount/<level...>
+	// World Partition stores each level-placed actor in its own external
+	// package under __ExternalActors__; the owning level path is recoverable
+	// by dropping the __ExternalActors__ segment and the trailing
+	// <2char>/<2char>/<guid> tail. Pure string transform — no world load.
+	FString DeriveOwningLevelFromExternalActorPath(const FString& Path)
+	{
+		TArray<FString> Seg;
+		Path.ParseIntoArray(Seg, TEXT("/"), /*CullEmpty=*/true);
+		const int32 ExtIdx = Seg.IndexOfByPredicate(
+			[](const FString& S){ return S == TEXT("__ExternalActors__"); });
+		if (ExtIdx == INDEX_NONE) { return FString(); }
+		TArray<FString> Out;
+		for (int32 i = 0; i < Seg.Num(); ++i) { if (i != ExtIdx) { Out.Add(Seg[i]); } }
+		for (int32 k = 0; k < 3 && Out.Num() > 0; ++k) { Out.Pop(); }   // drop a/bb/guid
+		if (Out.Num() == 0) { return FString(); }
+		return TEXT("/") + FString::Join(Out, TEXT("/"));
+	}
+
+	// read_actor_instance: load ANY UObject (incl. an OFPA external-actor
+	// package the BP-only read path can't open) and report its class, label,
+	// transform, owning level, and the properties it overrides relative to its
+	// archetype. Answers "what is this placed instance and what did it change?"
+	int32 RunReadActorInstanceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		if (AssetPath.IsEmpty())
+		{
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing -Asset="));
+		}
+		const bool bExternal = AssetPath.Contains(TEXT("__ExternalActors__"));
+
+		// Regular assets resolve via the .leaf object path; OFPA external
+		// actors (object name != package leaf) need the package loaded + the
+		// primary actor found within it.
+		UObject* Obj = nullptr;
+		{
+			FString ObjPath = AssetPath;
+			if (!ObjPath.Contains(TEXT(".")))
+			{
+				int32 Slash = INDEX_NONE;
+				if (ObjPath.FindLastChar(TEXT('/'), Slash))
+				{
+					ObjPath = ObjPath + TEXT(".") + ObjPath.Mid(Slash + 1);
+				}
+			}
+			Obj = StaticLoadObject(UObject::StaticClass(), nullptr, *ObjPath,
+								   nullptr, LOAD_NoWarn | LOAD_Quiet);
+		}
+		if (!Obj)
+		{
+			if (UPackage* Pkg = LoadPackage(nullptr, *AssetPath, LOAD_NoWarn | LOAD_Quiet))
+			{
+				AActor* FoundActor = nullptr;
+				UObject* FoundAny = nullptr;
+				ForEachObjectWithPackage(Pkg, [&](UObject* O)
+				{
+					if (AActor* A = Cast<AActor>(O)) { FoundActor = A; return false; }
+					if (!FoundAny && O->GetClass()->GetName() != TEXT("MetaData")) { FoundAny = O; }
+					return true;
+				}, /*bIncludeNestedObjects=*/false);
+				Obj = FoundActor ? static_cast<UObject*>(FoundActor) : FoundAny;
+			}
+		}
+		if (!IsValid(Obj))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("object_not_found: %s"), *AssetPath));
+		}
+
+		auto Root = MakeShared<FJsonObject>();
+		Root->SetBoolField(TEXT("ok"), true);
+		Root->SetStringField(TEXT("asset_path"),   AssetPath);
+		Root->SetStringField(TEXT("object_class"), Obj->GetClass()->GetName());
+		Root->SetStringField(TEXT("object_name"),  Obj->GetName());
+		Root->SetBoolField(TEXT("is_external"),    bExternal);
+
+		AActor* Actor = Cast<AActor>(Obj);
+		Root->SetBoolField(TEXT("is_actor"), Actor != nullptr);
+		if (Actor)
+		{
+			Root->SetStringField(TEXT("label"), Actor->GetActorLabel());
+			const FTransform X = Actor->GetActorTransform();
+			const FVector  L = X.GetLocation();
+			const FRotator R = X.Rotator();
+			const FVector  S = X.GetScale3D();
+			auto Loc = MakeShared<FJsonObject>();
+			Loc->SetNumberField(TEXT("x"), L.X); Loc->SetNumberField(TEXT("y"), L.Y); Loc->SetNumberField(TEXT("z"), L.Z);
+			auto Rot = MakeShared<FJsonObject>();
+			Rot->SetNumberField(TEXT("pitch"), R.Pitch); Rot->SetNumberField(TEXT("yaw"), R.Yaw); Rot->SetNumberField(TEXT("roll"), R.Roll);
+			auto Scl = MakeShared<FJsonObject>();
+			Scl->SetNumberField(TEXT("x"), S.X); Scl->SetNumberField(TEXT("y"), S.Y); Scl->SetNumberField(TEXT("z"), S.Z);
+			auto Xf = MakeShared<FJsonObject>();
+			Xf->SetObjectField(TEXT("location"), Loc);
+			Xf->SetObjectField(TEXT("rotation"), Rot);
+			Xf->SetObjectField(TEXT("scale"),    Scl);
+			Root->SetObjectField(TEXT("transform"), Xf);
+		}
+
+		FString OwningLevel;
+		if (bExternal)
+		{
+			OwningLevel = DeriveOwningLevelFromExternalActorPath(AssetPath);
+		}
+		else if (Actor && Actor->GetLevel())
+		{
+			if (UWorld* W = Actor->GetLevel()->GetTypedOuter<UWorld>())
+			{
+				if (UPackage* WP = W->GetPackage()) { OwningLevel = WP->GetName(); }
+			}
+		}
+		if (!OwningLevel.IsEmpty())
+		{
+			Root->SetStringField(TEXT("owning_level"), OwningLevel);
+		}
+
+		// Overridden (non-default) properties vs the archetype — what a placed
+		// instance actually changed relative to its class/template.
+		UObject* Archetype = Obj->GetArchetype();
+		TArray<TSharedPtr<FJsonValue>> Overrides;
+		for (TFieldIterator<FProperty> It(Obj->GetClass()); It; ++It)
+		{
+			FProperty* P = *It;
+			if (P->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient |
+									   CPF_NonPIEDuplicateTransient | CPF_Deprecated))
+			{
+				continue;
+			}
+			const void* Cur = P->ContainerPtrToValuePtr<void>(Obj);
+			const void* Def = Archetype ? P->ContainerPtrToValuePtr<void>(Archetype) : nullptr;
+			if (Def && P->Identical(Cur, Def, PPF_DeepComparison))
+			{
+				continue;
+			}
+			FString ValueStr;
+			P->ExportTextItem_Direct(ValueStr, Cur, Def, Obj, PPF_None);
+			auto O = MakeShared<FJsonObject>();
+			O->SetStringField(TEXT("name"),  P->GetName());
+			O->SetStringField(TEXT("type"),  P->GetClass() ? P->GetClass()->GetName() : FString());
+			O->SetStringField(TEXT("value"), ValueStr);
+			Overrides.Add(MakeShared<FJsonValueObject>(O));
+		}
+		Root->SetArrayField(TEXT("overrides"), Overrides);
+		Root->SetNumberField(TEXT("override_count"), Overrides.Num());
+
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Root, bPretty), OutputPath);
 	}
 
 	int32 RunCreateDataAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -11170,6 +11320,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::CompileBehaviorTree,        &RunCompileBehaviorTreeOp },
 		{ EOp::ListDataAssets,             &RunListDataAssetsOp },
 		{ EOp::ReadDataAsset,              &RunReadDataAssetOp },
+		{ EOp::ReadActorInstance,         &RunReadActorInstanceOp },
 		{ EOp::CreateDataAsset,            &RunCreateDataAssetOp },
 		{ EOp::SetDataAssetProperty,       &RunSetDataAssetPropertyOp },
 		{ EOp::ListStateTrees,             &RunListStateTreesOp },
