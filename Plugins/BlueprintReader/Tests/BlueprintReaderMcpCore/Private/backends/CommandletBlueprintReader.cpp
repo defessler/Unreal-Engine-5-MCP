@@ -705,13 +705,31 @@ using namespace commandlet_blueprint_reader_detail2;
 
 nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>& opArgs) {
 	if (cfg_.useDaemon) {
+		// Phase 1 — attach (or spawn) the daemon. A failure here means the
+		// daemon is genuinely unavailable (can't start, handshake timeout,
+		// crashed child), so this call falls back to a one-shot commandlet.
+		SocketBlueprintReader* daemon = nullptr;
+		try {
+			daemon = &EnsureDaemonAttached();
+		} catch (const std::exception& e) {
+			std::fprintf(stderr,
+				"[bp-reader-mcp][commandlet][daemon] daemon unavailable, using one-shot: %s\n",
+				e.what());
+			return RunOpOneShot(opArgs);
+		}
+		// Phase 2 — run the op. ONLY a genuine transport failure
+		// (SocketTransportError: dropped connection, write/read error,
+		// malformed frame) justifies tearing the daemon down and retrying
+		// via a one-shot. An application-level error — the daemon answered
+		// with an error code such as NotFound or CompileSaveFailed — must
+		// propagate as-is: the daemon channel is healthy and a one-shot
+		// would only repeat the same answer at the cost of a full editor
+		// boot. (Previously every std::exception fell back, so each
+		// missing-asset / compile-failure op needlessly spawned an editor.)
 		try {
 			auto args = ToUtf8Args(opArgs);
-			return EnsureDaemonAttached().RunOpRaw(args);
-		} catch (const AssetNotFound&) {
-			throw;  // user-level error; propagate as-is
-		} catch (const std::exception& e) {
-			// Daemon transport failure — log and fall through to one-shot.
+			return daemon->RunOpRaw(args);
+		} catch (const SocketTransportError& e) {
 			// Drop the stale socket and any child we spawned; the next
 			// call's EnsureDaemonAttached spins up a fresh one.
 			std::fprintf(stderr,
@@ -726,6 +744,8 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
 #endif    // defined(_WIN32)
 			return RunOpOneShot(opArgs);
 		}
+		// AssetNotFound / BlueprintReaderError (and any other app-level error
+		// from a daemon response) propagate uncaught — see comment above.
 	}
 	return RunOpOneShot(opArgs);
 }
