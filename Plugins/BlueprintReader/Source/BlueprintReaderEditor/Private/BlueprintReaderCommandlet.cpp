@@ -9381,6 +9381,11 @@ namespace
 		FParse::Value(*Params, TEXT("TypeCategory="),         TypeCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategory="),      TypeSubCategory);
 		FParse::Value(*Params, TEXT("TypeSubCategoryObject="), TypeSubObject);
+		// Map value terminal type (the -Type* flags above describe the key).
+		FString TypeValueCategory, TypeValueSubCategory, TypeValueSubObject;
+		FParse::Value(*Params, TEXT("TypeValueCategory="),         TypeValueCategory);
+		FParse::Value(*Params, TEXT("TypeValueSubCategory="),      TypeValueSubCategory);
+		FParse::Value(*Params, TEXT("TypeValueSubCategoryObject="), TypeValueSubObject);
 
 		if (AssetPath.IsEmpty() || VarName.IsEmpty() || TypeCategory.IsEmpty())
 		{
@@ -9399,9 +9404,24 @@ namespace
 		{
 			TypeJson->SetStringField(TEXT("sub_category_object"), TypeSubObject);
 		}
+		const bool bTypeIsMap = FParse::Param(*Params, TEXT("TypeIsMap"));
 		TypeJson->SetBoolField(TEXT("is_array"), FParse::Param(*Params, TEXT("TypeIsArray")));
 		TypeJson->SetBoolField(TEXT("is_set"),   FParse::Param(*Params, TEXT("TypeIsSet")));
-		TypeJson->SetBoolField(TEXT("is_map"),   FParse::Param(*Params, TEXT("TypeIsMap")));
+		TypeJson->SetBoolField(TEXT("is_map"),   bTypeIsMap);
+		if (bTypeIsMap && !TypeValueCategory.IsEmpty())
+		{
+			auto VJson = MakeShared<FJsonObject>();
+			VJson->SetStringField(TEXT("category"), TypeValueCategory);
+			if (!TypeValueSubCategory.IsEmpty())
+			{
+				VJson->SetStringField(TEXT("sub_category"), TypeValueSubCategory);
+			}
+			if (!TypeValueSubObject.IsEmpty())
+			{
+				VJson->SetStringField(TEXT("sub_category_object"), TypeValueSubObject);
+			}
+			TypeJson->SetObjectField(TEXT("value_type"), VJson);
+		}
 
 		FEdGraphPinType PinType;
 		if (!FBlueprintReaderWireJson::ParseWirePinType(TypeJson, PinType))

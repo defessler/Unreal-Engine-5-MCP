@@ -564,6 +564,22 @@ FBPStructuredPinType FBlueprintIntrospector::MakeStructuredPinType(const FEdGrap
 	Out.bIsArray = (T.ContainerType == EPinContainerType::Array);
 	Out.bIsSet   = (T.ContainerType == EPinContainerType::Set);
 	Out.bIsMap   = (T.ContainerType == EPinContainerType::Map);
+	if (Out.bIsMap)
+	{
+		// Capture the map VALUE terminal type (the key is the Category/
+		// SubCategory/SubCategoryObject above). Without this an object-valued
+		// map (e.g. TMap<Pawn, UIndicatorDescriptor>) loses its value type on
+		// recreate and BlueprintMapLibrary wildcards default to int.
+		Out.ValueCategory = T.PinValueType.TerminalCategory.ToString();
+		if (!T.PinValueType.TerminalSubCategory.IsNone())
+		{
+			Out.ValueSubCategory = T.PinValueType.TerminalSubCategory.ToString();
+		}
+		if (UObject* VObj = T.PinValueType.TerminalSubCategoryObject.Get())
+		{
+			Out.ValueSubCategoryObject = VObj->GetPathName();
+		}
+	}
 	return Out;
 }
 

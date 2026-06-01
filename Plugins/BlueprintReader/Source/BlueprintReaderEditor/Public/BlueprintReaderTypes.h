@@ -14,6 +14,12 @@ struct FBPStructuredPinType
 	bool bIsArray = false;
 	bool bIsSet = false;
 	bool bIsMap = false;
+	// For maps only: the value terminal type. Category/SubCategory/
+	// SubCategoryObject above describe the KEY; these describe the VALUE.
+	// Empty for non-map types.
+	FString ValueCategory;
+	FString ValueSubCategory;
+	FString ValueSubCategoryObject;
 };
 
 struct FBPPinLinkInfo
