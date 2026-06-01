@@ -1088,6 +1088,9 @@ static void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+}
+
+static void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- parse_cpp_function (C++ → BPIR) --------------------------------
 	// Closes the BP↔C++ loop: source language → BPIR → BP graph (via
 	// compile_function). Pairs with transpile_function (BPIR → C++) for a
@@ -2234,6 +2237,9 @@ static void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+}
+
+static void RegisterTools_01b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- wire_pins -------------------------------------------------------
 	{
 		ToolDescriptor d;
@@ -3105,6 +3111,9 @@ static void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+}
+
+static void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- save_all -------------------------------------------------------
 	{
 		ToolDescriptor d;
@@ -4188,6 +4197,9 @@ static void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+}
+
+static void RegisterTools_03b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- set_view_mode (Phase 13 Wave 3) ----------------------------
 	{
 		ToolDescriptor d;
@@ -5236,6 +5248,9 @@ static void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+}
+
+static void RegisterTools_04b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- list_plugins (Phase 11 H Tier 1) ----------------------------
 	{
 		ToolDescriptor d;
@@ -8495,6 +8510,9 @@ static void RegisterTools_08(ToolRegistry& registry, backends::IBlueprintReader&
 
 	// ===== Phase 16 H Tier 2 — ConfigSettings nav =========================
 
+}
+
+static void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	// ----- list_project_settings -----
 	{
 		ToolDescriptor d;
@@ -9289,14 +9307,20 @@ static void RegisterTools_09(ToolRegistry& registry, backends::IBlueprintReader&
 // MSVC's front-end heap; see the note on RegisterTools_00).
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	RegisterTools_00(registry, reader);
+	RegisterTools_00b(registry, reader);
 	RegisterTools_01(registry, reader);
+	RegisterTools_01b(registry, reader);
 	RegisterTools_02(registry, reader);
+	RegisterTools_02b(registry, reader);
 	RegisterTools_03(registry, reader);
+	RegisterTools_03b(registry, reader);
 	RegisterTools_04(registry, reader);
+	RegisterTools_04b(registry, reader);
 	RegisterTools_05(registry, reader);
 	RegisterTools_06(registry, reader);
 	RegisterTools_07(registry, reader);
 	RegisterTools_08(registry, reader);
+	RegisterTools_08b(registry, reader);
 	RegisterTools_09(registry, reader);
 }
 
