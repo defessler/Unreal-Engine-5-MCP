@@ -1,6 +1,13 @@
 # Tool Reference
 
-~249 tools spanning Blueprint read/write, batch generation, 6 BP↔C++
+> **Authoritative catalog:** the always-current, generated tool list lives in
+> [`docs/TOOLS.md`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/TOOLS.md)
+> (+ machine-readable [`docs/tools.json`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/tools.json)),
+> emitted from the registry by `Scripts/Dump-Tools.ps1` and CI-guarded against
+> drift. This hand-curated page adds examples; if a count disagrees, the
+> generated catalog wins.
+
+~252 tools spanning Blueprint read/write, batch generation, 6 BP↔C++
 transpile tools, project / content-browser ops, live-editor control,
 material / widget / behavior-tree / data-asset / state-tree / Niagara /
 Sequencer / GAS / AnimGraph authoring, profiling, cook, class
