@@ -34,7 +34,10 @@ jobs:
         run: choco install ninja -y --no-progress
 
       - name: Configure (CMake + Ninja)
-        run: cmake -S Plugins/BlueprintReader/Tests -B build/mcp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        # Debug (/Od): CI verifies correctness, not perf. The optimizing build
+        # (/O2) runs the compiler out of heap on the huge BlueprintTools.cpp TU
+        # (C1060) on the hosted runner's limited RAM; /Od compiles comfortably.
+        run: cmake -S Plugins/BlueprintReader/Tests -B build/mcp -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build (MCP server + doctest suite)
         run: cmake --build build/mcp
