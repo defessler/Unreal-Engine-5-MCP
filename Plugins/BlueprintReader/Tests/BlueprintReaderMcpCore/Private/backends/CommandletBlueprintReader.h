@@ -72,6 +72,11 @@ public:
 		// aborts a slow one-shot. Empty (production default) = never cancels.
 		std::function<bool()> cancelCheck;
 
+		// Mid-op progress relay (current, total, message). Threaded onto the
+		// daemon SocketBlueprintReader (SetProgressSink) so the daemon's
+		// {"type":"progress"} frames reach the MCP CallContext. Empty = off.
+		std::function<void(double, double, const std::string&)> progressSink;
+
 		// Test hook: when set, EnsureDaemonAttached invokes this instead
 		// of the built-in Win32 CreateProcessW spawn. Lets the spawn-race
 		// unit test (test_daemon_lifecycle.cpp) verify that two-lock

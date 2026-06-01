@@ -937,7 +937,11 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 #endif    // defined(_WIN32)
 
 	try {
-		return std::make_unique<SocketBlueprintReader>(std::move(sc));
+		auto sock = std::make_unique<SocketBlueprintReader>(std::move(sc));
+		if (cfg_.progressSink) {
+			sock->SetProgressSink(cfg_.progressSink);
+		}
+		return sock;
 	} catch (...) {
 		return nullptr;
 	}
