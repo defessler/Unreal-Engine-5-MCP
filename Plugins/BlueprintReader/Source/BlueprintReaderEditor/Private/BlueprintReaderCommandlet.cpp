@@ -6218,26 +6218,37 @@ namespace
 		// mesh paint, modeling). Missing exotic / plugin-shipped modes
 		// is acceptable — agents that need to detect those can ship a
 		// follow-up tool with a name allow-list.
-		FEditorModeTools& ModeTools = GLevelEditorModeTools();
-		// Use literal FName IDs — only EM_Default lives in UnrealEd; the
-		// other built-in modes live in plugin modules we don't link
-		// (LandscapeEditor / FoliageEdit / MeshPaint / etc.). The
-		// IsModeActive query works against any FName ID regardless of
-		// whether the mode's plugin is loaded — we just won't get
-		// positive results when the corresponding plugin isn't active.
-		auto Check = [&](FName Id, const TCHAR* Wire) {
-			if (ModeTools.IsModeActive(Id))
-			{
-				Modes.Add(MakeShared<FJsonValueString>(FString(Wire)));
-			}
-		};
-		Check(FName(TEXT("EM_Default")),       TEXT("EM_Default"));
-		Check(FName(TEXT("EM_Placement")),     TEXT("EM_Placement"));
-		Check(FName(TEXT("EM_Landscape")),     TEXT("EM_Landscape"));
-		Check(FName(TEXT("EM_Foliage")),       TEXT("EM_Foliage"));
-		Check(FName(TEXT("EM_MeshPaint")),     TEXT("EM_MeshPaint"));
-		Check(FName(TEXT("EM_Level")),         TEXT("EM_Level"));
-		Check(FName(TEXT("EM_ModelingToolsEditorMode")), TEXT("EM_Modeling"));
+		// GLevelEditorModeTools() resolves the level-editor mode manager, which only
+		// exists in an interactive editor. In a headless / commandlet editor (the
+		// daemon) it asserts and HARD-CRASHES the process (took down the daemon's
+		// live server mid-frame). Guard on commandlet mode; headless reports no
+		// active modes. A real interactive editor (the only non-commandlet host of
+		// the live server) probes the modes as before.
+		const bool bUiAvailable = !IsRunningCommandlet();
+		if (bUiAvailable)
+		{
+			FEditorModeTools& ModeTools = GLevelEditorModeTools();
+			// Use literal FName IDs — only EM_Default lives in UnrealEd; the
+			// other built-in modes live in plugin modules we don't link
+			// (LandscapeEditor / FoliageEdit / MeshPaint / etc.). The
+			// IsModeActive query works against any FName ID regardless of
+			// whether the mode's plugin is loaded — we just won't get
+			// positive results when the corresponding plugin isn't active.
+			auto Check = [&](FName Id, const TCHAR* Wire) {
+				if (ModeTools.IsModeActive(Id))
+				{
+					Modes.Add(MakeShared<FJsonValueString>(FString(Wire)));
+				}
+			};
+			Check(FName(TEXT("EM_Default")),       TEXT("EM_Default"));
+			Check(FName(TEXT("EM_Placement")),     TEXT("EM_Placement"));
+			Check(FName(TEXT("EM_Landscape")),     TEXT("EM_Landscape"));
+			Check(FName(TEXT("EM_Foliage")),       TEXT("EM_Foliage"));
+			Check(FName(TEXT("EM_MeshPaint")),     TEXT("EM_MeshPaint"));
+			Check(FName(TEXT("EM_Level")),         TEXT("EM_Level"));
+			Check(FName(TEXT("EM_ModelingToolsEditorMode")), TEXT("EM_Modeling"));
+		}
+		Out->SetBoolField(TEXT("ui_available"), bUiAvailable);
 		Out->SetArrayField(TEXT("active_modes"), Modes);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
@@ -9197,23 +9208,36 @@ namespace
 		FString Folder;
 		FParse::Value(*Params, TEXT("Folder="), Folder);
 		FString Confirmed;
-		if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
+		// SyncBrowserToFolders drives the content-browser PATH-VIEW WIDGET. In a
+		// headless / commandlet editor (the daemon) the ContentBrowser singleton
+		// exists but its widgets don't, so the sync dereferences null and HARD-
+		// CRASHES the process — which took down the daemon's live server mid-frame
+		// ("connection closed before frame complete"). The read-only Get op is safe
+		// (returns empty), only this write touches the widget. Guard on commandlet
+		// mode: a real interactive editor (the only non-commandlet host of the live
+		// server) has the UI and performs the sync as before.
+		const bool bUiAvailable = !IsRunningCommandlet();
+		if (bUiAvailable)
 		{
-			if (!Folder.IsEmpty())
+			if (IContentBrowserSingleton* CB = GetContentBrowserOrNull())
 			{
-				TArray<FString> Paths;
-				Paths.Add(Folder);
-				CB->SyncBrowserToFolders(Paths);
-				TArray<FString> ConfirmedPaths;
-				CB->GetSelectedPathViewFolders(ConfirmedPaths);
-				if (ConfirmedPaths.Num() > 0)
+				if (!Folder.IsEmpty())
 				{
-					Confirmed = ConfirmedPaths[0];
+					TArray<FString> Paths;
+					Paths.Add(Folder);
+					CB->SyncBrowserToFolders(Paths);
+					TArray<FString> ConfirmedPaths;
+					CB->GetSelectedPathViewFolders(ConfirmedPaths);
+					if (ConfirmedPaths.Num() > 0)
+					{
+						Confirmed = ConfirmedPaths[0];
+					}
 				}
 			}
 		}
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("ui_available"), bUiAvailable);
 		Out->SetStringField(TEXT("current_path"), Confirmed);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
