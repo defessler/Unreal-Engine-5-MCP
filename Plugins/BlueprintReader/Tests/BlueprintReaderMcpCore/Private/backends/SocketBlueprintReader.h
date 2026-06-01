@@ -136,6 +136,7 @@ public:
 													bool createDirs) override;
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
+	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 
 	// ----- Asset-registry queries ---------------------------------------
 	AssetRegistryListResult ListAssets(std::string_view path, bool recursive) override;

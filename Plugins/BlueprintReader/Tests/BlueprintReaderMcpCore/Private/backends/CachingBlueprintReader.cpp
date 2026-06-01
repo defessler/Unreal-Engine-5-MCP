@@ -462,6 +462,9 @@ nlohmann::json CachingBlueprintReader::StructuralDiff(
 	std::string_view a, std::string_view b, const StructuralDiffOptions& opts) {
 	return inner_->StructuralDiff(a, b, opts);
 }
+nlohmann::json CachingBlueprintReader::ReadActorInstance(std::string_view assetPath) {
+	return inner_->ReadActorInstance(assetPath);
+}
 
 // ----- Asset-registry queries (pass-through) -----------------------------
 

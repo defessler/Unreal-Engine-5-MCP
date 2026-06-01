@@ -30,10 +30,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 251 tools (249 prior + clone_graph + implement_interface) with input schemas") {
+TEST_CASE("ToolRegistry exposes 252 tools (251 prior + read_actor_instance) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 251);
+	CHECK(spec.size() == 252);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -532,6 +532,19 @@ TEST_CASE("did-you-mean: only the input matches (as a Blueprint) => no misleadin
 	auto msg = ReadBlueprintError(reader, "/Game/AI/BP_Ghost");
 	CHECK(msg.find("did you mean") == std::string::npos);
 	CHECK(msg.find("exists but is a") == std::string::npos);
+}
+
+TEST_CASE("read_actor_instance: unsupported on mock backend (needs a UObject world)") {
+	// Client feedback #1. Mock has no world/registry, so the tool throws and
+	// is advertised in UnsupportedTools() (catalog hides it under mock). The
+	// real behavior is exercised by the live commandlet test.
+	Fixture f;
+	CHECK_THROWS_AS(f.Call("read_actor_instance",
+		json{{"asset_path","/Game/Maps/L_X/__ExternalActors__/0/AB/GUID"}}),
+		bpr::backends::BlueprintReaderError);
+	auto unsupported = f.reader.UnsupportedTools();
+	CHECK(std::find(unsupported.begin(), unsupported.end(), "read_actor_instance")
+		  != unsupported.end());
 }
 
 TEST_CASE("find_overriders: requires at least one filter") {

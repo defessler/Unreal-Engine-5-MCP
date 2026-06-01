@@ -81,6 +81,7 @@ public:
 	// Structural diff is a read op (no .uasset mutation) — pass through.
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
+	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 
 	// ----- Asset-registry queries (reads) -------------------------------
 	AssetRegistryListResult ListAssets(std::string_view, bool) override;

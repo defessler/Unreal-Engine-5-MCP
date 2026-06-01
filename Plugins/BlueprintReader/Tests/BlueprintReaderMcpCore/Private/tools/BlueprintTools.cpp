@@ -721,6 +721,69 @@ static void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader&
 		});
 	}
 
+	// ----- read_actor_instance ---------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "read_actor_instance";
+		d.description =
+			"[assets] Read ANY object instance by package path — including a "
+			"level-placed actor stored in its own external package under "
+			"`/<Mount>/__ExternalActors__/...` (World Partition / One-File-Per-"
+			"Actor), which `read_blueprint` can't open. Returns the object's "
+			"class/name, and for actors the label + transform + owning level, "
+			"plus `overrides` — the properties this instance changed relative to "
+			"its archetype (exported-text values). Use this to inspect a "
+			"misconfigured *placed instance* (the common real-world bug) rather "
+			"than the Blueprint class it came from. `fields` projects the "
+			"response (e.g. [\"object_class\",\"overrides[].name\"]).";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path", {{"type", "string"},
+								{"description", "Package path of the instance — e.g. an external-actor "
+												"path /Game/__ExternalActors__/Maps/L_X/0/AB/GUID, or any "
+												"/Game/... UObject."}}},
+				{"fields", FieldsProperty()},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"ok",            {{"type", "boolean"}}},
+				{"asset_path",    {{"type", "string"}}},
+				{"object_class",  {{"type", "string"}}},
+				{"object_name",   {{"type", "string"}}},
+				{"is_actor",      {{"type", "boolean"}}},
+				{"is_external",   {{"type", "boolean"}}},
+				{"label",         {{"type", "string"}}},
+				{"owning_level",  {{"type", "string"}}},
+				{"transform",     {{"type", "object"}}},
+				{"override_count",{{"type", "integer"}, {"minimum", 0}}},
+				{"overrides", {
+					{"type", "array"},
+					{"items", {
+						{"type", "object"},
+						{"properties", {
+							{"name",  {{"type", "string"}}},
+							{"type",  {{"type", "string"}}},
+							{"value", {{"type", "string"}}},
+						}},
+						{"required", nlohmann::json::array({"name","value"})},
+					}},
+				}},
+			}},
+			{"required", nlohmann::json::array({"object_class","is_actor","overrides"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto ctl = ParseResponseControls(args);
+			nlohmann::json body = reader.ReadActorInstance(asset);
+			ApplyResponseControls(body, ctl);
+			return body;
+		});
+	}
+
 	// ----- decompile_function (BP graph → BPIR) ---------------------------
 	// Walk a BP function's graph and reconstruct a structured BPIR AST
 	// (see wiki/BPIR.md). Pure server-side; reuses get_function's data.
