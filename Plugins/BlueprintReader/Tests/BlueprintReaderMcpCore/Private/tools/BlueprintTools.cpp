@@ -172,9 +172,10 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 	// ----- find_asset ------------------------------------------------------
 	// Substring-search the asset registry. Pairs with list_assets but
 	// answers a different question — "I'm looking for an asset with X in
-	// its name, anywhere in /Game (or scoped to a subtree)". Returns the
-	// same row shape as list_assets so the agent can pipe one into the
-	// other.
+	// its name, anywhere in /Game (or scoped to a subtree)". Returns a
+	// paginated envelope (a broad query can match thousands of rows, which a
+	// client rejects as "Output too large"); `results` rows share
+	// list_assets' shape.
 	{
 		ToolDescriptor d;
 		d.name = "find_asset";
@@ -182,8 +183,12 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"[assets] Find assets whose name or package path contains `query` (case-insensitive). "
 			"Scoped to `path` (defaults to /Game). Use this instead of "
 			"shelling out to `Get-ChildItem` / `find` — asset registry is "
-			"O(N) once and lives in memory. Returns "
-			"`[{asset_path, name, class_name}, ...]`.";
+			"O(N) once and lives in memory. Returns a paginated envelope "
+			"`{total, count, offset, has_more, next_cursor, results:[{asset_path, name, class_name}, ...]}`. "
+			"Capped at 50 results per page by default (a broad `query` can "
+			"match thousands); pass `limit` to change the page size and "
+			"`next_cursor` (or `offset`) to fetch the next page. `total` is "
+			"the full match count so you know how many pages remain.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -200,31 +205,46 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"query"})},
 		};
 		d.output_schema = {
-			{"type", "array"},
-			{"items", {
-				{"type", "object"},
-				{"properties", {
-					{"asset_path", {{"type", "string"}}},
-					{"name",       {{"type", "string"}}},
-					{"class_name", {{"type", "string"}}},
+			{"type", "object"},
+			{"properties", {
+				{"query",       {{"type", "string"}}},
+				{"path",        {{"type", "string"}}},
+				{"total",       {{"type", "integer"}, {"minimum", 0}}},
+				{"count",       {{"type", "integer"}, {"minimum", 0}}},
+				{"offset",      {{"type", "integer"}, {"minimum", 0}}},
+				{"has_more",    {{"type", "boolean"}}},
+				{"next_cursor", {{"type", nlohmann::json::array({"string", "null"})}}},
+				{"results", {
+					{"type", "array"},
+					{"items", {
+						{"type", "object"},
+						{"properties", {
+							{"asset_path", {{"type", "string"}}},
+							{"name",       {{"type", "string"}}},
+							{"class_name", {{"type", "string"}}},
+						}},
+						{"required", nlohmann::json::array({"asset_path","class_name"})},
+					}},
 				}},
-				{"required", nlohmann::json::array({"asset_path","class_name"})},
 			}},
+			{"required", nlohmann::json::array({"total","count","has_more","results"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string q = RequireString(args, "query");
 			std::string path = OptString(args, "path", "/Game");
 			auto ctl = ParseResponseControls(args);
 			auto res = reader.FindAsset(q, path);
-			nlohmann::json body = nlohmann::json::array();
+			nlohmann::json rows = nlohmann::json::array();
 			for (const auto& e : res.entries) {
-				body.push_back({
+				rows.push_back({
 					{"asset_path", e.assetPath},
 					{"name",       e.name},
 					{"class_name", e.className},
 				});
 			}
-			ApplyResponseControls(body, ctl);
+			nlohmann::json body = BuildPaginatedBody(std::move(rows), ctl, /*defaultLimit=*/50);
+			body["query"] = q;
+			body["path"]  = path;
 			return body;
 		});
 	}
