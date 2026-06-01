@@ -314,6 +314,12 @@ nlohmann::json MockBlueprintReader::StructuralDiff(
 		"(needs UBlueprint reflection that mock fixtures don't provide)");
 }
 
+nlohmann::json MockBlueprintReader::ReadActorInstance(std::string_view) {
+	throw BlueprintReaderError(
+		"ReadActorInstance requires the live or commandlet backend "
+		"(needs a UObject world that mock fixtures don't provide)");
+}
+
 std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 	// Tools the mock backend doesn't implement and would otherwise
 	// throw "not supported by this backend" for. Main.cpp deny-filters
@@ -374,6 +380,8 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_project_metadata",
 		// Generic asset registry — fixtures aren't the asset registry
 		"list_assets", "find_asset",
+		// Reads an arbitrary UObject / OFPA actor instance — needs a world
+		"read_actor_instance",
 		// Phase 8 EA-pull Wave 1 (partial) — all require a live editor
 		"list_open_assets", "get_active_asset", "get_compile_status",
 		"get_dirty_packages", "get_focused_window",

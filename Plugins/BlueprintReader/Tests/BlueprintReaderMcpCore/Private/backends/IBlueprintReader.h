@@ -73,6 +73,19 @@ public:
 		throw BlueprintReaderError("StructuralDiff not supported by this backend");
 	}
 
+	// Read ANY UObject instance by package path — including a level-placed
+	// actor stored in its own external (OFPA / World Partition) package under
+	// /<Mount>/__ExternalActors__/... that the Blueprint-only read path can't
+	// open. Returns {ok, asset_path, object_class, object_name, is_actor,
+	// is_external, label?, transform?, owning_level?, overrides[], override_count}
+	// where `overrides` are the properties this instance changed relative to
+	// its archetype (exported text). Read-only — passes through ReadOnly.
+	// Requires the live or commandlet backend (mock has no UObject world).
+	virtual nlohmann::json ReadActorInstance(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("ReadActorInstance not supported by this backend");
+	}
+
 	// Write tools. Backends that don't support mutation throw
 	// BlueprintReaderError. Each call should leave the .uasset compilable.
 

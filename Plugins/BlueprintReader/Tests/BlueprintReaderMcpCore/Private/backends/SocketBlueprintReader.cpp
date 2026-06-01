@@ -965,6 +965,14 @@ nlohmann::json SocketBlueprintReader::StructuralDiff(
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::ReadActorInstance(std::string_view assetPath) {
+	std::vector<std::string> args = {
+		"-Op=ReadActorInstance",
+		"-Asset=" + std::string(assetPath),
+	};
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

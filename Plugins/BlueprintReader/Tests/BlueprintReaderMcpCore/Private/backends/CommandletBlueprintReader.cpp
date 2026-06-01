@@ -1714,6 +1714,13 @@ nlohmann::json CommandletBlueprintReader::StructuralDiff(
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::ReadActorInstance(std::string_view assetPath) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=ReadActorInstance");
+	args.push_back(L"-Asset=" + Widen(assetPath));
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

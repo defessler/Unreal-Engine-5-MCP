@@ -124,6 +124,7 @@ public:
 	// not a hot loop in practice). Pass through.
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
+	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 
 	// ----- Asset-registry queries (pass-through) ------------------------
 	// Asset registry is hot in the editor; no TTL caching needed.
