@@ -119,6 +119,7 @@
 #include "Engine/Selection.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"               // TActorIterator
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "Factories/BlueprintFactory.h"
 #include "Factories/BlueprintFunctionLibraryFactory.h"
 #include "FileHelpers.h"
@@ -10008,7 +10009,56 @@ namespace
 		TMap<FName, UEdGraph*> MacroMap;
 		CloneGraphContents(SrcBP, DstBP, SrcGraph, DstGraph, Visited, MacroMap, &Stats);
 
-		const bool bOk = CompileAndSaveBlueprint(DstBP);
+		bool bOk = CompileAndSaveBlueprint(DstBP);
+
+		// Post-compile self-context rebind. K2Node_CallFunction::AllocateDefaultPins
+		// has a fallback: when a self-context call's member isn't resolvable yet, it
+		// searches ALL UBlueprintFunctionLibrary classes for a same-named function
+		// and SetFromFunction()s the node to it. So a call to a LOCAL member (e.g. a
+		// CustomEvent "ShowLoadingScreen") whose name collides with a global static
+		// (XRLoadingScreenFunctionLibrary::ShowLoadingScreen) gets mis-bound to the
+		// library at import time — the local member isn't on the skeleton class yet.
+		// The compile above has now put the local members on the skeleton class, so
+		// rebind any such mis-bound call back to the local member. Targeted: only
+		// fires when the SOURCE call was self-context AND a local member now exists.
+		{
+			TSet<FIntPoint> SrcSelfCtxPos;
+			for (UEdGraphNode* N : SrcGraph->Nodes)
+			{
+				if (UK2Node_CallFunction* SC = Cast<UK2Node_CallFunction>(N))
+				{
+					if (SC->FunctionReference.IsSelfContext())
+					{
+						SrcSelfCtxPos.Add(FIntPoint(N->NodePosX, N->NodePosY));
+					}
+				}
+			}
+			UClass* SkelClass = DstBP->SkeletonGeneratedClass;
+			bool bRebound = false;
+			if (SkelClass && SrcSelfCtxPos.Num() > 0)
+			{
+				for (UEdGraphNode* N : DstGraph->Nodes)
+				{
+					UK2Node_CallFunction* DC = Cast<UK2Node_CallFunction>(N);
+					if (!DC || DC->FunctionReference.IsSelfContext()) { continue; }
+					if (!SrcSelfCtxPos.Contains(FIntPoint(N->NodePosX, N->NodePosY))) { continue; }
+					UFunction* Bound = DC->GetTargetFunction();
+					UClass* Owner = Bound ? Bound->GetOwnerClass() : nullptr;
+					if (!Owner || !Owner->IsChildOf(UBlueprintFunctionLibrary::StaticClass())) { continue; }
+					if (UFunction* Local = FindUField<UFunction>(SkelClass, DC->FunctionReference.GetMemberName()))
+					{
+						DC->SetFromFunction(Local);
+						DC->ReconstructNode();
+						bRebound = true;
+					}
+				}
+			}
+			if (bRebound)
+			{
+				bOk = CompileAndSaveBlueprint(DstBP) && bOk;
+			}
+		}
+
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), bOk);
 		Out->SetStringField(TEXT("graph"), GraphName);
