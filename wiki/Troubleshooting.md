@@ -79,7 +79,7 @@ Remove-Item -Recurse -Force "D:\Projects\UE5_MCP\.idea"
 
 ## `fatal error C1083: cannot open include file` while building the editor target
 
-Three engine modules in the 5.7 GitHub source declare `PrivateIncludePaths`
+Three engine modules in the 5.8 GitHub source declare `PrivateIncludePaths`
 relative to `Engine/Source/` rather than the module directory. That
 breaks project-target builds with `-DUE_TARGET_BUILD_ENVIRONMENT=Shared`.
 

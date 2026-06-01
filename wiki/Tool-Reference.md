@@ -963,7 +963,7 @@ JSON for anything else.
   "ok": true,
   "project_name":       "UE5_MCP",
   "project_path":       "D:/Projects/UE5_MCP/LyraStarterGame.uproject",
-  "engine_association": "5.7",
+  "engine_association": "5.8",
   "category":           "",
   "description":        "",
   "raw":                { ... full .uproject ... }

@@ -2,17 +2,17 @@
 
 > **What this repo is.** It tracks the **`BlueprintReader` plugin + its
 > docs** — not a full game project. You mount
-> `Plugins/BlueprintReader/` into your own UE 5.7 project's `Plugins/`
+> `Plugins/BlueprintReader/` into your own UE 5.8 project's `Plugins/`
 > folder and build that project's editor target. The plugin is
 > project-agnostic; set `BP_READER_PROJECT` and `BP_READER_EDITOR_TARGET`
 > when invoking against any project. The maintainer develops against a
-> local (untracked) Lyra Starter Game host on UE 5.7.4, where
+> local (untracked) Lyra Starter Game host on UE 5.8, where
 > `transpile_blueprint` produced C++ companion classes for all 302 Lyra
 > blueprints — that conversion recipe + lessons-learned live in
 > [`docs/research/lyra-bp-to-cpp-conversion.md`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/research/lyra-bp-to-cpp-conversion.md).
 
 
-A standalone MCP server + UE 5.7 plugin that lets Claude (or any MCP
+A standalone MCP server + UE 5.8 plugin that lets Claude (or any MCP
 client) read, edit, **and round-trip BPs to/from C++** — variables,
 graphs, nodes, connections, K2 metadata — through 252 tools.
 
@@ -46,7 +46,7 @@ graphs, nodes, connections, K2 metadata — through 252 tools.
 
 If you just want Claude to read your Blueprints:
 
-1. Copy `Plugins/BlueprintReader/` from this repo into your own UE 5.7
+1. Copy `Plugins/BlueprintReader/` from this repo into your own UE 5.8
    project's `Plugins/` folder (a fresh clone has no `.uproject` of its own).
 2. [Set up + build the engine](Installation#2-build-the-engine) — 1–3 hours
    first time (UE source build).
