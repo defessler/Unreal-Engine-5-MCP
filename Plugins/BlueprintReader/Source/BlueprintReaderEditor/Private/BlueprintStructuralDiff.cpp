@@ -28,13 +28,23 @@ namespace
 	// path with the placeholder `<SELF>` so signatures compare equal across
 	// source/clone BPs. Otherwise the source BP's `self` pin would always
 	// differ from the clone BP's `self` pin even when structurally identical.
-	FString PinTypeStr(const FEdGraphPinType& T, UBlueprint* SelfBP)
+	FString PinTypeStr(const FEdGraphPinType& T, UBlueprint* SelfBP, UBlueprint* OtherBP = nullptr)
 	{
 		FString ObjPath;
 		if (T.PinSubCategoryObject.IsValid())
 		{
 			UObject* Obj = T.PinSubCategoryObject.Get();
-			if (SelfBP && SelfBP->GeneratedClass && Obj == SelfBP->GeneratedClass)
+			// Substitute <SELF> when the pin references EITHER compared BP's own
+			// GeneratedClass. Normalizing against both (not just SelfBP) matters for
+			// a recreate into a DIFFERENT asset name: a self-referential struct
+			// field (e.g. Message_NameplateRequest.NameplateManager typed to the
+			// owning component) names the SOURCE's class on both sides — that's
+			// <SELF> for the source but would otherwise stay an explicit path for
+			// the recreate (whose own class has a different name), a false diff.
+			const bool bIsSelf =
+				(SelfBP  && SelfBP->GeneratedClass  && Obj == SelfBP->GeneratedClass) ||
+				(OtherBP && OtherBP->GeneratedClass && Obj == OtherBP->GeneratedClass);
+			if (bIsSelf)
 			{
 				ObjPath = TEXT("<SELF>");
 			}
@@ -52,7 +62,7 @@ namespace
 			T.IsMap()   ? TEXT("(map)") : TEXT(""));
 	}
 
-	FString NodeSignature(UEdGraphNode* N, UBlueprint* SelfBP)
+	FString NodeSignature(UEdGraphNode* N, UBlueprint* SelfBP, UBlueprint* OtherBP = nullptr)
 	{
 		FString Sig = N->GetClass()->GetName() + TEXT("|") +
 		              N->GetNodeTitle(ENodeTitleType::ListView).ToString();
@@ -73,7 +83,7 @@ namespace
 			Sig += FString::Printf(TEXT("|%s:%s:%s"),
 				*P->PinName.ToString(),
 				P->Direction == EGPD_Input ? TEXT("In") : TEXT("Out"),
-				*PinTypeStr(P->PinType, SelfBP));
+				*PinTypeStr(P->PinType, SelfBP, OtherBP));
 		}
 		return Sig;
 	}
@@ -102,8 +112,8 @@ namespace
 			}
 			const FBPVariableDescription* VA = Pair.Value;
 			const FBPVariableDescription* VB = *Found;
-			const FString TA = PinTypeStr(VA->VarType, A);
-			const FString TB = PinTypeStr(VB->VarType, B);
+			const FString TA = PinTypeStr(VA->VarType, A, B);
+			const FString TB = PinTypeStr(VB->VarType, B, A);
 			if (TA != TB)
 			{
 				Add(R, FString::Printf(TEXT("variables.%s.type"), *Pair.Key.ToString()),
@@ -224,7 +234,7 @@ namespace
 			{
 				continue;
 			}
-			SigCountA.FindOrAdd(NodeSignature(N, BPA))++;
+			SigCountA.FindOrAdd(NodeSignature(N, BPA, BPB))++;
 		}
 		for (UEdGraphNode* N : GB->Nodes)
 		{
@@ -232,7 +242,7 @@ namespace
 			{
 				continue;
 			}
-			SigCountB.FindOrAdd(NodeSignature(N, BPB))++;
+			SigCountB.FindOrAdd(NodeSignature(N, BPB, BPA))++;
 		}
 
 		for (const auto& Pair : SigCountA)
