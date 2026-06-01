@@ -16,7 +16,7 @@
 A standalone MCP server that lets Claude (or any MCP client) read (**and
 optionally edit**) Unreal Engine 5 Blueprint assets — variables, graphs,
 nodes, connections, K2 metadata — and **round-trip BPs to/from C++** via
-~249 tools backed by the bundled `BlueprintReader` UE plugin. The server
+~251 tools backed by the bundled `BlueprintReader` UE plugin. The server
 is **read-only by default**; enable mutation with `BP_READER_ALLOW_WRITE=1`
 (see [Configuration](#configuration-env-vars)).
 
@@ -57,7 +57,7 @@ The plugin ships as two modules with proper isolation:
 
 ## Tools
 
-~249 tools — see the
+~251 tools — see the
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
 for every input/output shape with examples. The table below summarizes the
 main authoring categories; the full surface (including ~120 editor-state /

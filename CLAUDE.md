@@ -14,7 +14,7 @@ work (302 companion classes, recipe + lessons-learned) is documented in
 The old `setup.bat` + Lyra asset-restoration flow is no longer in the
 repo (kept locally only; see "Asset restoration" below).
 
-A standalone MCP server that exposes ~249
+A standalone MCP server that exposes ~251
 Blueprint-introspection / mutation / BP↔C++ transpile / editor-control
 tools to MCP
 clients (Claude Code, Claude Desktop, Copilot, ChatGPT bridge). Two
@@ -376,7 +376,7 @@ output changed.
 
 ## Adding a new tool
 
-The pattern is consistent across all 249 tools:
+The pattern is consistent across all 251 tools:
 
 1. **Plugin** (`BlueprintReaderCommandlet.cpp`): add an `EOp` value,
    a `ParseOp` entry, a dispatch line in `RunOneOp`, and a

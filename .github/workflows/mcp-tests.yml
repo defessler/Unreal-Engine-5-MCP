@@ -1,0 +1,56 @@
+name: MCP server tests
+
+# Builds the standalone MCP server + doctest suite via the CMake fallback
+# (Plugins/BlueprintReader/Tests/CMakeLists.txt) and runs the mock-backend
+# doctest suite. The server + tests are pure C++20 (bCompileAgainstEngine=false,
+# vendored json/fmt/doctest) so they build with NO Unreal Engine — exactly what
+# a hosted runner can do. The live/commandlet cases auto-skip without the engine
+# env vars. (UBT-based editor-module + Program-target builds need an engine and
+# are not run here.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Plugins/BlueprintReader/Tests/**'
+      - '.github/workflows/mcp-tests.yml'
+  pull_request:
+    paths:
+      - 'Plugins/BlueprintReader/Tests/**'
+      - '.github/workflows/mcp-tests.yml'
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
+      - name: Configure (CMake + Ninja)
+        # Debug (/Od): CI verifies correctness, not perf. The optimizing build
+        # (/O2) runs the compiler out of heap on the huge BlueprintTools.cpp TU
+        # (C1060) on the hosted runner's limited RAM; /Od compiles comfortably.
+        run: cmake -S Plugins/BlueprintReader/Tests -B build/mcp -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build (MCP server + doctest suite)
+        # -j 2: several heavy TUs (BlueprintTools.cpp, test_editor_subscriptions.cpp)
+        # each need a lot of compiler heap; the default all-cores parallelism makes
+        # them coincide and exhaust the hosted runner's RAM (C1060). Two concurrent
+        # jobs keep peak memory in bounds while staying reasonably fast.
+        run: cmake --build build/mcp -j 2
+
+      - name: Run doctest suite (mock backend)
+        shell: pwsh
+        env:
+          BP_READER_BACKEND: mock
+        run: |
+          & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcpTests.exe"
+          if ($LASTEXITCODE -ne 0) { Write-Host "doctest suite failed ($LASTEXITCODE)"; exit 1 }
+          Write-Host "doctest suite passed."
