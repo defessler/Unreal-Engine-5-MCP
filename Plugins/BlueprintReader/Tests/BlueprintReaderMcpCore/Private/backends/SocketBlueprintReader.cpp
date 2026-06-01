@@ -415,7 +415,12 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	auto j = nlohmann::json::parse(response, nullptr, false);
 	if (!j.is_object()) {
 		Disconnect();
-		throw BlueprintReaderError(
+		// A malformed / non-object frame means the channel is unhealthy
+		// (the daemon didn't answer with a well-formed result/error). Treat
+		// it as a transport failure so the commandlet backend tears the
+		// daemon down and retries via a one-shot rather than surfacing it as
+		// an application error.
+		throw SocketTransportError(
 			"SocketBlueprintReader: server response wasn't a JSON object");
 	}
 	if (j.value("type", "") == "error") {
