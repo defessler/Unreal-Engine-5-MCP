@@ -57,11 +57,19 @@ The plugin ships as two modules with proper isolation:
 
 ## Tools
 
-~251 tools — see the
+The full, always-current catalog is **generated** from the tool registry into
+[`docs/TOOLS.md`](docs/TOOLS.md) (human table) + [`docs/tools.json`](docs/tools.json)
+(machine-readable schemas) — regenerate with
+`Plugins/BlueprintReader/Scripts/Dump-Tools.ps1`, and CI fails if it drifts, so
+counts here are never hand-maintained. The
 [Tool Reference](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Tool-Reference)
-for every input/output shape with examples. The table below summarizes the
-main authoring categories; the full surface (including ~120 editor-state /
-situational-awareness read tools) is enumerated in the wiki Tool Reference.
+wiki adds per-tool examples. The table below summarizes the main authoring
+categories; the bulk of the surface is editor-state / situational-awareness
+read tools (see `docs/TOOLS.md`).
+
+> Token note: progressive disclosure is on by default — `tools/list` advertises
+> only a small `core` subset plus lazy-discovery meta-tools, not the whole
+> surface. See [`AGENTS.md`](AGENTS.md).
 
 | Category | Tools | What they do |
 |----------|-------|--------------|
