@@ -16,6 +16,7 @@ for the implementation plan that generated these notes.
 - [`tpc-anatomy.md`](tpc-anatomy.md) — full inventory of the UE5 ThirdPerson template (drives the roundtrip tests).
 - [`bp-roundtrip-architecture.md`](bp-roundtrip-architecture.md) — what the roundtrip code actually does, lessons-learned, extensibility points.
 - [`lyra-bp-to-cpp-conversion.md`](lyra-bp-to-cpp-conversion.md) — case study: converting all 302 Lyra Starter Game BPs to C++, including the LYRAGAME_API export + Private→Public header decisions.
+- [`improvement-roadmap.md`](improvement-roadmap.md) — **living, status-tracked backlog** of plugin improvements (Epic-MCP parity, ease-of-use, transpiling, install). Unlike the other notes here, this one is kept current as work lands — see its "Maintaining this roadmap" section.
 
 ## How to read
 

@@ -467,6 +467,23 @@ the discoverability list in lockstep.
   `_meta: {elapsed_ms, tool}` per the MCP 2024-11-05 spec extension
   point.
 
+## Improvement roadmap
+
+[`docs/research/improvement-roadmap.md`](docs/research/improvement-roadmap.md)
+is the **live, status-tracked backlog** of plugin improvements (Epic-MCP
+parity, ease-of-use, transpiling, install/distribution). It is a living
+document, not a wishlist — keep it current as part of the work:
+
+- **When you ship an improvement**, flip that item's `Status:` to
+  `✅ Done (PR #N, YYYY-MM-DD)` and add a line to its revision log. Don't
+  delete the item — a done row with its PR is the record.
+- **When you discover a new improvement** (from client feedback, a review, a
+  new Epic release, a bug), add it under the right section with a **new stable
+  ID** and `Status: ☐ Open`, matching the existing Status/Effort/file/why shape.
+- IDs are stable and never reused; abandoned items become `✖ Dropped (reason)`.
+
+The doc's own "Maintaining this roadmap" section has the full protocol.
+
 ## Asset restoration (legacy — no longer in the repo)
 
 The Lyra asset-restoration flow — `setup.bat` at the old project root,
