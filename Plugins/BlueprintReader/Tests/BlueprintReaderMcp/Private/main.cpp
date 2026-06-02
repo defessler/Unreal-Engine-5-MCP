@@ -430,7 +430,7 @@ int RunServerLoop() {
 		env::BoolOrDefault("BP_READER_TOOL_SEARCH", false, std::cerr);
 	// Progressive disclosure is ON BY DEFAULT (opt out with
 	// BP_READER_PROGRESSIVE=0). It advertises the ~35-tool `core` surface
-	// plus the lazy-discovery meta-tools instead of the full ~249, cutting
+	// plus the lazy-discovery meta-tools instead of the full ~252, cutting
 	// the tools/list token cost dramatically. Agents reach the long tail
 	// via `call_tool(name, arguments)` (no widening needed) or by widening
 	// the advertised set with `enable_tool_category`.

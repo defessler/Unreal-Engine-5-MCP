@@ -63,7 +63,7 @@ TEST_CASE("progressive default-on: lean core surface + call_tool escape hatch") 
 		return std::find(names.begin(), names.end(), n) != names.end();
 	};
 
-	// Lean: ~core (35) + the meta-tools — far below the full 249.
+	// Lean: ~core (35) + the meta-tools — far below the full 252.
 	CHECK(spec.size() < 60);
 	CHECK(spec.size() < full);
 

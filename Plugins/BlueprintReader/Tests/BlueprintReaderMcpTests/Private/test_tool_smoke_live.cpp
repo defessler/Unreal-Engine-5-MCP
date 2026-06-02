@@ -1,6 +1,6 @@
 // Live smoke: dispatch EVERY registered MCP tool against a REAL editor
 // (commandlet backend) and assert none is unreachable, "not supported by
-// this backend", or crashing. This proves the full 249-tool surface is
+// this backend", or crashing. This proves the full 252-tool surface is
 // wired end to end through the backend decorator chain to a running
 // editor — the failure mode the mock suite (which implements everything)
 // cannot catch.
@@ -151,7 +151,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 	bpr::tools::ToolRegistry registry;
 	bpr::tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
-	REQUIRE(spec.size() == 251);
+	REQUIRE(spec.size() == 252);  // bump alongside the other tool-count asserts
 
 	std::vector<std::string> broken;    // unreachable / not-supported / crash
 	std::vector<std::string> infra;     // transport/daemon issues (environmental)
