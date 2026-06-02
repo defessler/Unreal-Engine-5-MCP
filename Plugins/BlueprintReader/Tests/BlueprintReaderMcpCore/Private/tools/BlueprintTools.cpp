@@ -1046,6 +1046,35 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		// Array of member variables. Only `name` + `type` are structurally
+		// guaranteed; the rest are present when non-default (or null for empty
+		// optional strings). `fields` projection narrows this shape.
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"name", {{"type","string"}}},
+					{"type", {{"type","object"},
+						{"properties", {
+							{"category",            {{"type","string"}}},
+							{"sub_category",        {{"type","string"}}},
+							{"sub_category_object", {{"type", nlohmann::json::array({"string","null"})}}},
+							{"is_array",            {{"type","boolean"}}},
+							{"is_set",              {{"type","boolean"}}},
+							{"is_map",              {{"type","boolean"}}},
+						}}}},
+					{"default_value",   {{"type", nlohmann::json::array({"string","null"})}}},
+					{"category",        {{"type", nlohmann::json::array({"string","null"})}}},
+					{"is_replicated",   {{"type","boolean"}}},
+					{"is_editable",     {{"type","boolean"}}},
+					{"expose_on_spawn", {{"type","boolean"}}},
+					{"rep_condition",   {{"type", nlohmann::json::array({"string","null"})}}},
+					{"rep_notify_func", {{"type", nlohmann::json::array({"string","null"})}}},
+				}},
+				{"required", nlohmann::json::array({"name","type"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);

@@ -744,7 +744,80 @@
       "type": "object"
     },
     "name": "list_variables",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expose_on_spawn": {
+            "type": "boolean"
+          },
+          "is_editable": {
+            "type": "boolean"
+          },
+          "is_replicated": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rep_condition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rep_notify_func": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "is_array": {
+                "type": "boolean"
+              },
+              "is_map": {
+                "type": "boolean"
+              },
+              "is_set": {
+                "type": "boolean"
+              },
+              "sub_category": {
+                "type": "string"
+              },
+              "sub_category_object": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "blueprint",
