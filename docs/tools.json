@@ -1884,7 +1884,31 @@
       "type": "object"
     },
     "name": "list_node_kinds",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "extras": {
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "class",
+          "description"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "discover",
@@ -1894,7 +1918,17 @@
       "type": "object"
     },
     "name": "list_pin_categories",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "categories": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "categories"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "discover",
