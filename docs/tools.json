@@ -974,7 +974,56 @@
       "type": "object"
     },
     "name": "find_node",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "graph_name": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "object"
+          },
+          "pins": {
+            "type": "array"
+          },
+          "position": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "class",
+          "title",
+          "position",
+          "comment",
+          "pins",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "blueprint",
@@ -1280,7 +1329,47 @@
       "type": "object"
     },
     "name": "get_node",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "meta": {
+          "type": "object"
+        },
+        "pins": {
+          "type": "array"
+        },
+        "position": {
+          "type": "object"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "title",
+        "position",
+        "comment",
+        "pins",
+        "meta"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",

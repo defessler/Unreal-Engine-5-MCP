@@ -1161,6 +1161,28 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path", "query"})},
 		};
+		// Array of matching nodes (BPNode shape). id/class/title/position/
+		// comment/pins/meta always emitted; kind (mirrored from meta.kind) and
+		// graph_name/graph_type (find_node hits) are conditional. `fields` narrows.
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"id",         {{"type","string"}}},
+					{"class",      {{"type","string"}}},
+					{"title",      {{"type","string"}}},
+					{"position",   {{"type","object"}}},
+					{"comment",    {{"type", nlohmann::json::array({"string","null"})}}},
+					{"pins",       {{"type","array"}}},
+					{"meta",       {{"type","object"}}},
+					{"kind",       {{"type","string"}}},
+					{"graph_name", {{"type","string"}}},
+					{"graph_type", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"id","class","title","position","comment","pins","meta"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string q = RequireString(args, "query");
@@ -1554,6 +1576,23 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"fields",     FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path","graph_name","node_id"})},
+		};
+		// Single node (BPNode shape) — same as one entry of get_graph's nodes.
+		// id/class/title/position/comment/pins/meta always emitted; `kind`
+		// (mirrored from meta.kind) is conditional. `fields` narrows it.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"id",       {{"type","string"}}},
+				{"class",    {{"type","string"}}},
+				{"title",    {{"type","string"}}},
+				{"position", {{"type","object"}}},
+				{"comment",  {{"type", nlohmann::json::array({"string","null"})}}},
+				{"pins",     {{"type","array"}}},
+				{"meta",     {{"type","object"}}},
+				{"kind",     {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"id","class","title","position","comment","pins","meta"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			const std::string& asset = RequireString(args, "asset_path");
