@@ -1568,6 +1568,19 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path","graph_name","kind","x","y"})},
 		};
+		// node_id is the new node's GUID — agents chain it into wire_pins /
+		// set_pin_default. title/class are present when the spawned node
+		// resolved them.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"node_id", {{"type","string"}}},
+				{"title",   {{"type","string"}}},
+				{"class",   {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","node_id"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			const std::string& asset = RequireString(args, "asset_path");
 			const std::string& graph = RequireString(args, "graph_name");
@@ -2375,6 +2388,16 @@ void RegisterTools_01b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"name",       {{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"function_name",   {{"type","string"}}},
+				{"already_existed", {{"type","boolean"}}},
+				{"entry_node_id",   {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","function_name","already_existed"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			const std::string& asset = RequireString(args, "asset_path");
