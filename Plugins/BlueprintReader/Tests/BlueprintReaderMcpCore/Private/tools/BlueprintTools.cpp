@@ -864,6 +864,20 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		// Graph object. name/type/nodes always present; `connections` only in
+		// full mode (summary:false), `_summary` only in lean mode (default).
+		// `nodes` items are BPNode (validated via get_node); `fields` narrows.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",        {{"type","string"}}},
+				{"type",        {{"type","string"}}},
+				{"nodes",       {{"type","array"}}},
+				{"connections", {{"type","array"}}},
+				{"_summary",    {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"name","type","nodes"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string graph = OptString(args, "graph_name", "EventGraph");
