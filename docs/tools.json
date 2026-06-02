@@ -4766,7 +4766,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Capture a high-res screenshot to disk. `dest_path` is the output file; `width`/`height` default to the current viewport size if omitted. Routed via UE's `HighResShot` exec command.\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour regardless of the arg.",
+    "description": "[editor] Capture a high-res screenshot to disk. `dest_path` is the output file; `width`/`height` default to the current viewport size if omitted. Routed via UE's `HighResShot` exec command. Requires a rendering-capable (GPU) editor; a headless (-nullrhi) session returns `captured:false` with an explanatory `note`.\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour regardless of the arg.",
     "input_schema": {
       "properties": {
         "dest_path": {
@@ -4799,6 +4799,9 @@
         },
         "image_width": {
           "type": "integer"
+        },
+        "note": {
+          "type": "string"
         },
         "ok": {
           "type": "boolean"
@@ -4960,7 +4963,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Quick capture of the active editor viewport to disk (vs `take_screenshot` which uses HighResShot for offline-quality output).\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour.",
+    "description": "[editor] Quick capture of the active editor viewport to disk (vs `take_screenshot` which uses HighResShot for offline-quality output). Requires a GPU editor; a headless (-nullrhi) session returns `captured:false` with an explanatory `note`.\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour.",
     "input_schema": {
       "properties": {
         "dest_path": {
@@ -4987,6 +4990,9 @@
         },
         "image_width": {
           "type": "integer"
+        },
+        "note": {
+          "type": "string"
         },
         "ok": {
           "type": "boolean"

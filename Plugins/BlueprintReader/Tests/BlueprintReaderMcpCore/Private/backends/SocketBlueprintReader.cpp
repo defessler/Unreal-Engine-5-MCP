@@ -3841,6 +3841,7 @@ SocketBlueprintReader::TakeScreenshot(std::string_view destPath, int width, int 
 	if (j.is_object()) {
 		out.captured   = j.value("captured", false);
 		out.outputFile = j.value("output_file", std::string{});
+		out.note       = j.value("note", std::string{});
 	}
 	return out;
 }
@@ -3978,6 +3979,7 @@ SocketBlueprintReader::TakeViewportScreenshot(std::string_view destPath) {
 	if (j.is_object()) {
 		out.captured   = j.value("captured", false);
 		out.outputFile = j.value("output_file", std::string{});
+		out.note       = j.value("note", std::string{});
 	}
 	return out;
 }
