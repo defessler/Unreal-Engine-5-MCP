@@ -783,6 +783,21 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			"the BP is — saves loading the full payload to find out it has "
 			"hundreds of variables.";
 		d.input_schema = AssetPathSchema();
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",            {{"type","string"}}},
+				{"asset_path",      {{"type","string"}}},
+				{"parent_class",    {{"type","string"}}},
+				{"variable_count",  {{"type","integer"}}},
+				{"function_count",  {{"type","integer"}}},
+				{"graph_count",     {{"type","integer"}}},
+				{"macro_count",     {{"type","integer"}}},
+				{"interface_count", {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"name","asset_path","parent_class",
+				"variable_count","function_count","graph_count","macro_count","interface_count"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			nlohmann::json full = reader.ReadBlueprint(asset);
