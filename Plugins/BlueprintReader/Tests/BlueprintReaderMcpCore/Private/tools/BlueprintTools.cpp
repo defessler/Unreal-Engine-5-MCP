@@ -3255,7 +3255,10 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.description =
 			"[editor] Start a Play-In-Editor session. `mode` is one of "
 			"`selected_viewport` (default), `new_editor_window`, "
-			"`standalone`, `vr_preview`. Most useful with the live backend.";
+			"`standalone`, `vr_preview`. Requires a rendering-capable (GPU) "
+			"editor: in a headless (-nullrhi) commandlet/daemon it returns "
+			"`started:false` with an explanatory `note` rather than silently "
+			"queuing a play session that never sustains. Use the live backend.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {{"mode", {{"type","string"},
@@ -3264,8 +3267,10 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string mode = OptString(args, "mode", "selected_viewport");
 			auto r = reader.PieStart(mode);
-			return nlohmann::json{{"ok", true},
-								  {"started", r.started}, {"mode", r.mode}};
+			nlohmann::json out{{"ok", true},
+							   {"started", r.started}, {"mode", r.mode}};
+			if (!r.note.empty()) { out["note"] = r.note; }
+			return out;
 		});
 	}
 	{

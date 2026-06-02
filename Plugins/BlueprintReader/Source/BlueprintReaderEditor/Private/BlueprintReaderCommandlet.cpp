@@ -2204,7 +2204,22 @@ namespace
 		FString Mode = TEXT("selected_viewport");
 		FParse::Value(*Params, TEXT("Mode="), Mode);
 		bool bStarted = false;
-		if (IsValid(GEditor))
+		FString Note;
+		if (!IsValid(GEditor))
+		{
+			Note = TEXT("No editor available (GEditor is null).");
+		}
+		else if (!FApp::CanEverRender())
+		{
+			// Headless / -nullrhi: RequestPlaySession would be silently queued
+			// but a play world can't sustain without a rendering viewport, so
+			// callers would see started=true yet pie_running=false forever.
+			// Report honestly instead — PIE needs a normal (GPU) editor.
+			Note = TEXT("PIE is unavailable in this headless (-nullrhi) session: "
+				"there is no rendering viewport, so a play world cannot start. "
+				"Launch a normal GPU editor (live backend) to run PIE.");
+		}
+		else
 		{
 			FRequestPlaySessionParams Req;
 			// Default to selected viewport — matches the "Play" button.
@@ -2223,6 +2238,10 @@ namespace
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("started"), bStarted);
 		Obj->SetStringField(TEXT("mode"), Mode);
+		if (!Note.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("note"), Note);
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

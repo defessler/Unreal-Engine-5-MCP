@@ -1472,6 +1472,7 @@ SocketBlueprintReader::PieStart(std::string_view mode) {
 	if (j.is_object()) {
 		out.started = j.value("started", false);
 		out.mode    = j.value("mode",    std::string{});
+		out.note    = j.value("note",    std::string{});
 	}
 	return out;
 }
