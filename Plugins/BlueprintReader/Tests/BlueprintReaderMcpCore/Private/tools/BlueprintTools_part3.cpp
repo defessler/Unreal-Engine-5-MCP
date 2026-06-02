@@ -225,6 +225,16 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"properties", {{"asset_path", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"asset_path",{{"type","string"}}},
+				{"root_name", {{"type","string"}}},
+				{"nodes",     {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","root_name","nodes"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto w = reader.ReadWidgetBlueprint(asset);
@@ -463,6 +473,16 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"properties", {{"asset_path", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"asset_path",  {{"type","string"}}},
+				{"root_node_id",{{"type","string"}}},
+				{"nodes",       {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","root_node_id","nodes"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto bt = reader.ReadBehaviorTree(asset);
@@ -647,6 +667,16 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"properties", {{"asset_path", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"asset_path",{{"type","string"}}},
+				{"class",     {{"type","string"}}},
+				{"properties",{{"type","object"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","class","properties"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto da = reader.ReadDataAsset(asset);
@@ -774,6 +804,16 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"type","object"},
 			{"properties", {{"asset_path", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"asset_path", {{"type","string"}}},
+				{"states",     {{"type","array"}}},
+				{"transitions",{{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","states","transitions"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
