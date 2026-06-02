@@ -39,6 +39,7 @@ void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry);
 nlohmann::json BuildScreenshotResponse(const std::string& destPath,
                                        bool captured,
                                        const std::string& outputFile,
-                                       bool returnInline);
+                                       bool returnInline,
+                                       const std::string& note = {});
 
 }    // namespace bpr::tools

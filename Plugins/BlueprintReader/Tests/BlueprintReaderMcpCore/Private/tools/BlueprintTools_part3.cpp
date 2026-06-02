@@ -827,7 +827,9 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.description = "[editor] Capture a high-res screenshot to disk. `dest_path` "
 						"is the output file; `width`/`height` default to the "
 						"current viewport size if omitted. Routed via UE's "
-						"`HighResShot` exec command.\n\n"
+						"`HighResShot` exec command. Requires a rendering-capable "
+						"(GPU) editor; a headless (-nullrhi) session returns "
+						"`captured:false` with an explanatory `note`.\n\n"
 						"Pass `return_inline: true` (default false) to also "
 						"receive the PNG as an MCP Image content block — "
 						"capped at 1280px max-dim; larger captures are rejected "
@@ -852,6 +854,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"ok",          {{"type","boolean"}}},
 				{"captured",    {{"type","boolean"}}},
 				{"output_file", {{"type","string"}}},
+				{"note",        {{"type","string"}}},
 				{"image_width",  {{"type","integer"}}},
 				{"image_height", {{"type","integer"}}},
 			}},
@@ -864,7 +867,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			int h = args.value("height", 0);
 			const bool returnInline = args.value("return_inline", false);
 			auto r = reader.TakeScreenshot(dest, w, h);
-			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline);
+			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline, r.note);
 		});
 	}
 
@@ -1129,7 +1132,9 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.name = "take_viewport_screenshot";
 		d.description = "[editor] Quick capture of the active editor viewport to "
 						"disk (vs `take_screenshot` which uses HighResShot "
-						"for offline-quality output).\n\n"
+						"for offline-quality output). Requires a GPU editor; a "
+						"headless (-nullrhi) session returns `captured:false` "
+						"with an explanatory `note`.\n\n"
 						"Pass `return_inline: true` (default false) to also "
 						"receive the PNG as an MCP Image content block — "
 						"capped at 1280px max-dim; larger captures are rejected "
@@ -1152,6 +1157,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"ok",          {{"type","boolean"}}},
 				{"captured",    {{"type","boolean"}}},
 				{"output_file", {{"type","string"}}},
+				{"note",        {{"type","string"}}},
 				{"image_width",  {{"type","integer"}}},
 				{"image_height", {{"type","integer"}}},
 			}},
@@ -1162,7 +1168,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			RequireSafeFilePath(dest);  // refuse `..` traversal early
 			const bool returnInline = args.value("return_inline", false);
 			auto r = reader.TakeViewportScreenshot(dest);
-			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline);
+			return BuildScreenshotResponse(dest, r.captured, r.outputFile, returnInline, r.note);
 		});
 	}
 
