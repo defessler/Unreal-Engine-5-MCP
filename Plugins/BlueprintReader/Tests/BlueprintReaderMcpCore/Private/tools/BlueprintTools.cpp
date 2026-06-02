@@ -3252,6 +3252,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"properties", {{"asset_path", {{"type", "string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"asset_path",  {{"type","string"}}},
+				{"referencers", {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"count",       {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","referencers","count"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string ap = RequireString(args, "asset_path");
 			auto r = reader.GetReferencers(ap);
@@ -3274,6 +3284,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"type", "object"},
 			{"properties", {{"asset_path", {{"type", "string"}}}}},
 			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",           {{"type","boolean"}}},
+				{"asset_path",   {{"type","string"}}},
+				{"dependencies", {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"count",        {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","dependencies","count"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string ap = RequireString(args, "asset_path");
