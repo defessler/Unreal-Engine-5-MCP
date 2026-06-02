@@ -469,12 +469,36 @@ is the two test BPs under `Content/AI/` (regenerable via `-run=BPRSeed`).
 Any historical references to `setup.bat` in older docs/plans under
 `docs/` are kept for provenance and do not apply to a fresh clone.
 
+## Publishing the wiki
+
+`wiki/` is the in-repo source of truth, but the live GitHub Wiki is a
+**separate git repo** (`<repo>.wiki.git`) that nothing auto-syncs — push it
+by hand after wiki changes land on `main`. Page files map 1:1 by name
+(`wiki/Home.md` → the **Home** page, `wiki/Tool-Reference.md` →
+**Tool-Reference**, …); the wiki's default branch is `master`.
+
+```pwsh
+$tmp = "$env:TEMP\bpr-wiki"
+Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+git clone https://github.com/defessler/Unreal-Engine-5-MCP.wiki.git $tmp
+Copy-Item wiki\*.md $tmp -Force
+git -C $tmp add -A
+git -C $tmp commit -m "Sync from repo: <what changed>"
+git -C $tmp push origin master
+```
+
+There is no CI on the wiki repo, so **verify rendering manually** afterward —
+open a couple of changed pages on GitHub (tables, code fences, and
+`(#anchor)` links are the usual breakage). `docs/TOOLS.md` is generated and
+ships in the repo, not the wiki.
+
 ## See also
 
 - [README.md](README.md) — user-facing setup + tool table + Claude /
   Copilot config snippets.
 - [wiki/](wiki/) — source of truth for the GitHub Wiki (manually
-  pushed to `<repo>.wiki.git` on doc changes).
+  pushed to `<repo>.wiki.git` on doc changes — see [Publishing the
+  wiki](#publishing-the-wiki) for the push recipe).
 - `Plugins/BlueprintReader/Claude/` — skills + agents that ship with
   the plugin (this is the source-of-truth for those files; `.claude/`
   at the project root is a deployed copy synced via the install
