@@ -2463,6 +2463,19 @@ void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"[discover] List the `kind` values that `add_node` accepts, with required "
 			"extras for each. Pure metadata — no backend call.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"kind",        {{"type","string"}}},
+					{"class",       {{"type","string"}}},
+					{"description", {{"type","string"}}},
+					{"extras",      {{"type","array"}}},
+				}},
+				{"required", nlohmann::json::array({"kind","class","description"})},
+			}},
+		};
 		registry.Add(std::move(d), [](const nlohmann::json&) {
 			return nlohmann::json::array({
 				nlohmann::json{
@@ -2579,6 +2592,13 @@ void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"Useful when constructing the `type` argument for add_variable. "
 			"Pure metadata — no backend call.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"categories", {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"categories"})},
+		};
 		registry.Add(std::move(d), [](const nlohmann::json&) {
 			auto cat = [](const char* c, const char* desc, std::vector<std::string> subs = {},
 						  const char* objHint = nullptr) {
