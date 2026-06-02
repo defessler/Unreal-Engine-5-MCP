@@ -3266,6 +3266,18 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"properties", {{"mode", {{"type","string"},
 				{"enum", nlohmann::json::array({"selected_viewport","new_editor_window","standalone","vr_preview"})}}}}},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"started", {{"type","boolean"}}},
+				{"mode",    {{"type","string"}}},
+				{"note",    {{"type","string"},
+					{"description","Present only when started=false — why PIE could "
+						"not start (e.g. a headless -nullrhi session)."}}},
+			}},
+			{"required", nlohmann::json::array({"ok","started","mode"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string mode = OptString(args, "mode", "selected_viewport");
 			auto r = reader.PieStart(mode);
@@ -3281,6 +3293,14 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.description =
 			"[editor] End the active PIE session. No-op when PIE isn't running.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"stopped", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","stopped"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
 			auto r = reader.PieStop();
 			return nlohmann::json{{"ok", true}, {"stopped", r.stopped}};

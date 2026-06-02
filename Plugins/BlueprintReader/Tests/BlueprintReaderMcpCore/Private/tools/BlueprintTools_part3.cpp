@@ -1091,6 +1091,15 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"properties", {{"actor_name", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"actor_name"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"focused",    {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_name","focused"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string n = RequireString(args, "actor_name");
 			auto r = reader.FocusActor(n);
@@ -1118,6 +1127,14 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"rot_yaw",   {{"type","number"}}},
 				{"rot_roll",  {{"type","number"}}},
 			}},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",    {{"type","boolean"}}},
+				{"moved", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","moved"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			auto r = reader.SetCameraTransform(
@@ -1309,6 +1326,15 @@ void RegisterTools_07(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"enabled",   {{"type","boolean"}}},
 			}},
 			{"required", nlohmann::json::array({"flag_name","enabled"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",        {{"type","boolean"}}},
+				{"flag_name", {{"type","string"}}},
+				{"enabled",   {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","flag_name","enabled"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string f = RequireString(args, "flag_name");

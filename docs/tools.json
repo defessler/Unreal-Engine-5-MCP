@@ -1939,7 +1939,29 @@
       "type": "object"
     },
     "name": "pie_start",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "note": {
+          "description": "Present only when started=false — why PIE could not start (e.g. a headless -nullrhi session).",
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "started": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "started",
+        "mode"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -1949,7 +1971,21 @@
       "type": "object"
     },
     "name": "pie_stop",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "stopped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "stopped"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3826,7 +3862,24 @@
       "type": "object"
     },
     "name": "get_selected_actors",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_names"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3849,7 +3902,24 @@
       "type": "object"
     },
     "name": "set_selection",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_names"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3908,7 +3978,25 @@
       "type": "object"
     },
     "name": "spawn_actor",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_label": {
+          "type": "string"
+        },
+        "actor_name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_name",
+        "actor_label"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3934,7 +4022,21 @@
       "type": "object"
     },
     "name": "set_actor_transform",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_name"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3951,7 +4053,25 @@
       "type": "object"
     },
     "name": "delete_actor",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_name": {
+          "type": "string"
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_name",
+        "deleted"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -4930,7 +5050,25 @@
       "type": "object"
     },
     "name": "focus_actor",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "actor_name": {
+          "type": "string"
+        },
+        "focused": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "actor_name",
+        "focused"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -4959,7 +5097,21 @@
       "type": "object"
     },
     "name": "set_camera_transform",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "moved": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "moved"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -5124,7 +5276,25 @@
       "type": "object"
     },
     "name": "set_show_flag",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "flag_name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "flag_name",
+        "enabled"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
