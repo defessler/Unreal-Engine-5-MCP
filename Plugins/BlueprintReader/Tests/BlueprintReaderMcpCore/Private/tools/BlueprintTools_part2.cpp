@@ -2642,6 +2642,18 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path","name","component_class"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"asset_path",      {{"type","string"}}},
+				{"name",            {{"type","string"}}},
+				{"component_class", {{"type","string"}}},
+				{"already_existed", {{"type","boolean"}}},
+				{"created",         {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","name","component_class","already_existed","created"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string name  = RequireString(args, "name");
@@ -2673,6 +2685,16 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path","name"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"asset_path", {{"type","string"}}},
+				{"name",       {{"type","string"}}},
+				{"removed",    {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","name","removed"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string name  = RequireString(args, "name");
@@ -2702,6 +2724,18 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"socket",     {{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"asset_path", {{"type","string"}}},
+				{"name",       {{"type","string"}}},
+				{"new_parent", {{"type","string"}}},
+				{"socket",     {{"type","string"}}},
+				{"reparented", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","name","new_parent","socket","reparented"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset  = RequireString(args, "asset_path");
@@ -2743,6 +2777,20 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"value",         {{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","component","property","value"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",            {{"type","boolean"}}},
+				{"asset_path",    {{"type","string"}}},
+				{"component",     {{"type","string"}}},
+				{"property",      {{"type","string"}}},
+				{"old_value",     {{"type","string"}}},
+				{"new_value",     {{"type","string"}}},
+				{"default_value", {{"type","string"}}},
+				{"has_override",  {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","component","property","old_value","new_value","default_value","has_override"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
