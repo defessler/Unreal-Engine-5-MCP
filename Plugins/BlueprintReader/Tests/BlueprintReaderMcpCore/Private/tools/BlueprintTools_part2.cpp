@@ -2563,6 +2563,17 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path","row_name","values"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",             {{"type","boolean"}}},
+				{"asset_path",     {{"type","string"}}},
+				{"row_name",       {{"type","string"}}},
+				{"already_existed",{{"type","boolean"}}},
+				{"created",        {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","row_name","already_existed","created"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string row   = RequireString(args, "row_name");
@@ -2598,6 +2609,18 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"value",      {{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","row_name","field_name","value"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"asset_path", {{"type","string"}}},
+				{"row_name",   {{"type","string"}}},
+				{"field_name", {{"type","string"}}},
+				{"old_value",  {{"type","string"}}},
+				{"new_value",  {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","row_name","field_name","old_value","new_value"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
