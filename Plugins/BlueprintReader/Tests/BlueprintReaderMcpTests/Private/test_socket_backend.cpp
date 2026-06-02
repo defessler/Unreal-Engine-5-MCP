@@ -179,6 +179,50 @@ TEST_CASE("LiveBackend: auth_fail closes connection and next op throws") {
 	CHECK_THROWS_AS(reader.ListBlueprints("/Game"), BlueprintReaderError);
 }
 
+TEST_CASE("LiveBackend: a stale reused connection (editor restarted) reconnects, doesn't throw") {
+	// Regression for the "auto can't reconnect to the live editor after an
+	// editor stop/restart" wedge. The reader caches its connection across ops;
+	// when the editor is stopped + restarted between ops the cached socket is
+	// dead. The reader must detect that and reconnect on the next op rather
+	// than throwing SocketTransportError (which bounces Auto onto a competing
+	// commandlet daemon). Two sequential MockServer connections on the same
+	// port model stop (conn 1 closes) → restart (conn 2 serves).
+	auto serveList = [](SOCKET s) {
+		SendLine(s, R"({"type":"hello","version":"1"})");
+		(void)ReadLine(s);                    // auth
+		SendLine(s, R"({"type":"auth_ok"})");
+		std::string opLine = ReadLine(s);     // op frame
+		auto op = nlohmann::json::parse(opLine, nullptr, false);
+		const int id = op.is_object() ? op.value("id", 0) : 0;
+		nlohmann::json result = {
+			{"type", "result"}, {"id", id}, {"code", 0},
+			{"json", nlohmann::json::array({ nlohmann::json{
+				{"asset_path", "/Game/Test/BP_Mock"}, {"name", "BP_Mock"},
+				{"parent_class", "/Script/Engine.Actor"},
+				{"modified_iso", "2025-01-01T00:00:00.000Z"} } })},
+		};
+		SendLine(s, result.dump());
+	};
+	MockServer mock(std::vector<MockServer::Script>{ serveList, serveList });
+
+	SocketBlueprintReader::Config cfg;
+	cfg.host = "127.0.0.1";
+	cfg.port = mock.port();
+	cfg.token = "secret123";
+	SocketBlueprintReader reader(cfg);
+
+	auto first = reader.ListBlueprints("/Game");   // connection 1 (editor running)
+	REQUIRE(first.size() == 1);
+
+	// Let the server's close of connection 1 (FIN) reach the reader's cached
+	// socket, so the liveness check on op 2 sees it as stale.
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	auto second = reader.ListBlueprints("/Game");  // must reconnect (connection 2)
+	REQUIRE(second.size() == 1);
+	CHECK(second[0].AssetPath == "/Game/Test/BP_Mock");
+}
+
 TEST_CASE("LiveBackend: server returns error frame surfaces as BlueprintReaderError") {
 	MockServer mock([](SOCKET s) {
 		SendLine(s, R"({"type":"hello","version":"1"})");
