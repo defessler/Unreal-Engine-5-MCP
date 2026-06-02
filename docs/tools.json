@@ -1488,7 +1488,27 @@
       "type": "object"
     },
     "name": "add_node",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "node_id"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
@@ -1909,7 +1929,28 @@
       "type": "object"
     },
     "name": "add_function",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "entry_node_id": {
+          "type": "string"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "function_name",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
