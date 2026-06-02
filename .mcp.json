@@ -6,7 +6,7 @@
       "args": [],
       "env": {
         "BP_READER_BACKEND": "auto",
-        "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
+        "BP_READER_ENGINE_DIR": "D:\\Games\\Epic Games\\UE_5.8",
         "BP_READER_PROJECT": "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
         "BP_READER_PREWARM": "1"
       }
