@@ -513,6 +513,26 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path","function_name"})},
 		};
+		// Dual-shape: success (ok:true + fields below) or, when transpile is
+		// disabled (default), {ok:false, error:"transpile_disabled", tool, hint}.
+		// Only `ok` is common to both, so it's the sole required key.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                {{"type","boolean"}}},
+				{"asset_path",        {{"type","string"}}},
+				{"function_name",     {{"type","string"}}},
+				{"target_lang",       {{"type","string"}}},
+				{"mode",              {{"type","string"}}},
+				{"source",            {{"type","string"}}},
+				{"notes",             {{"type","array"}}},
+				{"unsupported_count", {{"type","integer"}}},
+				{"error",             {{"type","string"}}},
+				{"tool",              {{"type","string"}}},
+				{"hint",              {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			if (!TranspileEnabled()) {
 				return TranspileDisabledResponse("transpile_function");
@@ -594,6 +614,29 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"use_operator_aliases", {{"type","boolean"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		// Dual-shape: success (ok:true + fields) or transpile-disabled
+		// ({ok:false, error, tool, hint}). Only `ok` is common → sole required.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                {{"type","boolean"}}},
+				{"asset_path",        {{"type","string"}}},
+				{"target_lang",       {{"type","string"}}},
+				{"class_name",        {{"type","string"}}},
+				{"header_file",       {{"type","string"}}},
+				{"impl_file",         {{"type","string"}}},
+				{"header_source",     {{"type","string"}}},
+				{"impl_source",       {{"type","string"}}},
+				{"notes",             {{"type","array"}}},
+				{"sidecar",           {{"type","object"}}},
+				{"sidecar_file",      {{"type","string"}}},
+				{"unsupported_count", {{"type","integer"}}},
+				{"error",             {{"type","string"}}},
+				{"tool",              {{"type","string"}}},
+				{"hint",              {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			if (!TranspileEnabled()) {
@@ -699,6 +742,20 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"path","content"})},
 		};
+		// Dual-shape: success ({ok:true, path, bytes_written}) or
+		// transpile-disabled ({ok:false, error, tool, hint}). `ok` common.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",            {{"type","boolean"}}},
+				{"path",          {{"type","string"}}},
+				{"bytes_written", {{"type","integer"}}},
+				{"error",         {{"type","string"}}},
+				{"tool",          {{"type","string"}}},
+				{"hint",          {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			if (!TranspileEnabled()) {
 				return TranspileDisabledResponse("write_generated_source");
@@ -770,6 +827,19 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 							   {"description","Optional BPIR function-doc shell (name/inputs/outputs/locals) when `source` is a bare body."}}},
 			}},
 			{"required", nlohmann::json::array({"source"})},
+		};
+		// Dual-shape: success ({ok:true, bpir}) or transpile-disabled
+		// ({ok:false, error, tool, hint}). `ok` is the only common key.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",    {{"type","boolean"}}},
+				{"bpir",  {{"type","object"}}},
+				{"error", {{"type","string"}}},
+				{"tool",  {{"type","string"}}},
+				{"hint",  {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
 		};
 		registry.Add(std::move(d), [](const nlohmann::json& args) {
 			if (!TranspileEnabled()) {
