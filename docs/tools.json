@@ -466,7 +466,47 @@
       "type": "object"
     },
     "name": "transpile_function",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target_lang": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "unsupported_count": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "cpp",
@@ -526,7 +566,59 @@
       "type": "object"
     },
     "name": "transpile_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "class_name": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "header_file": {
+          "type": "string"
+        },
+        "header_source": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "impl_file": {
+          "type": "string"
+        },
+        "impl_source": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "sidecar": {
+          "type": "object"
+        },
+        "sidecar_file": {
+          "type": "string"
+        },
+        "target_lang": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "unsupported_count": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "cpp",
@@ -553,7 +645,32 @@
       "type": "object"
     },
     "name": "write_generated_source",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "bytes_written": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "cpp",
@@ -575,7 +692,29 @@
       "type": "object"
     },
     "name": "parse_cpp_function",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "bpir": {
+          "type": "object"
+        },
+        "error": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
