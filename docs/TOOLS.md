@@ -255,7 +255,7 @@
 | `list_project_settings` | All Project/Editor Settings sections (UDeveloperSettings CDOs): each `{container, category, section, class_path}`. The 3-tier nav read (Container -> Category -> Section) that future get/set/save/re... |
 | `live_coding_compile` | Trigger UE's Live Coding compile + patch. The compile runs asynchronously; Live Coding emits its own progress + result to the editor log (use `read_output_log` to follow). |
 | `open_asset_editor` | Open the asset editor for the given asset (Blueprint, Material, etc.). Idempotent — opening an already-open asset brings the existing editor window to front. `asset_path` is package form: `/Game/... |
-| `pie_start` | Start a Play-In-Editor session. `mode` is one of `selected_viewport` (default), `new_editor_window`, `standalone`, `vr_preview`. Most useful with the live backend. |
+| `pie_start` | Start a Play-In-Editor session. `mode` is one of `selected_viewport` (default), `new_editor_window`, `standalone`, `vr_preview`. Requires a rendering-capable (GPU) editor: in a headless (-nullrhi) ... |
 | `pie_stop` | End the active PIE session. No-op when PIE isn't running. |
 | `read_output_log` | Read recent entries from the editor's output log. The plugin module installs a ring-buffer log sink at startup; this returns up to `limit` of the most recent entries (default 200), optionally filte... |
 | `reset_project_setting` | Reset a project setting to its default. v1 stub: a correct factory-reset needs the editor details-panel's default-value resolution — a config property's constructor-set default is unrecoverable o... |
