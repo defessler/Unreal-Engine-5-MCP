@@ -4726,7 +4726,29 @@
       "type": "object"
     },
     "name": "add_material_expression",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "expression_id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "expression_id",
+        "class"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",
@@ -4758,7 +4780,25 @@
       "type": "object"
     },
     "name": "connect_material_expressions",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "connected"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",
@@ -4783,7 +4823,33 @@
       "type": "object"
     },
     "name": "set_material_parameter",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "parameter_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "parameter_name",
+        "old_value",
+        "new_value"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",
@@ -4812,7 +4878,33 @@
       "type": "object"
     },
     "name": "set_material_instance_parameter",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parameter_name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "parameter_name",
+        "type",
+        "new_value"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",
@@ -4829,7 +4921,25 @@
       "type": "object"
     },
     "name": "compile_material",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "compiled": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "compiled"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "widget",

@@ -2936,6 +2936,16 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array(
 				{"asset_path","expression_class"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",            {{"type","boolean"}}},
+				{"asset_path",    {{"type","string"}}},
+				{"expression_id", {{"type","string"}}},
+				{"class",         {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","expression_id","class"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string cls   = RequireString(args, "expression_class");
