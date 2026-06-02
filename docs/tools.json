@@ -7504,7 +7504,29 @@
       "type": "object"
     },
     "name": "create_niagara_system",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "created",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "niagara",
@@ -7529,7 +7551,33 @@
       "type": "object"
     },
     "name": "set_niagara_parameter",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parameter_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "parameter_name",
+        "new_value",
+        "applied"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "level sequence",
@@ -7585,7 +7633,33 @@
       "type": "object"
     },
     "name": "add_sequence_track",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "added": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "track_class": {
+          "type": "string"
+        },
+        "track_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "track_name",
+        "track_class",
+        "added"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "level sequence",
@@ -7610,7 +7684,33 @@
       "type": "object"
     },
     "name": "set_sequence_playback_range",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "end_seconds": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "start_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "start_seconds",
+        "end_seconds",
+        "applied"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "gameplay tag",
@@ -7739,7 +7839,33 @@
       "type": "object"
     },
     "name": "add_anim_state",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "added": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "state_machine": {
+          "type": "string"
+        },
+        "state_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "state_machine",
+        "state_name",
+        "added"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "anim",
@@ -7756,7 +7882,25 @@
       "type": "object"
     },
     "name": "compile_anim_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "compiled": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "compiled"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
