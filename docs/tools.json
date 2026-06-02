@@ -2244,7 +2244,32 @@
       "type": "object"
     },
     "name": "get_referencers",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "referencers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "referencers",
+        "count"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -2261,7 +2286,32 @@
       "type": "object"
     },
     "name": "get_dependencies",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "dependencies",
+        "count"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -7790,7 +7840,29 @@
       "type": "object"
     },
     "name": "read_niagara_system",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "emitters": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parameter_names": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "emitters",
+        "parameter_names"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "niagara",
@@ -7911,7 +7983,33 @@
       "type": "object"
     },
     "name": "read_level_sequence",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "end_seconds": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "start_seconds": {
+          "type": "number"
+        },
+        "tracks": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "start_seconds",
+        "end_seconds",
+        "tracks"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "level sequence",
@@ -8086,7 +8184,25 @@
       "type": "object"
     },
     "name": "read_ability_set",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "abilities": {
+          "type": "array"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "abilities"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "anim",
@@ -8117,7 +8233,29 @@
       "type": "object"
     },
     "name": "read_anim_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "state_machines": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "parent_class",
+        "state_machines"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "anim",
