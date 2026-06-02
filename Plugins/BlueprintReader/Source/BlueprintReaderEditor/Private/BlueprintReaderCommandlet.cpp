@@ -112,6 +112,7 @@
 #include "Engine/DeveloperSettings.h"                    // Phase 16 — project settings nav
 #include "UObject/UObjectHash.h"                         // GetDerivedClasses
 #include "Misc/AutomationTest.h"                         // Phase 16 — automation discovery
+#include "Misc/EngineVersionComparison.h"                // UE_VERSION_OLDER_THAN — multi-engine API guards
 #include "Editor/UnrealEdEngine.h"     // Phase 14 — GUnrealEd autosaver
 #include "UnrealEdGlobals.h"           // GUnrealEd
 #include "IPackageAutoSaver.h"
@@ -4633,7 +4634,12 @@ namespace
 					if (AActor* A = Cast<AActor>(O)) { FoundActor = A; return false; }
 					if (!FoundAny && O->GetClass()->GetName() != TEXT("MetaData")) { FoundAny = O; }
 					return true;
-				}, EGetObjectsFlags::None);    // don't recurse into nested objects
+				},
+#if UE_VERSION_OLDER_THAN(5, 8, 0)
+				/*bIncludeNestedObjects=*/false);    // don't recurse into nested objects
+#else
+				EGetObjectsFlags::None);             // EGetObjectsFlags is UE 5.8+
+#endif
 				Obj = FoundActor ? static_cast<UObject*>(FoundActor) : FoundAny;
 			}
 		}
@@ -6950,7 +6956,11 @@ namespace
 			FSceneView* View = VC->CalcSceneView(&ViewFamily);
 			const FVector CamLoc = VC->GetViewLocation();
 			const FIntRect VR = View ? View->UnscaledViewRect : FIntRect();
+#if UE_VERSION_OLDER_THAN(5, 8, 0)
+			const FMatrix VPM = View ? View->ViewMatrices.GetViewProjectionMatrix() : FMatrix::Identity;
+#else
 			const FMatrix VPM = View ? View->ViewMatrices.GetWorldToClip() : FMatrix::Identity;
+#endif
 
 			for (TActorIterator<AActor> It(World); It; ++It)
 			{
@@ -9269,7 +9279,11 @@ namespace
 				FVector2D ScreenPos;
 				const FVector World((float)WX, (float)WY, (float)WZ);
 				const bool bProjected = FSceneView::ProjectWorldToScreen(
+#if UE_VERSION_OLDER_THAN(5, 8, 0)
+					World, VR, View->ViewMatrices.GetViewProjectionMatrix(), ScreenPos);
+#else
 					World, VR, View->ViewMatrices.GetWorldToClip(), ScreenPos);
+#endif
 				if (bProjected && VR.Width() > 0 && VR.Height() > 0)
 				{
 					NormX = (ScreenPos.X - VR.Min.X) / (double)VR.Width();
