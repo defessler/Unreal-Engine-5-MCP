@@ -4633,7 +4633,7 @@ namespace
 					if (AActor* A = Cast<AActor>(O)) { FoundActor = A; return false; }
 					if (!FoundAny && O->GetClass()->GetName() != TEXT("MetaData")) { FoundAny = O; }
 					return true;
-				}, /*bIncludeNestedObjects=*/false);
+				}, EGetObjectsFlags::None);    // don't recurse into nested objects
 				Obj = FoundActor ? static_cast<UObject*>(FoundActor) : FoundAny;
 			}
 		}
@@ -6950,7 +6950,7 @@ namespace
 			FSceneView* View = VC->CalcSceneView(&ViewFamily);
 			const FVector CamLoc = VC->GetViewLocation();
 			const FIntRect VR = View ? View->UnscaledViewRect : FIntRect();
-			const FMatrix VPM = View ? View->ViewMatrices.GetViewProjectionMatrix() : FMatrix::Identity;
+			const FMatrix VPM = View ? View->ViewMatrices.GetWorldToClip() : FMatrix::Identity;
 
 			for (TActorIterator<AActor> It(World); It; ++It)
 			{
@@ -9269,7 +9269,7 @@ namespace
 				FVector2D ScreenPos;
 				const FVector World((float)WX, (float)WY, (float)WZ);
 				const bool bProjected = FSceneView::ProjectWorldToScreen(
-					World, VR, View->ViewMatrices.GetViewProjectionMatrix(), ScreenPos);
+					World, VR, View->ViewMatrices.GetWorldToClip(), ScreenPos);
 				if (bProjected && VR.Width() > 0 && VR.Height() > 0)
 				{
 					NormX = (ScreenPos.X - VR.Min.X) / (double)VR.Width();
