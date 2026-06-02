@@ -1948,7 +1948,40 @@
       "type": "object"
     },
     "name": "get_project_metadata",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "engine_association": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "project_path": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "project_name",
+        "project_path",
+        "engine_association",
+        "category",
+        "description"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -2140,7 +2173,33 @@
       "type": "object"
     },
     "name": "read_data_table",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "row_struct": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "row_struct",
+        "columns",
+        "rows"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -2337,7 +2396,37 @@
       "type": "object"
     },
     "name": "read_config_value",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "exists": {
+          "type": "boolean"
+        },
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "section": {
+          "type": "string"
+        },
+        "value": {
+          "description": "Present only when exists=true.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "section",
+        "key",
+        "file",
+        "exists"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -5107,7 +5196,33 @@
       "type": "object"
     },
     "name": "read_material",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "connections": {
+          "type": "array"
+        },
+        "expressions": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parameter_names": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "expressions",
+        "connections",
+        "parameter_names"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",
