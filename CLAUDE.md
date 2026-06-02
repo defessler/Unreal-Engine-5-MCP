@@ -268,6 +268,19 @@ replacement).
   `FKismetEditorUtilities` come from `UnrealEd` — don't add `Kismet` /
   `KismetCompiler` (unrelated modules despite the `Kismet2/` include
   path).
+- **Multi-engine API compatibility.** The plugin is built against more than
+  one UE version (a pre-5.8 engine *and* UE 5.8), so an engine API present in
+  5.8 may not exist on the older one. Guard version-specific engine APIs with
+  `UE_VERSION_OLDER_THAN(major, minor, patch)` / `UE_VERSION_NEWER_THAN`
+  (`#include "Misc/EngineVersionComparison.h"`). In particular, do **not**
+  "fix" a 5.8 deprecation *warning* by switching to the new-only replacement
+  API — that turns a harmless warning into a hard build *error* on the older
+  engine (e.g. `EGetObjectsFlags` and `FViewMatrices::GetWorldToClip` are
+  5.8+; this regressed a downstream build in #223 and was fixed with version
+  guards in #240). **CI does not compile the editor module** — it builds only
+  the standalone MCP server + mock suite via CMake with no engine, so
+  editor-module breaks pass CI silently. A local editor build on *each*
+  targeted engine version is the only guard.
 
 ## Test
 
