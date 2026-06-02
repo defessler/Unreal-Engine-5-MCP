@@ -2156,7 +2156,31 @@
       "type": "object"
     },
     "name": "list_data_tables",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "data table",
@@ -5179,7 +5203,31 @@
       "type": "object"
     },
     "name": "list_materials",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "material",
@@ -5726,7 +5774,31 @@
       "type": "object"
     },
     "name": "list_behavior_trees",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "behavior tree",
@@ -5927,7 +5999,31 @@
       "type": "object"
     },
     "name": "list_data_assets",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "data asset",
@@ -6078,7 +6174,31 @@
       "type": "object"
     },
     "name": "list_state_trees",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "state tree",
@@ -7938,7 +8058,31 @@
       "type": "object"
     },
     "name": "list_niagara_systems",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "niagara",
@@ -8081,7 +8225,31 @@
       "type": "object"
     },
     "name": "list_level_sequences",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "level sequence",
@@ -8331,7 +8499,31 @@
       "type": "object"
     },
     "name": "list_anim_blueprints",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "asset_path": {
+            "type": "string"
+          },
+          "modified_iso": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_class": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_path",
+          "name",
+          "parent_class"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "anim",
