@@ -2310,6 +2310,14 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"Names are the stable in-package names (not display labels). "
 			"Empty array when nothing is selected.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"actor_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_names"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
 			auto r = reader.GetSelectedActors();
 			return nlohmann::json{{"ok", true}, {"actor_names", r.actorNames}};
@@ -2331,6 +2339,14 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"replace",     {{"type","boolean"}}},
 			}},
 			{"required", nlohmann::json::array({"actor_names"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"actor_names", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_names"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::vector<std::string> names;
@@ -2370,6 +2386,15 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"class_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"actor_name",  {{"type","string"}}},
+				{"actor_label", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_name","actor_label"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string cls = RequireString(args, "class_path");
 			auto loc   = args.value("location", nlohmann::json::object());
@@ -2403,6 +2428,14 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"actor_name"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_name"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string name = RequireString(args, "actor_name");
 			auto loc = args.value("location", nlohmann::json::object());
@@ -2427,6 +2460,15 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"type","object"},
 			{"properties", {{"actor_name", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"actor_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"actor_name", {{"type","string"}}},
+				{"deleted",    {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","actor_name","deleted"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string name = RequireString(args, "actor_name");
