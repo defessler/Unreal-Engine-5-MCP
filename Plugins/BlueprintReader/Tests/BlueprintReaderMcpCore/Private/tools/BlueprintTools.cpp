@@ -3061,6 +3061,19 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"path", {{"type","string"}}},
 			}},
 		};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListDataTables(path);
