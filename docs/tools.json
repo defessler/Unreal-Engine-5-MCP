@@ -4345,7 +4345,37 @@
       "type": "object"
     },
     "name": "add_component",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "component_class": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "name",
+        "component_class",
+        "already_existed",
+        "created"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
@@ -4366,7 +4396,29 @@
       "type": "object"
     },
     "name": "remove_component",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "name",
+        "removed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
@@ -4393,7 +4445,37 @@
       "type": "object"
     },
     "name": "attach_component",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "new_parent": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "reparented": {
+          "type": "boolean"
+        },
+        "socket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "name",
+        "new_parent",
+        "socket",
+        "reparented"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
@@ -4422,7 +4504,45 @@
       "type": "object"
     },
     "name": "set_component_property",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "default_value": {
+          "type": "string"
+        },
+        "has_override": {
+          "type": "boolean"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "property": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "component",
+        "property",
+        "old_value",
+        "new_value",
+        "default_value",
+        "has_override"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "tests",
