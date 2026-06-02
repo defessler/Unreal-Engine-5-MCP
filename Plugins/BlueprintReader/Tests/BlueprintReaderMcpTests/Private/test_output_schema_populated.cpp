@@ -122,6 +122,7 @@ TEST_CASE("[mock] read-tool output_schema matches the populated fixture response
 		{"summarize_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}}},
 		{"read_blueprint",      json{{"asset_path", "/Game/AI/BP_Enemy"}}},
 		{"find_node",           json{{"asset_path", "/Game/AI/BP_Enemy"}, {"query", "Event"}}},
+		{"get_graph",           json{{"asset_path", "/Game/AI/BP_Enemy"}, {"graph_name", "EventGraph"}}},
 	};
 
 	for (const auto& row : rows) {

@@ -664,7 +664,31 @@
       "type": "object"
     },
     "name": "get_graph",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "_summary": {
+          "type": "boolean"
+        },
+        "connections": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "nodes"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
