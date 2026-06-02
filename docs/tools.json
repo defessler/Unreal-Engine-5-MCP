@@ -247,7 +247,48 @@
       "type": "object"
     },
     "name": "read_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "functions": {
+          "type": "array"
+        },
+        "graphs": {
+          "type": "array"
+        },
+        "interfaces": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "macros": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "asset_path",
+        "name",
+        "parent_class",
+        "interfaces",
+        "variables",
+        "functions",
+        "macros",
+        "graphs"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "assets",
