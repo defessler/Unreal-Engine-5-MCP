@@ -118,7 +118,8 @@ TEST_CASE("[mock] read-tool output_schema matches the populated fixture response
 	// fixture that exercises a NON-empty result. Grow this as the backfill
 	// reaches more read tools.
 	const std::vector<Row> rows = {
-		{"list_variables", json{{"asset_path", "/Game/AI/BP_Enemy"}}},
+		{"list_variables",      json{{"asset_path", "/Game/AI/BP_Enemy"}}},
+		{"summarize_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}}},
 	};
 
 	for (const auto& row : rows) {
