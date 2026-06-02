@@ -1744,7 +1744,21 @@
       "type": "object"
     },
     "name": "console_command",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "output"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -1772,7 +1786,35 @@
       "type": "object"
     },
     "name": "run_python_script",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "backend_message": {
+          "type": "string"
+        },
+        "command_result": {
+          "type": "string"
+        },
+        "error": {
+          "description": "Set on failure, e.g. \"python_disabled\".",
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "log": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "command_result",
+        "log"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -1880,7 +1922,28 @@
       "type": "object"
     },
     "name": "build_lighting",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "queued": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "queued",
+        "quality"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -1897,7 +1960,33 @@
       "type": "object"
     },
     "name": "get_cvar",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "exists": {
+          "type": "boolean"
+        },
+        "help": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "name",
+        "value",
+        "help",
+        "exists"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -1919,7 +2008,29 @@
       "type": "object"
     },
     "name": "set_cvar",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "exists": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "name",
+        "value",
+        "exists"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -3852,7 +3963,25 @@
       "type": "object"
     },
     "name": "live_coding_compile",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "queued": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "queued",
+        "message"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "editor",
@@ -4095,7 +4224,38 @@
       "type": "object"
     },
     "name": "read_output_log",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "entries": {
+          "items": {
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "entries"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "data table",

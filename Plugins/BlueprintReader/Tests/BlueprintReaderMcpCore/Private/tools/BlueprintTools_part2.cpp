@@ -2294,6 +2294,15 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"asynchronously; Live Coding emits its own progress + result "
 			"to the editor log (use `read_output_log` to follow).";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"queued",  {{"type","boolean"}}},
+				{"message", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","queued","message"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
 			auto r = reader.LiveCodingCompile();
 			return nlohmann::json{{"ok", true},
@@ -2495,6 +2504,22 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"min_severity",  {{"type","string"},
 					{"enum", nlohmann::json::array({"Display","Log","Warning","Error","Fatal"})}}},
 			}},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"entries", {{"type","array"}, {"items", {
+					{"type","object"},
+					{"properties", {
+						{"severity",  {{"type","string"}}},
+						{"category",  {{"type","string"}}},
+						{"message",   {{"type","string"}}},
+						{"timestamp", {{"type","string"}}},
+					}},
+				}}}},
+			}},
+			{"required", nlohmann::json::array({"ok","entries"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			int limit = OptInt(args, "limit", 200);

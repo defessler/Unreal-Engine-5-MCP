@@ -2920,6 +2920,14 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"properties", {{"command", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"command"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",     {{"type","boolean"}}},
+				{"output", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","output"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string cmd = RequireString(args, "command");
 			auto r = reader.ConsoleCommand(cmd);
@@ -2984,6 +2992,19 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				}},
 			}},
 			{"required", nlohmann::json::array({"code"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"command_result",  {{"type","string"}}},
+				{"log",             {{"type","array"}}},
+				{"error",           {{"type","string"},
+					{"description","Set on failure, e.g. \"python_disabled\"."}}},
+				{"hint",            {{"type","string"}}},
+				{"backend_message", {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","command_result","log"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string code = RequireString(args, "code");
@@ -3186,6 +3207,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 								 "Preview", "Medium", "High", "Production"})}}},
 			}},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"queued",  {{"type","boolean"}}},
+				{"quality", {{"type","string"}}},
+				{"note",    {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","queued","quality"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string quality = args.contains("quality") && args["quality"].is_string()
 									  ? args["quality"].get<std::string>()
@@ -3213,6 +3244,17 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			{"properties", {{"name", {{"type","string"}}}}},
 			{"required", nlohmann::json::array({"name"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",     {{"type","boolean"}}},
+				{"name",   {{"type","string"}}},
+				{"value",  {{"type","string"}}},
+				{"help",   {{"type","string"}}},
+				{"exists", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","name","value","help","exists"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string name = RequireString(args, "name");
 			auto v = reader.GetCVar(name);
@@ -3238,6 +3280,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"value", {{"type","string"}, {"description","Stringified value; UE coerces to the CVar's type."}}},
 			}},
 			{"required", nlohmann::json::array({"name","value"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",     {{"type","boolean"}}},
+				{"name",   {{"type","string"}}},
+				{"value",  {{"type","string"}}},
+				{"exists", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","name","value","exists"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string name  = RequireString(args, "name");
