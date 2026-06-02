@@ -1049,6 +1049,23 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		// Array of SCS components. Shape verified against BPComponent::to_json:
+		// all 5 keys always emitted (parent is null for root components;
+		// properties is the override list, possibly empty). `fields` narrows it.
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"name",       {{"type","string"}}},
+					{"class",      {{"type","string"}}},
+					{"parent",     {{"type", nlohmann::json::array({"string","null"})}}},
+					{"is_root",    {{"type","boolean"}}},
+					{"properties", {{"type","array"}}},
+				}},
+				{"required", nlohmann::json::array({"name","class","parent","is_root","properties"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);
