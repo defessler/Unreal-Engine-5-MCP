@@ -552,7 +552,45 @@
       "type": "object"
     },
     "name": "summarize_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "function_count": {
+          "type": "integer"
+        },
+        "graph_count": {
+          "type": "integer"
+        },
+        "interface_count": {
+          "type": "integer"
+        },
+        "macro_count": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "variable_count": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "asset_path",
+        "parent_class",
+        "variable_count",
+        "function_count",
+        "graph_count",
+        "macro_count",
+        "interface_count"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
