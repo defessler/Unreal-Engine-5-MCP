@@ -786,7 +786,39 @@
       "type": "object"
     },
     "name": "get_components",
-    "output_schema": null
+    "output_schema": {
+      "items": {
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "is_root": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "properties": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "parent",
+          "is_root",
+          "properties"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
   },
   {
     "category": "blueprint",
