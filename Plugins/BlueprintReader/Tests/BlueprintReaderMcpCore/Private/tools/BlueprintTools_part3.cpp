@@ -451,6 +451,19 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}},
 		};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListBehaviorTrees(path);
@@ -644,6 +657,19 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}},
 		};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListDataAssets(path);
@@ -781,6 +807,19 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}},
+		};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
@@ -2663,6 +2702,19 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 						"(default `/Game`).";
 		d.input_schema = {{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}}};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListNiagaraSystems(path);
@@ -2791,6 +2843,19 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.description = "[level sequence] List ULevelSequence assets under a content path.";
 		d.input_schema = {{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}}};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListLevelSequences(path);
@@ -3014,6 +3079,19 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.description = "[anim] List UAnimBlueprint assets under a content path.";
 		d.input_schema = {{"type","object"},
 			{"properties", {{"path", {{"type","string"}}}}}};
+		d.output_schema = {
+			{"type","array"},
+			{"items", {
+				{"type","object"},
+				{"properties", {
+					{"asset_path",   {{"type","string"}}},
+					{"name",         {{"type","string"}}},
+					{"parent_class", {{"type","string"}}},
+					{"modified_iso", {{"type","string"}}},
+				}},
+				{"required", nlohmann::json::array({"asset_path","name","parent_class"})},
+			}},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListAnimBlueprints(path);
