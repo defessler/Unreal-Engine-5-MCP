@@ -428,6 +428,15 @@ public:
 	// daemon mode.
 	void Prewarm();
 
+	// Tear down ONLY a daemon this instance itself spawned (daemonProcess_
+	// set); a daemon we merely attached to (shared, spawned by someone else)
+	// is left alone. Auto calls this when it switches to the live editor, so
+	// the headless daemon we spawned during an editor-down window stops
+	// contending with the now-running editor instead of lingering until its
+	// idle timeout. No-op when we didn't spawn one. The next tool call
+	// re-spawns/re-attaches via the normal fallback path.
+	void ShutdownSpawnedDaemon();
+
 private:
 	// Dispatches to RunOpOneShot or the daemon socket. Always writes its
 	// JSON payload to a temp file under %TEMP% (one-shot path) or
