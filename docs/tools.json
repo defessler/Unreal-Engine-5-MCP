@@ -4984,7 +4984,37 @@
       "type": "object"
     },
     "name": "add_widget",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "widget_class": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "name",
+        "widget_class",
+        "already_existed",
+        "created"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "widget",
@@ -5013,7 +5043,37 @@
       "type": "object"
     },
     "name": "set_widget_property",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "property_name": {
+          "type": "string"
+        },
+        "widget_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "widget_name",
+        "property_name",
+        "old_value",
+        "new_value"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "widget",
@@ -5042,7 +5102,37 @@
       "type": "object"
     },
     "name": "bind_widget_event",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "bound": {
+          "type": "boolean"
+        },
+        "event_name": {
+          "type": "string"
+        },
+        "handler_function": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "widget_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "widget_name",
+        "event_name",
+        "handler_function",
+        "bound"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "widget",
@@ -5059,7 +5149,25 @@
       "type": "object"
     },
     "name": "compile_widget_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "compiled": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "compiled"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "behavior tree",
@@ -5216,7 +5324,33 @@
       "type": "object"
     },
     "name": "create_data_asset",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "class",
+        "created",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "data asset",
@@ -5241,7 +5375,33 @@
       "type": "object"
     },
     "name": "set_data_asset_property",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "property_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "property_name",
+        "old_value",
+        "new_value"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "state tree",
@@ -7197,7 +7357,29 @@
       "type": "object"
     },
     "name": "add_gameplay_tag",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "added": {
+          "type": "boolean"
+        },
+        "already_existed": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "tag_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "tag_name",
+        "added",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "gameplay tag",
