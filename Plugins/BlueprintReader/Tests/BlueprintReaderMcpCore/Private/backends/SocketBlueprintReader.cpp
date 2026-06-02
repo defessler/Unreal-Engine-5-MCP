@@ -293,6 +293,27 @@ SocketType ConnectOnce(const std::string& host, int port) {
 	}
 	return sock.release();
 }
+
+// Is a cached, between-ops connection still healthy? A live + idle connection
+// has nothing readable; if the socket is readable here it's either a peer FIN
+// (the editor was stopped) or unexpected pending bytes (protocol desync) —
+// both mean "don't reuse this socket". Cheap, non-blocking (zero timeout).
+// Used before reusing a connection so an editor stop/restart between ops is
+// caught BEFORE we send (write-safe: the op was never delivered).
+bool SocketStillAlive(SocketType s) {
+	if (s == kInvalidSocket) {
+		return false;
+	}
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(s, &rfds);
+	timeval tv{};  // {0,0} — poll, don't block
+	const int rc = ::select(static_cast<int>(s) + 1, &rfds, nullptr, nullptr, &tv);
+	// rc == 0: not readable → healthy idle connection (reuse it).
+	// rc  > 0: readable → FIN or stray data → stale (reconnect).
+	// rc  < 0: select error → treat as stale (reconnect).
+	return rc == 0;
+}
 }    // namespace socket_blueprint_reader_detail2
 using namespace socket_blueprint_reader_detail2;
 
@@ -364,7 +385,19 @@ SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandsha
 void SocketBlueprintReader::EnsureConnected() {
 	if (handshakeOk_)
 	{
-		return;
+		// Reusing a connection from a prior op. It can be silently dead — the
+		// editor may have been stopped/restarted between ops, so the cached
+		// socket points at a process that's gone. Detect that BEFORE sending
+		// (write-safe) and reconnect, which re-reads the handshake file →
+		// the restarted editor's new port + token. Without this, the first op
+		// after a restart throws SocketTransportError, which bounces Auto onto
+		// a freshly-spawned commandlet daemon that then contends with the
+		// editor — the "can't reconnect to the live editor" wedge.
+		if (SocketStillAlive(static_cast<SocketType>(socket_)))
+		{
+			return;
+		}
+		Disconnect();  // stale — fall through to a fresh connect + handshake refresh
 	}
 
 	// Up to two attempts: first with current cfg_, second after re-
@@ -387,21 +420,41 @@ void SocketBlueprintReader::EnsureConnected() {
 
 nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args) {
 	std::lock_guard lock(mu_);
-	EnsureConnected();
-	SocketType s = static_cast<SocketType>(socket_);
 
-	int id = nextRequestId_++;
-	nlohmann::json frame = {
+	const int id = nextRequestId_++;
+	const nlohmann::json frame = {
 		{"type", "op"},
 		{"id", id},
 		{"args", args},
 	};
-	std::string line = frame.dump() + "\n";
-	try {
-		SendAll(s, line.data(), line.size());
-	} catch (...) {
-		Disconnect();  // socket is broken; force re-handshake on next call
-		throw;
+	const std::string line = frame.dump() + "\n";
+
+	// Connect + send, with ONE reconnect-and-resend if a *reused* connection
+	// (cached from a prior op via handshakeOk_) turns out to be dead — the
+	// classic case is the editor being stopped and restarted between ops, so
+	// the cached socket points at a process that's gone. A failed *send* means
+	// the op never reached the editor, so reconnecting (EnsureConnected
+	// re-reads the handshake file → the restarted editor's new port + token)
+	// and resending is safe. Without this, a transient editor restart throws
+	// SocketTransportError, which bounces Auto onto the commandlet daemon
+	// (spawning a process that then contends with the restarted editor) — the
+	// "can't reconnect to the live editor" wedge. A *fresh*-connect send
+	// failure is a real transport error, not a stale socket, so we don't loop.
+	SocketType s = static_cast<SocketType>(kInvalidSocket);
+	for (int attempt = 0; ; ++attempt) {
+		const bool reusedConnection = handshakeOk_;
+		EnsureConnected();
+		s = static_cast<SocketType>(socket_);
+		try {
+			SendAll(s, line.data(), line.size());
+			break;  // delivered — proceed to read the response
+		} catch (...) {
+			Disconnect();  // socket is broken; next EnsureConnected re-handshakes
+			if (reusedConnection && attempt == 0) {
+				continue;  // stale cached connection — reconnect + resend once
+			}
+			throw;
+		}
 	}
 
 	auto& buf = BufFor(s).b;
