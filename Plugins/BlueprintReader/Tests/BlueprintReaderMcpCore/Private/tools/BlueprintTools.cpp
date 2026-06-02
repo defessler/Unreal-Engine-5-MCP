@@ -2117,6 +2117,16 @@ void RegisterTools_01b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path","dest_asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                {{"type","boolean"}}},
+				{"asset_path",        {{"type","string"}}},
+				{"source_asset_path", {{"type","string"}}},
+				{"already_existed",   {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","source_asset_path","already_existed"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string source = RequireString(args, "asset_path");
 			std::string dest   = RequireString(args, "dest_asset_path");
@@ -2822,6 +2832,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path","dest_asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                  {{"type","boolean"}}},
+				{"source_path",         {{"type","string"}}},
+				{"dest_path",           {{"type","string"}}},
+				{"redirectors_created", {{"type","integer"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","source_path","dest_path","redirectors_created"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string src  = RequireString(args, "asset_path");
 			std::string dest = RequireString(args, "dest_asset_path");
@@ -2853,6 +2873,16 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                 {{"type","boolean"}}},
+				{"path",               {{"type","string"}}},
+				{"deleted",            {{"type","boolean"}}},
+				{"referencing_assets", {{"type","array"}, {"items", {{"type","string"}}}}},
+			}},
+			{"required", nlohmann::json::array({"ok","path","deleted","referencing_assets"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = RequireString(args, "asset_path");
 			bool force = args.value("force", false);
@@ -2880,6 +2910,15 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 								 {"description","Package path of the folder to create, e.g. /Game/AI/Boss."}}},
 			}},
 			{"required", nlohmann::json::array({"folder_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",             {{"type","boolean"}}},
+				{"path",           {{"type","string"}}},
+				{"already_existed",{{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","path","already_existed"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string folderPath = RequireString(args, "folder_path");

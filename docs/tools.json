@@ -1466,7 +1466,29 @@
       "type": "object"
     },
     "name": "duplicate_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "source_asset_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "source_asset_path",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
@@ -1768,7 +1790,29 @@
       "type": "object"
     },
     "name": "move_asset",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "dest_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "redirectors_created": {
+          "type": "integer"
+        },
+        "source_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "source_path",
+        "dest_path",
+        "redirectors_created"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -1789,7 +1833,32 @@
       "type": "object"
     },
     "name": "delete_asset",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "referencing_assets": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "path",
+        "deleted",
+        "referencing_assets"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "asset",
@@ -1807,7 +1876,25 @@
       "type": "object"
     },
     "name": "create_folder",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "path",
+        "already_existed"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "data table",
@@ -4396,7 +4483,33 @@
       "type": "object"
     },
     "name": "add_data_row",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "row_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "row_name",
+        "already_existed",
+        "created"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "data table",
@@ -4425,7 +4538,37 @@
       "type": "object"
     },
     "name": "set_data_row_value",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "field_name": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "row_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "row_name",
+        "field_name",
+        "old_value",
+        "new_value"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",
