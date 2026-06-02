@@ -320,6 +320,24 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
+		// Top-level shape of the full BP metadata. Array items vary (variables,
+		// functions, graphs) so only `interfaces` (string names) declares an
+		// item type; `fields` projection narrows the response.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path",   {{"type","string"}}},
+				{"name",         {{"type","string"}}},
+				{"parent_class", {{"type","string"}}},
+				{"interfaces",   {{"type","array"}, {"items", {{"type","string"}}}}},
+				{"variables",    {{"type","array"}}},
+				{"functions",    {{"type","array"}}},
+				{"macros",       {{"type","array"}}},
+				{"graphs",       {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path","name","parent_class",
+				"interfaces","variables","functions","macros","graphs"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);
