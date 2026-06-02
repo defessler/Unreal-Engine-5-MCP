@@ -1681,6 +1681,9 @@ public:
 		bool started = false;
 		bool stopped = false;
 		std::string mode;
+		// Optional human-readable explanation — e.g. why `started` is false
+		// in a headless (-nullrhi) session that can't sustain a play world.
+		std::string note;
 	};
 	virtual PieResult PieStart(std::string_view mode = "selected_viewport") {
 		(void)mode;

@@ -1923,7 +1923,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Start a Play-In-Editor session. `mode` is one of `selected_viewport` (default), `new_editor_window`, `standalone`, `vr_preview`. Most useful with the live backend.",
+    "description": "[editor] Start a Play-In-Editor session. `mode` is one of `selected_viewport` (default), `new_editor_window`, `standalone`, `vr_preview`. Requires a rendering-capable (GPU) editor: in a headless (-nullrhi) commandlet/daemon it returns `started:false` with an explanatory `note` rather than silently queuing a play session that never sustains. Use the live backend.",
     "input_schema": {
       "properties": {
         "mode": {
