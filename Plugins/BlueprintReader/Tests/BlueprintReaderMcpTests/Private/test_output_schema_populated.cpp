@@ -120,6 +120,7 @@ TEST_CASE("[mock] read-tool output_schema matches the populated fixture response
 	const std::vector<Row> rows = {
 		{"list_variables",      json{{"asset_path", "/Game/AI/BP_Enemy"}}},
 		{"summarize_blueprint", json{{"asset_path", "/Game/AI/BP_Enemy"}}},
+		{"read_blueprint",      json{{"asset_path", "/Game/AI/BP_Enemy"}}},
 	};
 
 	for (const auto& row : rows) {
