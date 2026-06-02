@@ -2864,6 +2864,19 @@ void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"the raw JSON for anything else). Useful for orienting an agent "
 			"to which project + engine version it's working against.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                {{"type","boolean"}}},
+				{"project_name",      {{"type","string"}}},
+				{"project_path",      {{"type","string"}}},
+				{"engine_association",{{"type","string"}}},
+				{"category",          {{"type","string"}}},
+				{"description",       {{"type","string"}}},
+				{"raw",               {{"type","object"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","project_name","project_path","engine_association","category","description"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
 			auto m = reader.GetProjectMetadata();
 			return nlohmann::json{
@@ -3074,6 +3087,17 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"asset_path", {{"type","string"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",         {{"type","boolean"}}},
+				{"asset_path", {{"type","string"}}},
+				{"row_struct", {{"type","string"}}},
+				{"columns",    {{"type","array"}}},
+				{"rows",       {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path","row_struct","columns","rows"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
@@ -3329,6 +3353,19 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 							 {"description", "Engine|Game|Input|Editor|EditorPerProjectIni, or full path. Defaults to Engine."}}},
 			}},
 			{"required", nlohmann::json::array({"section", "key"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",      {{"type","boolean"}}},
+				{"section", {{"type","string"}}},
+				{"key",     {{"type","string"}}},
+				{"file",    {{"type","string"}}},
+				{"exists",  {{"type","boolean"}}},
+				{"value",   {{"type","string"},
+					{"description","Present only when exists=true."}}},
+			}},
+			{"required", nlohmann::json::array({"ok","section","key","file","exists"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string section = RequireString(args, "section");
