@@ -273,6 +273,16 @@ void AutoBlueprintReader::Probe() {
 			}
 			// Drop the cmdlet-socket route (live wins).
 			cmdletSocket_.reset();
+			// Release any commandlet daemon WE spawned during an editor-down
+			// window so it stops contending with the now-running editor for
+			// the project (two UE processes on one project is the hazard).
+			// No-op if we only attached to a shared daemon or never spawned
+			// one; harmless to call each live probe (no-op once torn down).
+			// Without this the daemon lingers until its idle timeout (~5 min).
+			if (commandlet_)
+			{
+				commandlet_->ShutdownSpawnedDaemon();
+			}
 			route_ = Route::Live;
 			return;
 		}

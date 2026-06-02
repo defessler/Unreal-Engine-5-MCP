@@ -1112,6 +1112,21 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 	return *socket_;
 }
 
+void CommandletBlueprintReader::ShutdownSpawnedDaemon() {
+#if defined(_WIN32)
+	std::lock_guard<std::mutex> lock(daemonMutex_);
+	// Only tear down a daemon WE spawned (daemonProcess_ set). If we merely
+	// attached to a shared daemon someone else spawned, daemonProcess_ is null
+	// and we leave it alone (no blast radius). TerminateDaemon holds no lock of
+	// its own — safe to call while we own daemonMutex_.
+	if (daemonProcess_ == nullptr) {
+		return;
+	}
+	TerminateDaemon();   // kills + closes + nulls daemonProcess_
+	socket_.reset();     // drop our connection so the next op re-attaches/re-spawns
+#endif    // defined(_WIN32)
+}
+
 #if defined(_WIN32)
 
 void CommandletBlueprintReader::TerminateDaemon() {
