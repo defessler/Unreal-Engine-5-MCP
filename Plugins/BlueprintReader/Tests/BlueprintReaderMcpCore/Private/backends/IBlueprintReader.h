@@ -823,6 +823,9 @@ public:
 	struct ScreenshotResult {
 		std::string outputFile;
 		bool captured = false;
+		// Optional explanation — e.g. why nothing was captured in a headless
+		// (-nullrhi) session that has no rendering viewport.
+		std::string note;
 	};
 	virtual ScreenshotResult TakeScreenshot(std::string_view destPath, int width, int height) {
 		(void)destPath; (void)width; (void)height;
@@ -916,6 +919,9 @@ public:
 	struct ViewportScreenshotResult {
 		std::string outputFile;
 		bool captured = false;
+		// Optional explanation — e.g. why nothing was captured in a headless
+		// (-nullrhi) session that has no rendering viewport.
+		std::string note;
 	};
 	virtual ViewportScreenshotResult TakeViewportScreenshot(std::string_view destPath) {
 		(void)destPath;

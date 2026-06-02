@@ -44,7 +44,8 @@ bool PieLiveEnabled() {
 
 }    // namespace
 
-TEST_CASE("[live] pie_start reports honestly in a headless (-nullrhi) daemon"
+TEST_CASE("[live] rendering-dependent ops report honestly in a headless"
+          " (-nullrhi) daemon"
           * doctest::skip(!PieLiveEnabled())) {
 	bpr::backends::CommandletBlueprintReader::Config cfg;
 	cfg.engineDir = std::filesystem::path(PieEnv("BP_READER_ENGINE_DIR"));
@@ -60,4 +61,17 @@ TEST_CASE("[live] pie_start reports honestly in a headless (-nullrhi) daemon"
 	CHECK_FALSE(r.started);
 	CHECK_FALSE(r.note.empty());
 	CHECK(r.mode == "selected_viewport");
+
+	// Same headless honesty for the rendering-output ops: a screenshot can't
+	// be captured without a viewport, so captured must be false + a note set
+	// (it used to claim captured=true off the exec command's return value).
+	const auto shot = reader.TakeScreenshot(
+		"./Saved/__bpr_headless_shot.png", 0, 0);
+	CHECK_FALSE(shot.captured);
+	CHECK_FALSE(shot.note.empty());
+
+	const auto vshot = reader.TakeViewportScreenshot(
+		"./Saved/__bpr_headless_vshot.png");
+	CHECK_FALSE(vshot.captured);
+	CHECK_FALSE(vshot.note.empty());
 }

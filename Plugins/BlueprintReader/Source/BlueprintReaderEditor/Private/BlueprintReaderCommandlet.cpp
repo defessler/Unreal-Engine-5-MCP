@@ -5056,7 +5056,14 @@ namespace
 		FParse::Value(*Params, TEXT("Height="), H);
 
 		bool bOk = false;
-		if (GEngine && GetEditorWorldOrNull())
+		FString Note;
+		if (!FApp::CanEverRender())
+		{
+			Note = TEXT("Screenshots require a rendering-capable editor: this is "
+				"a headless (-nullrhi) session with no viewport, so no image was "
+				"captured. Use the live backend against a normal GPU editor.");
+		}
+		else if (GEngine && GetEditorWorldOrNull())
 		{
 			FString Cmd = (W > 0 && H > 0)
 				? FString::Printf(TEXT("HighResShot %dx%d %s"), W, H, *Dest)
@@ -5064,9 +5071,13 @@ namespace
 			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
 		}
 		auto Obj = MakeShared<FJsonObject>();
-		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("captured"),    bOk);
 		Obj->SetStringField(TEXT("output_file"), Dest);
+		if (!Note.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("note"), Note);
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -5347,16 +5358,27 @@ namespace
 		FParse::Value(*Params, TEXT("Dest="), Dest);
 
 		bool bOk = false;
-		if (GEngine && GetEditorWorldOrNull())
+		FString Note;
+		if (!FApp::CanEverRender())
+		{
+			Note = TEXT("Viewport capture requires a rendering-capable editor: "
+				"this is a headless (-nullrhi) session with no viewport, so no "
+				"image was captured. Use the live backend against a GPU editor.");
+		}
+		else if (GEngine && GetEditorWorldOrNull())
 		{
 			FString Cmd = FString::Printf(TEXT("Shot %s"), *Dest);
 			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
 		}
 
 		auto Obj = MakeShared<FJsonObject>();
-		Obj->SetBoolField(TEXT("ok"), bOk);
+		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("captured"),    bOk);
 		Obj->SetStringField(TEXT("output_file"), Dest);
+		if (!Note.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("note"), Note);
+		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

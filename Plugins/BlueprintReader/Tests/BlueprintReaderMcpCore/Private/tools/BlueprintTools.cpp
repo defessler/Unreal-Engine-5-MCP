@@ -52,12 +52,14 @@ nlohmann::json BuildScreenshotResponse(
 	const std::string& destPath,
 	bool captured,
 	const std::string& outputFile,
-	bool returnInline) {
+	bool returnInline,
+	const std::string& note) {
 	nlohmann::json structured = {
 		{"ok", true},
 		{"captured", captured},
 		{"output_file", outputFile},
 	};
+	if (!note.empty()) { structured["note"] = note; }
 	const bool wantInline = returnInline && !env::NeverInlineImages();
 	if (!wantInline || !captured) {
 		return structured;
