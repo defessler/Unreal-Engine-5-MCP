@@ -773,7 +773,36 @@
       "type": "object"
     },
     "name": "get_function",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "_summary": {
+          "type": "boolean"
+        },
+        "graph": {
+          "type": "object"
+        },
+        "inputs": {
+          "type": "array"
+        },
+        "locals": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "inputs",
+        "outputs",
+        "locals",
+        "graph"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "blueprint",

@@ -1011,6 +1011,21 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path", "function_name"})},
 		};
+		// Function: signature (inputs/outputs/locals) + body graph, all always
+		// emitted (BPFunction::to_json) → required. `_summary` only in the
+		// default lean mode. `graph` is the BPGraph shape; `fields` narrows.
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",     {{"type","string"}}},
+				{"inputs",   {{"type","array"}}},
+				{"outputs",  {{"type","array"}}},
+				{"locals",   {{"type","array"}}},
+				{"graph",    {{"type","object"}}},
+				{"_summary", {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"name","inputs","outputs","locals","graph"})},
+		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireString(args, "asset_path");
 			std::string fn = RequireString(args, "function_name");
