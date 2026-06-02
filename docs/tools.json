@@ -5314,7 +5314,29 @@
       "type": "object"
     },
     "name": "read_widget_blueprint",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "root_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "root_name",
+        "nodes"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "widget",
@@ -5556,7 +5578,29 @@
       "type": "object"
     },
     "name": "read_behavior_tree",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "root_node_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "root_node_id",
+        "nodes"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "behavior tree",
@@ -5735,7 +5779,29 @@
       "type": "object"
     },
     "name": "read_data_asset",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "properties": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "class",
+        "properties"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "data asset",
@@ -5864,7 +5930,29 @@
       "type": "object"
     },
     "name": "read_state_tree",
-    "output_schema": null
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "states": {
+          "type": "array"
+        },
+        "transitions": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path",
+        "states",
+        "transitions"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "state tree",
