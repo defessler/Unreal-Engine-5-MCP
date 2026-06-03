@@ -33,7 +33,9 @@ struct ServerInfo {
     // version (2024-11-05, 2025-03-26, 2025-06-18), the server echoes it
     // back so older clients keep working. Bump this when adopting a newer
     // spec's primitives (outputSchema, structuredContent, audience, etc.).
-    std::string protocolVersion = "2025-06-18";
+    // 2025-11-25 adds the optional `tasks` primitive; we don't advertise it,
+    // so claiming the version costs nothing and keeps us level with clients.
+    std::string protocolVersion = "2025-11-25";
 
     // Free-form context shipped on the initialize response per MCP
     // spec `instructions` field. The LLM consumes this once at session

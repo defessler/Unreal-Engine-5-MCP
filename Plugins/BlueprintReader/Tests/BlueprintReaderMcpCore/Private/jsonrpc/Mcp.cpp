@@ -118,7 +118,7 @@ void RegisterHandlersImpl(jr::Server& server,
 	server.Register("initialize", [info, prompts, logger, resources, editorSubs](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
 		// our default. The MCP spec evolves and clients send a string like
-		// "2024-11-05" or "2025-06-18". Echoing what they sent (when known)
+		// "2024-11-05" or "2025-11-25". Echoing what they sent (when known)
 		// is the spec-compliant negotiation behaviour — hardcoding our own
 		// version forces older clients to either error or strip features.
 		// We accept any version equal to or older than ours to be permissive.
@@ -126,6 +126,7 @@ void RegisterHandlersImpl(jr::Server& server,
 			"2024-11-05", // initial public spec
 			"2025-03-26", // tool annotations / progress
 			"2025-06-18", // resources, etc.
+			"2025-11-25", // tasks primitive (optional cap — we don't advertise it)
 		};
 		std::string negotiated = info.protocolVersion;
 		if (params.is_object()) {
@@ -342,8 +343,22 @@ void RegisterHandlersImpl(jr::Server& server,
 					return jr::Response::Ok(std::move(env));
 				}
 			}
-			return jr::Response::Ok(MakeToolTextContent(toolResult.dump(2),
-				/*isError=*/false, std::move(meta)));
+			// Default path: dump the canonical JSON as a text block for
+			// back-compat, and — per MCP 2025-06-18 — ALSO surface it as
+			// `structuredContent` when the result is a JSON object, so
+			// structured-content-aware clients consume it directly instead of
+			// re-parsing the text. (A tool advertising an object-typed
+			// outputSchema SHOULD return a matching structuredContent.)
+			// Array-shaped results stay text-only: structuredContent is
+			// spec-typed as an object, so emitting an array there would fail
+			// strict client validation. Passes arbitrary object shapes through
+			// unchanged — decompile raw-BPIR, transpile dual-shape, etc.
+			nlohmann::json env = MakeToolTextContent(toolResult.dump(2),
+				/*isError=*/false, std::move(meta));
+			if (toolResult.is_object()) {
+				env["structuredContent"] = std::move(toolResult);
+			}
+			return jr::Response::Ok(std::move(env));
 		} catch (const std::exception& e) {
 			// Enrich the error envelope with the call args so the agent
 			// can see what triggered the failure without re-driving the

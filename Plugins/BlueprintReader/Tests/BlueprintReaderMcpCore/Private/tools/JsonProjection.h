@@ -37,4 +37,16 @@ void ApplyProjection(nlohmann::json& body, const std::vector<std::string>& paths
 // absent / null. Throws on non-array, non-string-element values.
 std::vector<std::string> ParseFieldsArg(const nlohmann::json& args);
 
+// Given the ORIGINAL (pre-projection) body and the requested field paths,
+// return a human-readable warning for each top-level field name that matched
+// NO response key — almost always a typo (e.g. `asset_paths` for
+// `asset_path`). Each warning lists the available keys as a hint. Returns
+// empty when every requested field matched, or when the body has no keys to
+// match against (a not-found / empty payload — can't tell). The caller
+// attaches these under a `_warnings` key so a `fields` typo can't silently
+// project nothing and lead the agent to a wrong conclusion. Doc-aware: uses
+// the same alias/`is_`-convention matching as ApplyProjection.
+std::vector<std::string> FieldsProjectionWarnings(
+	const nlohmann::json& body, const std::vector<std::string>& paths);
+
 }    // namespace bpr::tools

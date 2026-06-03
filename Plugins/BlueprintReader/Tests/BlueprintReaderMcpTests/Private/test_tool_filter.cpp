@@ -4,12 +4,14 @@
 
 #include <doctest/doctest.h>
 
+#include "tools/BlueprintTools.h"
 #include "tools/ToolCategories.h"
 #include "tools/ToolRegistry.h"
 
 #include <nlohmann/json.hpp>
 
 #include <regex>
+#include <stdexcept>
 
 using namespace bpr::tools;
 
@@ -361,6 +363,43 @@ TEST_CASE("ActivateToken: typo'd token is a silent no-op (flag stays clear)") {
 	CHECK(added.empty());
 	CHECK(!r.TakeListChangedFlag());  // no flag flip on no-op
 	CHECK(r.Find("add_node") == nullptr);  // still gated
+}
+
+TEST_CASE("IsKnownToken: recognizes all/regex/categories/tool-names, rejects typos") {
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	CHECK(r.IsKnownToken("all"));
+	CHECK(r.IsKnownToken("/.*_node/"));        // explicit regex form
+	CHECK(r.IsKnownToken("materials"));        // a known category
+	CHECK(r.IsKnownToken("read_blueprint"));   // a registered tool name
+	CHECK_FALSE(r.IsKnownToken("matrials"));   // category typo
+	CHECK_FALSE(r.IsKnownToken("nope_not_real"));
+	CHECK_FALSE(r.IsKnownToken(""));
+}
+
+TEST_CASE("SuggestToken: returns the closest match for a near-miss, empty for nonsense") {
+	auto r = MakeWith({"read_blueprint", "add_node"});
+	CHECK(r.SuggestToken("matrials") == "materials");          // ~1 edit
+	CHECK(r.SuggestToken("widget") == "widgets");              // missing trailing s
+	CHECK(r.SuggestToken("read_blueprnt") == "read_blueprint"); // tool-name near-miss
+	CHECK(r.SuggestToken("zzzzzzzzzzzz").empty());             // nothing close
+}
+
+TEST_CASE("enable_tool_category: unknown category throws a did-you-mean, not a silent no-op") {
+	ToolRegistry r;
+	AddNamed(r, "read_blueprint");
+	AddNamed(r, "list_materials");
+	RegisterProgressiveDisclosureMetaTool(r);
+	r.ApplyFilter({"read_blueprint"}, {});   // progressive disclosure: narrow set
+
+	const auto* fn = r.FindAny("enable_tool_category");
+	REQUIRE(fn != nullptr);
+
+	// A typo throws (rather than returning ok:true / added:[]).
+	CHECK_THROWS_AS((*fn)(nlohmann::json{{"category", "matrials"}}), std::exception);
+
+	// A genuine known category still succeeds.
+	auto ok = (*fn)(nlohmann::json{{"category", "materials"}});
+	CHECK(ok["ok"] == true);
 }
 
 TEST_CASE("TakeListChangedFlag: ApplyFilter does NOT set the flag (startup-only path)") {

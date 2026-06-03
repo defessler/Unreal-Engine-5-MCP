@@ -182,6 +182,78 @@ void ApplyProjection(nlohmann::json& body,
 	Apply(body, root);
 }
 
+namespace {
+// Collect the distinct keys present at the level `fields` applies to: an
+// object body's own keys, or (for an array body) the union of keys across
+// object elements. Order-preserving.
+std::vector<std::string> LevelKeys(const nlohmann::json& body) {
+	std::vector<std::string> keys;
+	std::set<std::string> seen;
+	auto addObj = [&](const nlohmann::json& obj) {
+		if (!obj.is_object()) { return; }
+		for (auto it = obj.begin(); it != obj.end(); ++it) {
+			if (seen.insert(it.key()).second) { keys.push_back(it.key()); }
+		}
+	};
+	if (body.is_object()) {
+		addObj(body);
+	} else if (body.is_array()) {
+		for (const auto& el : body) { addObj(el); }
+	}
+	return keys;
+}
+}    // namespace
+
+std::vector<std::string> FieldsProjectionWarnings(
+	const nlohmann::json& body, const std::vector<std::string>& paths) {
+	std::vector<std::string> warnings;
+	if (paths.empty()) {
+		return warnings;
+	}
+	const auto keys = LevelKeys(body);
+	if (keys.empty()) {
+		// No keys to match against (e.g. an empty / not-found payload). We
+		// can't tell a typo from a legitimately-absent field — stay silent.
+		return warnings;
+	}
+	// Distinct top-level requested names (first non-"[]" segment), in order.
+	std::vector<std::string> requested;
+	std::set<std::string> seenReq;
+	for (const auto& path : paths) {
+		std::vector<std::string> segments;
+		try {
+			segments = SplitPath(path);
+		} catch (...) {
+			continue;  // malformed path — ApplyProjection reports it consistently
+		}
+		for (const auto& seg : segments) {
+			if (seg != "[]") {
+				if (seenReq.insert(seg).second) { requested.push_back(seg); }
+				break;
+			}
+		}
+	}
+	// Available-keys hint (capped to keep the message digestible).
+	std::string avail;
+	constexpr std::size_t kMaxKeys = 12;
+	for (std::size_t i = 0; i < keys.size() && i < kMaxKeys; ++i) {
+		if (!avail.empty()) { avail += ", "; }
+		avail += keys[i];
+	}
+	if (keys.size() > kMaxKeys) { avail += ", ..."; }
+	for (const auto& req : requested) {
+		bool matched = false;
+		for (const auto& k : keys) {
+			if (RequestMatchesKey(req, k)) { matched = true; break; }
+		}
+		if (!matched) {
+			warnings.push_back(fmt::format(
+				"fields: '{}' matched no response key (available: {})", req, avail));
+		}
+	}
+	return warnings;
+}
+
 std::vector<std::string> ParseFieldsArg(const nlohmann::json& args) {
 	auto it = args.find("fields");
 	if (it == args.end() || it->is_null()) return {};

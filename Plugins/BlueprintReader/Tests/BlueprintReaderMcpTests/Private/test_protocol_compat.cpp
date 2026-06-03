@@ -146,7 +146,7 @@ TEST_CASE("Initialize: unknown client version falls back to server default (no n
 	// Pinning the negotiation rule: per spec, when the requested
 	// version is unknown to the server, the server replies with its
 	// preferred version. The client then decides whether to accept or
-	// disconnect. We default to 2025-06-18.
+	// disconnect. We default to 2025-11-25.
 	auto reader = test::MakeMockReader();
 	tools::ToolRegistry registry;
 	tools::RegisterBlueprintTools(registry, reader);
@@ -156,7 +156,7 @@ TEST_CASE("Initialize: unknown client version falls back to server default (no n
 	mcp::RegisterHandlers(server, registry, info);
 
 	auto resp = RunInitialize(server, "2099-01-01");
-	CHECK(resp["result"]["protocolVersion"] == "2025-06-18");
+	CHECK(resp["result"]["protocolVersion"] == "2025-11-25");
 }
 
 TEST_CASE("Initialize: missing protocolVersion falls back to server default") {
@@ -174,7 +174,7 @@ TEST_CASE("Initialize: missing protocolVersion falls back to server default") {
 	};
 	auto resp = server.Dispatch(req);
 	REQUIRE(resp.has_value());
-	CHECK((*resp)["result"]["protocolVersion"] == "2025-06-18");
+	CHECK((*resp)["result"]["protocolVersion"] == "2025-11-25");
 }
 
 // ===== tools/list inventory snapshot =======================================
