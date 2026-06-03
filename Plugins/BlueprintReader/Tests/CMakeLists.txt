@@ -65,6 +65,28 @@ add_library(bp-reader-core STATIC ${CORE_SRC})
 target_include_directories(bp-reader-core PUBLIC "${CORE_PRIV}")
 target_link_libraries(bp-reader-core PUBLIC nlohmann_json fmt)
 
+# --- version stamp (INSTALL-1) -------------------------------------------
+# Stamp the build version + git short-hash into the binary so `--version`,
+# `doctor`, and the MCP `initialize` handshake report exactly which build is
+# running — and doctor can warn when the exe is stale vs the on-disk plugin
+# source. PROJECT_VERSION mirrors BlueprintReader.uplugin's VersionName.
+# PUBLIC so it propagates to main.cpp (BlueprintReaderMcp) + Diagnostics.cpp.
+set(BPR_GIT_HASH "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${REPO_ROOT}" rev-parse --short HEAD
+        OUTPUT_VARIABLE _bpr_git OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET RESULT_VARIABLE _bpr_git_rc)
+    if(_bpr_git_rc EQUAL 0 AND _bpr_git)
+        set(BPR_GIT_HASH "${_bpr_git}")
+    endif()
+endif()
+target_compile_definitions(bp-reader-core PUBLIC
+    BPR_VERSION="${PROJECT_VERSION}"
+    BPR_GIT_HASH="${BPR_GIT_HASH}")
+message(STATUS "bp-reader version stamp: ${PROJECT_VERSION}+${BPR_GIT_HASH}")
+
 # --- main server exe ---
 add_executable(BlueprintReaderMcp
     "${CMAKE_CURRENT_SOURCE_DIR}/BlueprintReaderMcp/Private/main.cpp")

@@ -220,6 +220,59 @@ TEST_CASE("diagnostics: mock backend short-circuits to fixture-dir check") {
 }
 
 // ---------------------------------------------------------------------------
+// Build version + staleness + engine compatibility (INSTALL-1 / INSTALL-3)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("diagnostics: reports build version + fires staleness/engine-compat warnings") {
+	auto f = MakeFakeProject("VersionProj", "5.8", /*addPluginToUproject=*/true);
+	// .uplugin whose VersionName can never equal the exe's stamped BPR_VERSION,
+	// so the staleness check fires. FindPluginDir locates it by walking up.
+	std::ofstream(f.pluginDir / "BlueprintReader.uplugin")
+		<< R"({ "FileVersion": 3, "VersionName": "0.0.0-staleness-sentinel" })";
+	// Fake engine version OUTSIDE the tested 5.7-5.8 range.
+	std::filesystem::create_directories(f.engineDir / "Engine" / "Build");
+	std::ofstream(f.engineDir / "Engine" / "Build" / "Build.version")
+		<< R"({ "MajorVersion": 5, "MinorVersion": 99, "PatchVersion": 0 })";
+
+	auto report = diag::RunSetupChecks(MockCfgFromFake(f));
+
+	bool sawVersionInfo = false, sawStaleWarn = false, sawEngineWarn = false;
+	for (const auto& fnd : report.findings) {
+		if (fnd.label.find("bp-reader-mcp build") != std::string::npos) {
+			sawVersionInfo = true;
+		}
+		if (fnd.label.find("stale vs the on-disk plugin") != std::string::npos) {
+			CHECK(fnd.severity == diag::Severity::Warning);
+			sawStaleWarn = true;
+		}
+		if (fnd.label.find("engine version outside the tested range") != std::string::npos) {
+			CHECK(fnd.severity == diag::Severity::Warning);
+			sawEngineWarn = true;
+		}
+	}
+	CHECK(sawVersionInfo);
+	CHECK(sawStaleWarn);
+	CHECK(sawEngineWarn);
+}
+
+TEST_CASE("diagnostics: engine in the tested range reports OK (INSTALL-3)") {
+	auto f = MakeFakeProject("Engine58Proj", "5.8", /*addPluginToUproject=*/true);
+	std::filesystem::create_directories(f.engineDir / "Engine" / "Build");
+	std::ofstream(f.engineDir / "Engine" / "Build" / "Build.version")
+		<< R"({ "MajorVersion": 5, "MinorVersion": 8 })";
+
+	auto report = diag::RunSetupChecks(MockCfgFromFake(f));
+	bool sawEngineOk = false;
+	for (const auto& fnd : report.findings) {
+		if (fnd.label.find("engine version in tested range") != std::string::npos) {
+			CHECK(fnd.severity == diag::Severity::Ok);
+			sawEngineOk = true;
+		}
+	}
+	CHECK(sawEngineOk);
+}
+
+// ---------------------------------------------------------------------------
 // PrintReport: format sanity (no ANSI codes leaked when colors=false, etc.)
 // ---------------------------------------------------------------------------
 

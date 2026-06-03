@@ -1,6 +1,7 @@
 #include "Diagnostics.h"
 #include "Env.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <ostream>
@@ -8,6 +9,16 @@
 
 #include <fmt/core.h>
 #include <nlohmann/json.hpp>
+
+// Build version stamp (INSTALL-1): injected by CMakeLists.txt (installed-engine
+// fallback) / BlueprintReaderMcpCore.Build.cs (UBT). Fall back if a build path
+// forgets to set them.
+#ifndef BPR_VERSION
+#define BPR_VERSION "0.0.0"
+#endif
+#ifndef BPR_GIT_HASH
+#define BPR_GIT_HASH "unknown"
+#endif
 
 namespace bpr::diag {
 
@@ -39,6 +50,81 @@ std::filesystem::path GuessPluginDirFromCfg(const backends::BackendConfig& cfg) 
 		p = p.parent_path();
 	}
 	return p;
+}
+
+// Locate the directory that actually contains BlueprintReader.uplugin. Unlike
+// GuessPluginDirFromCfg (which yields the *project* root), this walks up from
+// the exe and checks both "<dir>/BlueprintReader.uplugin" and the conventional
+// "<dir>/Plugins/BlueprintReader/" nesting, so the version/git-staleness checks
+// read the real plugin source. Empty if not found.
+std::filesystem::path FindPluginDir(const backends::BackendConfig& cfg) {
+	std::filesystem::path p = cfg.fixturesDir.parent_path();  // exeDir
+	std::error_code ec;
+	for (int i = 0; i < 6 && !p.empty(); ++i) {
+		if (std::filesystem::is_regular_file(p / "BlueprintReader.uplugin", ec)) {
+			return p;
+		}
+		auto nested = p / "Plugins" / "BlueprintReader";
+		if (std::filesystem::is_regular_file(nested / "BlueprintReader.uplugin", ec)) {
+			return nested;
+		}
+		p = p.parent_path();
+	}
+	return {};
+}
+
+// Best-effort: read VersionName from the plugin's .uplugin. Empty on failure.
+std::string ReadUpluginVersion(const std::filesystem::path& pluginDir) {
+	try {
+		std::ifstream in(pluginDir / "BlueprintReader.uplugin");
+		if (!in) {
+			return {};
+		}
+		nlohmann::json j;
+		in >> j;
+		if (j.is_object()) {
+			auto v = j.find("VersionName");
+			if (v != j.end() && v->is_string()) {
+				return v->get<std::string>();
+			}
+		}
+	} catch (...) { /* best-effort */ }
+	return {};
+}
+
+// Best-effort: the short git HEAD of a directory. Empty when the dir isn't a
+// git repo, git isn't on PATH, or anything fails — staleness is then simply
+// not reported (never blocks doctor).
+std::string GitHeadShort(const std::filesystem::path& dir) {
+#if defined(_WIN32)
+	const char* devnull = "2>nul";
+	const char* mode = "r";
+	auto openPipe  = [](const char* c) { return _popen(c, "r"); };
+	auto closePipe = [](FILE* f) { return _pclose(f); };
+#else
+	const char* devnull = "2>/dev/null";
+	const char* mode = "r";
+	(void)mode;
+	auto openPipe  = [](const char* c) { return popen(c, "r"); };
+	auto closePipe = [](FILE* f) { return pclose(f); };
+#endif
+	const std::string cmd =
+		fmt::format("git -C \"{}\" rev-parse --short HEAD {}", dir.string(), devnull);
+	FILE* p = openPipe(cmd.c_str());
+	if (!p) {
+		return {};
+	}
+	std::string out;
+	char buf[128];
+	while (std::fgets(buf, sizeof(buf), p)) {
+		out += buf;
+	}
+	closePipe(p);
+	while (!out.empty() &&
+		   (out.back() == '\n' || out.back() == '\r' || out.back() == ' ')) {
+		out.pop_back();
+	}
+	return out;
 }
 
 bool UProjectListsBlueprintReader(const std::filesystem::path& uproject) {
@@ -96,6 +182,36 @@ bool Report::HasWarning() const {
 
 Report RunSetupChecks(const backends::BackendConfig& cfg) {
 	Report r;
+
+	// -------- build version + staleness (INSTALL-1) --------
+	// Always reported (both backends). Surfaces the exact build, and warns
+	// when the running exe is older than the on-disk plugin source — the
+	// failure mode behind the stale-copy build break.
+	r.findings.push_back(Info(
+		fmt::format("bp-reader-mcp build {}+{}", BPR_VERSION, BPR_GIT_HASH)));
+	{
+		auto pluginDir = FindPluginDir(cfg);
+		if (!pluginDir.empty()) {
+			const std::string srcVer = ReadUpluginVersion(pluginDir);
+			if (!srcVer.empty() && srcVer != std::string(BPR_VERSION)) {
+				r.findings.push_back(Warning(
+					"server exe is stale vs the on-disk plugin (VersionName mismatch)",
+					fmt::format("exe built from {}, plugin source is {}",
+								BPR_VERSION, srcVer),
+					"Rebuild the MCP server so the running exe matches the plugin "
+					"source (Build-MCPServer.ps1 / build-mcp-cmake.ps1)."));
+			}
+			const std::string head = GitHeadShort(pluginDir);
+			if (!head.empty() && std::string(BPR_GIT_HASH) != "unknown" &&
+				head != std::string(BPR_GIT_HASH)) {
+				r.findings.push_back(Warning(
+					"server exe is stale vs the plugin's git HEAD",
+					fmt::format("exe built from commit {}, plugin source is now at {}",
+								BPR_GIT_HASH, head),
+					"Rebuild the MCP server to pick up the latest plugin source."));
+			}
+		}
+	}
 
 	// -------- mock backend short-circuits the rest --------
 	if (cfg.backend == "mock") {
@@ -157,6 +273,38 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 		return r;
 	}
 	r.findings.push_back(Ok("engine directory found", cfg.engineDir.string()));
+
+	// 3b. Engine version compatibility (INSTALL-3). The plugin is built/tested
+	// against UE 5.7-5.8; warn (don't fail) outside that range so a mismatch
+	// surfaces here instead of as a cryptic compile error. Best-effort parse
+	// of Engine/Build/Build.version.
+	{
+		try {
+			std::ifstream in(cfg.engineDir / "Engine" / "Build" / "Build.version");
+			if (in) {
+				nlohmann::json j;
+				in >> j;
+				if (j.is_object()) {
+					const int major = j.value("MajorVersion", 0);
+					const int minor = j.value("MinorVersion", 0);
+					if (major != 0) {
+						const std::string ver = fmt::format("{}.{}", major, minor);
+						const bool supported = (major == 5 && minor >= 7 && minor <= 8);
+						if (supported) {
+							r.findings.push_back(Ok(
+								"engine version in tested range (5.7-5.8)", ver));
+						} else {
+							r.findings.push_back(Warning(
+								"engine version outside the tested range (5.7-5.8)", ver,
+								"The plugin is built/tested against UE 5.7-5.8. Other "
+								"versions may need source tweaks — guard new engine APIs "
+								"with UE_VERSION_OLDER_THAN. Proceed with caution."));
+						}
+					}
+				}
+			}
+		} catch (...) { /* best-effort — never block doctor on a parse error */ }
+	}
 
 	// 4. Editor commandlet exe matches the requested config
 	auto binDir = cfg.engineDir / "Engine" / "Binaries" / "Win64";
