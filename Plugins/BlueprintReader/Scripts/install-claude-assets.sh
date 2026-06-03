@@ -3,25 +3,33 @@
 # install-claude-assets.sh
 #
 # Copies the bp-reader plugin's Claude skills + agents into the parent
-# project's .claude/ directory so Claude Code (and compatible clients)
-# discover them. Idempotent — re-running overwrites the target.
+# project's .claude/ directory, AND deploys the plugin's AGENTS.md to the
+# project root + .github/copilot-instructions.md (cross-AI guidance for
+# Codex / Cursor / Aider / GitHub Copilot). Idempotent — re-running
+# overwrites plugin-managed targets; a marker guard skips a consumer's own
+# AGENTS.md / copilot file (pass --force to overwrite). Parity with
+# Install-ClaudeAssets.ps1 so non-Windows / CI users get the same surface.
 #
-# Source of truth: Plugins/BlueprintReader/Claude/
-# Deploy target:   <project-root>/.claude/
+# Source of truth: Plugins/BlueprintReader/Claude/ + Plugins/BlueprintReader/AGENTS.md
+# Deploy target:   <project-root>/.claude/, <project-root>/AGENTS.md,
+#                  <project-root>/.github/copilot-instructions.md
 #
 # Usage:
 #   ./Plugins/BlueprintReader/Scripts/install-claude-assets.sh
 #   ./Plugins/BlueprintReader/Scripts/install-claude-assets.sh --dry-run
+#   ./Plugins/BlueprintReader/Scripts/install-claude-assets.sh --force
 #   ./Plugins/BlueprintReader/Scripts/install-claude-assets.sh --project-root /path/to/project
 
 set -euo pipefail
 
 DRY_RUN=0
+FORCE=0
 PROJECT_ROOT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
+        --force) FORCE=1; shift ;;
         --project-root) PROJECT_ROOT="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
@@ -104,6 +112,29 @@ if [[ -d "$CLAUDE_SRC/agents" ]]; then
         if [[ $DRY_RUN -eq 0 ]]; then
             mkdir -p "$CLAUDE_DST/agents"
             cp -f "$agent_file" "$target"
+        fi
+        installed=$((installed + 1))
+    done
+fi
+
+# Cross-AI guidance: ONE portable source (the plugin's AGENTS.md) deployed to
+# the locations each assistant family auto-discovers — <root>/AGENTS.md
+# (Codex / Cursor / Aider) and <root>/.github/copilot-instructions.md (GitHub
+# Copilot). Same content, single source, no drift. A marker guard avoids
+# clobbering a consumer project's own hand-written file.
+AGENTS_SRC="$PLUGIN_ROOT/AGENTS.md"
+if [[ -f "$AGENTS_SRC" ]]; then
+    for dst in "$PROJECT_ROOT/AGENTS.md" "$PROJECT_ROOT/.github/copilot-instructions.md"; do
+        if [[ -e "$dst" && $FORCE -eq 0 ]] && ! grep -q "BlueprintReader MCP" "$dst" 2>/dev/null; then
+            echo "  SKIP   cross-ai: $dst (consumer-owned; re-run with --force to overwrite)"
+            continue
+        fi
+        action="CREATE"
+        [[ -e "$dst" ]] && action="UPDATE"
+        echo "  $action cross-ai: $dst"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            mkdir -p "$(dirname "$dst")"
+            cp -f "$AGENTS_SRC" "$dst"
         fi
         installed=$((installed + 1))
     done
