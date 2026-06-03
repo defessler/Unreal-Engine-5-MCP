@@ -1,9 +1,9 @@
-# Dump-Tools.ps1 — regenerate the tool catalog (docs/TOOLS.md + docs/tools.json)
+# Dump-Tools.ps1 - regenerate the tool catalog (docs/TOOLS.md + docs/tools.json)
 # from the live ToolRegistry via `BlueprintReaderMcp --dump-tools`.
 #
 # Run this after adding/removing/renaming a tool so the catalog + the tool
 # count stay accurate with zero hand-maintenance. The generated files are the
-# single source of truth for "what tools exist" — docs/AGENTS.md/README defer
+# single source of truth for "what tools exist" - docs/AGENTS.md/README defer
 # to them instead of hardcoding counts (which used to drift across 6+ files).
 #
 #   pwsh Plugins/BlueprintReader/Scripts/Dump-Tools.ps1            # regenerate
@@ -43,7 +43,7 @@ if ($Check) {
         if ($cur -ne $p.New) { $drift += $p.Path }
     }
     if ($drift.Count) {
-        Write-Host "Tool catalog is STALE — regenerate + commit:" -ForegroundColor Red
+        Write-Host "Tool catalog is STALE - regenerate + commit:" -ForegroundColor Red
         $drift | ForEach-Object { Write-Host "  $_" }
         Write-Host "  pwsh Plugins/BlueprintReader/Scripts/Dump-Tools.ps1" -ForegroundColor Yellow
         exit 1

@@ -116,7 +116,7 @@ if (Test-Path $agentSrc) {
 #   * <root>/.github/copilot-instructions.md -> GitHub Copilot
 # Same content, single source, no drift. (Claude reads the richer skills under
 # .claude/.) The plugin's own AGENTS.md is ALSO natively discovered by agents
-# working inside Plugins/BlueprintReader/ — no deploy needed for subtree work.
+# working inside Plugins/BlueprintReader/ - no deploy needed for subtree work.
 # `Marker` guards against clobbering a CONSUMER project's hand-written file:
 # we only overwrite a target that's absent or already plugin-managed (unless
 # -Force).
