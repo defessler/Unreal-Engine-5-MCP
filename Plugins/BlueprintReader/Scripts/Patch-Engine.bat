@@ -5,13 +5,13 @@ REM Source engines only; not needed on an installed/Launcher engine.
 REM Requires PowerShell 7. Runs with -ExecutionPolicy Bypass so the execution
 REM policy never blocks it.
 REM
-REM Required args:
-REM   -EngineDir "<...>\UnrealEngine"
-REM
-REM Optional args:
-REM   -Apply    apply the patches (omit to validate / preview)
+REM Args:
+REM   -EngineDir "<...>\UnrealEngine"   (optional: inferred from the in-project
+REM                                      .uproject EngineAssociation when omitted)
+REM   -Apply                            apply the patches (omit to validate / preview)
 REM
 REM Usage:
+REM   Patch-Engine.bat -Apply                                  (zero-arg engine infer)
 REM   Patch-Engine.bat -EngineDir "D:\Unreal Engine 5" -Apply
 
 setlocal

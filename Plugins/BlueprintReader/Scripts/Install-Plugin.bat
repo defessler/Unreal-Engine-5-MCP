@@ -5,9 +5,10 @@ REM writes the MCP client config, deploys the Claude/AGENTS assets, runs doctor.
 REM Requires PowerShell 7 (pwsh). Runs with -ExecutionPolicy Bypass so the
 REM machine's PowerShell execution policy never blocks it.
 REM
-REM Required args:
-REM   -EngineDir   "<...>\UE_5.8"
-REM   -ProjectFile "<...>\<Game>.uproject"
+REM Args are OPTIONAL when the plugin lives at <Project>\Plugins\BlueprintReader
+REM (the default) - both are inferred:
+REM   -EngineDir   "<...>\UE_5.8"            (default: from the .uproject EngineAssociation)
+REM   -ProjectFile "<...>\<Game>.uproject"   (default: the *.uproject above the plugin)
 REM
 REM Optional args:
 REM   -Client <ClaudeCode^|Cursor^|VSCode^|Gemini^|Codex^|All>   (default ClaudeCode)
@@ -17,6 +18,8 @@ REM   -SkipBuild            skip the server build (config/assets/doctor only)
 REM   -Force                replace an existing mounted plugin / config
 REM
 REM Usage:
+REM   Install-Plugin.bat                         (zero-arg: infers engine + project)
+REM   Install-Plugin.bat -Client All
 REM   Install-Plugin.bat -EngineDir "D:\Epic Games\UE_5.8" -ProjectFile "D:\Game\MyGame.uproject"
 
 setlocal

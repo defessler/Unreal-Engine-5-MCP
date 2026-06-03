@@ -34,11 +34,26 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)] [string]$EngineDir,
+    # Inferred from the in-project .uproject EngineAssociation when omitted
+    # (plugin at <Project>/Plugins/BlueprintReader) -- see _Common.ps1.
+    [string]$EngineDir,
     [switch]$Apply
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $EngineDir) {
+    $common = Join-Path $PSScriptRoot '_Common.ps1'
+    if (Test-Path $common) {
+        . $common
+        $EngineDir = Resolve-BprEngineDir (Resolve-BprProjectFile (Resolve-BprProjectDir $PSScriptRoot))
+        if ($EngineDir) { Write-Host "Inferred -EngineDir: $EngineDir" }
+    }
+    if (-not $EngineDir) {
+        Write-Error "Could not infer the engine dir from the in-project .uproject EngineAssociation - pass -EngineDir."
+        exit 1
+    }
+}
 
 if (-not (Test-Path -LiteralPath $EngineDir -PathType Container)) {
     Write-Error "Engine dir not found: $EngineDir"

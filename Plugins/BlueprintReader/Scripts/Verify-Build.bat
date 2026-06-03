@@ -1,5 +1,5 @@
 @echo off
-REM Batch wrapper around Verify-Build.ps1 — checks both halves of the
+REM Batch wrapper around Verify-Build.ps1 - checks both halves of the
 REM BlueprintReader plugin are present and prints concrete fix steps for
 REM anything missing.
 REM
