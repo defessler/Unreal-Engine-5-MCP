@@ -295,29 +295,38 @@ in lockstep with the wire format. See
 
 ### 3. Wire it into your MCP client
 
-The repo ships a project-scope **`.mcp.json`** at the root, so cloning +
-launching Claude Code from the project directory wires bp-reader
-automatically. The contents:
+The repo ships a portable **`.mcp.json.example`** at the root (the committed
+`.mcp.json` holds the maintainer's own absolute paths — copy the example
+instead of relying on it). The easiest way to get a correct config is to let
+the server fill in auto-discovered paths:
+
+```
+bp-reader-mcp config --client=claude-code
+# also: --client=cursor | windsurf | copilot | vscode | gemini | codex   (or --mock)
+```
+
+Or copy `.mcp.json.example` → `.mcp.json` and fill in the three paths:
 
 ```json
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "D:\\Projects\\UE5_MCP\\Binaries\\Win64\\BlueprintReaderMcp.exe",
+      "command": "<path-to>/Binaries/Win64/BlueprintReaderMcp.exe",
       "env": {
-        "BP_READER_BACKEND":  "commandlet",
-        "BP_READER_ENGINE_DIR": "D:\\Projects\\Unreal Engine 5",
-        "BP_READER_PROJECT":  "D:\\Projects\\UE5_MCP\\LyraStarterGame.uproject",
-        "BP_READER_PREWARM":  "1"
+        "BP_READER_BACKEND":    "auto",
+        "BP_READER_PROJECT":    "<path-to>/YourGame.uproject",
+        "BP_READER_ENGINE_DIR": "<path-to-your-engine>",
+        "BP_READER_PREWARM":    "1"
       }
     }
   }
 }
 ```
 
-Adjust paths if your layout differs. With `BP_READER_PREWARM=1` the editor
-daemon spawns in a background thread on MCP startup, so the first BP
-question lands in ~30 ms instead of paying the ~5–30 s editor cold start.
+`BP_READER_BACKEND=auto` probes the editor each call (live when open,
+commandlet when closed). With `BP_READER_PREWARM=1` the editor daemon spawns
+in a background thread on MCP startup, so the first BP question lands in
+~30 ms instead of paying the ~5–30 s editor cold start.
 
 For other configs:
 - **User-scope** (any directory): `claude mcp add bp-reader --scope user ...`
