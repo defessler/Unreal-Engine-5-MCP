@@ -147,6 +147,10 @@ nlohmann::json ToolRegistry::ListSpec() const {
 		{
 			continue;
 		}
+		if (IsGovernanceBlocked(d.name))
+		{
+			continue;  // PARITY-4: never advertise a governance-blocked tool
+		}
 		nlohmann::json entry = {
 			{"name", d.name},
 			{"description", d.description},
@@ -207,6 +211,10 @@ const ToolFn* ToolRegistry::Find(const std::string& name) const {
 	{
 		return nullptr;
 	}
+	if (IsGovernanceBlocked(name))
+	{
+		return nullptr;  // PARITY-4: dispatch-time block
+	}
 	return &it->second;
 }
 
@@ -221,7 +229,40 @@ const ToolFn* ToolRegistry::FindAny(const std::string& name) const {
 		}
 		return nullptr;
 	}
+	// PARITY-4: governance is bypass-resistant — enforced even on the
+	// call_tool path (which uses FindAny to reach the unfiltered table).
+	if (IsGovernanceBlocked(name))
+	{
+		return nullptr;
+	}
 	return &it->second;
+}
+
+void ToolRegistry::ApplyGovernance(const std::vector<std::string>& allowRegexes,
+								   const std::vector<std::string>& blockRegexes) {
+	allowPatterns_.clear();
+	blockPatterns_.clear();
+	for (const auto& s : allowRegexes) {
+		if (!s.empty()) { allowPatterns_.emplace_back(s, std::regex::ECMAScript); }
+	}
+	for (const auto& s : blockRegexes) {
+		if (!s.empty()) { blockPatterns_.emplace_back(s, std::regex::ECMAScript); }
+	}
+}
+
+bool ToolRegistry::IsGovernanceBlocked(const std::string& name) const {
+	// Block list wins: any match → blocked.
+	for (const auto& re : blockPatterns_) {
+		if (std::regex_search(name, re)) { return true; }
+	}
+	// A non-empty allow list is restrictive: no match → blocked.
+	if (!allowPatterns_.empty()) {
+		for (const auto& re : allowPatterns_) {
+			if (std::regex_search(name, re)) { return false; }
+		}
+		return true;
+	}
+	return false;
 }
 
 size_t ToolRegistry::Size() const {

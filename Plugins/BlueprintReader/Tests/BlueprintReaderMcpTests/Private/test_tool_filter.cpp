@@ -425,6 +425,42 @@ TEST_CASE("TakeListChangedFlag: ActivateToken sets the flag, take clears it") {
 	CHECK(!r.TakeListChangedFlag());               // taking clears it
 }
 
+// ===== Governance allow/block (PARITY-4) ================================
+// Dispatch-time, bypass-resistant — enforced by Find AND FindAny (so a block
+// can't be reached via the call_tool meta-tool), distinct from ApplyFilter.
+
+TEST_CASE("ApplyGovernance: block regex hides + rejects a tool everywhere (incl. FindAny)") {
+	auto r = MakeWith({"read_blueprint", "delete_node", "delete_variable", "add_node"});
+	r.ApplyGovernance(/*allow=*/{}, /*block=*/{"^delete_"});
+	CHECK(CountSpec(r) == 2);                       // hidden from tools/list
+	CHECK(r.Find("delete_node") == nullptr);        // rejected at dispatch
+	CHECK(r.FindAny("delete_node") == nullptr);     // KEY: call_tool can't bypass
+	CHECK(r.FindAny("delete_variable") == nullptr);
+	CHECK(r.Find("read_blueprint") != nullptr);     // non-blocked still reachable
+	CHECK(r.FindAny("add_node") != nullptr);
+	CHECK(r.IsGovernanceBlocked("delete_node"));
+	CHECK_FALSE(r.IsGovernanceBlocked("read_blueprint"));
+}
+
+TEST_CASE("ApplyGovernance: a non-empty allow list is restrictive") {
+	auto r = MakeWith({"read_blueprint", "summarize_blueprint", "add_node", "delete_node"});
+	r.ApplyGovernance(/*allow=*/{"blueprint$"}, /*block=*/{});
+	CHECK(CountSpec(r) == 2);                        // only the *_blueprint tools
+	CHECK(r.Find("read_blueprint") != nullptr);
+	CHECK(r.FindAny("summarize_blueprint") != nullptr);
+	CHECK(r.Find("add_node") == nullptr);
+	CHECK(r.FindAny("add_node") == nullptr);
+	CHECK(r.IsGovernanceBlocked("add_node"));
+}
+
+TEST_CASE("ApplyGovernance: block wins over allow; no governance is a no-op") {
+	auto r = MakeWith({"read_blueprint", "read_material"});
+	CHECK_FALSE(r.IsGovernanceBlocked("read_blueprint"));   // unconfigured => allow
+	r.ApplyGovernance(/*allow=*/{"^read_"}, /*block=*/{"_material$"});
+	CHECK(r.Find("read_blueprint") != nullptr);
+	CHECK(r.FindAny("read_material") == nullptr);   // matched allow, but block wins
+}
+
 // ===== HasValidTools pre-flight =========================================
 // Used by main.cpp at startup so a too-aggressive BP_READER_TOOLS filter
 // surfaces immediately instead of presenting an empty tools/list.

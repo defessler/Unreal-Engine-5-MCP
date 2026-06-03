@@ -105,7 +105,14 @@ Reference: Epic plugin at
 - **Why:** lets vision models see captures without a filesystem round-trip.
 
 ### PARITY-4 — regex allow/block-list governance
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (PR #255, 2026-06-02) · **Effort:** M
+- *Shipped as `BP_READER_TOOL_ALLOW` / `BP_READER_TOOL_BLOCK` (ECMAScript regex
+  lists) enforced at DISPATCH by `ToolRegistry::IsGovernanceBlocked` — consulted
+  by `Find` AND `FindAny`, so a block can't be bypassed via the `call_tool`
+  meta-tool (the gap vs the disclosure-only `BP_READER_TOOLS`). Applies
+  uniformly to every tool incl. the transpile family — the single coverable
+  governance knob. (Per-class/property block lists deferred — tool-name regex
+  covers the multi-agent-safety case.)*
 - Epic's `UToolsetRegistrySettings` has regex allow/block lists + per-class /
   per-property `SetObjectProperties` block lists. Ours is coarse env flags
   (`BP_READER_READ_ONLY` / `ALLOW_WRITE` / `ALLOW_TRANSPILE`). Generalize to a
@@ -451,3 +458,7 @@ Newest first. One line per change to this file.
   satisfied for the merged server-side work. (Gotcha: had to rebuild the server
   exe from `main` first — a stale exe gave false results, exactly what INSTALL-1
   now catches. See [[live-verify-server-batches]].)
+- **2026-06-02** — Batch 6 (PR #255): PARITY-4 governance — dispatch-time,
+  bypass-resistant `BP_READER_TOOL_ALLOW`/`BP_READER_TOOL_BLOCK` regex
+  (Find + FindAny). Mock suite 840/0; live smoke confirmed `^delete_` hides
+  `delete_*` from tools/list while keeping the rest.

@@ -506,6 +506,23 @@ int RunServerLoop() {
 	}
 	const size_t before = registry.Size();
 	registry.ApplyFilter(allowSpec, denySpec);
+
+	// PARITY-4: dispatch-time governance allow/block (regex), distinct from the
+	// disclosure filter above. Enforced by Find AND FindAny, so a blocked tool
+	// can't be reached even via the lazy-discovery `call_tool` meta-tool.
+	// Applies uniformly to every tool (incl. the transpile family) — the single
+	// coverable governance knob for shared / untrusted multi-agent setups.
+	// Malformed regex throws at startup (fail loud).
+	auto toolAllow = splitCSV(env::GetOrDefault("BP_READER_TOOL_ALLOW"));
+	auto toolBlock = splitCSV(env::GetOrDefault("BP_READER_TOOL_BLOCK"));
+	if (!toolAllow.empty() || !toolBlock.empty()) {
+		registry.ApplyGovernance(toolAllow, toolBlock);
+		if (env::VerboseLoggingEnabled()) {
+			std::cerr << "[bp-reader-mcp] governance: " << toolAllow.size()
+					  << " allow + " << toolBlock.size()
+					  << " block pattern(s) enforced at dispatch (incl. call_tool)\n";
+		}
+	}
 	if ((!allowSpec.empty() || !denySpec.empty()) && env::VerboseLoggingEnabled()) {
 		std::cerr << "[bp-reader-mcp] tool filter: kept "
 				  << registry.Size() << " of " << before

@@ -23,6 +23,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <regex>
 #include <set>
 #include <string>
 #include <vector>
@@ -185,9 +186,28 @@ public:
 	// true at most once per state change — taking the flag clears it.
 	bool TakeListChangedFlag();
 
+	// Dispatch-time GOVERNANCE (PARITY-4), distinct from the disclosure
+	// filter (ApplyFilter) above. Compiles `allowRegexes` / `blockRegexes`
+	// (ECMAScript) and applies them to EVERY tool — including ones reached
+	// via the lazy-discovery `call_tool` meta-tool, because both Find AND
+	// FindAny consult the result (so a block can't be bypassed). A tool is
+	// blocked when it matches any block pattern, or (when the allow list is
+	// non-empty) matches NO allow pattern. Malformed regex throws
+	// std::regex_error — let it fail loud at startup. Applies uniformly to
+	// the transpile family too, so it's the single coverable governance knob.
+	void ApplyGovernance(const std::vector<std::string>& allowRegexes,
+						 const std::vector<std::string>& blockRegexes);
+
+	// True when `name` is governance-blocked per ApplyGovernance. Consulted
+	// by Find / FindAny / ListSpec. No governance configured → always false.
+	bool IsGovernanceBlocked(const std::string& name) const;
+
 private:
 	std::vector<ToolDescriptor> descriptors_;
 	std::map<std::string, ToolFn> fns_;
+	// Governance allow/block patterns (PARITY-4). Empty → no governance.
+	std::vector<std::regex> allowPatterns_;
+	std::vector<std::regex> blockPatterns_;
 	// Names currently visible to clients. Empty AND filterApplied_=false
 	// means "show all" (default state — Add() doesn't have to maintain
 	// a parallel set). After ApplyFilter or ActivateToken runs, the set
