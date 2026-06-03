@@ -56,11 +56,11 @@ one (UX-P1a) closes a Q1 *and* a Q2 gap in a single change.
 
 | Item | Effort | Status | One-liner |
 |---|---|---|---|
-| [UX-P1a](#ux-p1a) | S | ☐ Open | Emit `structuredContent` on the default dispatch path — spec conformance for ~218 schematized tools; also closes PARITY |
+| [UX-P1a](#ux-p1a) | S | ✅ #250 | Emit `structuredContent` on the default dispatch path — spec conformance for ~218 schematized tools; also closes PARITY |
 | [INSTALL-1](#install-1) | S | ☐ Open | Version-stamp the exe + staleness check in `doctor` — fixes the real stale-copy build break |
-| [UX-P0a](#ux-p0a) | S | ☐ Open | `fields` typo currently projects nothing silently → wrong conclusions; warn / did-you-mean |
-| [UX-P0b](#ux-p0b) | S | ☐ Open | `enable_tool_category` with a misspelled category silently no-ops; did-you-mean error |
-| [PARITY-2](#parity-2) | S | ☐ Open | Bump default protocol to `2025-11-25` (we're on `2025-06-18`; Epic ships `2025-11-25`) |
+| [UX-P0a](#ux-p0a) | S | ✅ #250 | `fields` typo currently projects nothing silently → wrong conclusions; warn / did-you-mean |
+| [UX-P0b](#ux-p0b) | S | ✅ #250 | `enable_tool_category` with a misspelled category silently no-ops; did-you-mean error |
+| [PARITY-2](#parity-2) | S | ✅ #250 | Bump default protocol to `2025-11-25` (we're on `2025-06-18`; Epic ships `2025-11-25`) |
 | [TRANS-P1a](#trans-p1a) | S–M | ☐ Open | Implement *or honestly disable* `Mode::Compilable` — currently promised but a no-op |
 
 ---
@@ -90,7 +90,7 @@ Reference: Epic plugin at
   the slowest tools.
 
 ### PARITY-2 — bump default protocol to `2025-11-25` {#parity-2}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S
 - We default to `2025-06-18` and negotiate down to `2024-11-05`; Epic ships
   `2025-11-25`. Add it to the negotiate list + default in `Mcp.h`/`Mcp.cpp`.
   Confirm no `2025-11-25`-only *required* semantics (the tasks primitive) are
@@ -133,7 +133,7 @@ shaping, and did-you-mean are mature; onboarding docs are current. Remaining
 items are refinements, with two genuine silent-failure traps (P0).
 
 ### UX-P0a — `fields` typo projects nothing, silently {#ux-p0a}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S
 - A genuine typo (`asset_paths` plural, or `nodes[].id` on a tool whose body is
   under `graph.`) returns empty objects with no signal → an agent concludes "the
   BP has no X." After applying the filter in `ApplyProjection` /
@@ -144,7 +144,7 @@ items are refinements, with two genuine silent-failure traps (P0).
   today.
 
 ### UX-P0b — `enable_tool_category` typo silently no-ops {#ux-p0b}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S
 - A misspelled category (`material` vs `materials`) returns
   `{ok:true, added:[], newly_activated_count:0}` — the agent thinks it widened
   the surface, then can't find the tool. In the handler
@@ -154,7 +154,7 @@ items are refinements, with two genuine silent-failure traps (P0).
 - **Why:** turns a dead end into a one-turn correctable error.
 
 ### UX-P1a — emit `structuredContent` on the default path {#ux-p1a}
-- **Status:** ☐ Open · **Effort:** S · **Cross-cuts:** Q1 output_schema conformance
+- **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S · **Cross-cuts:** Q1 output_schema conformance
 - ~218 tools advertise `outputSchema` but almost none emit `structuredContent` —
   the default dispatch serializes JSON into a *text* block
   (`…/jsonrpc/Mcp.cpp:329-346`); only the image tools attach structured content.
@@ -412,3 +412,7 @@ Newest first. One line per change to this file.
 - **2026-06-02** — Initial roadmap created from the four-track research pass
   (Epic 5.8 parity, effectiveness/ease-of-use, transpiling, install/update).
   All items `☐ Open`.
+- **2026-06-02** — Batch 1 (PR #250): UX-P1a, PARITY-2, UX-P0a, UX-P0b shipped
+  (structuredContent on the default dispatch path; protocol → 2025-11-25;
+  `fields`-typo `_warnings`; `enable_tool_category` did-you-mean). Mock suite
+  833/0. Pending live-editor verification.
