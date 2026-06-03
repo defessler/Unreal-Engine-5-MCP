@@ -230,7 +230,7 @@ The repo ships the plugin; you supply a UE 5.8 project to host it.
    ```
 
 3. **Point your MCP client at the exe.** Use
-   `<YourProject>/Binaries/Win64/BlueprintReaderMcp.exe` — it
+   `<YourProject>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe` — it
    auto-discovers the project + engine from its own location. Reads work
    immediately; the server is **read-only by default**.
 4. **Enable writes** when you want mutation: set `BP_READER_ALLOW_WRITE=1`
@@ -263,7 +263,7 @@ You need an Unreal Engine source build to compile it.
   -project="<Absolute>\MyGame.uproject"
 ```
 
-The exe lands at `<ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe`.
+The exe lands at `<ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe`.
 
 Both binaries (`BlueprintReaderMcp` + `BlueprintReaderMcpTests`) can be
 built in one shot via `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`:
@@ -280,7 +280,7 @@ network access and no extra package manager — UBT is the only build
 tool required.
 
 > **Tests:** `Build.bat BlueprintReaderMcpTests Win64 Development -project=...`
-> produces `<ProjectDir>/Binaries/Win64/BlueprintReaderMcpTests.exe` —
+> produces `<ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcpTests.exe` —
 > 800+ doctest cases, ~5 s to run; the live-only cases auto-skip when
 > the UE editor env vars aren't set.
 
@@ -321,7 +321,7 @@ Or copy `.mcp.json.example` → `.mcp.json` and fill in the three paths:
 {
   "mcpServers": {
     "bp-reader": {
-      "command": "<path-to>/Binaries/Win64/BlueprintReaderMcp.exe",
+      "command": "<path-to>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe",
       "env": {
         "BP_READER_BACKEND":    "auto",
         "BP_READER_PROJECT":    "<path-to>/YourGame.uproject",
@@ -496,7 +496,7 @@ $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 
-Binaries\Win64\BlueprintReaderMcpTests.exe   # the full suite (live-only cases auto-skip)
+Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe   # the full suite (live-only cases auto-skip)
 ```
 
 The legacy smoke scripts that lived under `mcp-server/scripts/` were
@@ -519,8 +519,8 @@ The MCP server is a pair of UE Program targets that live under
 pipeline (UBA, ninja, shared compile cache) as the editor target:
 
 ```
-Build.bat BlueprintReaderMcp     Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcp.exe
-Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Binaries/Win64/BlueprintReaderMcpTests.exe
+Build.bat BlueprintReaderMcp     Win64 Development -project=…  →  Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe
+Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcpTests.exe
 Build.bat LyraEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
@@ -695,7 +695,7 @@ For local pre-push verification, run the test target:
 "<Engine>\Engine\Build\BatchFiles\Build.bat" `
   BlueprintReaderMcpTests Win64 Development `
   -project="$PWD\LyraStarterGame.uproject"
-Binaries\Win64\BlueprintReaderMcpTests.exe
+Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
 800+ cases including the mock-backend coverage; the live-only cases

@@ -14,9 +14,15 @@ param([switch]$Check)
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-$exe  = Join-Path $repo 'Binaries\Win64\BlueprintReaderMcp.exe'
+# The server exe lives in the plugin's own Binaries (portable with the plugin);
+# fall back to the legacy repo Binaries/Win64 for older builds.
+$exe  = Join-Path $repo 'Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe'
 if (-not (Test-Path $exe)) {
-    throw "BlueprintReaderMcp.exe not found at $exe — build it first (Build-MCPServer.ps1 / build-mcp-cmake.ps1)."
+    $legacy = Join-Path $repo 'Binaries\Win64\BlueprintReaderMcp.exe'
+    if (Test-Path $legacy) { $exe = $legacy }
+}
+if (-not (Test-Path $exe)) {
+    throw "BlueprintReaderMcp.exe not found at $exe - build it first (Build-MCPServer.ps1 / build-mcp-cmake.ps1)."
 }
 
 $docs = Join-Path $repo 'docs'

@@ -46,16 +46,15 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PluginDir)  { $PluginDir  = (Resolve-Path (Join-Path $scriptDir '..')).Path }
 if (-not $ProjectDir) { $ProjectDir = (Resolve-Path (Join-Path $PluginDir '..\..')).Path }
 
-# Resolve the exe. The post-UBT-migration layout puts the binary at
-# <Project>/Binaries/Win64/BlueprintReaderMcp.exe (UBT's default output
-# path for Program targets in a project context). Fall back to the
-# pre-UBT CMake path for users on older plugin pulls.
+# Resolve the exe. Canonical location is the plugin's own Binaries (portable
+# with the plugin). Fall back to the legacy <Project>/Binaries/Win64 (UBT
+# Program-target default) and the pre-UBT CMake path for older plugin pulls.
 if (-not $Exe) {
     $candidates = @(
+        (Join-Path $PluginDir  'Binaries\Win64\BlueprintReaderMcp.exe'),
         (Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe'),
         # Legacy CMake build artifact path. Kept so users mid-upgrade don't
-        # get a hard error before they've rebuilt; remove once everyone's
-        # past the UBT migration.
+        # get a hard error before they've rebuilt.
         (Join-Path $PluginDir  'mcp-server\build\Release\bp-reader-mcp.exe')
     )
     foreach ($c in $candidates) {

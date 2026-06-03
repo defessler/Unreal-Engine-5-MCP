@@ -83,7 +83,11 @@ Write-Host "$tag Deploying Claude / AGENTS assets..."
 & (Join-Path $scriptsDir 'Install-ClaudeAssets.ps1') -ProjectRoot $projectDir
 
 # ---- 6. doctor -------------------------------------------------------------
-$exe = Join-Path $projectDir 'Binaries\Win64\BlueprintReaderMcp.exe'
+$exe = Join-Path $projectDir 'Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe'
+if (-not (Test-Path $exe)) {
+    $legacyExe = Join-Path $projectDir 'Binaries\Win64\BlueprintReaderMcp.exe'  # pre-plugin-Binaries location
+    if (Test-Path $legacyExe) { $exe = $legacyExe }
+}
 if (Test-Path $exe) {
     Write-Host "$tag Running doctor..."
     & $exe doctor

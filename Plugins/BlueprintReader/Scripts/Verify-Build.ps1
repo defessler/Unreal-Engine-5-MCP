@@ -103,9 +103,13 @@ Write-Host ''
 # Build-output checks (these are what users actually need)
 # ---------------------------------------------------------------------------
 Write-Host 'Build outputs:' -ForegroundColor White
-# Post-PR-#75: UBT builds BlueprintReaderMcp as a Program target with
-# default output at <ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe.
-$mcpExe = Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe'
+# The server exe lives in the plugin's own Binaries (portable with the plugin);
+# fall back to the legacy <ProjectDir>/Binaries/Win64 (UBT Program-target default).
+$mcpExe = Join-Path $ProjectDir 'Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe'
+if (-not (Test-Path $mcpExe)) {
+    $legacy = Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe'
+    if (Test-Path $legacy) { $mcpExe = $legacy }
+}
 $mcpOk  = Check 'BlueprintReaderMcp.exe (MCP server)' $mcpExe
 
 # UE's binary naming: Development is suffix-less, every other config gets

@@ -33,7 +33,8 @@ param(
     [string]$PluginDir,
     [string]$BaseDir,
 
-    # Path to the MCP server exe. Defaults to <ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe.
+    # Path to the MCP server exe. Defaults to the plugin's own Binaries:
+    # <ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe.
     [string]$ServerExe,
 
     # Server entry name to use in each client's config (the key under
@@ -59,7 +60,7 @@ $scriptDir = Split-Path -Parent $PSCommandPath
 if (-not $PluginDir)  { $PluginDir  = Split-Path -Parent $scriptDir }     # <plugin>/Scripts/ → <plugin>
 if (-not $ProjectDir) { $ProjectDir = Split-Path -Parent (Split-Path -Parent $PluginDir) } # <plugin>/.. → Plugins → ProjectDir
 if (-not $BaseDir)    { $BaseDir    = $ProjectDir }
-if (-not $ServerExe)  { $ServerExe  = Join-Path $ProjectDir 'Binaries\Win64\BlueprintReaderMcp.exe' }
+if (-not $ServerExe)  { $ServerExe  = Join-Path $ProjectDir 'Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe' }
 
 if (-not (Test-Path -LiteralPath $ServerExe)) {
     Write-Warning "Server exe not found at $ServerExe — config files will reference a path that doesn't exist yet."

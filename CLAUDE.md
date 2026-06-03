@@ -219,7 +219,9 @@ Plugins\BlueprintReader\Scripts\..\..\..\Saved\build-mcp-cmake.ps1   # local hel
 `Plugins/BlueprintReader/Tests/CMakeLists.txt` (recovered + remapped
 from the pre-UBT CMake build, removed in commit `74ac475f`) GLOBs the
 sources and emits `BlueprintReaderMcp.exe` + `BlueprintReaderMcpTests.exe`
-into `Binaries/Win64`. The one non-obvious flag is **`/Zc:preprocessor`**
+into the plugin's own `Plugins/BlueprintReader/Binaries/Win64` (so the server
+ships with the plugin; the UBT path mirrors its `<Project>/Binaries/Win64`
+output there too). The one non-obvious flag is **`/Zc:preprocessor`**
 (the conforming preprocessor, which UBT enables by default): the legacy
 MSVC preprocessor mis-tokenizes the raw-string literals
 (`R"(...\"...)"`) that `test_cpp_class.cpp` passes as doctest `CHECK`
@@ -292,7 +294,7 @@ replacement).
 ### Mock-only (fast)
 
 ```pwsh
-Binaries\Win64\BlueprintReaderMcpTests.exe
+Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
 800+ cases / 33000+ assertions pass in <5 s; the live-only cases
@@ -311,7 +313,7 @@ engine source — not set up.
 $env:BP_READER_BACKEND     = "commandlet"
 $env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
-Binaries\Win64\BlueprintReaderMcpTests.exe
+Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
 The legacy smoke scripts (`roundtrip.ps1`, `smoke-batch-ops.ps1`, etc.)

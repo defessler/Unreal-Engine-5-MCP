@@ -12,8 +12,10 @@
 # Build (from this dir's parent or anywhere):
 #   cmake -S Plugins/BlueprintReader/Tests -B <build> -G Ninja
 #   cmake --build <build>
-# Outputs BlueprintReaderMcp.exe + BlueprintReaderMcpTests.exe into
-# <repo>/Binaries/Win64 (where CLAUDE.md + .mcp.json expect them).
+# Outputs BlueprintReaderMcp.exe + BlueprintReaderMcpTests.exe into the PLUGIN's
+# own Binaries/Win64 (Plugins/BlueprintReader/Binaries/Win64) so the server ships
+# alongside the plugin's editor/runtime DLLs and the whole plugin is portable
+# (drop it into any .uproject and the server travels with it).
 
 cmake_minimum_required(VERSION 3.23)
 project(bp-reader-mcp VERSION 0.1.0 LANGUAGES CXX)
@@ -22,10 +24,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Land the exes where the docs/.mcp.json expect (repo Binaries/Win64).
-# This file is at <repo>/Plugins/BlueprintReader/Tests.
-get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${REPO_ROOT}/Binaries/Win64")
+# Land the exes in the plugin's own Binaries/Win64 (this file is at
+# <repo>/Plugins/BlueprintReader/Tests, so the plugin root is one level up).
+get_filename_component(PLUGIN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PLUGIN_ROOT}/Binaries/Win64")
 
 if(MSVC)
     # /W4 (not warnings-as-errors here — the UBT build is the style gate;
