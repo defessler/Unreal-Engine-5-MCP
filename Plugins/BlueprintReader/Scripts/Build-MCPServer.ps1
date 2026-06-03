@@ -59,7 +59,8 @@ $tag = "[BlueprintReader/MCP]"
 
 # INSTALL-M2: engine-free CMake/Ninja build of the server + tests, for an
 # installed/Launcher engine where UBT refuses Program targets. Mirrors the
-# documented fallback; CMakeLists lands the exes in <repo>/Binaries/Win64.
+# documented fallback; CMakeLists lands the exes in the plugin's own
+# Binaries/Win64 (Plugins/BlueprintReader/Binaries/Win64).
 function Invoke-CMakeServerBuild {
     param([string]$ScriptsDir, [string]$BuildConfig)
     $testsDir = Join-Path (Split-Path -Parent $ScriptsDir) "Tests"
@@ -137,6 +138,22 @@ foreach ($target in $wanted) {
     & $BuildBat @argv
     if ($LASTEXITCODE -ne 0) {
         throw "$tag $target build failed (exit $LASTEXITCODE)"
+    }
+}
+
+# UBT Program targets output to <Project>/Binaries/Win64. Mirror them into the
+# plugin's own Binaries/Win64 so the server ships with the plugin (portable) and
+# .mcp.json / the helper scripts have one canonical path across build toolchains.
+$projBin   = Join-Path (Split-Path -Parent $ProjectFile) 'Binaries\Win64'
+$pluginBin = Join-Path (Split-Path -Parent $PSScriptRoot) 'Binaries\Win64'
+if ($projBin -ne $pluginBin) {
+    New-Item -ItemType Directory -Force -Path $pluginBin | Out-Null
+    foreach ($target in $wanted) {
+        $src = Join-Path $projBin "$target.exe"
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $pluginBin "$target.exe") -Force
+            Write-Host "$tag Mirrored $target.exe -> plugin Binaries\Win64"
+        }
     }
 }
 

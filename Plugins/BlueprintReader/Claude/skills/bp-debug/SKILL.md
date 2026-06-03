@@ -20,7 +20,7 @@ Pull these signals from the failure before guessing:
 4. **Backend in use** — `tools/list` + server stderr; or set
    `BP_READER_BACKEND` explicitly while debugging.
 5. **Which MCP server / project** — the exe is
-   `<ProjectDir>/Binaries/Win64/BlueprintReaderMcp.exe`, built per
+   `<ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe`, built per
    project by UBT. Check `tasklist /V` or `Get-Process
    BlueprintReaderMcp` and inspect the parent path to confirm which
    project the server you're talking to belongs to.
@@ -44,7 +44,7 @@ few things to know when debugging in that world:
   asks "why did my other Claude window suddenly slow down?"
 - **Identifying your MCP server.** UBT builds one
   `BlueprintReaderMcp.exe` per project at
-  `<Project>/Binaries/Win64/BlueprintReaderMcp.exe`. `Get-Process
+  `<Project>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe`. `Get-Process
   BlueprintReaderMcp` shows one entry per active session; inspect the
   process's parent path to attribute it to a project.
 - **Cross-session batch isolation is full.** Per-connection state
