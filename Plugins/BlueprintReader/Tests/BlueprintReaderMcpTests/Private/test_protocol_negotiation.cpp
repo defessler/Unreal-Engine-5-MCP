@@ -66,17 +66,22 @@ TEST_CASE("initialize: echoes 2024-11-05 (the original spec)") {
 
 TEST_CASE("initialize: unknown version falls back to server default") {
 	auto resp = DriveInitialize("9999-99-99");
-	// Server default is 2025-06-18 (mcp::ServerInfo's hardcoded default).
+	// Server default is 2025-11-25 (mcp::ServerInfo's hardcoded default).
 	// Older clients sending 2024-11-05 are still echoed (see test above).
-	CHECK(resp["result"]["protocolVersion"] == "2025-06-18");
+	CHECK(resp["result"]["protocolVersion"] == "2025-11-25");
 }
 
 TEST_CASE("initialize: missing protocolVersion in params -> server default") {
 	auto resp = DriveInitialize(json(nullptr));
+	CHECK(resp["result"]["protocolVersion"] == "2025-11-25");
+}
+
+TEST_CASE("initialize: echoes a known older spec (2025-06-18)") {
+	auto resp = DriveInitialize("2025-06-18");
 	CHECK(resp["result"]["protocolVersion"] == "2025-06-18");
 }
 
-TEST_CASE("initialize: echoes the most recent known spec (2025-06-18)") {
-	auto resp = DriveInitialize("2025-06-18");
-	CHECK(resp["result"]["protocolVersion"] == "2025-06-18");
+TEST_CASE("initialize: echoes the latest spec (2025-11-25)") {
+	auto resp = DriveInitialize("2025-11-25");
+	CHECK(resp["result"]["protocolVersion"] == "2025-11-25");
 }

@@ -4,7 +4,9 @@
 #include "tools/ToolCategories.h"
 
 #include <algorithm>
+#include <cctype>
 #include <iostream>
+#include <limits>
 #include <regex>
 #include <set>
 #include <stdexcept>
@@ -357,6 +359,56 @@ std::vector<std::string> ToolRegistry::ActivateToken(const std::string& token) {
 		listChanged_ = true;
 	}
 	return newlyActive;
+}
+
+namespace {
+// Case-insensitive Levenshtein distance — used for did-you-mean suggestions
+// over the (short) category + tool-name lists. Not perf-critical.
+std::size_t EditDistanceCI(const std::string& a, const std::string& b) {
+	const std::size_t n = a.size();
+	const std::size_t m = b.size();
+	std::vector<std::size_t> prev(m + 1);
+	std::vector<std::size_t> cur(m + 1);
+	for (std::size_t j = 0; j <= m; ++j) { prev[j] = j; }
+	auto lc = [](char c) {
+		return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	};
+	for (std::size_t i = 1; i <= n; ++i) {
+		cur[0] = i;
+		for (std::size_t j = 1; j <= m; ++j) {
+			const std::size_t cost = (lc(a[i - 1]) == lc(b[j - 1])) ? 0 : 1;
+			cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost});
+		}
+		std::swap(prev, cur);
+	}
+	return prev[m];
+}
+}    // namespace
+
+bool ToolRegistry::IsKnownToken(const std::string& token) const {
+	if (token.empty()) { return false; }
+	if (token == "all") { return true; }
+	if (IsRegexToken(token)) { return true; }  // explicit /regex/ — valid syntactically
+	if (IsKnownCategory(token)) { return true; }
+	return fns_.find(token) != fns_.end();
+}
+
+std::string ToolRegistry::SuggestToken(const std::string& token) const {
+	if (token.empty()) { return {}; }
+	std::string best;
+	std::size_t bestDist = std::numeric_limits<std::size_t>::max();
+	auto consider = [&](const std::string& cand) {
+		const std::size_t d = EditDistanceCI(token, cand);
+		if (d < bestDist) { bestDist = d; best = cand; }
+	};
+	for (const auto& c : AllCategoryNames()) { consider(c); }
+	for (const auto& d : descriptors_) { consider(d.name); }
+	// Only suggest when reasonably close: edit distance <= 2, or <= a third of
+	// the token length (so longer names like "material-tuning" still match a
+	// near-miss). Avoids suggesting an unrelated name for a wild typo.
+	const std::size_t threshold = std::max<std::size_t>(2, token.size() / 3);
+	if (bestDist <= threshold) { return best; }
+	return {};
 }
 
 bool ToolRegistry::TakeListChangedFlag() {
