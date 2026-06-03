@@ -1557,16 +1557,15 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 		ToolDescriptor d;
 		d.name = "add_node";
 		d.description =
-			"[blueprint] Spawn a new K2 (Blueprint) node in a Blueprint graph. NOT for UMG widgets (`add_widget`), Behavior Tree (`add_bt_node`), AnimBP state (`add_anim_state`), StateTree (`add_state_tree_state`), Material expressions (`add_material_expression`), or Level Sequence tracks (`add_sequence_track`). `kind` is one of: "
-			"Common kinds: Branch, Sequence, VariableGet, VariableSet, CallFunction, "
-			"CustomEvent, Cast, Self, MakeArray, MakeStruct, FormatText, Knot, GetSubsystem. "
-			"Call list_node_kinds for the authoritative set + required arg(s) per kind. "
-			"Kind-specific args: VariableGet/VariableSet -> `variable`; "
-			"CallFunction -> `function` + `function_owner` (UClass path or short name); "
-			"CustomEvent -> `event_name`; Cast -> `target_class`; "
-			"GetSubsystem -> `subsystem_class`. Returns {ok, node_id, pins:[...]}. "
-			"The `pins` array carries each pin's name/guid/direction/type so "
-			"you can wire it without a follow-up get_graph call.";
+			"[blueprint] Spawn a new K2 (Blueprint) node in a graph. For non-K2 "
+			"nodes use the typed tools instead (add_widget / add_bt_node / "
+			"add_anim_state / add_state_tree_state / add_material_expression / "
+			"add_sequence_track). Common `kind`s: Branch, Sequence, VariableGet, "
+			"VariableSet, CallFunction, CustomEvent, Cast, Self, MakeArray, "
+			"MakeStruct, FormatText, Knot, GetSubsystem — call list_node_kinds for "
+			"the authoritative set + each kind's required arg(s). Returns "
+			"{ok, node_id, pins:[...]} (pins carry name/guid/direction/type so you "
+			"can wire without a follow-up get_graph).";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
