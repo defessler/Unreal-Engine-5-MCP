@@ -242,6 +242,16 @@ Smoke test: `list_blueprints /Game` should return your project's BPs.
 
 ### 1. Build the MCP server
 
+> **Prefer not to build?** Each tagged release attaches a prebuilt
+> `BlueprintReaderMcp-<tag>-win64.zip` (Win64). The server is pure C++20 and
+> engine-version-independent, so the prebuilt exe drives any UE 5.x editor the
+> same as a locally-built one. Download it from the
+> [Releases page](https://github.com/defessler/Unreal-Engine-5-MCP/releases),
+> unzip, and skip to step 2 / *Configure your MCP client* below. Run
+> `BlueprintReaderMcp.exe --version` to confirm the build. (The bundled
+> `fixtures/` give you the mock backend with no UE install; point
+> `BP_READER_PROJECT` at a `.uproject` for live work.)
+
 The MCP server is now a UE Program target built via UBT (same pipeline
 as the rest of the plugin — UBA-friendly, no separate CMake toolchain).
 You need an Unreal Engine source build to compile it.
