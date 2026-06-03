@@ -80,14 +80,22 @@ Reference: Epic plugin at
 `…/jsonrpc/Mcp.h:36` and negotiate list `…/jsonrpc/Mcp.cpp:126-128`.
 
 ### PARITY-1 — wire progress emission into the long ops
-- **Status:** ☐ Open · **Effort:** M
-- Infra exists (`CallContext::EmitProgress`, `notifications/progress`) but there
-  are **zero emit sites** in `tools/` — `cook_content`, `package_project`,
-  `run_automation_tests`, `build_lighting` run silent. Epic emits a passive
-  heartbeat per tick. Parse progress markers from the commandlet/daemon op output
-  and forward them.
-- **Why:** only remaining true spec gap vs Epic on progress; biggest UX win for
-  the slowest tools.
+- **Status:** ✅ Done (PR #259, 2026-06-02) · **Effort:** M
+- *Finding: the progress PATH was already wired end-to-end — `CallContext::
+  EmitProgress`→`notifications/progress` (unit-tested), the dispatcher extracts
+  the progressToken + sets a `CallContext::Scope` (`Mcp.cpp`), `main.cpp:384`
+  bridges the backend `progressSink`→`EmitProgress`, and the daemon
+  auto-captures `FScopedSlowTask`/GWarn progress (`DaemonProgress.h`) → frames →
+  the socket reader → the bridge. The roadmap's "zero emit sites in tools/" was
+  misleading: progress flows from the daemon's automatic capture, not explicit
+  tool calls. Added a concrete granular emit in `apply_ops` (per-op progress for
+  batch writes) + a unit test, and **live-verified** against the real daemon: a
+  3-op `apply_ops` emitted "apply_ops 1/3 … 3/3" `notifications/progress` frames.
+  The async long ops (`cook_content`/`package_project` scaffolded;
+  `build_lighting`/`run_automation_tests` fire-and-poll by design to dodge the
+  per-call timeout) emit progress for their synchronous portions via the daemon
+  capture; converting them to fully-synchronous-with-progress fights the timeout
+  model — deferred as a deliberate non-goal.*
 
 ### PARITY-2 — bump default protocol to `2025-11-25` {#parity-2}
 - **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S
@@ -497,3 +505,16 @@ Newest first. One line per change to this file.
   bypass-resistant `BP_READER_TOOL_ALLOW`/`BP_READER_TOOL_BLOCK` regex
   (Find + FindAny). Mock suite 840/0; live smoke confirmed `^delete_` hides
   `delete_*` from tools/list while keeping the rest.
+- **2026-06-02** — Batch 9 (PR #256): INSTALL-M3 prebuilt-binary release
+  workflow (`release.yml`, tag-triggered) + README download note.
+- **2026-06-02** — Batch 10 (PR #257): INSTALL-M4 self-hosted editor-compile
+  scaffold (`editor-build.yml`) + PARITY-3 verified already-complete (inline
+  screenshot images; opt-in by design).
+- **2026-06-02** — Batch 3 (PR #258): UX-P2b — trimmed `add_node`'s description
+  (dropped the per-kind-args enumeration, in `list_node_kinds`). Mock suite 840/0.
+- **2026-06-02** — Batch 7 (PR #259): PARITY-1 progress — confirmed the
+  daemon→bridge→`notifications/progress` path is wired + unit-tested; added a
+  granular per-op emit in `apply_ops` (+ test). Mock suite 841/0; **live-verified**
+  3 progress frames from a 3-op `apply_ops` against the real daemon. **All of
+  Q1 (parity) + Q2 (ease-of-use) + Q4 (install) roadmap items now done; Q3
+  (transpiling) intentionally deferred with cross-leverage seams kept clean.**

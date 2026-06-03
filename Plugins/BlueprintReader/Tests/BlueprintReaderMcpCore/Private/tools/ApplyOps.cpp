@@ -1,5 +1,6 @@
 #include "tools/ApplyOps.h"
 #include "tools/TypeShorthand.h"
+#include "jsonrpc/CallContext.h"
 
 #include <fmt/core.h>
 
@@ -876,6 +877,17 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	auto runDispatch = [&]() {
 		for (std::size_t i = 0; i < ops.size(); ++i) {
 			const auto& op = ops[i];
+			// PARITY-1: granular progress for batch writes — emit before each
+			// op so a client driving a long apply_ops sees steady advancement.
+			// No-op when the client sent no progressToken (per CallContext).
+			if (auto* ctx = bpr::jsonrpc::CallContext::Current()) {
+				const std::string opName =
+					(op.contains("op") && op["op"].is_string())
+						? op["op"].get<std::string>() : "op";
+				ctx->EmitProgress(static_cast<double>(i),
+								  static_cast<double>(ops.size()),
+								  fmt::format("apply_ops {}/{}: {}", i + 1, ops.size(), opName));
+			}
 			std::size_t prevSlotCount = slots.size();
 			// Pre-check: if this op references a slot bound to a
 			// previously failed op, short-circuit with a rich error
