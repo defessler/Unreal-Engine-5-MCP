@@ -394,7 +394,14 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** consumer stops having to pick the toolchain by hand.
 
 ### INSTALL-M3 — ship a prebuilt `BlueprintReaderMcp.exe` as a Release asset
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (PR #256, 2026-06-02) · **Effort:** M
+- *Shipped `.github/workflows/release.yml`: on a `v*` tag it CMake-builds the
+  server (RelWithDebInfo), smoke-runs the mock suite + `--version`, bundles the
+  version-stamped exe + `fixtures/` + `.mcp.json.example` into a zip, and
+  attaches it to the Release (also uploads a workflow artifact on manual runs).
+  README gained a "prefer not to build?" download note. (Tag-triggered, so not
+  exercised on the PR — verified the YAML + that it mirrors the proven
+  mcp-tests build.)*
 - The server is engine-version-independent pure C++20; CI already builds it via
   CMake (`mcp-tests.yml`). Attach it to a tagged GitHub Release.
 - **Why:** removes the single biggest "just try it" barrier (building at all) for
