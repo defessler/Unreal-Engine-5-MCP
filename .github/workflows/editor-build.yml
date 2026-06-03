@@ -1,0 +1,74 @@
+name: Editor module compile (self-hosted)
+
+# SCAFFOLD (INSTALL-M4). Compile-only smoke of the editor module
+# (BlueprintReaderEditor) against a real UE engine, to catch breaks that the
+# engine-free mcp-tests.yml CANNOT see — most importantly multi-engine API
+# regressions (a 5.8-only API that fails to compile on a pre-5.8 consumer; see
+# CLAUDE.md "Multi-engine API compatibility"). mcp-tests builds only the
+# standalone C++20 server, so editor-module breaks ship silently today.
+#
+# WHY SELF-HOSTED: building the editor module needs a full UE engine (tens of
+# GB) + the consuming .uproject — neither fits a GitHub-hosted runner. The
+# maintainer registers a self-hosted runner that has the engine(s) installed
+# and labels it `ue5`; this workflow then runs there.
+#
+# SETUP (one-time, by the maintainer):
+#   1. Add a self-hosted runner (Settings > Actions > Runners) on a machine
+#      with the UE engine + the host .uproject. Give it labels: self-hosted,
+#      windows, ue5. To exercise the multi-engine invariant, register one
+#      runner per targeted engine version and add a version label (e.g.
+#      `ue5.7`, `ue5.8`) + expand the matrix below.
+#   2. Set repository variables (Settings > Secrets and variables > Actions >
+#      Variables):
+#        UE_ENGINE_DIR  = absolute path to the engine root (…\UE_5.8)
+#        UE_PROJECT     = absolute path to the host .uproject
+#        UE_EDITOR_TARGET = editor target name (e.g. LyraEditor)
+#   3. (Installed/Launcher engine) the server Program targets can't build via
+#      UBT — that's fine, this job builds ONLY the editor module
+#      (-Module=BlueprintReaderEditor), which UBT does support.
+#
+# Until a matching runner exists the job simply queues (it is NOT a required
+# check and does NOT run on PRs, so it never blocks a merge). Trigger it
+# manually or let it run on pushes to main that touch the editor module.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Plugins/BlueprintReader/Source/**'
+      - 'Plugins/BlueprintReader/BlueprintReader.uplugin'
+      - '.github/workflows/editor-build.yml'
+  workflow_dispatch:
+
+jobs:
+  editor-compile:
+    # Requires a self-hosted runner with these labels. No runner => the job
+    # queues harmlessly; it is intentionally NOT triggered on pull_request so
+    # it can never block a PR merge while a runner is unavailable.
+    runs-on: [self-hosted, windows, ue5]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate runner configuration
+        shell: pwsh
+        run: |
+          $engine = "${{ vars.UE_ENGINE_DIR }}"
+          $proj   = "${{ vars.UE_PROJECT }}"
+          if (-not $engine -or -not (Test-Path $engine)) { throw "UE_ENGINE_DIR not set or missing: '$engine' — see editor-build.yml setup notes." }
+          if (-not $proj   -or -not (Test-Path $proj))   { throw "UE_PROJECT not set or missing: '$proj'" }
+          Write-Host "Engine: $engine"
+          Write-Host "Project: $proj"
+
+      - name: Compile editor module (UBT, compile-only)
+        shell: pwsh
+        run: |
+          $engine = "${{ vars.UE_ENGINE_DIR }}"
+          $proj   = "${{ vars.UE_PROJECT }}"
+          $target = if ("${{ vars.UE_EDITOR_TARGET }}") { "${{ vars.UE_EDITOR_TARGET }}" } else { "LyraEditor" }
+          $build  = Join-Path $engine "Engine\Build\BatchFiles\Build.bat"
+          # Compile only the plugin's editor module — fast + sufficient to catch
+          # API/compile breaks without a full editor link.
+          & $build $target Win64 Development -project="$proj" -Module=BlueprintReaderEditor -NoUba -MaxParallelActions=4 -waitmutex
+          if ($LASTEXITCODE -ne 0) { Write-Host "editor-module compile FAILED ($LASTEXITCODE)"; exit 1 }
+          Write-Host "editor-module compile OK"

@@ -277,10 +277,15 @@ replacement).
   API — that turns a harmless warning into a hard build *error* on the older
   engine (e.g. `EGetObjectsFlags` and `FViewMatrices::GetWorldToClip` are
   5.8+; this regressed a downstream build in #223 and was fixed with version
-  guards in #240). **CI does not compile the editor module** — it builds only
-  the standalone MCP server + mock suite via CMake with no engine, so
-  editor-module breaks pass CI silently. A local editor build on *each*
-  targeted engine version is the only guard.
+  guards in #240). **The hosted CI (`mcp-tests.yml`) does not compile the
+  editor module** — it builds only the standalone MCP server + mock suite via
+  CMake with no engine, so editor-module breaks pass *that* CI silently.
+  `.github/workflows/editor-build.yml` is a **self-hosted** scaffold that
+  compile-smokes the editor module against a real engine (register a runner
+  labelled `ue5` + set the `UE_ENGINE_DIR`/`UE_PROJECT`/`UE_EDITOR_TARGET`
+  vars; one runner per targeted engine version covers the multi-engine
+  invariant). Until a runner is provisioned, a local editor build on *each*
+  targeted engine version remains the only guard.
 
 ## Test
 
