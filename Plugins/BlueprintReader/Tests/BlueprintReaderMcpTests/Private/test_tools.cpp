@@ -344,6 +344,32 @@ TEST_CASE("read_blueprint with array projection on variables[].name") {
 	}
 }
 
+TEST_CASE("read_blueprint with a misspelled fields entry surfaces a _warnings hint (UX-P0a)") {
+	Fixture f;
+	auto out = f.Call("read_blueprint", json{
+		{"asset_path", "/Game/AI/BP_Enemy"},
+		{"fields", json::array({"parent_class", "asset_paths"})}});  // 'asset_paths' typo
+	REQUIRE(out.is_object());
+	// The valid field still projected.
+	CHECK(out.contains("parent_class"));
+	// The typo is flagged rather than silently dropped to nothing.
+	REQUIRE(out.contains("_warnings"));
+	REQUIRE(out["_warnings"].is_array());
+	bool flagged = false;
+	for (const auto& w : out["_warnings"]) {
+		if (w.get<std::string>().find("asset_paths") != std::string::npos) { flagged = true; }
+	}
+	CHECK(flagged);
+}
+
+TEST_CASE("read_blueprint with all-valid fields adds no _warnings") {
+	Fixture f;
+	auto out = f.Call("read_blueprint", json{
+		{"asset_path", "/Game/AI/BP_Enemy"},
+		{"fields", json::array({"parent_class", "name"})}});
+	CHECK_FALSE(out.contains("_warnings"));
+}
+
 TEST_CASE("list_blueprints honors limit/offset pagination") {
 	Fixture f;
 	auto all = f.Call("list_blueprints", json{{"path","/Game"}});

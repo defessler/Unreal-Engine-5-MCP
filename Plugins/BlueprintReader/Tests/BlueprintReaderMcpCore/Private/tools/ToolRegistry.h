@@ -169,6 +169,18 @@ public:
 	// category names, workflow presets, or `all`.
 	std::vector<std::string> ActivateToken(const std::string& token);
 
+	// True when `token` is a recognized ActivateToken/ApplyFilter token:
+	// `all`, a `/regex/` form, a known category / workflow preset, or a
+	// registered tool name. A token failing this is almost always a typo;
+	// the enable_tool_category handler turns it into a did-you-mean error
+	// rather than the silent no-op ActivateToken returns for unknown tokens.
+	bool IsKnownToken(const std::string& token) const;
+
+	// Best-effort closest match for an unknown token, drawn from the known
+	// category names + registered tool names (case-insensitive Levenshtein,
+	// small threshold). Empty when nothing is close enough to suggest.
+	std::string SuggestToken(const std::string& token) const;
+
 	// After a tools/call, the JSON-RPC dispatcher consults this. Returns
 	// true at most once per state change — taking the flag clears it.
 	bool TakeListChangedFlag();

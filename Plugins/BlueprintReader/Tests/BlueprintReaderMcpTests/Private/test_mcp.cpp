@@ -201,6 +201,76 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(inner[0].contains("parent_class"));
 }
 
+TEST_CASE("MCP initialize negotiates 2025-11-25 and stays back-compatible") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	auto negotiate = [&](const std::string& requested) {
+		jsonrpc::Server server;
+		mcp::ServerInfo info;
+		mcp::RegisterHandlers(server, registry, info);
+		std::string in = Frame(json{
+			{"jsonrpc","2.0"}, {"id",1}, {"method","initialize"},
+			{"params", json{
+				{"protocolVersion", requested},
+				{"capabilities", json::object()},
+				{"clientInfo", json{{"name","test"}, {"version","0"}}}}}});
+		std::istringstream is(in);
+		std::ostringstream os, log;
+		server.Run(is, os, log);
+		std::istringstream replay(os.str());
+		auto frames = ReadAllFrames(replay);
+		REQUIRE(frames.size() == 1);
+		return frames[0]["result"]["protocolVersion"].get<std::string>();
+	};
+	CHECK(negotiate("2025-11-25") == "2025-11-25");  // latest — echoed
+	CHECK(negotiate("2025-06-18") == "2025-06-18");  // back-compat
+	CHECK(negotiate("2024-11-05") == "2024-11-05");  // oldest known
+	// Unknown / newer-than-we-know → fall back to the latest we target.
+	CHECK(negotiate("2099-01-01") == "2025-11-25");
+}
+
+TEST_CASE("tools/call attaches structuredContent for object-returning tools (default path)") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+
+	std::string in = Frame(json{
+		{"jsonrpc","2.0"}, {"id",1}, {"method","initialize"},
+		{"params", json{
+			{"protocolVersion","2025-11-25"},
+			{"capabilities", json::object()},
+			{"clientInfo", json{{"name","test"}, {"version","0"}}}}}});
+	in += Frame(json{{"jsonrpc","2.0"}, {"method","notifications/initialized"}});
+	in += Frame(json{
+		{"jsonrpc","2.0"}, {"id",2}, {"method","tools/call"},
+		{"params", json{
+			{"name","summarize_blueprint"},
+			{"arguments", json{{"asset_path","/Game/AI/BP_Enemy"}}}}}});
+
+	std::istringstream is(in);
+	std::ostringstream os, log;
+	server.Run(is, os, log);
+	std::istringstream replay(os.str());
+	auto frames = ReadAllFrames(replay);
+	REQUIRE(frames.size() == 2);
+
+	auto& result = frames[1]["result"];
+	CHECK(result["isError"] == false);
+	// Back-compat: the text content block is still emitted...
+	REQUIRE(result["content"].is_array());
+	REQUIRE(result["content"].size() == 1);
+	auto fromText = json::parse(result["content"][0]["text"].get<std::string>());
+	// ...and structuredContent mirrors it for object results (UX-P1a).
+	REQUIRE(result.contains("structuredContent"));
+	CHECK(result["structuredContent"].is_object());
+	CHECK(result["structuredContent"] == fromText);
+}
+
 TEST_CASE("tools/call surfaces unknown tool as MCP error envelope, not JSON-RPC error") {
 	auto reader = test::MakeMockReader();
 	tools::ToolRegistry registry;

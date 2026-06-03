@@ -3827,6 +3827,22 @@ void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry) {
 				"enable_tool_category requires a string `category` argument");
 		}
 		const std::string token = args["category"].get<std::string>();
+		// UX-P0b: an unknown / misspelled category would otherwise be a silent
+		// no-op (ActivateToken skips tokens it can't expand) — the agent thinks
+		// it widened the surface, then can't find the tool. Turn it into a
+		// one-turn-correctable did-you-mean error. A genuine already-active
+		// category still reaches ActivateToken below and returns ok:true with
+		// added:[].
+		if (!registry.IsKnownToken(token)) {
+			const std::string suggestion = registry.SuggestToken(token);
+			throw std::invalid_argument(fmt::format(
+				"unknown tool category '{}'{} — call list_toolsets for the full "
+				"set, or pass \"all\" to activate every tool.",
+				token,
+				suggestion.empty()
+					? std::string{}
+					: fmt::format(" (did you mean '{}'?)", suggestion)));
+		}
 		auto added = registry.ActivateToken(token);
 		nlohmann::json result = {
 			{"ok", true},

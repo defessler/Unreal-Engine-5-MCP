@@ -316,6 +316,10 @@ void SortJsonArray(nlohmann::json& body, const std::string& sort) {
 void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 	// Sort first — page through the sorted view, not the raw view.
 	SortJsonArray(body, ctl.sort);
+	// UX-P0a: detect `fields` typos against the pre-projection body so a
+	// misspelled entry surfaces as a warning instead of silently projecting
+	// nothing. Must run before the slice/projection mutate `body`.
+	std::vector<std::string> fieldWarnings = FieldsProjectionWarnings(body, ctl.fields);
 	if (body.is_array() && (ctl.offset > 0 || ctl.limit >= 0)) {
 		std::size_t off = std::min<std::size_t>(ctl.offset, body.size());
 		std::size_t end = (ctl.limit < 0)
@@ -329,6 +333,12 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 		body = std::move(sliced);
 	}
 	ApplyProjection(body, ctl.fields);
+	// Attach the typo warnings. Only possible on an object body — a bare-array
+	// response has nowhere to hang a sibling key; those flow through
+	// BuildPaginatedBody (an object) when pagination warnings matter.
+	if (!fieldWarnings.empty() && body.is_object()) {
+		body["_warnings"] = fieldWarnings;
+	}
 }
 
 // Build a self-describing paginated response from a full result set. A broad
@@ -342,6 +352,9 @@ nlohmann::json BuildPaginatedBody(nlohmann::json rows,
 								  const ResponseControls& ctl,
 								  int defaultLimit) {
 	SortJsonArray(rows, ctl.sort);
+	// UX-P0a: compute fields-typo warnings against the full row set before any
+	// element is moved out into the page.
+	std::vector<std::string> fieldWarnings = FieldsProjectionWarnings(rows, ctl.fields);
 	const std::size_t total = rows.is_array() ? rows.size() : 0;
 	const std::size_t off =
 		std::min<std::size_t>(static_cast<std::size_t>(std::max(ctl.offset, 0)), total);
@@ -355,7 +368,7 @@ nlohmann::json BuildPaginatedBody(nlohmann::json rows,
 	}
 	ApplyProjection(results, ctl.fields);
 	const bool hasMore = end < total;
-	return nlohmann::json{
+	nlohmann::json out = {
 		{"total",       static_cast<int>(total)},
 		{"count",       static_cast<int>(results.size())},
 		{"offset",      static_cast<int>(off)},
@@ -365,6 +378,10 @@ nlohmann::json BuildPaginatedBody(nlohmann::json rows,
 							: nlohmann::json(nullptr)},
 		{"results",     std::move(results)},
 	};
+	if (!fieldWarnings.empty()) {
+		out["_warnings"] = std::move(fieldWarnings);
+	}
+	return out;
 }
 
 // On AssetNotFound, run a fuzzy basename lookup against the asset
