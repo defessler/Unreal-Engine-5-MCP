@@ -2870,6 +2870,92 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 	// connect, set_parameter, compile) mutate the UMaterial directly;
 	// mark dirty + SavePackage after if you want it to persist on disk.
 
+	// ----- create_material -----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "create_material";
+		d.description =
+			"[material] Create a new UMaterial asset under `/Game/...` (default "
+			"Surface / Opaque / DefaultLit). The material analogue of "
+			"`create_blueprint`: a fresh material to populate with "
+			"`add_material_expression` / `connect_material_expressions` / "
+			"`set_material_parameter` / `compile_material`. Idempotent — returns "
+			"`{ok:true, already_existed:true}` if the asset is already present.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"},
+								{"description","Must start with /Game/. Example: /Game/Materials/M_New"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"asset_path",      {{"type","string"}}},
+				{"already_existed", {{"type","boolean"}}},
+				{"saved",           {{"type","boolean"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireString(args, "asset_path");
+			auto r = reader.CreateMaterial(asset);
+			return nlohmann::json{
+				{"ok", true},
+				{"asset_path", asset},
+				{"already_existed", r.alreadyExisted},
+				{"saved", r.saved},
+			};
+		});
+	}
+
+	// ----- create_material_instance --------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "create_material_instance";
+		d.description =
+			"[material] Create a UMaterialInstanceConstant under `/Game/...`, "
+			"parented to `parent` (a material or material instance). The enabler "
+			"for recreating material instances + the safe way to use "
+			"`set_material_instance_parameter` (which needs a parent that declares "
+			"the parameter). Idempotent.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path", {{"type","string"},
+								{"description","Must start with /Game/. Example: /Game/Materials/MI_New"}}},
+				{"parent",     {{"type","string"},
+								{"description","Parent material/MI path. Example: /Game/Materials/M_Base. Optional (empty = no parent)."}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",              {{"type","boolean"}}},
+				{"asset_path",      {{"type","string"}}},
+				{"already_existed", {{"type","boolean"}}},
+				{"saved",           {{"type","boolean"}}},
+				{"parent_path",     {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok","asset_path"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset  = RequireString(args, "asset_path");
+			std::string parent = OptString(args, "parent", "");
+			auto r = reader.CreateMaterialInstance(asset, parent);
+			return nlohmann::json{
+				{"ok", true},
+				{"asset_path", asset},
+				{"already_existed", r.alreadyExisted},
+				{"saved", r.saved},
+				{"parent_path", r.parentPath},
+			};
+		});
+	}
+
 	// ----- list_materials ------------------------------------------------
 	{
 		ToolDescriptor d;

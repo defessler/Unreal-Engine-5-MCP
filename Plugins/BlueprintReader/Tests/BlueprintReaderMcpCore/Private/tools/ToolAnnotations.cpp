@@ -94,6 +94,7 @@ const std::set<std::string>& WriteSet() {
 		// Config
 		"set_config_value",
 		// Materials
+		"create_material", "create_material_instance",
 		"add_material_expression", "connect_material_expressions",
 		"set_material_parameter", "set_material_instance_parameter",
 		"compile_material",

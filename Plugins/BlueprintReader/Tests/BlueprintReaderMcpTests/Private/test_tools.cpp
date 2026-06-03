@@ -36,7 +36,7 @@ using namespace test_tools_detail;
 TEST_CASE("ToolRegistry exposes 252 tools (251 prior + read_actor_instance) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 252);
+	CHECK(spec.size() == 254);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -150,7 +150,7 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
 	Fixture f;
 	auto out = f.Call("list_node_kinds", json::object());
 	REQUIRE(out.is_array());
-	CHECK(out.size() == 13);
+	CHECK(out.size() == 24);
 	std::vector<std::string> kinds;
 	for (auto& k : out)
 	{
@@ -160,8 +160,10 @@ TEST_CASE("Discoverability: list_node_kinds returns the dispatch table") {
 		return std::find(kinds.begin(), kinds.end(), s) != kinds.end();
 	};
 	for (const char* k : {"Branch","Sequence","VariableGet","VariableSet","CallFunction",
-						  "CustomEvent","Cast","Self","MakeArray","MakeStruct",
-						  "FormatText","Knot","GetSubsystem"}) {
+						  "CustomEvent","Event","Cast","Self","MakeArray","MakeStruct",
+						  "FormatText","Knot","GetSubsystem",
+						  "Comment","GetArrayItem","Select","SpawnActor","BreakStruct",
+						  "MacroInstance","CallParent","PromotableOp","CommutativeOp","Message"}) {
 		CHECK(has(k));
 	}
 	// CallFunction declares its required extras.

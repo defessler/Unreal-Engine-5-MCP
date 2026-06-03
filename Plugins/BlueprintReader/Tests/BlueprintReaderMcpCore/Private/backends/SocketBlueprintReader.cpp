@@ -3357,6 +3357,34 @@ SocketBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::CreateMaterialResult
+SocketBlueprintReader::CreateMaterial(std::string_view assetPath) {
+	auto j = RunOp({"-Op=CreateMaterial", "-Asset=" + std::string(assetPath)});
+	CreateMaterialResult out;
+	if (j.is_object()) {
+		out.alreadyExisted = j.value("already_existed", false);
+		out.saved = j.value("saved", false);
+	}
+	return out;
+}
+
+IBlueprintReader::CreateMaterialInstanceResult
+SocketBlueprintReader::CreateMaterialInstance(std::string_view assetPath,
+	std::string_view parentPath) {
+	std::vector<std::string> args{"-Op=CreateMaterialInstance",
+								  "-Asset=" + std::string(assetPath)};
+	// Skip an empty -Parent (FParse would otherwise swallow the next token).
+	if (!parentPath.empty()) { args.push_back("-Parent=" + std::string(parentPath)); }
+	auto j = RunOp(args);
+	CreateMaterialInstanceResult out;
+	if (j.is_object()) {
+		out.alreadyExisted = j.value("already_existed", false);
+		out.saved = j.value("saved", false);
+		out.parentPath = j.value("parent_path", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::AddMaterialExpressionResult
 SocketBlueprintReader::AddMaterialExpression(std::string_view assetPath,
 	std::string_view expressionClass, int x, int y) {

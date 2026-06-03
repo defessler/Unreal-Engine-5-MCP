@@ -895,6 +895,12 @@ IBlueprintReader::AddDataRowResult AutoBlueprintReader::AddDataRow(std::string_v
 IBlueprintReader::AddGameplayTagResult AutoBlueprintReader::AddGameplayTag(std::string_view tagName, std::string_view comment) {
 	FORWARD(AddGameplayTag, tagName, comment);
 }
+IBlueprintReader::CreateMaterialResult AutoBlueprintReader::CreateMaterial(std::string_view assetPath) {
+	FORWARD(CreateMaterial, assetPath);
+}
+IBlueprintReader::CreateMaterialInstanceResult AutoBlueprintReader::CreateMaterialInstance(std::string_view assetPath, std::string_view parentPath) {
+	FORWARD(CreateMaterialInstance, assetPath, parentPath);
+}
 IBlueprintReader::AddMaterialExpressionResult AutoBlueprintReader::AddMaterialExpression(std::string_view assetPath, std::string_view expressionClass, int x, int y) {
 	FORWARD(AddMaterialExpression, assetPath, expressionClass, x, y);
 }

@@ -309,6 +309,9 @@ public:
 	AutomationRunResult RunAutomationTests(std::string_view pattern) override;
 
 	// ----- Material authoring -------------------------------------------
+	CreateMaterialResult CreateMaterial(std::string_view) override;
+	CreateMaterialInstanceResult CreateMaterialInstance(std::string_view,
+		std::string_view) override;
 	std::vector<BPAssetSummary> ListMaterials(std::string_view) override;
 	MaterialInfo ReadMaterial(std::string_view) override;
 	AddMaterialExpressionResult AddMaterialExpression(std::string_view,

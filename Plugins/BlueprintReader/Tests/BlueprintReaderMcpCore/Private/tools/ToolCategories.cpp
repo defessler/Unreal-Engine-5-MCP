@@ -145,6 +145,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 
 		// --- per-asset-type slices (~4–7 tools each) ---------------------
 		{"materials", {
+			"create_material", "create_material_instance",
 			"list_materials", "read_material",
 			"add_material_expression", "connect_material_expressions",
 			"set_material_parameter", "set_material_instance_parameter",

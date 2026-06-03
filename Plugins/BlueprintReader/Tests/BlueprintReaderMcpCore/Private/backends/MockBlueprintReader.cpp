@@ -265,6 +265,18 @@ MockBlueprintReader::CreateBlueprint(std::string_view, std::string_view, std::st
 		"CreateBlueprint: mock backend is read-only; set BP_READER_BACKEND=commandlet");
 }
 
+IBlueprintReader::CreateMaterialResult
+MockBlueprintReader::CreateMaterial(std::string_view) {
+	throw BlueprintReaderError(
+		"CreateMaterial: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
+IBlueprintReader::CreateMaterialInstanceResult
+MockBlueprintReader::CreateMaterialInstance(std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"CreateMaterialInstance: mock backend is read-only; set BP_READER_BACKEND=commandlet");
+}
+
 IBlueprintReader::CloneGraphResult
 MockBlueprintReader::CloneGraph(std::string_view, std::string_view, std::string_view) {
 	throw BlueprintReaderError(

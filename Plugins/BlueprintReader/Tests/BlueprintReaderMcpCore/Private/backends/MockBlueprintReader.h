@@ -56,6 +56,9 @@ public:
 	CreateBlueprintResult CreateBlueprint(std::string_view assetPath,
 										  std::string_view parentClass,
 										  std::string_view blueprintType) override;
+	CreateMaterialResult CreateMaterial(std::string_view assetPath) override;
+	CreateMaterialInstanceResult CreateMaterialInstance(std::string_view assetPath,
+														std::string_view parentPath) override;
 	CloneGraphResult CloneGraph(std::string_view sourcePath,
 								std::string_view targetPath,
 								std::string_view graphName) override;
