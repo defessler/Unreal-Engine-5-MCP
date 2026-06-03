@@ -102,6 +102,7 @@ R"(bp-reader-mcp — MCP server exposing UE5 BlueprintReader tools.
 
 Usage:
   bp-reader-mcp                Run the JSON-RPC stdio loop (production mode).
+  bp-reader-mcp version        Print the build version (VersionName + git hash).
   bp-reader-mcp doctor         Run setup checks; exit 0 if healthy.
   bp-reader-mcp config         Print a ready-to-paste MCP config snippet
 							   with auto-discovered paths filled in.
@@ -127,6 +128,24 @@ are needed for the standard layout.
 }
 
 // ---------------------------------------------------------------------------
+// Build version stamp (INSTALL-1)
+// ---------------------------------------------------------------------------
+// BPR_VERSION / BPR_GIT_HASH are injected by the build (CMakeLists.txt for the
+// installed-engine fallback, BlueprintReaderMcpCore.Build.cs for UBT). Fall
+// back gracefully if a build path forgets to set them.
+#ifndef BPR_VERSION
+#define BPR_VERSION "0.0.0"
+#endif
+#ifndef BPR_GIT_HASH
+#define BPR_GIT_HASH "unknown"
+#endif
+namespace {
+std::string VersionString() {
+	return std::string(BPR_VERSION) + "+" + BPR_GIT_HASH;
+}
+}    // namespace
+
+// ---------------------------------------------------------------------------
 // `doctor` subcommand
 // ---------------------------------------------------------------------------
 
@@ -135,6 +154,7 @@ int RunDoctor() {
 	auto cfg = bpr::backends::ConfigFromEnv(exeDir, std::cerr);
 
 	std::cout << "bp-reader-mcp doctor\n";
+	std::cout << "  Version      : " << VersionString() << "\n";
 	std::cout << "  Exe          : " << ExecutablePath().string() << "\n";
 	std::cout << "  Backend      : " << cfg.backend << "\n";
 	std::cout << "  Engine       : "
@@ -569,6 +589,9 @@ int RunServerLoop() {
 
 	jsonrpc::Server server;
 	mcp::ServerInfo info;
+	// Report the stamped build version on the initialize handshake so the
+	// client/agent can see exactly which server build it's talking to.
+	info.version = VersionString();
 	// Ship the onboarding `instructions` text by default. Clients on the
 	// MCP spec read this once at session start as system-prompt context.
 	// Set BP_READER_INSTRUCTIONS=0 to suppress when the client supplies
@@ -791,6 +814,10 @@ int main(int argc, char** argv) {
 		const auto& a = args[0];
 		if (a == "--help" || a == "-h" || a == "help") {
 			PrintUsage(std::cout);
+			return 0;
+		}
+		if (a == "version" || a == "--version" || a == "-v") {
+			std::cout << "bp-reader-mcp " << VersionString() << "\n";
 			return 0;
 		}
 		if (a == "doctor") {

@@ -50,6 +50,45 @@ public class BlueprintReaderMcpCore : ModuleRules
         PrivateDefinitions.Add("NOMINMAX");
         PrivateDefinitions.Add("_CRT_SECURE_NO_WARNINGS");
 
+        // Version stamp (INSTALL-1): mirror BlueprintReader.uplugin's
+        // VersionName + the git short-hash so --version / doctor / the MCP
+        // initialize handshake report exactly which build is running. The
+        // CMake fallback build sets the same defines for the installed-engine
+        // path. PUBLIC so they reach main.cpp + Diagnostics.cpp.
+        string pluginRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", ".."));
+        string bprVersion = "0.0.0";
+        try
+        {
+            string uplugin = Path.Combine(pluginRoot, "BlueprintReader.uplugin");
+            if (File.Exists(uplugin))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(
+                    File.ReadAllText(uplugin), "\"VersionName\"\\s*:\\s*\"([^\"]+)\"");
+                if (m.Success) { bprVersion = m.Groups[1].Value; }
+            }
+        }
+        catch { /* best-effort — fall back to 0.0.0 */ }
+        string bprGitHash = "unknown";
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("git",
+                "-C \"" + pluginRoot + "\" rev-parse --short HEAD")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                string outStr = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit();
+                if (proc.ExitCode == 0 && outStr.Length > 0) { bprGitHash = outStr; }
+            }
+        }
+        catch { /* git not available / not a repo — leave "unknown" */ }
+        PublicDefinitions.Add("BPR_VERSION=\"" + bprVersion + "\"");
+        PublicDefinitions.Add("BPR_GIT_HASH=\"" + bprGitHash + "\"");
+
         // Win32 socket API used by SocketBlueprintReader and the daemon
         // probe. Bring Ws2_32 in here so every consuming target gets it.
         if (Target.Platform == UnrealTargetPlatform.Win64)
