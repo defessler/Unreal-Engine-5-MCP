@@ -199,7 +199,13 @@ items are refinements, with two genuine silent-failure traps (P0).
 - **Why:** token trim on the remaining unbounded reads.
 
 ### UX-P2b — trim multi-line tool descriptions
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #258, 2026-06-02) · **Effort:** S
+- *Trimmed `add_node`'s description — dropped the per-kind-args enumeration
+  (authoritative in `list_node_kinds`) + tightened the `add_*`-family
+  disambiguation, keeping the common-kinds list inline. `get_class_info` /
+  `find_overriders` left as-is: their descriptions carry non-redundant value
+  (and `get_class_info` just gained a useful pagination note in UX-P2a), so
+  trimming would lose more than the marginal token saving.*
 - Several `add_node`/`find_overriders`/`get_class_info` descriptions run 3–6
   lines. Move "when to use X vs Y" prose into SKILL.md/AGENTS.md; keep
   descriptions to 1–2 lines.

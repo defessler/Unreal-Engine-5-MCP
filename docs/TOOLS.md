@@ -55,7 +55,7 @@
 | `add_function` | Create a new BP function graph with the given name. Returns {ok, function_name, already_existed}. Use add_function_input / add_function_output to declare its signature. Idempotent — calling with ... |
 | `add_function_input` | Add an input parameter to an existing function. `type` accepts either a shorthand string (e.g. "float", "object:Actor") or a BPPinType object. |
 | `add_function_output` | Add an output parameter to an existing function. Spawns a FunctionResult node if there isn't one yet. `type` accepts either a shorthand string (e.g. "float", "object:Actor") or a BPPinType object. |
-| `add_node` | Spawn a new K2 (Blueprint) node in a Blueprint graph. NOT for UMG widgets (`add_widget`), Behavior Tree (`add_bt_node`), AnimBP state (`add_anim_state`), StateTree (`add_state_tree_state`), Materia... |
+| `add_node` | Spawn a new K2 (Blueprint) node in a graph. For non-K2 nodes use the typed tools instead (add_widget / add_bt_node / add_anim_state / add_state_tree_state / add_material_expression / add_sequence_t... |
 | `add_variable` | Add a member variable to a Blueprint class. For graph nodes use `add_node`; for function parameters use `add_function_input`/`add_function_output`. `type` accepts either a shorthand string ("float"... |
 | `apply_ops` | Execute a batch of write operations sequentially in a single tool call. Each op is `{op:"add_variable"\|...\|"wire_pins", ...args}`. Reduces N round-trips and N agent reasoning steps to one. |
 | `attach_component` | Re-parent an SCS component on a Blueprint. Pass `new_parent` to attach the component as a child of that node; pass empty to attach at the SCS root. `socket` applies to SceneComponent children only. |
