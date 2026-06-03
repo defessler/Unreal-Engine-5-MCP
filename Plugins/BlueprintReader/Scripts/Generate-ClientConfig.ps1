@@ -4,17 +4,17 @@
 # Each client has its own config format and path. This script writes
 # whichever client(s) you ask for. JSON formats are merged with existing
 # entries (we only overwrite the `bp-reader` entry; other servers stay).
-# Codex's TOML format is write-once — the script refuses to overwrite
+# Codex's TOML format is write-once - the script refuses to overwrite
 # an existing TOML file without -Force, to avoid clobbering hand-tuned
 # settings under a format we don't try to preserve.
 #
 # Supported clients (matching Epic 5.8's ModelContextProtocol plugin):
-#   * ClaudeCode  → <BaseDir>/.mcp.json
-#   * Cursor      → <BaseDir>/.cursor/mcp.json
-#   * VSCode      → <BaseDir>/.vscode/mcp.json
-#   * Gemini      → <BaseDir>/.gemini/settings.json
-#   * Codex       → <BaseDir>/.codex/config.toml
-#   * All         → all of the above
+#   * ClaudeCode  -> <BaseDir>/.mcp.json
+#   * Cursor      -> <BaseDir>/.cursor/mcp.json
+#   * VSCode      -> <BaseDir>/.vscode/mcp.json
+#   * Gemini      -> <BaseDir>/.gemini/settings.json
+#   * Codex       -> <BaseDir>/.codex/config.toml
+#   * All         -> all of the above
 #
 # Defaults assume the script lives at <ProjectDir>/Plugins/BlueprintReader/Scripts/.
 # BaseDir defaults to <ProjectDir>; override for multi-project setups.
@@ -38,12 +38,12 @@ param(
     [string]$ServerExe,
 
     # Server entry name to use in each client's config (the key under
-    # mcpServers). Defaults to 'bp-reader' — matches our README + the
+    # mcpServers). Defaults to 'bp-reader' - matches our README + the
     # entry Claude Code looks for.
     [string]$ServerName = 'bp-reader',
 
     # If $true, overwrite Codex TOML even when it already exists. Pure
-    # safety guard — JSON merges always preserve sibling entries, so
+    # safety guard - JSON merges always preserve sibling entries, so
     # this flag is only consulted on the Codex path.
     [switch]$Force,
 
@@ -57,18 +57,18 @@ $ErrorActionPreference = 'Stop'
 # ---- resolve paths ----------------------------------------------------------
 
 $scriptDir = Split-Path -Parent $PSCommandPath
-if (-not $PluginDir)  { $PluginDir  = Split-Path -Parent $scriptDir }     # <plugin>/Scripts/ → <plugin>
-if (-not $ProjectDir) { $ProjectDir = Split-Path -Parent (Split-Path -Parent $PluginDir) } # <plugin>/.. → Plugins → ProjectDir
+if (-not $PluginDir)  { $PluginDir  = Split-Path -Parent $scriptDir }     # <plugin>/Scripts/ -> <plugin>
+if (-not $ProjectDir) { $ProjectDir = Split-Path -Parent (Split-Path -Parent $PluginDir) } # <plugin>/.. -> Plugins -> ProjectDir
 if (-not $BaseDir)    { $BaseDir    = $ProjectDir }
 if (-not $ServerExe)  { $ServerExe  = Join-Path $ProjectDir 'Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe' }
 
 if (-not (Test-Path -LiteralPath $ServerExe)) {
-    Write-Warning "Server exe not found at $ServerExe — config files will reference a path that doesn't exist yet."
+    Write-Warning "Server exe not found at $ServerExe - config files will reference a path that doesn't exist yet."
     Write-Warning "Build the server first via Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1 or include the plugin in your editor target."
 }
 
 if (-not $ServerEnv) {
-    # Sensible defaults — same vars Start-MCPServer.ps1 considers.
+    # Sensible defaults - same vars Start-MCPServer.ps1 considers.
     $ServerEnv = @{
         'BP_READER_BACKEND' = 'auto'
         'BP_READER_PROJECT' = (Get-ChildItem -LiteralPath $ProjectDir -Filter '*.uproject' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
@@ -212,4 +212,4 @@ foreach ($t in $targets) {
     }
 }
 
-Write-Host ("done — {0} file(s) updated" -f $written.Count)
+Write-Host ("done - {0} file(s) updated" -f $written.Count)

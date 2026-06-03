@@ -9,7 +9,7 @@
 # that invokes this script during a consuming editor target's build, so the
 # server is rebuilt alongside the editor module automatically. You can also
 # run it standalone (opt-in) when iterating on server-only changes. On an
-# installed / Launcher engine UBT refuses Program targets — use the CMake
+# installed / Launcher engine UBT refuses Program targets - use the CMake
 # fallback (Saved/build-mcp-cmake.ps1) instead.
 #
 # Usage:
@@ -109,10 +109,10 @@ if ($ProjectDir -or $PluginDir -or -not $EngineDir -or -not $ProjectFile) {
 # INSTALL-M2: an installed/Launcher engine rejects UE Program targets
 # ("Program targets are not currently supported from this engine distribution").
 # Detect it via the InstalledBuild.txt marker and transparently use the
-# engine-free CMake/Ninja fallback instead — so the caller doesn't have to know
+# engine-free CMake/Ninja fallback instead - so the caller doesn't have to know
 # which toolchain applies.
 if (Test-Path (Join-Path $EngineDir "Engine\Build\InstalledBuild.txt")) {
-    Write-Host "$tag Installed engine detected (InstalledBuild.txt) — UBT can't build"
+    Write-Host "$tag Installed engine detected (InstalledBuild.txt) - UBT can't build"
     Write-Host "$tag Program targets here; using the engine-free CMake/Ninja fallback."
     Invoke-CMakeServerBuild -ScriptsDir $PSScriptRoot -BuildConfig $Config
     Write-Host "$tag Done (CMake fallback)."

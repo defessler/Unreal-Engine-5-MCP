@@ -1,11 +1,11 @@
 #requires -Version 7
-# Install-Plugin.ps1 — one-shot installer (INSTALL-M1).
+# Install-Plugin.ps1 - one-shot installer (INSTALL-M1).
 #
 # Collapses the ~8-step manual setup into a single command: mount the plugin
 # into a UE project, build the MCP server (Build-MCPServer.ps1 auto-picks UBT
 # for a source engine or the CMake fallback for an installed one, INSTALL-M2),
 # write the MCP client config, deploy the Claude/AGENTS assets, and finish with
-# `doctor`. All sub-steps are existing scripts — this is the glue.
+# `doctor`. All sub-steps are existing scripts - this is the glue.
 #
 # Usage:
 #   pwsh Plugins/BlueprintReader/Scripts/Install-Plugin.ps1 `
@@ -41,7 +41,7 @@ $projectDir = (Resolve-Path (Split-Path -Parent $ProjectFile)).Path
 $dest = Join-Path $projectDir 'Plugins\BlueprintReader'
 $destResolved = if (Test-Path $dest) { (Resolve-Path $dest).Path } else { $dest }
 if ($pluginSrc -ieq $destResolved) {
-    Write-Host "$tag Plugin already mounted at $dest (source == target) — skipping copy."
+    Write-Host "$tag Plugin already mounted at $dest (source == target) - skipping copy."
 } elseif ($Symlink) {
     if (Test-Path $dest) {
         if (-not $Force) { throw "$tag $dest exists; pass -Force to replace it with a symlink." }
@@ -62,7 +62,7 @@ if ($pluginSrc -ieq $destResolved) {
     Write-Host "$tag Copied plugin -> $dest"
 }
 
-# ---- 2. (optional) engine patches — source engines only --------------------
+# ---- 2. (optional) engine patches - source engines only --------------------
 if ($ApplyEnginePatches) {
     Write-Host "$tag Applying engine patches (Patch-Engine.ps1 -Apply)..."
     & (Join-Path $scriptsDir 'Patch-Engine.ps1') -EngineDir $EngineDir -Apply
@@ -92,6 +92,6 @@ if (Test-Path $exe) {
     Write-Host "$tag Running doctor..."
     & $exe doctor
 } else {
-    Write-Host "$tag NOTE: server exe not found at $exe — run '$exe doctor' after building."
+    Write-Host "$tag NOTE: server exe not found at $exe - run '$exe doctor' after building."
 }
 Write-Host "$tag Install complete."
