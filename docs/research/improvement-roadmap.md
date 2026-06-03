@@ -57,7 +57,7 @@ one (UX-P1a) closes a Q1 *and* a Q2 gap in a single change.
 | Item | Effort | Status | One-liner |
 |---|---|---|---|
 | [UX-P1a](#ux-p1a) | S | ✅ #250 | Emit `structuredContent` on the default dispatch path — spec conformance for ~218 schematized tools; also closes PARITY |
-| [INSTALL-1](#install-1) | S | ☐ Open | Version-stamp the exe + staleness check in `doctor` — fixes the real stale-copy build break |
+| [INSTALL-1](#install-1) | S | ✅ #253 | Version-stamp the exe + staleness check in `doctor` — fixes the real stale-copy build break |
 | [UX-P0a](#ux-p0a) | S | ✅ #250 | `fields` typo currently projects nothing silently → wrong conclusions; warn / did-you-mean |
 | [UX-P0b](#ux-p0b) | S | ✅ #250 | `enable_tool_category` with a misspelled category silently no-ops; did-you-mean error |
 | [PARITY-2](#parity-2) | S | ✅ #250 | Bump default protocol to `2025-11-25` (we're on `2025-06-18`; Epic ships `2025-11-25`) |
@@ -113,7 +113,7 @@ Reference: Epic plugin at
 - **Why:** finer safety for shared-editor / multi-agent setups.
 
 ### PARITY-5 — extend client-config writer to Gemini + Codex
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #252, 2026-06-02) · **Effort:** S
 - `bp-reader-mcp config --client=…` covers claude-code/desktop/copilot/cursor/
   windsurf/vscode; Epic also writes Gemini CLI + Codex (TOML).
 - **Why:** cheap parity; widens the addressable client set.
@@ -321,7 +321,11 @@ plugin copy after a fix landed on `main`) is that **nothing detects staleness** 
 has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 
 ### INSTALL-1 — version-stamp the exe + staleness check in `doctor` {#install-1}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #253, 2026-06-02) · **Effort:** S
+- *Shipped via a new `FindPluginDir` (the existing `GuessPluginDirFromCfg`
+  yields the project root, not the plugin dir). Both VersionName-mismatch and
+  exe-commit-vs-plugin-git-HEAD staleness warn; version surfaced on `--version`,
+  `doctor`, and the `initialize` handshake.*
 - Embed plugin `VersionName` + git short-hash into `BlueprintReaderMcp.exe` at
   build time (CMake `add_definitions` / UBT `PublicDefinitions`); surface it in
   `doctor` and the MCP `initialize` handshake. Have `doctor` read the on-disk
@@ -332,7 +336,11 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   consumer.
 
 ### INSTALL-2 — de-hardcode the committed `.mcp.json`
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #252, 2026-06-02) · **Effort:** S
+- *Shipped a portable `.mcp.json.example` + reconciled the README. The tracked
+  `.mcp.json` was left as the maintainer's reference (gutting it risks the
+  untrack-deletes-worktree trap + breaking the live session); consumers mount
+  the plugin into their own project rather than cloning this repo.*
 - `.mcp.json:5,9,10` hardcodes maintainer-only `D:\…` paths *and* contradicts the
   README's source-engine paths (`README.md:309`). Replace with a documented
   placeholder + a note to run `config`, or reduce the committed file to a
@@ -340,7 +348,10 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** the committed config is non-portable and self-contradictory.
 
 ### INSTALL-3 — add `EngineVersion` to `.uplugin`
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #253, 2026-06-02) · **Effort:** S
+- *Shipped as a `doctor` compat-range check (warn outside UE 5.7-5.8, parsed
+  from `Engine/Build/Build.version`) — NOT a hard `.uplugin` `EngineVersion`
+  pin, which would fight the plugin's intentional multi-version support.*
 - No `EngineVersion` field → UE won't warn on a mismatch; combined with the
   multi-engine API guards, a wrong engine just fails deep in the compiler. Add the
   field (or a documented compat range) + a `doctor` check against the engine's
@@ -350,7 +361,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   "Multi-engine API compatibility" invariant.
 
 ### INSTALL-4 — bring `install-claude-assets.sh` to parity with the PS1
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #252, 2026-06-02) · **Effort:** S
 - The bash version (`Scripts/install-claude-assets.sh:73-110`) deploys only
   skills+agents; it does **not** deploy `AGENTS.md` or
   `.github/copilot-instructions.md` (the PS1 does — `Install-ClaudeAssets.ps1:123-137`).
@@ -358,7 +369,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** parity gap; Copilot/Codex users on Unix get less.
 
 ### INSTALL-5 — fix the stale `Build-MCPServer.ps1` header
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #252, 2026-06-02) · **Effort:** S
 - Its comment (`Build-MCPServer.ps1:7-8`) claims "PreBuildStep is gone; this
   script is opt-in" and carries a legacy no-op path — but the `.uplugin` **does**
   declare `PreBuildSteps` (`BlueprintReader.uplugin:60`). Update the header to the
@@ -424,3 +435,9 @@ Newest first. One line per change to this file.
 - **2026-06-02** — Batch 2 (PR #251): UX-P1b (add_node `kind` did-you-mean) +
   UX-P2a (`get_class_info`/`read_actor_instance` nested-array pagination).
   Mock suite 835/0. UX-P2a pagination pending live-editor verification.
+- **2026-06-02** — Batch 4 (PR #252): PARITY-5 (Gemini/Codex config clients),
+  INSTALL-2 (`.mcp.json.example` + README), INSTALL-4 (`.sh` parity),
+  INSTALL-5 (Build-MCPServer header). Verified by running `config`.
+- **2026-06-02** — Batch 5 (PR #253): INSTALL-1 (version stamp + doctor
+  staleness) + INSTALL-3 (engine compat-range in doctor). Mock suite 837/0;
+  `--version`/`doctor` verified by running the exe.
