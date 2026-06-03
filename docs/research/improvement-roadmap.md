@@ -441,3 +441,13 @@ Newest first. One line per change to this file.
 - **2026-06-02** — Batch 5 (PR #253): INSTALL-1 (version stamp + doctor
   staleness) + INSTALL-3 (engine compat-range in doctor). Mock suite 837/0;
   `--version`/`doctor` verified by running the exe.
+- **2026-06-02** — **LIVE-EDITOR VERIFICATION (Batches 1/2/4/5).** Drove the
+  rebuilt server against the real Lyra `-nullrhi` commandlet daemon
+  (`Saved/live-verify.ps1`). Confirmed on real `IntrospectClass` data: protocol
+  `2025-11-25`; `serverInfo.version` stamp in the handshake; `structuredContent`
+  on object results; `get_class_info` pagination (`functions_total:160`, `limit`
+  trimmed); `fields`-typo `_warnings` (+ available-keys hint); `add_node`
+  unknown-kind error (valid-kinds list). The loop's live-verification gate is
+  satisfied for the merged server-side work. (Gotcha: had to rebuild the server
+  exe from `main` first — a stale exe gave false results, exactly what INSTALL-1
+  now catches. See [[live-verify-server-batches]].)
