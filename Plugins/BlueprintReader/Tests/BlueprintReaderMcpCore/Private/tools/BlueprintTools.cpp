@@ -36,6 +36,17 @@ namespace bpr::tools {
 
 using namespace blueprint_tools_detail;
 
+const std::vector<std::string>& KnownNodeKinds() {
+	// Keep in lockstep with the list_node_kinds descriptor table below — a
+	// sync test (test_tools.cpp) asserts these match.
+	static const std::vector<std::string> kKinds = {
+		"GetSubsystem", "Branch", "Sequence", "VariableGet", "VariableSet",
+		"CallFunction", "CustomEvent", "Cast", "Self", "MakeArray",
+		"MakeStruct", "FormatText", "Knot",
+	};
+	return kKinds;
+}
+
 // Phase D — assemble the response for a screenshot tool, optionally
 // inlining the captured PNG as a content block. The classic shape is
 // `{ok, captured, output_file}`; when `returnInline` is true AND the
@@ -372,6 +383,8 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 												"path /Game/__ExternalActors__/Maps/L_X/0/AB/GUID, or any "
 												"/Game/... UObject."}}},
 				{"fields", FieldsProperty()},
+				{"limit", LimitProperty()},
+				{"offset", OffsetProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
@@ -407,6 +420,10 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string asset = RequireString(args, "asset_path");
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = reader.ReadActorInstance(asset);
+			// UX-P2a: limit/offset page the (potentially large) overrides[]
+			// array — body is an object, so ApplyResponseControls' top-level
+			// slice wouldn't reach it.
+			PaginateField(body, "overrides", ctl);
 			ApplyResponseControls(body, ctl);
 			return body;
 		});
@@ -1585,6 +1602,39 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 			const std::string& asset = RequireString(args, "asset_path");
 			const std::string& graph = RequireString(args, "graph_name");
 			const std::string& kind  = RequireString(args, "kind");
+			// UX-P1b: pre-validate the kind client-side so a typo yields a fast
+			// did-you-mean (with the full valid set) instead of an opaque
+			// backend failure. list_node_kinds is the authoritative set.
+			{
+				const auto& kinds = KnownNodeKinds();
+				if (std::find(kinds.begin(), kinds.end(), kind) == kinds.end()) {
+					std::string suggestion;  // canonical-casing match for a case typo
+					for (const auto& k : kinds) {
+						if (k.size() == kind.size() &&
+							std::equal(k.begin(), k.end(), kind.begin(),
+								[](char a, char b) {
+									return std::tolower((unsigned char)a) ==
+										   std::tolower((unsigned char)b);
+								})) {
+							suggestion = k;
+							break;
+						}
+					}
+					std::string valid;
+					for (const auto& k : kinds) {
+						if (!valid.empty()) { valid += ", "; }
+						valid += k;
+					}
+					throw std::invalid_argument(fmt::format(
+						"unknown node kind '{}'{} — valid kinds: {}. Call "
+						"list_node_kinds for the required arg(s) per kind.",
+						kind,
+						suggestion.empty()
+							? std::string{}
+							: fmt::format(" (did you mean '{}'?)", suggestion),
+						valid));
+				}
+			}
 			int x = args.at("x").get<int>();
 			int y = args.at("y").get<int>();
 			std::map<std::string, std::string, std::less<>> extras;

@@ -341,6 +341,40 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 	}
 }
 
+// UX-P2a: slice a named array field of an OBJECT body per offset/limit, for
+// tools whose payload wraps a large array (get_class_info.properties/functions,
+// read_actor_instance.overrides). Sort + field projection are still handled by
+// ApplyResponseControls/ApplyProjection on the whole body; this only trims the
+// named array. When it actually trims, it records `<field>_total` +
+// `<field>_has_more` siblings so the caller knows it paged. No-op when the
+// field is absent / not an array / neither offset nor limit was set.
+void PaginateField(nlohmann::json& body, const std::string& field,
+				   const ResponseControls& ctl) {
+	if (!body.is_object() || (ctl.offset <= 0 && ctl.limit < 0)) {
+		return;
+	}
+	auto it = body.find(field);
+	if (it == body.end() || !it->is_array()) {
+		return;
+	}
+	nlohmann::json& arr = *it;
+	const std::size_t total = arr.size();
+	const std::size_t off = std::min<std::size_t>(ctl.offset, total);
+	const std::size_t end = (ctl.limit < 0)
+								? total
+								: std::min<std::size_t>(off + ctl.limit, total);
+	nlohmann::json sliced = nlohmann::json::array();
+	for (std::size_t i = off; i < end; ++i) {
+		sliced.push_back(std::move(arr[i]));
+	}
+	const bool trimmed = (off > 0) || (end < total);
+	arr = std::move(sliced);
+	if (trimmed) {
+		body[field + "_total"]    = static_cast<int>(total);
+		body[field + "_has_more"] = end < total;
+	}
+}
+
 // Build a self-describing paginated response from a full result set. A broad
 // query (e.g. find_asset "Elevator") can match thousands of rows; returning
 // them all produces a response the MCP client rejects as "Output too large"
