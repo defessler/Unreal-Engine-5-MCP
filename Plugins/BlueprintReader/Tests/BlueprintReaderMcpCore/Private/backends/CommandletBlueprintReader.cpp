@@ -2196,6 +2196,34 @@ CommandletBlueprintReader::ReadMaterial(std::string_view assetPath) {
 	return out;
 }
 
+IBlueprintReader::CreateMaterialResult
+CommandletBlueprintReader::CreateMaterial(std::string_view assetPath) {
+	auto j = RunOp({L"-Op=CreateMaterial", L"-Asset=" + Widen(assetPath)});
+	CreateMaterialResult out;
+	if (j.is_object()) {
+		out.alreadyExisted = j.value("already_existed", false);
+		out.saved = j.value("saved", false);
+	}
+	return out;
+}
+
+IBlueprintReader::CreateMaterialInstanceResult
+CommandletBlueprintReader::CreateMaterialInstance(std::string_view assetPath,
+	std::string_view parentPath) {
+	std::vector<std::wstring> args{L"-Op=CreateMaterialInstance",
+								   L"-Asset=" + Widen(assetPath)};
+	// Skip an empty -Parent (FParse would otherwise swallow the next token).
+	if (!parentPath.empty()) { args.push_back(L"-Parent=" + Widen(parentPath)); }
+	auto j = RunOp(args);
+	CreateMaterialInstanceResult out;
+	if (j.is_object()) {
+		out.alreadyExisted = j.value("already_existed", false);
+		out.saved = j.value("saved", false);
+		out.parentPath = j.value("parent_path", std::string{});
+	}
+	return out;
+}
+
 IBlueprintReader::AddMaterialExpressionResult
 CommandletBlueprintReader::AddMaterialExpression(std::string_view assetPath,
 	std::string_view expressionClass, int x, int y) {

@@ -1446,10 +1446,13 @@
   },
   {
     "category": "blueprint",
-    "description": "[blueprint] Spawn a new K2 (Blueprint) node in a graph. For non-K2 nodes use the typed tools instead (add_widget / add_bt_node / add_anim_state / add_state_tree_state / add_material_expression / add_sequence_track). Common `kind`s: Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent, Cast, Self, MakeArray, MakeStruct, FormatText, Knot, GetSubsystem — call list_node_kinds for the authoritative set + each kind's required arg(s). Returns {ok, node_id, pins:[...]} (pins carry name/guid/direction/type so you can wire without a follow-up get_graph).",
+    "description": "[blueprint] Spawn a new K2 (Blueprint) node in a graph. For non-K2 nodes use the typed tools instead (add_widget / add_bt_node / add_anim_state / add_state_tree_state / add_material_expression / add_sequence_track). Common `kind`s: Branch, Sequence, VariableGet, VariableSet, CallFunction, CustomEvent, Event, Cast, Self, MakeArray, MakeStruct, FormatText, Knot, GetSubsystem — call list_node_kinds for the authoritative set + each kind's required arg(s). Returns {ok, node_id, pins:[...]} (pins carry name/guid/direction/type so you can wire without a follow-up get_graph).",
     "input_schema": {
       "properties": {
         "asset_path": {
+          "type": "string"
+        },
+        "comment": {
           "type": "string"
         },
         "event_name": {
@@ -1464,8 +1467,23 @@
         "graph_name": {
           "type": "string"
         },
+        "h": {
+          "type": "integer"
+        },
         "kind": {
           "type": "string"
+        },
+        "macro_graph": {
+          "type": "string"
+        },
+        "num_inputs": {
+          "type": "integer"
+        },
+        "num_outputs": {
+          "type": "integer"
+        },
+        "returns_ref": {
+          "type": "boolean"
         },
         "struct_type": {
           "type": "string"
@@ -1478,6 +1496,12 @@
         },
         "variable": {
           "type": "string"
+        },
+        "variable_class": {
+          "type": "string"
+        },
+        "w": {
+          "type": "integer"
         },
         "x": {
           "type": "integer"
@@ -5412,6 +5436,89 @@
     },
     "name": "run_automation_tests",
     "output_schema": null
+  },
+  {
+    "category": "material",
+    "description": "[material] Create a new UMaterial asset under `/Game/...` (default Surface / Opaque / DefaultLit). The material analogue of `create_blueprint`: a fresh material to populate with `add_material_expression` / `connect_material_expressions` / `set_material_parameter` / `compile_material`. Idempotent — returns `{ok:true, already_existed:true}` if the asset is already present.",
+    "input_schema": {
+      "properties": {
+        "asset_path": {
+          "description": "Must start with /Game/. Example: /Game/Materials/M_New",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_path"
+      ],
+      "type": "object"
+    },
+    "name": "create_material",
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "material",
+    "description": "[material] Create a UMaterialInstanceConstant under `/Game/...`, parented to `parent` (a material or material instance). The enabler for recreating material instances + the safe way to use `set_material_instance_parameter` (which needs a parent that declares the parameter). Idempotent.",
+    "input_schema": {
+      "properties": {
+        "asset_path": {
+          "description": "Must start with /Game/. Example: /Game/Materials/MI_New",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Parent material/MI path. Example: /Game/Materials/M_Base. Optional (empty = no parent).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_path"
+      ],
+      "type": "object"
+    },
+    "name": "create_material_instance",
+    "output_schema": {
+      "properties": {
+        "already_existed": {
+          "type": "boolean"
+        },
+        "asset_path": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parent_path": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "asset_path"
+      ],
+      "type": "object"
+    }
   },
   {
     "category": "material",

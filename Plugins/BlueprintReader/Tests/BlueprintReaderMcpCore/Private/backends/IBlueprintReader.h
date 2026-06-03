@@ -457,6 +457,35 @@ public:
 	// scalar / vector / texture / static-switch param setters as one tool
 	// dispatched by `param_type`.
 
+	// Create a new UMaterial asset (default Surface/Opaque/DefaultLit) at
+	// `assetPath`. The enabler for granular material recreation, parallel to
+	// CreateBlueprint: a fresh material to populate with AddMaterialExpression /
+	// ConnectMaterialExpressions / SetMaterialParameter / CompileMaterial.
+	// Idempotent — `alreadyExisted` true if the asset is already present.
+	struct CreateMaterialResult {
+		bool alreadyExisted = false;
+		bool saved = false;
+	};
+	virtual CreateMaterialResult CreateMaterial(std::string_view assetPath) {
+		(void)assetPath;
+		throw BlueprintReaderError("CreateMaterial not supported by this backend");
+	}
+
+	// Create a UMaterialInstanceConstant at `assetPath`, parented to
+	// `parentPath` (a material or material instance; empty leaves no parent).
+	// The enabler for recreating material instances + exercising
+	// SetMaterialInstanceParameter. Idempotent.
+	struct CreateMaterialInstanceResult {
+		bool alreadyExisted = false;
+		bool saved = false;
+		std::string parentPath;
+	};
+	virtual CreateMaterialInstanceResult CreateMaterialInstance(
+		std::string_view assetPath, std::string_view parentPath) {
+		(void)assetPath; (void)parentPath;
+		throw BlueprintReaderError("CreateMaterialInstance not supported by this backend");
+	}
+
 	virtual std::vector<BPAssetSummary> ListMaterials(std::string_view path) {
 		(void)path;
 		throw BlueprintReaderError("ListMaterials not supported by this backend");

@@ -41,8 +41,10 @@ const std::vector<std::string>& KnownNodeKinds() {
 	// sync test (test_tools.cpp) asserts these match.
 	static const std::vector<std::string> kKinds = {
 		"GetSubsystem", "Branch", "Sequence", "VariableGet", "VariableSet",
-		"CallFunction", "CustomEvent", "Cast", "Self", "MakeArray",
+		"CallFunction", "CustomEvent", "Event", "Cast", "Self", "MakeArray",
 		"MakeStruct", "FormatText", "Knot",
+		"Comment", "GetArrayItem", "Select", "SpawnActor", "BreakStruct",
+		"MacroInstance", "CallParent", "PromotableOp", "CommutativeOp", "Message",
 	};
 	return kKinds;
 }
@@ -1561,7 +1563,7 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"nodes use the typed tools instead (add_widget / add_bt_node / "
 			"add_anim_state / add_state_tree_state / add_material_expression / "
 			"add_sequence_track). Common `kind`s: Branch, Sequence, VariableGet, "
-			"VariableSet, CallFunction, CustomEvent, Cast, Self, MakeArray, "
+			"VariableSet, CallFunction, CustomEvent, Event, Cast, Self, MakeArray, "
 			"MakeStruct, FormatText, Knot, GetSubsystem — call list_node_kinds for "
 			"the authoritative set + each kind's required arg(s). Returns "
 			"{ok, node_id, pins:[...]} (pins carry name/guid/direction/type so you "
@@ -1581,6 +1583,14 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"target_class",   {{"type","string"}}},
 				{"struct_type",    {{"type","string"}}},
 				{"subsystem_class",{{"type","string"}}},
+				{"comment",        {{"type","string"}}},
+				{"w",              {{"type","integer"}}},
+				{"h",              {{"type","integer"}}},
+				{"macro_graph",    {{"type","string"}}},
+				{"variable_class", {{"type","string"}}},
+				{"num_outputs",    {{"type","integer"}}},
+				{"num_inputs",     {{"type","integer"}}},
+				{"returns_ref",    {{"type","boolean"}}},
 			}},
 			{"required", nlohmann::json::array({"asset_path","graph_name","kind","x","y"})},
 		};
@@ -1652,6 +1662,33 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 			put("target_class",   "TargetClass");
 			put("struct_type",    "StructType");
 			put("subsystem_class", "SubsystemClass");
+			put("comment",        "Comment");
+			put("macro_graph",    "MacroGraph");
+			put("variable_class", "VariableClass");
+			// Integer / bool extras serialize to the string form the commandlet's
+			// FParse expects (Comment box size, variadic Sequence/operator pin
+			// counts, GetArrayItem ref/copy mode).
+			auto putInt = [&](const char* mcpKey, const char* flagKey) {
+				if (args.contains(mcpKey) && args.at(mcpKey).is_number_integer()) {
+					extras.emplace(flagKey, std::to_string(args.at(mcpKey).get<int>()));
+				} else {
+					std::string v = OptString(args, mcpKey, "");
+					if (!v.empty()) { extras.emplace(flagKey, std::move(v)); }
+				}
+			};
+			auto putBool = [&](const char* mcpKey, const char* flagKey) {
+				if (args.contains(mcpKey) && args.at(mcpKey).is_boolean()) {
+					extras.emplace(flagKey, args.at(mcpKey).get<bool>() ? "true" : "false");
+				} else {
+					std::string v = OptString(args, mcpKey, "");
+					if (!v.empty()) { extras.emplace(flagKey, std::move(v)); }
+				}
+			};
+			putInt("w",           "W");
+			putInt("h",           "H");
+			putInt("num_outputs", "NumOutputs");
+			putInt("num_inputs",  "NumInputs");
+			putBool("returns_ref", "ReturnsRef");
 			std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
 
 			// Post-fetch the graph to extract the new node's pins. The
@@ -2680,6 +2717,17 @@ void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader
 					})},
 				},
 				nlohmann::json{
+					{"kind", "Event"},
+					{"class", "K2Node_Event"},
+					{"description", "Bind an OVERRIDABLE engine/parent event (Event BeginPlay, Event Tick, Event ActorBeginOverlap, ...) — distinct from CustomEvent (a new event the BP declares). Reproduce a K2Node_Event from its eventName/eventClass meta."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","event_name"}, {"required",true},
+									   {"description","UFunction name of the override, e.g. ReceiveBeginPlay (the K2Node_Event's eventName meta)."}},
+						nlohmann::json{{"name","function_owner"}, {"required",false},
+									   {"description","Class declaring the event, e.g. /Script/Engine.Actor (eventClass meta). Omit to search the parent hierarchy."}}
+					})},
+				},
+				nlohmann::json{
 					{"kind", "Cast"},
 					{"class", "K2Node_DynamicCast"},
 					{"description", "Cast an object to a target class. Provides Cast Failed and As<TargetClass> output pins."},
@@ -2720,6 +2768,97 @@ void RegisterTools_02(ToolRegistry& registry, backends::IBlueprintReader& reader
 					{"class", "K2Node_Knot"},
 					{"description", "Reroute node — pure visual, useful for cleaning up wire crossings."},
 					{"extras", nlohmann::json::array()},
+				},
+				nlohmann::json{
+					{"kind", "Comment"},
+					{"class", "EdGraphNode_Comment"},
+					{"description", "Cosmetic comment box around nodes. No pins; the box title is its comment text."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","comment"}, {"required",false},
+									   {"description","Comment box text (also its node title)."}},
+						nlohmann::json{{"name","w"}, {"required",false}, {"description","Box width (default 400)."}},
+						nlohmann::json{{"name","h"}, {"required",false}, {"description","Box height (default 100)."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "GetArrayItem"},
+					{"class", "K2Node_GetArrayItem"},
+					{"description", "Array element accessor (GET []). Array/element types resolve from the connected Array pin."},
+					{"extras", nlohmann::json::array()},
+				},
+				nlohmann::json{
+					{"kind", "Select"},
+					{"class", "K2Node_Select"},
+					{"description", "Select node — pick one of N option values by an index/bool/enum. Wildcard until connected."},
+					{"extras", nlohmann::json::array()},
+				},
+				nlohmann::json{
+					{"kind", "SpawnActor"},
+					{"class", "K2Node_SpawnActorFromClass"},
+					{"description", "Spawn an actor from a class. The spawn class is set via the Class pin (default or wired)."},
+					{"extras", nlohmann::json::array()},
+				},
+				nlohmann::json{
+					{"kind", "BreakStruct"},
+					{"class", "K2Node_BreakStruct"},
+					{"description", "Break a USTRUCT into its members (mirror of MakeStruct). Each member becomes an output pin."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","struct_type"}, {"required",true},
+									   {"description","UScriptStruct path (the BreakStruct's structType meta)."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "MacroInstance"},
+					{"class", "K2Node_MacroInstance"},
+					{"description", "Instance of a macro graph (ForEachLoop, IsValid, project macro libraries, ...)."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","macro_graph"}, {"required",true},
+									   {"description","Full object path of the macro's UEdGraph (the macroGraph meta), e.g. /Engine/EditorBlueprintResources/StandardMacros.StandardMacros:IsValid."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "CallParent"},
+					{"class", "K2Node_CallParentFunction"},
+					{"description", "Call the parent class's implementation of a (usually overridden) function, e.g. Parent: BeginPlay."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","function"}, {"required",true},
+									   {"description","Function name (the targetFunction meta)."}},
+						nlohmann::json{{"name","function_owner"}, {"required",false},
+									   {"description","Declaring class path (targetClass meta). Omit to search the parent hierarchy."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "PromotableOp"},
+					{"class", "K2Node_PromotableOperator"},
+					{"description", "Wildcard math/comparison operator (+, -, *, ==, ...) backed by a KismetMathLibrary function."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","function"}, {"required",true},
+									   {"description","Backing operator function, e.g. Multiply_DoubleDouble (targetFunction meta)."}},
+						nlohmann::json{{"name","function_owner"}, {"required",true},
+									   {"description","Class path, e.g. /Script/Engine.KismetMathLibrary (targetClass meta)."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "CommutativeOp"},
+					{"class", "K2Node_CommutativeAssociativeBinaryOperator"},
+					{"description", "Variadic commutative/associative operator (Append, AND, OR, ...) backed by a library function."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","function"}, {"required",true},
+									   {"description","Backing function, e.g. Concat_StrStr (targetFunction meta)."}},
+						nlohmann::json{{"name","function_owner"}, {"required",true},
+									   {"description","Class path (targetClass meta)."}}
+					})},
+				},
+				nlohmann::json{
+					{"kind", "Message"},
+					{"class", "K2Node_Message"},
+					{"description", "Call a Blueprint Interface message on a target (safe no-op if the target doesn't implement it)."},
+					{"extras", nlohmann::json::array({
+						nlohmann::json{{"name","function"}, {"required",true},
+									   {"description","Interface function name (targetFunction meta)."}},
+						nlohmann::json{{"name","function_owner"}, {"required",true},
+									   {"description","Interface class path (targetClass meta)."}}
+					})},
 				},
 			});
 		});

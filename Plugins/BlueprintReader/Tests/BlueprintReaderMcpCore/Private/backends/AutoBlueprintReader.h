@@ -273,6 +273,8 @@ public:
 	AddComponentResult AddComponent(std::string_view assetPath, std::string_view name, std::string_view componentClass, std::string_view parentName, std::string_view socket) override;
 	AddDataRowResult AddDataRow(std::string_view assetPath, std::string_view rowName, const nlohmann::json& values, bool overwrite) override;
 	AddGameplayTagResult AddGameplayTag(std::string_view, std::string_view) override;
+	CreateMaterialResult CreateMaterial(std::string_view) override;
+	CreateMaterialInstanceResult CreateMaterialInstance(std::string_view, std::string_view) override;
 	AddMaterialExpressionResult AddMaterialExpression(std::string_view, std::string_view, int, int) override;
 	AddSequenceTrackResult AddSequenceTrack(std::string_view, std::string_view, std::string_view) override;
 	AddStateTreeStateResult AddStateTreeState(std::string_view, std::string_view, std::string_view) override;

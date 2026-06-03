@@ -970,6 +970,18 @@ IBlueprintReader::MaterialInfo
 CachingBlueprintReader::ReadMaterial(std::string_view a) {
 	return inner_->ReadMaterial(a);
 }
+IBlueprintReader::CreateMaterialResult
+CachingBlueprintReader::CreateMaterial(std::string_view a) {
+	auto out = inner_->CreateMaterial(a);
+	InvalidateAsset(a);
+	return out;
+}
+IBlueprintReader::CreateMaterialInstanceResult
+CachingBlueprintReader::CreateMaterialInstance(std::string_view a, std::string_view parent) {
+	auto out = inner_->CreateMaterialInstance(a, parent);
+	InvalidateAsset(a);
+	return out;
+}
 IBlueprintReader::AddMaterialExpressionResult
 CachingBlueprintReader::AddMaterialExpression(std::string_view a,
 	std::string_view c, int x, int y) {

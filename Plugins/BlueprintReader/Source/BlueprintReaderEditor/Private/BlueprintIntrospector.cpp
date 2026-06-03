@@ -38,6 +38,9 @@
 #include "K2Node_MacroInstance.h"
 #include "K2Node_MakeArray.h"
 #include "K2Node_MakeStruct.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_GetSubsystem.h"
+#include "K2Node_GetArrayItem.h"
 #include "K2Node_Self.h"
 #include "K2Node_Switch.h"
 #include "K2Node_Timeline.h"
@@ -318,6 +321,11 @@ namespace
 		{
 			Extras.Add(TEXT("kind"), TEXT("VariableSet"));
 			Extras.Add(TEXT("variableName"), VarSet->VariableReference.GetMemberName().ToString());
+			// isSelfContext distinguishes a member of THIS blueprint (recreate as
+			// SetSelfMember) from an external member reached via the self pin, e.g.
+			// a property on a subsystem/request (recreate as SetExternalMember to
+			// variableClass). Without it the recreator can't tell them apart.
+			Extras.Add(TEXT("isSelfContext"), BoolToString(VarSet->VariableReference.IsSelfContext()));
 			if (UClass* C = VarSet->VariableReference.GetMemberParentClass())
 			{
 				Extras.Add(TEXT("variableClass"), C->GetPathName());
@@ -328,6 +336,7 @@ namespace
 		{
 			Extras.Add(TEXT("kind"), TEXT("VariableGet"));
 			Extras.Add(TEXT("variableName"), VarGet->VariableReference.GetMemberName().ToString());
+			Extras.Add(TEXT("isSelfContext"), BoolToString(VarGet->VariableReference.IsSelfContext()));
 			if (UClass* C = VarGet->VariableReference.GetMemberParentClass())
 			{
 				Extras.Add(TEXT("variableClass"), C->GetPathName());
@@ -438,6 +447,30 @@ namespace
 			}
 			return;
 		}
+		if (UK2Node_GetArrayItem* GetItem = Cast<UK2Node_GetArrayItem>(Node))
+		{
+			// "Get (a ref)" vs "Get (a copy)" differ in node title (hence in the
+			// structural-diff signature). The desired mode lives in the private
+			// `bReturnByRefDesired` UPROPERTY; read it via reflection (reflection
+			// ignores C++ access) so add_node -ReturnsRef= can reproduce it.
+			Extras.Add(TEXT("kind"), TEXT("GetArrayItem"));
+			if (FBoolProperty* Prop = FindFProperty<FBoolProperty>(
+					UK2Node_GetArrayItem::StaticClass(), TEXT("bReturnByRefDesired")))
+			{
+				Extras.Add(TEXT("returnsRef"),
+					BoolToString(Prop->GetPropertyValue_InContainer(GetItem)));
+			}
+			return;
+		}
+		if (UK2Node_BreakStruct* BreakStruct = Cast<UK2Node_BreakStruct>(Node))
+		{
+			Extras.Add(TEXT("kind"), TEXT("BreakStruct"));
+			if (UScriptStruct* SS = BreakStruct->StructType)
+			{
+				Extras.Add(TEXT("structType"), SS->GetPathName());
+			}
+			return;
+		}
 		if (UK2Node_Composite* Composite = Cast<UK2Node_Composite>(Node))
 		{
 			Extras.Add(TEXT("kind"), TEXT("Composite"));
@@ -456,6 +489,27 @@ namespace
 		{
 			Extras.Add(TEXT("kind"), TEXT("Timeline"));
 			Extras.Add(TEXT("timelineName"), Timeline->TimelineName.ToString());
+			return;
+		}
+		// Exactly UK2Node_GetSubsystem (not the FromPC/FromLP subclasses, which the
+		// add_node path can't yet recreate — let those fall through to the generic
+		// handler). Emits subsystemClass so add_node Kind=GetSubsystem can rebuild it.
+		if (Node->GetClass() == UK2Node_GetSubsystem::StaticClass())
+		{
+			Extras.Add(TEXT("kind"), TEXT("GetSubsystem"));
+			// CustomClass is protected; read the subsystem class off the output
+			// pin instead (an object pin whose PinSubCategoryObject is the class).
+			for (UEdGraphPin* P : Node->Pins)
+			{
+				if (P && P->Direction == EGPD_Output && P->PinType.PinSubCategoryObject.IsValid())
+				{
+					if (UClass* C = Cast<UClass>(P->PinType.PinSubCategoryObject.Get()))
+					{
+						Extras.Add(TEXT("subsystemClass"), C->GetPathName());
+						break;
+					}
+				}
+			}
 			return;
 		}
 		if (UK2Node_Switch* Switch = Cast<UK2Node_Switch>(Node))

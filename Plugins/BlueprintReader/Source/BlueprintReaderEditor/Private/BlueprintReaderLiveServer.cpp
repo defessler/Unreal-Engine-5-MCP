@@ -155,6 +155,14 @@ public:
 			// Each arg comes in as `-Op=Foo`, `-Asset=/Game/...`, etc.
 			// Concatenate with spaces; the commandlet uses FParse which
 			// tokenizes on whitespace.
+			//
+			// Quote the VALUE of a `-Key=Value` arg when it contains whitespace
+			// and isn't already quoted: FParse::Value stops an unquoted value at
+			// the first space, silently truncating pin names ("Dimension 1",
+			// "Array Element", friendly names with spaces), comment text, and any
+			// other space-bearing value — which broke wire_pins / set_pin_default /
+			// add_node Comment over the live + daemon path. Wrapping in quotes is
+			// what FParse expects for multi-word values.
 			FString Params;
 			for (const TSharedPtr<FJsonValue>& V : *ArgsArray)
 			{
@@ -164,7 +172,20 @@ public:
 					{
 						Params.AppendChar(TEXT(' '));
 					}
-					Params.Append(V->AsString());
+					FString Arg = V->AsString();
+					int32 EqIdx = INDEX_NONE;
+					if (Arg.FindChar(TEXT('='), EqIdx))
+					{
+						const FString Key = Arg.Left(EqIdx + 1);   // includes '='
+						const FString Val = Arg.Mid(EqIdx + 1);
+						const bool bHasSpace = Val.Contains(TEXT(" ")) || Val.Contains(TEXT("\t"));
+						const bool bQuoted   = Val.Len() >= 2 && Val.StartsWith(TEXT("\"")) && Val.EndsWith(TEXT("\""));
+						if (bHasSpace && !bQuoted)
+						{
+							Arg = Key + TEXT("\"") + Val + TEXT("\"");
+						}
+					}
+					Params.Append(Arg);
 				}
 			}
 

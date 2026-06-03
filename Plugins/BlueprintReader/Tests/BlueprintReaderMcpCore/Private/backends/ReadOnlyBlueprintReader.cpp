@@ -644,6 +644,14 @@ IBlueprintReader::MaterialInfo
 ReadOnlyBlueprintReader::ReadMaterial(std::string_view a) {
 	return inner_->ReadMaterial(a);
 }
+IBlueprintReader::CreateMaterialResult
+ReadOnlyBlueprintReader::CreateMaterial(std::string_view) {
+	Reject("create_material");
+}
+IBlueprintReader::CreateMaterialInstanceResult
+ReadOnlyBlueprintReader::CreateMaterialInstance(std::string_view, std::string_view) {
+	Reject("create_material_instance");
+}
 IBlueprintReader::AddMaterialExpressionResult
 ReadOnlyBlueprintReader::AddMaterialExpression(std::string_view,
 	std::string_view, int, int) {

@@ -165,6 +165,16 @@
 #include "K2Node_Self.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
+#include "K2Node_CallParentFunction.h"                       // add_node Kind=CallParent
+#include "K2Node_GetArrayItem.h"                             // add_node Kind=GetArrayItem
+#include "K2Node_Select.h"                                   // add_node Kind=Select
+#include "K2Node_BreakStruct.h"                              // add_node Kind=BreakStruct
+#include "K2Node_PromotableOperator.h"                       // add_node Kind=PromotableOp (wildcard math ops)
+#include "K2Node_CommutativeAssociativeBinaryOperator.h"     // add_node Kind=CommutativeOp
+#include "K2Node_Message.h"                                  // add_node Kind=Message (interface call)
+#include "K2Node_SpawnActorFromClass.h"                      // add_node Kind=SpawnActor
+#include "EdGraphNode_Comment.h"                             // add_node Kind=Comment
+#include "K2Node_AddPinInterface.h"                          // variadic Sequence / operator pins
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -180,6 +190,8 @@
 #include "UObject/SavePackage.h"
 // Material authoring (Stage 1).
 #include "MaterialEditingLibrary.h"
+#include "Factories/MaterialFactoryNew.h"
+#include "Factories/MaterialInstanceConstantFactoryNew.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
@@ -327,6 +339,8 @@ namespace
 		AttachComponent,
 		SetComponentProperty,
 		// Material authoring (Stage 1).
+		CreateMaterial,
+		CreateMaterialInstance,
 		ListMaterials,
 		ReadMaterial,
 		AddMaterialExpression,
@@ -571,6 +585,8 @@ namespace
 		if (OpStr.Equals(TEXT("AttachComponent"), ESearchCase::IgnoreCase))     { OutOp = EOp::AttachComponent; return true; }
 		if (OpStr.Equals(TEXT("SetComponentProperty"), ESearchCase::IgnoreCase)){ OutOp = EOp::SetComponentProperty; return true; }
 		// Material authoring (Stage 1).
+		if (OpStr.Equals(TEXT("CreateMaterial"), ESearchCase::IgnoreCase))               { OutOp = EOp::CreateMaterial; return true; }
+		if (OpStr.Equals(TEXT("CreateMaterialInstance"), ESearchCase::IgnoreCase))       { OutOp = EOp::CreateMaterialInstance; return true; }
 		if (OpStr.Equals(TEXT("ListMaterials"), ESearchCase::IgnoreCase))                { OutOp = EOp::ListMaterials; return true; }
 		if (OpStr.Equals(TEXT("ReadMaterial"), ESearchCase::IgnoreCase))                 { OutOp = EOp::ReadMaterial; return true; }
 		if (OpStr.Equals(TEXT("AddMaterialExpression"), ESearchCase::IgnoreCase))        { OutOp = EOp::AddMaterialExpression; return true; }
@@ -1486,6 +1502,149 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
+	// ----- CreateMaterial ----------------------------------------------------
+	// Create a new UMaterial asset at -Asset=/Game/... (default Surface domain,
+	// Opaque blend, DefaultLit). The enabler for granular material recreation,
+	// parallel to CreateBlueprint: a fresh material to populate with
+	// AddMaterialExpression / ConnectMaterialExpressions / SetMaterialParameter /
+	// CompileMaterial. Idempotent — returns already_existed if the asset is there.
+	int32 RunCreateMaterialOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		if (AssetPath.IsEmpty() || !AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterial requires -Asset=/Game/..."));
+			return 1;
+		}
+		if (UMaterial* Existing = LoadObject<UMaterial>(nullptr, *AssetPath))
+		{
+			(void)Existing;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		const FString PackageName = AssetPath;
+		const FString AssetName   = FPackageName::GetShortName(AssetPath);
+		UPackage* Package = CreatePackage(*PackageName);
+		if (!IsValid(Package))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterial: CreatePackage failed: %s"), *PackageName);
+			return 5;
+		}
+		Package->FullyLoad();
+
+		UMaterialFactoryNew* Factory = NewObject<UMaterialFactoryNew>();
+		UMaterial* Mat = Cast<UMaterial>(Factory->FactoryCreateNew(
+			UMaterial::StaticClass(), Package, *AssetName,
+			RF_Public | RF_Standalone, nullptr, GWarn));
+		if (!IsValid(Mat))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterial: FactoryCreateNew failed: %s"), *PackageName);
+			return 5;
+		}
+		Mat->MarkPackageDirty();
+
+		FAssetRegistryModule& ARM = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		ARM.Get().AssetCreated(Mat);
+
+		// Persist so a follow-up op (AddMaterialExpression, ...) in another
+		// connection can LoadObject it. Mirror the BP save path.
+		const FString FileName = FPackageName::LongPackageNameToFilename(
+			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		SaveArgs.Error = GError;
+		const bool bSaved = UPackage::SavePackage(Package, Mat, *FileName, SaveArgs);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetBoolField(TEXT("saved"), bSaved);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// ----- CreateMaterialInstance --------------------------------------------
+	// Create a UMaterialInstanceConstant at -Asset=/Game/..., parented to
+	// -Parent=<material or MI path>. The enabler for recreating Material
+	// Instances + the only safe way to exercise set_material_instance_parameter
+	// (which needs an MI whose parent declares the parameter). Idempotent.
+	int32 RunCreateMaterialInstanceOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		const FString AssetPath = ResolveAssetPath(Params);
+		FString ParentPath;
+		FParse::Value(*Params, TEXT("Parent="), ParentPath);
+		if (AssetPath.IsEmpty() || !AssetPath.StartsWith(TEXT("/Game/")))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterialInstance requires -Asset=/Game/..."));
+			return 1;
+		}
+		if (UMaterialInstanceConstant* Existing = LoadObject<UMaterialInstanceConstant>(nullptr, *AssetPath))
+		{
+			(void)Existing;
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), true);
+			Obj->SetBoolField(TEXT("already_existed"), true);
+			Obj->SetStringField(TEXT("asset_path"), AssetPath);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+
+		const FString PackageName = AssetPath;
+		const FString AssetName   = FPackageName::GetShortName(AssetPath);
+		UPackage* Package = CreatePackage(*PackageName);
+		if (!IsValid(Package))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterialInstance: CreatePackage failed: %s"), *PackageName);
+			return 5;
+		}
+		Package->FullyLoad();
+
+		UMaterialInstanceConstantFactoryNew* Factory = NewObject<UMaterialInstanceConstantFactoryNew>();
+		if (!ParentPath.IsEmpty())
+		{
+			Factory->InitialParent = LoadObject<UMaterialInterface>(nullptr, *ParentPath);
+			if (!Factory->InitialParent)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("CreateMaterialInstance: parent not found: %s"), *ParentPath);
+				return 4;
+			}
+		}
+		UMaterialInstanceConstant* MI = Cast<UMaterialInstanceConstant>(Factory->FactoryCreateNew(
+			UMaterialInstanceConstant::StaticClass(), Package, *AssetName,
+			RF_Public | RF_Standalone, nullptr, GWarn));
+		if (!IsValid(MI))
+		{
+			UE_LOG(LogBlueprintReader, Error, TEXT("CreateMaterialInstance: FactoryCreateNew failed: %s"), *PackageName);
+			return 5;
+		}
+		MI->MarkPackageDirty();
+
+		FAssetRegistryModule& ARM = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		ARM.Get().AssetCreated(MI);
+
+		const FString FileName = FPackageName::LongPackageNameToFilename(
+			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		SaveArgs.Error = GError;
+		const bool bSaved = UPackage::SavePackage(Package, MI, *FileName, SaveArgs);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetBoolField(TEXT("already_existed"), false);
+		Obj->SetBoolField(TEXT("saved"), bSaved);
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("parent_path"),
+			MI->Parent ? MI->Parent->GetPathName() : FString());
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
 	// ----- SetPinDefault (B1) ------------------------------------------------
 	// Sets the literal default value on a node's pin. compile_function uses
 	// this to materialize {lit:value} expressions — UE has no first-class
@@ -1927,6 +2086,46 @@ namespace
 				const int32 NumDeleted = ObjectTools::ForceDeleteObjects(
 					ToDelete, /*bShowConfirmation=*/false);
 				bDeleted = NumDeleted > 0;
+			}
+			// Headless fallback: in the -nullrhi commandlet/daemon,
+			// ObjectTools::ForceDeleteObjects routinely returns 0 (it relies on
+			// asset-editor / source-control context that isn't present), leaving
+			// the in-memory UBlueprint alive even though the disk file is purged
+			// below. A subsequent CreateBlueprint then idempotently returns this
+			// stale, fully-populated object, so a recreate-over-existing
+			// double-builds (AddVariable "already exists", node counts doubled).
+			// When the standard path didn't take, manually evict the object:
+			// trash the Blueprint + its generated/skeleton classes to the
+			// transient package, drop the keep-alive flags, notify the registry,
+			// and let the full-purge GC below finish the job.
+			if (!bDeleted && IsValid(Obj))
+			{
+				AR.AssetDeleted(Obj);
+				auto Trash = [](UObject* O)
+				{
+					if (!IsValid(O))
+					{
+						return;
+					}
+					O->ClearFlags(RF_Public | RF_Standalone);
+					O->SetFlags(RF_Transient);
+					// REN_ForceNoResetLoaders is deprecated in 5.8 (Rename no longer
+					// resets loaders) and irrelevant for a to-be-GC'd object — omit it
+					// so the call compiles warning-free on both targeted engines.
+					O->Rename(nullptr, GetTransientPackage(),
+						REN_NonTransactional | REN_DontCreateRedirectors);
+					O->MarkAsGarbage();
+				};
+				if (UBlueprint* DeadBP = Cast<UBlueprint>(Obj))
+				{
+					Trash(DeadBP->GeneratedClass);
+					Trash(DeadBP->SkeletonGeneratedClass);
+				}
+				Trash(Obj);
+				bDeleted = true;   // evicted from its package; GC purge below reclaims it
+				UE_LOG(LogBlueprintReader, Display,
+					TEXT("DeleteAsset: ForceDeleteObjects no-op headless; manual in-memory eviction of %s"),
+					*AssetPath);
 			}
 			// ForceDeleteObjects removes the in-memory UObject + asset-
 			// registry entry, but in commandlet mode it doesn't persist
@@ -10410,18 +10609,36 @@ namespace
 		         Kind.Equals(TEXT("ExecutionSequence"), ESearchCase::IgnoreCase))
 		{
 			Spawned = AddNodeToGraph<UK2Node_ExecutionSequence>(Graph, X, Y);
+			// A Sequence defaults to 2 outputs (Then 0/1); -NumOutputs= grows it
+			// via the AddPin interface so a 3+-output Sequence round-trips.
+			int32 NumOutputs = 0;
+			if (Spawned && FParse::Value(*Params, TEXT("NumOutputs="), NumOutputs))
+			{
+				if (IK2Node_AddPinInterface* AddPin = Cast<IK2Node_AddPinInterface>(Spawned))
+				{
+					auto CountExecOut = [&]() { int32 N = 0; for (UEdGraphPin* P : Spawned->Pins) { if (P && P->Direction == EGPD_Output && P->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec) { ++N; } } return N; };
+					int32 Guard = 0;
+					while (CountExecOut() < NumOutputs && Guard++ < 64) { AddPin->AddInputPin(); }
+				}
+			}
 		}
 		else if (Kind.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase))
 		{
-			FString VarName;
-			FParse::Value(*Params, TEXT("Variable="), VarName);
+			FString VarName, VarClass;
+			FParse::Value(*Params, TEXT("Variable="),      VarName);
+			FParse::Value(*Params, TEXT("VariableClass="), VarClass);
 			if (VarName.IsEmpty())
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableGet requires -Variable="));
 				return 1;
 			}
 			UK2Node_VariableGet* Get = NewObject<UK2Node_VariableGet>(Graph);
-			Get->VariableReference.SetSelfMember(*VarName);
+			// -VariableClass= binds the reference to a member on ANOTHER class
+			// (an external get, e.g. a property on a subsystem/request reached
+			// through a wired self pin). Omit it for the BP's own members.
+			UClass* MemberClass = VarClass.IsEmpty() ? nullptr : ResolveClass(VarClass);
+			if (IsValid(MemberClass)) { Get->VariableReference.SetExternalMember(*VarName, MemberClass); }
+			else                      { Get->VariableReference.SetSelfMember(*VarName); }
 			Get->CreateNewGuid();
 			Get->NodePosX = X; Get->NodePosY = Y;
 			Graph->AddNode(Get, false, false);
@@ -10431,15 +10648,18 @@ namespace
 		}
 		else if (Kind.Equals(TEXT("VariableSet"), ESearchCase::IgnoreCase))
 		{
-			FString VarName;
-			FParse::Value(*Params, TEXT("Variable="), VarName);
+			FString VarName, VarClass;
+			FParse::Value(*Params, TEXT("Variable="),      VarName);
+			FParse::Value(*Params, TEXT("VariableClass="), VarClass);
 			if (VarName.IsEmpty())
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableSet requires -Variable="));
 				return 1;
 			}
 			UK2Node_VariableSet* Set = NewObject<UK2Node_VariableSet>(Graph);
-			Set->VariableReference.SetSelfMember(*VarName);
+			UClass* MemberClass = VarClass.IsEmpty() ? nullptr : ResolveClass(VarClass);
+			if (IsValid(MemberClass)) { Set->VariableReference.SetExternalMember(*VarName, MemberClass); }
+			else                      { Set->VariableReference.SetSelfMember(*VarName); }
 			Set->CreateNewGuid();
 			Set->NodePosX = X; Set->NodePosY = Y;
 			Graph->AddNode(Set, false, false);
@@ -10452,24 +10672,38 @@ namespace
 			FString FunctionName, FunctionOwner;
 			FParse::Value(*Params, TEXT("Function="),      FunctionName);
 			FParse::Value(*Params, TEXT("FunctionOwner="), FunctionOwner);
-			if (FunctionName.IsEmpty() || FunctionOwner.IsEmpty())
+			if (FunctionName.IsEmpty())
 			{
 				UE_LOG(LogBlueprintReader, Error,
-					TEXT("AddNode CallFunction requires -Function=<name> -FunctionOwner=<class path>"));
+					TEXT("AddNode CallFunction requires -Function=<name> [-FunctionOwner=<class path>]"));
 				return 1;
 			}
-			UClass* OwnerClass = ResolveClass(FunctionOwner);
-			if (!IsValid(OwnerClass))
+			// FunctionOwner is OPTIONAL: a self-context call (to an inherited
+			// member like GetOwningActorFromActorInfo, or one of the BP's own
+			// functions/custom events) reports no targetClass in meta, because the
+			// reference is self-relative. When the owner is omitted (or can't be
+			// resolved / doesn't declare the function), search the BP's own class
+			// hierarchy — the GeneratedClass first, then the parent chain — so the
+			// call binds against the function exactly as a self-context call would.
+			UClass* OwnerClass = FunctionOwner.IsEmpty() ? nullptr : ResolveClass(FunctionOwner);
+			UFunction* Fn = IsValid(OwnerClass) ? OwnerClass->FindFunctionByName(*FunctionName) : nullptr;
+			if (!IsValid(Fn))
 			{
-				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode CallFunction: class %s not found"), *FunctionOwner);
-				return 1;
+				for (UClass* C = BP->GeneratedClass ? BP->GeneratedClass : BP->ParentClass;
+				     C; C = C->GetSuperClass())
+				{
+					if (UFunction* Found = C->FindFunctionByName(*FunctionName))
+					{
+						Fn = Found;
+						break;
+					}
+				}
 			}
-			UFunction* Fn = OwnerClass->FindFunctionByName(*FunctionName);
 			if (!IsValid(Fn))
 			{
 				UE_LOG(LogBlueprintReader, Error,
-					TEXT("AddNode CallFunction: function %s not found on %s"),
-					*FunctionName, *OwnerClass->GetPathName());
+					TEXT("AddNode CallFunction: function %s not found on %s or the BP's own hierarchy"),
+					*FunctionName, FunctionOwner.IsEmpty() ? TEXT("<self>") : *FunctionOwner);
 				return 1;
 			}
 			// Array library functions (Clear/Add/Remove/Contains/…) carry the
@@ -10509,6 +10743,74 @@ namespace
 			Evt->PostPlacedNewNode();
 			Evt->AllocateDefaultPins();
 			Spawned = Evt;
+		}
+		else if (Kind.Equals(TEXT("Event"), ESearchCase::IgnoreCase))
+		{
+			// Bind an OVERRIDABLE engine/parent event node (Event BeginPlay,
+			// Event Tick, Event ActorBeginOverlap, …) — distinct from CustomEvent
+			// (a brand-new event the BP declares). -EventName= is the UFunction
+			// name (e.g. ReceiveBeginPlay); -FunctionOwner= is the class that
+			// declares it (e.g. /Script/Engine.Actor). For fine-grained
+			// recreation both come straight from the K2Node_Event meta
+			// (eventName / eventClass). When the owner is omitted, search the
+			// BP's parent hierarchy for the function.
+			FString EventName, EventOwner;
+			FParse::Value(*Params, TEXT("EventName="), EventName);
+			FParse::Value(*Params, TEXT("FunctionOwner="), EventOwner);
+			if (EventName.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode Event requires -EventName="));
+				return 1;
+			}
+			UClass* EventClass = EventOwner.IsEmpty() ? nullptr : ResolveClass(EventOwner);
+			if (!IsValid(EventClass))
+			{
+				for (UClass* C = BP->ParentClass; C; C = C->GetSuperClass())
+				{
+					if (C->FindFunctionByName(*EventName)) { EventClass = C; break; }
+				}
+			}
+			if (!IsValid(EventClass))
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode Event: no class declaring event %s found (pass -FunctionOwner=)"),
+					*EventName);
+				return 1;
+			}
+			// Idempotency: an override event is unique per graph — the editor
+			// never lets you place a second "Event BeginPlay"; it focuses the
+			// existing one. A fresh Actor Blueprint also ships with default
+			// override-event nodes already present (BeginPlay / ActorBeginOverlap
+			// / Tick), so a blind spawn would duplicate them (caught by
+			// bp_structural_diff during recreation). If a matching override event
+			// already exists, return it instead of creating a duplicate.
+			UK2Node_Event* Existing = nullptr;
+			for (UEdGraphNode* N : Graph->Nodes)
+			{
+				UK2Node_Event* E = Cast<UK2Node_Event>(N);
+				if (E && E->bOverrideFunction &&
+				    E->EventReference.GetMemberName() == FName(*EventName))
+				{
+					Existing = E;
+					break;
+				}
+			}
+			if (Existing)
+			{
+				Spawned = Existing;
+			}
+			else
+			{
+				UK2Node_Event* Evt = NewObject<UK2Node_Event>(Graph);
+				Evt->EventReference.SetExternalMember(FName(*EventName), EventClass);
+				Evt->bOverrideFunction = true;
+				Evt->CreateNewGuid();
+				Evt->NodePosX = X; Evt->NodePosY = Y;
+				Graph->AddNode(Evt, false, false);
+				Evt->PostPlacedNewNode();
+				Evt->AllocateDefaultPins();
+				Spawned = Evt;
+			}
 		}
 		else if (Kind.Equals(TEXT("Cast"), ESearchCase::IgnoreCase) ||
 		         Kind.Equals(TEXT("DynamicCast"), ESearchCase::IgnoreCase))
@@ -10612,6 +10914,213 @@ namespace
 			Sub->PostPlacedNewNode();
 			Sub->AllocateDefaultPins();
 			Spawned = Sub;
+		}
+		else if (Kind.Equals(TEXT("Comment"), ESearchCase::IgnoreCase))
+		{
+			// Cosmetic comment box. The structural diff keys node signatures on
+			// the ListView title, which for a comment node IS its NodeComment
+			// text — so set it exactly to recreate faithfully. No pins.
+			FString CommentText;
+			FParse::Value(*Params, TEXT("Comment="), CommentText);
+			int32 W = 400, H = 100;
+			FParse::Value(*Params, TEXT("W="), W);
+			FParse::Value(*Params, TEXT("H="), H);
+			UEdGraphNode_Comment* Comment = NewObject<UEdGraphNode_Comment>(Graph);
+			Comment->CreateNewGuid();
+			Comment->NodePosX = X; Comment->NodePosY = Y;
+			Comment->NodeWidth = W; Comment->NodeHeight = H;
+			Comment->NodeComment = CommentText;
+			Graph->AddNode(Comment, false, false);
+			Comment->PostPlacedNewNode();
+			Spawned = Comment;
+		}
+		else if (Kind.Equals(TEXT("GetArrayItem"), ESearchCase::IgnoreCase))
+		{
+			// Wildcard array accessor (GET []). The array/element types resolve
+			// from the connected Array pin. -ReturnsRef= selects "Get (a ref)"
+			// (true) vs "Get (a copy)" (false) — these have different node titles,
+			// so reproducing the desired mode matters for a clean structural diff.
+			// SetDesiredReturnType is public engine API.
+			UK2Node_GetArrayItem* GetItem = NewObject<UK2Node_GetArrayItem>(Graph);
+			GetItem->CreateNewGuid();
+			GetItem->NodePosX = X; GetItem->NodePosY = Y;
+			Graph->AddNode(GetItem, false, false);
+			GetItem->PostPlacedNewNode();
+			GetItem->AllocateDefaultPins();
+			FString RefStr;
+			if (FParse::Value(*Params, TEXT("ReturnsRef="), RefStr))
+			{
+				// SetDesiredReturnType is public but not DLL-exported, so set the
+				// desired flag via reflection (the title resolves from it once the
+				// Array pin is wired). bReturnByRefDesired is a UPROPERTY.
+				if (FBoolProperty* Prop = FindFProperty<FBoolProperty>(
+						UK2Node_GetArrayItem::StaticClass(), TEXT("bReturnByRefDesired")))
+				{
+					Prop->SetPropertyValue_InContainer(GetItem, RefStr.ToBool());
+				}
+			}
+			Spawned = GetItem;
+		}
+		else if (Kind.Equals(TEXT("Select"), ESearchCase::IgnoreCase))
+		{
+			// Wildcard Select. Option/return types resolve on wiring; the index
+			// pin (bool/int/enum) adapts to the connected Index source.
+			Spawned = AddNodeToGraph<UK2Node_Select>(Graph, X, Y);
+		}
+		else if (Kind.Equals(TEXT("SpawnActor"), ESearchCase::IgnoreCase))
+		{
+			// SpawnActor from class. The spawn class is a pin (Class), defaulted
+			// or wired by the caller — no construction-time class arg needed.
+			// NOTE: UK2Node_SpawnActorFromClass derives from
+			// UK2Node_ConstructObjectFromClass, whose PostPlacedNewNode() resolves
+			// the Class pin via GetClassPin()->FindPinChecked(). The generic
+			// AddNodeToGraph order (PostPlacedNewNode BEFORE AllocateDefaultPins)
+			// therefore asserts on a not-yet-allocated pin and HARD-CRASHES the
+			// editor headless (EdGraphNode.h FindPinChecked). Allocate pins FIRST,
+			// then post-place.
+			UK2Node_SpawnActorFromClass* Spawn = NewObject<UK2Node_SpawnActorFromClass>(Graph);
+			Spawn->CreateNewGuid();
+			Spawn->NodePosX = X; Spawn->NodePosY = Y;
+			Graph->AddNode(Spawn, false, false);
+			Spawn->AllocateDefaultPins();
+			Spawn->PostPlacedNewNode();
+			Spawned = Spawn;
+		}
+		else if (Kind.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
+		{
+			FString StructPath;
+			FParse::Value(*Params, TEXT("StructType="), StructPath);
+			if (StructPath.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode BreakStruct requires -StructType=<UScriptStruct path>"));
+				return 1;
+			}
+			UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *StructPath);
+			if (!IsValid(Struct))
+			{
+				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode BreakStruct: struct %s not found"), *StructPath);
+				return 1;
+			}
+			UK2Node_BreakStruct* Break = NewObject<UK2Node_BreakStruct>(Graph);
+			Break->StructType = Struct;
+			Break->CreateNewGuid();
+			Break->NodePosX = X; Break->NodePosY = Y;
+			Graph->AddNode(Break, false, false);
+			Break->PostPlacedNewNode();
+			Break->AllocateDefaultPins();
+			Spawned = Break;
+		}
+		else if (Kind.Equals(TEXT("MacroInstance"), ESearchCase::IgnoreCase))
+		{
+			// Instance of a macro graph (ForEachLoop, IsValid, project macro
+			// libraries, …). -MacroGraph= is the full object path of the macro's
+			// UEdGraph, exactly as get_graph's meta.macroGraph reports it
+			// (e.g. /Engine/EditorBlueprintResources/StandardMacros.StandardMacros:IsValid).
+			FString MacroGraphPath;
+			FParse::Value(*Params, TEXT("MacroGraph="), MacroGraphPath);
+			if (MacroGraphPath.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode MacroInstance requires -MacroGraph=<macro graph object path>"));
+				return 1;
+			}
+			UEdGraph* MacroGraph = LoadObject<UEdGraph>(nullptr, *MacroGraphPath);
+			if (!IsValid(MacroGraph))
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode MacroInstance: macro graph %s not found"), *MacroGraphPath);
+				return 1;
+			}
+			UK2Node_MacroInstance* Macro = NewObject<UK2Node_MacroInstance>(Graph);
+			Macro->SetMacroGraph(MacroGraph);
+			Macro->CreateNewGuid();
+			Macro->NodePosX = X; Macro->NodePosY = Y;
+			Graph->AddNode(Macro, false, false);
+			Macro->PostPlacedNewNode();
+			Macro->AllocateDefaultPins();
+			Spawned = Macro;
+		}
+		else if (Kind.Equals(TEXT("CallParent"),     ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("PromotableOp"),    ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("CommutativeOp"),   ESearchCase::IgnoreCase) ||
+		         Kind.Equals(TEXT("Message"),         ESearchCase::IgnoreCase))
+		{
+			// Function-backed node families that share the SetFromFunction(UFunction*)
+			// construction but need a concrete node CLASS to round-trip through
+			// bp_structural_diff (which keys node signatures on the class name):
+			//   CallParent    → UK2Node_CallParentFunction  (Parent: Foo)
+			//   PromotableOp  → UK2Node_PromotableOperator   (wildcard +,-,*,==,…)
+			//   CommutativeOp → UK2Node_CommutativeAssociativeBinaryOperator (Append, AND, …)
+			//   Message       → UK2Node_Message              (interface call)
+			// All take -Function=<name> -FunctionOwner=<class path>, straight from
+			// get_graph's meta.targetFunction / meta.targetClass.
+			FString FunctionName, FunctionOwner;
+			FParse::Value(*Params, TEXT("Function="),      FunctionName);
+			FParse::Value(*Params, TEXT("FunctionOwner="), FunctionOwner);
+			if (FunctionName.IsEmpty())
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode %s requires -Function=<name> [-FunctionOwner=<class path>]"), *Kind);
+				return 1;
+			}
+			UClass* OwnerClass = FunctionOwner.IsEmpty() ? static_cast<UClass*>(BP->ParentClass) : ResolveClass(FunctionOwner);
+			UFunction* Fn = IsValid(OwnerClass) ? OwnerClass->FindFunctionByName(*FunctionName) : nullptr;
+			// Fall back to a parent-hierarchy search (CallParent commonly names an
+			// ancestor that introduced the function above the immediate owner).
+			if (!Fn)
+			{
+				for (UClass* C = BP->ParentClass; C; C = C->GetSuperClass())
+				{
+					Fn = C->FindFunctionByName(*FunctionName);
+					if (Fn) { break; }
+				}
+			}
+			if (!Fn)
+			{
+				UE_LOG(LogBlueprintReader, Error,
+					TEXT("AddNode %s: function %s not found on %s"),
+					*Kind, *FunctionName, FunctionOwner.IsEmpty() ? TEXT("<parent>") : *FunctionOwner);
+				return 1;
+			}
+			UK2Node_CallFunction* Call = nullptr;
+			if (Kind.Equals(TEXT("CallParent"), ESearchCase::IgnoreCase))
+			{
+				Call = NewObject<UK2Node_CallParentFunction>(Graph);
+			}
+			else if (Kind.Equals(TEXT("PromotableOp"), ESearchCase::IgnoreCase))
+			{
+				Call = NewObject<UK2Node_PromotableOperator>(Graph);
+			}
+			else if (Kind.Equals(TEXT("CommutativeOp"), ESearchCase::IgnoreCase))
+			{
+				Call = NewObject<UK2Node_CommutativeAssociativeBinaryOperator>(Graph);
+			}
+			else
+			{
+				Call = NewObject<UK2Node_Message>(Graph);
+			}
+			Call->SetFromFunction(Fn);
+			Call->CreateNewGuid();
+			Call->NodePosX = X; Call->NodePosY = Y;
+			Graph->AddNode(Call, false, false);
+			Call->PostPlacedNewNode();
+			Call->AllocateDefaultPins();
+			// Variadic operators (PromotableOp / CommutativeOp) default to 2
+			// operand inputs (A, B); -NumInputs= grows them via the AddPin
+			// interface so a 3+-input "OR Boolean" / "Add" round-trips. CallParent
+			// and Message aren't AddPin nodes — the Cast yields null and is skipped.
+			int32 NumInputs = 0;
+			if (FParse::Value(*Params, TEXT("NumInputs="), NumInputs))
+			{
+				if (IK2Node_AddPinInterface* AddPin = Cast<IK2Node_AddPinInterface>(Call))
+				{
+					auto CountDataIn = [&]() { int32 N = 0; for (UEdGraphPin* P : Call->Pins) { if (P && P->Direction == EGPD_Input && P->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec && P->GetFName() != TEXT("self")) { ++N; } } return N; };
+					int32 Guard = 0;
+					while (CountDataIn() < NumInputs && Guard++ < 64) { AddPin->AddInputPin(); }
+				}
+			}
+			Spawned = Call;
 		}
 		else
 		{
@@ -10876,6 +11385,31 @@ namespace
 		Graph->AddNode(Result, /*bFromUI=*/false, /*bSelectNewNode=*/false);
 		Result->PostPlacedNewNode();
 		Result->AllocateDefaultPins();
+		// Dedupe the exec input pin. When the owning function has already been
+		// compiled (the AddFunction→AddFunctionOutput flow), PostPlacedNewNode()
+		// allocates the "execute" exec pin by syncing to the live signature AND
+		// AllocateDefaultPins() allocates it a second time — leaving a malformed
+		// Return node with two identical exec pins (caught by bp_structural_diff).
+		// The seed path dodges this only because its function isn't compiled yet
+		// when the node is built. Keep exactly one exec input pin; the node is
+		// freshly created here so the extras carry no links to preserve.
+		{
+			UEdGraphPin* KeptExec = nullptr;
+			TArray<UEdGraphPin*> ToRemove;
+			for (UEdGraphPin* P : Result->Pins)
+			{
+				if (P && P->Direction == EGPD_Input &&
+				    P->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+				{
+					if (!KeptExec) { KeptExec = P; }
+					else { ToRemove.Add(P); }
+				}
+			}
+			for (UEdGraphPin* P : ToRemove)
+			{
+				Result->RemovePin(P);
+			}
+		}
 		return Result;
 	}
 
@@ -11378,6 +11912,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::RemoveComponent,            &RunRemoveComponentOp },
 		{ EOp::AttachComponent,            &RunAttachComponentOp },
 		{ EOp::SetComponentProperty,       &RunSetComponentPropertyOp },
+		{ EOp::CreateMaterial,             &RunCreateMaterialOp },
+		{ EOp::CreateMaterialInstance,     &RunCreateMaterialInstanceOp },
 		{ EOp::ListMaterials,              &RunListMaterialsOp },
 		{ EOp::ReadMaterial,               &RunReadMaterialOp },
 		{ EOp::AddMaterialExpression,      &RunAddMaterialExpressionOp },
