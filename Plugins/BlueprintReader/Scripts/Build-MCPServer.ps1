@@ -57,6 +57,34 @@ param(
 $ErrorActionPreference = "Stop"
 $tag = "[BlueprintReader/MCP]"
 
+# INSTALL-M2: engine-free CMake/Ninja build of the server + tests, for an
+# installed/Launcher engine where UBT refuses Program targets. Mirrors the
+# documented fallback; CMakeLists lands the exes in <repo>/Binaries/Win64.
+function Invoke-CMakeServerBuild {
+    param([string]$ScriptsDir, [string]$BuildConfig)
+    $testsDir = Join-Path (Split-Path -Parent $ScriptsDir) "Tests"
+    if (-not (Test-Path (Join-Path $testsDir "CMakeLists.txt"))) {
+        throw "$tag CMake fallback: Tests/CMakeLists.txt not found at $testsDir"
+    }
+    # Import the MSVC env (cl + ninja) from vcvars64.
+    $vsw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vsw)) {
+        throw "$tag CMake fallback needs Visual Studio C++ tools (vswhere not found at $vsw)."
+    }
+    $ip = & $vsw -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    $vcvars = Join-Path $ip "VC\Auxiliary\Build\vcvars64.bat"
+    if (-not (Test-Path $vcvars)) { throw "$tag vcvars64.bat not found at $vcvars" }
+    cmd /c "`"$vcvars`" >nul 2>&1 && set" | ForEach-Object {
+        if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($matches[1])" -Value $matches[2] }
+    }
+    $cmakeCfg = if ($BuildConfig -in @("Debug","DebugGame")) { "Debug" } else { "RelWithDebInfo" }
+    $buildDir = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-mcp-cmake-build"
+    & cmake -S $testsDir -B $buildDir -G Ninja "-DCMAKE_BUILD_TYPE=$cmakeCfg"
+    if ($LASTEXITCODE -ne 0) { throw "$tag cmake configure failed ($LASTEXITCODE)" }
+    & cmake --build $buildDir
+    if ($LASTEXITCODE -ne 0) { throw "$tag cmake build failed ($LASTEXITCODE)" }
+}
+
 # Legacy invocation: PR-#75-era cached PreBuild-N.bat calling us with
 # -ProjectDir / -PluginDir. Log + exit 0 so the editor build proceeds.
 # The new build path is invoked explicitly via -EngineDir / -ProjectFile.
@@ -75,6 +103,19 @@ if ($ProjectDir -or $PluginDir -or -not $EngineDir -or -not $ProjectFile) {
     }
     # No legacy args either; user invoked the new API without required params.
     throw "$tag -EngineDir and -ProjectFile are required for normal invocation."
+}
+
+# INSTALL-M2: an installed/Launcher engine rejects UE Program targets
+# ("Program targets are not currently supported from this engine distribution").
+# Detect it via the InstalledBuild.txt marker and transparently use the
+# engine-free CMake/Ninja fallback instead — so the caller doesn't have to know
+# which toolchain applies.
+if (Test-Path (Join-Path $EngineDir "Engine\Build\InstalledBuild.txt")) {
+    Write-Host "$tag Installed engine detected (InstalledBuild.txt) — UBT can't build"
+    Write-Host "$tag Program targets here; using the engine-free CMake/Ninja fallback."
+    Invoke-CMakeServerBuild -ScriptsDir $PSScriptRoot -BuildConfig $Config
+    Write-Host "$tag Done (CMake fallback)."
+    return
 }
 
 $BuildBat = Join-Path $EngineDir "Engine\Build\BatchFiles\Build.bat"

@@ -402,7 +402,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** misleads maintainers/consumers about how the build works.
 
 ### INSTALL-M1 — one-shot `Install-Plugin.ps1`
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (PR #261, 2026-06-02) · **Effort:** M
+- *Shipped `Scripts/Install-Plugin.ps1`: mounts the plugin (copy or `-Symlink`,
+  skipping build artifacts; self-copy = no-op when already mounted), optionally
+  applies engine patches, builds the server (auto UBT/CMake via INSTALL-M2),
+  writes the client config, deploys Claude/AGENTS assets, runs `doctor`. Glue
+  over the existing sub-scripts; syntax-validated.*
 - Given `-EngineDir` + `-ProjectFile`: copy/symlink the plugin into
   `<Project>/Plugins/`, auto-detect source-vs-installed engine and run the correct
   build path (UBT or the CMake fallback), apply `Patch-Engine.ps1 -Apply` for
@@ -412,7 +417,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   decision.
 
 ### INSTALL-M2 — auto-detect source vs installed engine in the build
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (PR #261, 2026-06-02) · **Effort:** M
+- *`Build-MCPServer.ps1` now detects an installed engine (`InstalledBuild.txt`)
+  and transparently routes to an inline CMake/Ninja build (imports vcvars64;
+  CMakeLists lands the exes in `Binaries/Win64`) instead of UBT, which rejects
+  Program targets there. **Live-verified** on the installed UE 5.8: the script
+  routed to the CMake fallback and built to exit 0.*
 - Inside `Build-MCPServer.ps1`, transparently fall back to the CMake build when
   UBT rejects Program targets on an installed engine (`Tests/CMakeLists.txt`
   already lands the exe in the right place).
@@ -515,6 +525,14 @@ Newest first. One line per change to this file.
 - **2026-06-02** — Batch 7 (PR #259): PARITY-1 progress — confirmed the
   daemon→bridge→`notifications/progress` path is wired + unit-tested; added a
   granular per-op emit in `apply_ops` (+ test). Mock suite 841/0; **live-verified**
-  3 progress frames from a 3-op `apply_ops` against the real daemon. **All of
-  Q1 (parity) + Q2 (ease-of-use) + Q4 (install) roadmap items now done; Q3
-  (transpiling) intentionally deferred with cross-leverage seams kept clean.**
+  3 progress frames from a 3-op `apply_ops` against the real daemon.
+- **2026-06-02** — Batch 11 (PR #260): INSTALL-PKG — two-deliverable
+  Marketplace packaging plan (`packaging-marketplace.md`); the server is already
+  package-excluded, so deliverable #2 = the binary release.
+- **2026-06-02** — Batch 12 (PR #261): INSTALL-M1 (`Install-Plugin.ps1`
+  one-shot installer) + INSTALL-M2 (`Build-MCPServer.ps1` auto-routes to the
+  CMake fallback on an installed engine; live-verified on UE 5.8). **This
+  completes EVERY Q1 (parity) + Q2 (ease-of-use) + Q4 (install) roadmap item.
+  Q3 (transpiling, TRANS-*) is intentionally deferred — its cross-leverage
+  seams (progress bridge, governance gate, structuredContent, capability flag)
+  were kept clean for a future focused effort.**
