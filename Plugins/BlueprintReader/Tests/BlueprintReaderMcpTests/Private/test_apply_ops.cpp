@@ -12,8 +12,12 @@
 #include "backends/IBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "tools/ApplyOps.h"
+#include "jsonrpc/CallContext.h"
+#include "jsonrpc/Server.h"
 
 #include "test_helpers.h"
+
+#include <optional>
 
 #include <atomic>
 #include <map>
@@ -258,6 +262,33 @@ TEST_CASE("apply_ops: sequential dispatch") {
 	REQUIRE(r.calls.size() == 2);
 	CHECK(r.calls[0].op == "AddVariable");
 	CHECK(r.calls[1].op == "AddFunction");
+}
+
+TEST_CASE("apply_ops emits one notifications/progress per op (PARITY-1 granular progress)") {
+	FakeWritableReader r;
+	jsonrpc::Server server;
+	// Ambient call context with a progressToken — mirrors what the tools/call
+	// dispatcher sets up. RunOps emits progress per op via CallContext::Current().
+	jsonrpc::CallContext ctx(server, json(7001), std::optional<json>(json("ops-prog")));
+	jsonrpc::CallContext::Scope scope(&ctx);
+
+	json ops = json::array({
+		json{{"op","add_variable"},{"asset_path","/Game/AI/BP_Enemy"},{"name","V1"},{"type","bool"}},
+		json{{"op","add_variable"},{"asset_path","/Game/AI/BP_Enemy"},{"name","V2"},{"type","bool"}},
+		json{{"op","add_variable"},{"asset_path","/Game/AI/BP_Enemy"},{"name","V3"},{"type","bool"}},
+	});
+	auto out = bpr::tools::RunOps(r, ops, /*atomic=*/true);
+	CHECK(out["ok"] == true);
+
+	auto notifs = server.TakePendingNotifications();
+	int progress = 0;
+	for (const auto& n : notifs) {
+		if (n.value("method", std::string{}) == "notifications/progress" &&
+			n["params"].value("progressToken", json()) == json("ops-prog")) {
+			++progress;
+		}
+	}
+	CHECK(progress == 3);  // one emit before each op
 }
 
 TEST_CASE("apply_ops: named slot resolves through wire_pins") {
