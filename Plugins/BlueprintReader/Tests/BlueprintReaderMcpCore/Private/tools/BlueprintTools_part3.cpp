@@ -1189,11 +1189,16 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 						"(UCharacter alone inherits ~100+ properties from Actor / Pawn / "
 						"UObject). Pass `include_inherited: true` to get the full "
 						"transitive surface; walk the `ancestors` chain with repeat "
-						"`get_class_info` calls when you want layered detail.";
+						"`get_class_info` calls when you want layered detail. "
+						"`limit`/`offset` page the properties + functions arrays "
+						"(both share the window); `fields` projects the response.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
 				{"class_name", {{"type","string"}}},
+				{"fields", FieldsProperty()},
+				{"limit", LimitProperty()},
+				{"offset", OffsetProperty()},
 				{"include_inherited", {
 					{"type","boolean"},
 					{"description","Include properties and functions inherited from "
@@ -1207,6 +1212,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string n = RequireString(args, "class_name");
 			const bool includeInherited = args.value("include_inherited", false);
+			auto ctl = ParseResponseControls(args);
 			auto ci = reader.IntrospectClass(n);
 			// Filter using declared_on. When the plugin payload omits the
 			// field (older backends, mock fixtures) we keep the row — the
@@ -1248,7 +1254,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				}
 				fns.push_back(std::move(row));
 			}
-			return nlohmann::json{
+			nlohmann::json body = {
 				{"ok", true},
 				{"class",             ci.className},
 				{"parent",            ci.parentClass},
@@ -1257,6 +1263,12 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"functions",         fns},
 				{"include_inherited", includeInherited},
 			};
+			// UX-P2a: page the (potentially large) member arrays; then
+			// sort/project/typo-warn via the shared response controls.
+			PaginateField(body, "properties", ctl);
+			PaginateField(body, "functions", ctl);
+			ApplyResponseControls(body, ctl);
+			return body;
 		});
 	}
 

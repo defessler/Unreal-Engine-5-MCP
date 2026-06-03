@@ -165,7 +165,9 @@ items are refinements, with two genuine silent-failure traps (P0).
   structured-content clients stop having to re-parse text. Closes a Q1 gap too.
 
 ### UX-P1b — enrich `add_node` unknown-`kind` errors
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (PR #251, 2026-06-02) · **Effort:** S
+- *Shipped as client-side `kind` pre-validation against `KnownNodeKinds()`
+  (did-you-mean + valid set), kept in sync with `list_node_kinds` by a test.*
 - The unknown-kind error comes from the plugin verbatim. The `list_node_kinds`
   table lives server-side (`…/tools/BlueprintTools.cpp:2572`), so the server can
   catch the failure and append "valid kinds: …" — mirroring what `wire_pins`
@@ -174,7 +176,10 @@ items are refinements, with two genuine silent-failure traps (P0).
   `list_node_kinds` call.
 
 ### UX-P2a — array projection on the big unprojected reads
-- **Status:** ☐ Open · **Effort:** S–M
+- **Status:** ✅ Done (PR #251, 2026-06-02) · **Effort:** S–M
+- *`get_class_info` + `read_actor_instance` gained `limit`/`offset` (and
+  `get_class_info` `fields`) via a `PaginateField` helper. Pagination verified
+  live (Mock doesn't back these two reads).*
 - `get_class_info` (`…/tools/BlueprintTools_part3.cpp:1182`) has no `fields`/
   `limit` on `properties[]`/`functions[]`; `read_actor_instance` has `fields` but
   no `limit` on `overrides[]`. A wide class or a heavily-overridden actor is a big
@@ -416,3 +421,6 @@ Newest first. One line per change to this file.
   (structuredContent on the default dispatch path; protocol → 2025-11-25;
   `fields`-typo `_warnings`; `enable_tool_category` did-you-mean). Mock suite
   833/0. Pending live-editor verification.
+- **2026-06-02** — Batch 2 (PR #251): UX-P1b (add_node `kind` did-you-mean) +
+  UX-P2a (`get_class_info`/`read_actor_instance` nested-array pagination).
+  Mock suite 835/0. UX-P2a pagination pending live-editor verification.

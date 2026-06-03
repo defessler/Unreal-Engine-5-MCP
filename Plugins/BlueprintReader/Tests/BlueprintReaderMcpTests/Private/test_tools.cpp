@@ -9,6 +9,9 @@
 
 #include "test_helpers.h"
 
+#include <set>
+#include <string>
+
 using namespace bpr;
 using nlohmann::json;
 
@@ -368,6 +371,49 @@ TEST_CASE("read_blueprint with all-valid fields adds no _warnings") {
 		{"asset_path", "/Game/AI/BP_Enemy"},
 		{"fields", json::array({"parent_class", "name"})}});
 	CHECK_FALSE(out.contains("_warnings"));
+}
+
+TEST_CASE("add_node rejects an unknown kind with a did-you-mean (UX-P1b)") {
+	Fixture f;
+	auto callKind = [&](const char* kind) -> std::string {
+		try {
+			f.Call("add_node", json{{"asset_path","/Game/AI/BP_Enemy"},
+									 {"graph_name","EventGraph"},
+									 {"kind", kind}, {"x",0}, {"y",0}});
+		} catch (const std::exception& e) {
+			return e.what();
+		}
+		return {};  // didn't throw
+	};
+
+	// Case typo → suggests the canonical casing + lists the valid set.
+	const std::string m1 = callKind("branch");
+	CHECK(m1.find("unknown node kind 'branch'") != std::string::npos);
+	CHECK(m1.find("did you mean 'Branch'") != std::string::npos);
+	CHECK(m1.find("valid kinds:") != std::string::npos);
+
+	// Wholly bogus kind → no suggestion, but still lists the valid set.
+	const std::string m2 = callKind("Frobnicate");
+	CHECK(m2.find("unknown node kind 'Frobnicate'") != std::string::npos);
+	CHECK(m2.find("valid kinds:") != std::string::npos);
+
+	// A valid kind passes pre-validation and reaches the (read-only) mock,
+	// which rejects the WRITE — proving we didn't over-reject a real kind.
+	const std::string m3 = callKind("Branch");
+	CHECK(m3.find("unknown node kind") == std::string::npos);
+}
+
+TEST_CASE("KnownNodeKinds() stays in sync with list_node_kinds (UX-P1b)") {
+	Fixture f;
+	auto listed = f.Call("list_node_kinds", json::object());
+	REQUIRE(listed.is_array());
+	std::set<std::string> advertised;
+	for (const auto& e : listed) {
+		advertised.insert(e.at("kind").get<std::string>());
+	}
+	std::set<std::string> known(tools::KnownNodeKinds().begin(),
+								tools::KnownNodeKinds().end());
+	CHECK(advertised == known);
 }
 
 TEST_CASE("list_blueprints honors limit/offset pagination") {
