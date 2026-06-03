@@ -19,8 +19,10 @@
 #     -Force                replace an existing mounted plugin / config
 
 param(
-    [Parameter(Mandatory=$true)][string]$EngineDir,
-    [Parameter(Mandatory=$true)][string]$ProjectFile,
+    # Both inferred from the canonical in-project layout (plugin at
+    # <Project>/Plugins/BlueprintReader) when omitted -- see _Common.ps1.
+    [string]$EngineDir,
+    [string]$ProjectFile,
     [ValidateSet('ClaudeCode','Cursor','VSCode','Gemini','Codex','All')]
     [string]$Client = 'ClaudeCode',
     [switch]$Symlink,
@@ -33,6 +35,20 @@ $tag = '[BlueprintReader/Install]'
 
 $scriptsDir = Split-Path -Parent $PSCommandPath
 $pluginSrc  = (Resolve-Path (Split-Path -Parent $scriptsDir)).Path   # <...>/BlueprintReader
+
+# Infer omitted paths from the in-project layout (plugin at <Project>/Plugins/BlueprintReader).
+. (Join-Path $scriptsDir '_Common.ps1')
+if (-not $ProjectFile) {
+    $ProjectFile = Resolve-BprProjectFile (Resolve-BprProjectDir $scriptsDir)
+    if ($ProjectFile) { Write-Host "$tag Inferred -ProjectFile: $ProjectFile" }
+    else { throw "$tag could not infer a .uproject - pass -ProjectFile (or place the plugin under <Project>/Plugins/)." }
+}
+if (-not $EngineDir) {
+    $EngineDir = Resolve-BprEngineDir $ProjectFile
+    if ($EngineDir) { Write-Host "$tag Inferred -EngineDir: $EngineDir" }
+    else { throw "$tag could not infer the engine dir from the .uproject EngineAssociation - pass -EngineDir." }
+}
+
 if (-not (Test-Path $ProjectFile)) { throw "$tag .uproject not found: $ProjectFile" }
 if (-not (Test-Path $EngineDir))   { throw "$tag engine dir not found: $EngineDir" }
 $projectDir = (Resolve-Path (Split-Path -Parent $ProjectFile)).Path

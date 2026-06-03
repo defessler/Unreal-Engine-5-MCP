@@ -57,6 +57,22 @@ param(
 $ErrorActionPreference = "Stop"
 $tag = "[BlueprintReader/MCP]"
 
+# Infer -ProjectFile / -EngineDir from the canonical in-project layout (plugin at
+# <Project>/Plugins/BlueprintReader) when omitted, so the launcher works with no
+# args. Skipped for the legacy PreBuildStep call (-ProjectDir), which no-ops below.
+$common = Join-Path $PSScriptRoot '_Common.ps1'
+if ((Test-Path $common) -and -not $ProjectDir) {
+    . $common
+    if (-not $ProjectFile) {
+        $ProjectFile = Resolve-BprProjectFile (Resolve-BprProjectDir $PSScriptRoot)
+        if ($ProjectFile) { Write-Host "$tag Inferred -ProjectFile: $ProjectFile" }
+    }
+    if (-not $EngineDir) {
+        $EngineDir = Resolve-BprEngineDir $ProjectFile
+        if ($EngineDir) { Write-Host "$tag Inferred -EngineDir: $EngineDir" }
+    }
+}
+
 # INSTALL-M2: engine-free CMake/Ninja build of the server + tests, for an
 # installed/Launcher engine where UBT refuses Program targets. Mirrors the
 # documented fallback; CMakeLists lands the exes in the plugin's own
