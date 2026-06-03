@@ -305,6 +305,14 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "limit": {
+          "description": "Optional cap on the number of items returned (after offset). Use to keep responses small on big projects.",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Optional 0-based offset into the result array. Pair with `limit` for paging through long lists.",
+          "type": "integer"
         }
       },
       "required": [
@@ -6728,15 +6736,30 @@
   },
   {
     "category": "class info",
-    "description": "[class info] Inspect a UClass: parent + ancestor chain + every UPROPERTY + UFUNCTION. `class_name` is the short class name (e.g. `Actor`, `PlayerController`) or a full class path.\n\nBy default, only members **declared on this class** are returned — inherited members are filtered out so the response stays small (UCharacter alone inherits ~100+ properties from Actor / Pawn / UObject). Pass `include_inherited: true` to get the full transitive surface; walk the `ancestors` chain with repeat `get_class_info` calls when you want layered detail.",
+    "description": "[class info] Inspect a UClass: parent + ancestor chain + every UPROPERTY + UFUNCTION. `class_name` is the short class name (e.g. `Actor`, `PlayerController`) or a full class path.\n\nBy default, only members **declared on this class** are returned — inherited members are filtered out so the response stays small (UCharacter alone inherits ~100+ properties from Actor / Pawn / UObject). Pass `include_inherited: true` to get the full transitive surface; walk the `ancestors` chain with repeat `get_class_info` calls when you want layered detail. `limit`/`offset` page the properties + functions arrays (both share the window); `fields` projects the response.",
     "input_schema": {
       "properties": {
         "class_name": {
           "type": "string"
         },
+        "fields": {
+          "description": "Optional response projection. Each entry is a dotted field path; use `[]` to apply the path to every element of an array. Example: [\"name\", \"variables[].name\"] returns just the BP name and the names of its variables. Omit to get the full payload. Field names must match the response keys: variable flags are `is_editable`, `is_replicated`, `expose_on_spawn`, `rep_condition`, `rep_notify_func`. Common shorthands are aliased (`editable`, `replicated`, `exposed`, and any bare `foo` for an `is_foo` flag), but an unrecognized name still projects nothing.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "include_inherited": {
           "description": "Include properties and functions inherited from ancestor classes. Default false (own members only) to keep responses focused; set true for the full transitive surface.",
           "type": "boolean"
+        },
+        "limit": {
+          "description": "Optional cap on the number of items returned (after offset). Use to keep responses small on big projects.",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Optional 0-based offset into the result array. Pair with `limit` for paging through long lists.",
+          "type": "integer"
         }
       },
       "required": [

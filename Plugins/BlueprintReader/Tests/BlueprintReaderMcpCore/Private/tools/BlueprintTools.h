@@ -22,6 +22,12 @@ void RegisterBlueprintTools(ToolRegistry& registry,
 // `enable_tool_category("editor")` to incrementally widen the surface.
 void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry);
 
+// Authoritative `kind` tokens that add_node accepts, mirrored by the
+// list_node_kinds descriptor table (a sync test asserts the two agree).
+// add_node pre-validates against this for a fast did-you-mean. Exposed so
+// the sync test can compare it against list_node_kinds' advertised set.
+const std::vector<std::string>& KnownNodeKinds();
+
 // Phase D — build the response shape for a screenshot tool, optionally
 // embedding the captured PNG as a base64-encoded Image content block.
 // Exposed here so tests can exercise the cap rejection + Envelope shape
