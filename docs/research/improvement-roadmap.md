@@ -98,11 +98,15 @@ Reference: Epic plugin at
 - **Why:** trivial; keeps us level with Epic and current clients.
 
 ### PARITY-3 — inline Image result type for screenshots
-- **Status:** ☐ Open · **Effort:** S–M
-- `take_screenshot` / `take_viewport_screenshot` / `take_annotated_screenshot`
-  return only a disk path; Epic returns inline base64 Image content (auto-detects
-  `UTexture2D`→Image, `USoundWave`→Audio). Return MCP image-content blocks.
-- **Why:** lets vision models see captures without a filesystem round-trip.
+- **Status:** ✅ Done (already implemented; verified PR #257, 2026-06-02) · **Effort:** S–M
+- *Already shipped: `BuildScreenshotResponse` base64-encodes the PNG into an MCP
+  image content block (+ `structuredContent`) for all 3 screenshot tools, with a
+  1280px cap and the `BP_READER_NEVER_INLINE_IMAGES` kill-switch. `return_inline`
+  is **opt-in (default false)** by design — flipping it risks token bloat and the
+  headless `-nullrhi` daemon can't render anyway; the tool descriptions document
+  it and `test_phase_d` covers both shapes. Verified complete; no code change.*
+- (Original note: `take_screenshot` etc. returned only a disk path; Epic returns
+  inline base64 Image content. Return MCP image-content blocks.)
 
 ### PARITY-4 — regex allow/block-list governance
 - **Status:** ☐ Open · **Effort:** M
@@ -408,7 +412,15 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   mock/commandlet use; foundation of a versioned-release update story.
 
 ### INSTALL-M4 — compile the editor module in CI on the targeted engines
-- **Status:** ☐ Open · **Effort:** L
+- **Status:** ✅ Done (scaffold; PR #257, 2026-06-02) · **Effort:** L
+- *Shipped `.github/workflows/editor-build.yml`: a self-hosted-runner workflow
+  that compile-smokes `-Module=BlueprintReaderEditor` via UBT against a real
+  engine (catches the multi-engine API breaks `mcp-tests.yml` can't). NOT
+  triggered on PRs (so it never blocks a merge while a runner is unavailable);
+  runs on main pushes touching the editor module + on demand. The maintainer
+  provisions the runner (label `ue5`) + sets `UE_ENGINE_DIR`/`UE_PROJECT`/
+  `UE_EDITOR_TARGET` — one runner per engine version covers the multi-engine
+  invariant. Documented in CLAUDE.md.*
 - CI builds only the standalone server + mock tests (`.github/workflows/mcp-tests.yml`)
   — the #223→#240 multi-engine regression passed CI silently. A self-hosted
   runner with cached engine(s) doing a compile-only smoke against a pre-5.8 *and*
