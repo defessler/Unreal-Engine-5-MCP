@@ -70,6 +70,7 @@ Plugins/BlueprintReader/Source/BPRoundtripModule/Private/*
 /.github/workflows/*
 !/.github/workflows/mcp-tests.yml
 !/.github/workflows/release.yml
+!/.github/workflows/editor-build.yml
 !/.github/copilot-instructions.md
 /setup.bat
 
