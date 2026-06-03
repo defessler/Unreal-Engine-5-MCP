@@ -42,6 +42,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include <fmt/core.h>
@@ -50,6 +51,7 @@
 	#include <fcntl.h>
 	#include <io.h>
 	#include <windows.h>
+	#include <tlhelp32.h>
 #endif    // defined(_WIN32)
 
 namespace main_detail {
@@ -64,6 +66,45 @@ std::filesystem::path ExecutableDir() {
 	return std::filesystem::path(buf).parent_path();
 #else    // defined(_WIN32)
 	return std::filesystem::current_path();
+#endif    // defined(_WIN32)
+}
+
+// Parent-death watchdog. An MCP client launches this server over stdio and is
+// expected to close our stdin on disconnect — Server::Run then sees EOF and we
+// exit cleanly. But if the client is force-killed or crashes, Windows may never
+// signal EOF on the inherited stdin pipe, so the blocking read in Server::Run
+// hangs forever and the process lingers. Orphans then accumulate — each one
+// keeps BlueprintReaderMcp.exe locked, breaking the next relink (LNK1104) and
+// confusing builds of other configurations. Watch the parent process handle and
+// terminate when it dies so orphaned servers can't pile up.
+void InstallParentDeathWatchdog(std::ostream& log) {
+#if defined(_WIN32)
+	const DWORD self = GetCurrentProcessId();
+	DWORD ppid = 0;
+	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snap != INVALID_HANDLE_VALUE) {
+		PROCESSENTRY32W pe;
+		pe.dwSize = sizeof(pe);
+		if (Process32FirstW(snap, &pe)) {
+			do {
+				if (pe.th32ProcessID == self) { ppid = pe.th32ParentProcessID; break; }
+			} while (Process32NextW(snap, &pe));
+		}
+		CloseHandle(snap);
+	}
+	if (ppid == 0) { return; }
+	HANDLE parent = OpenProcess(SYNCHRONIZE, FALSE, ppid);
+	if (parent == nullptr) { return; }
+	std::thread([parent]() {
+		WaitForSingleObject(parent, INFINITE);
+		// Client is gone — terminate immediately rather than linger on a blocked
+		// stdin read. ExitProcess avoids running static destructors that could
+		// themselves block on the now-dead pipe/handles.
+		::ExitProcess(0);
+	}).detach();
+	log << "[bp-reader-mcp] parent-death watchdog armed (ppid=" << ppid << ")\n";
+#else
+	(void)log;
 #endif    // defined(_WIN32)
 }
 
@@ -366,6 +407,10 @@ args = []
 int RunServerLoop() {
 	using namespace bpr;
 	EnsureBinaryStdio();
+
+	// Don't outlive the MCP client that launched us (avoids orphaned servers
+	// locking the .exe across rebuilds).
+	InstallParentDeathWatchdog(std::cerr);
 
 	auto exeDir = ExecutableDir();
 	auto cfg = backends::ConfigFromEnv(exeDir, std::cerr);
