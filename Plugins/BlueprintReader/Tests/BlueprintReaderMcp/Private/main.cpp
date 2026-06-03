@@ -111,6 +111,8 @@ Usage:
   bp-reader-mcp config --client=windsurf        Same, for Windsurf (mcp_config.json).
   bp-reader-mcp config --client=copilot         Same, for VS Code Copilot (.vscode/mcp.json).
   bp-reader-mcp config --client=vscode          Alias of copilot (VS Code native MCP).
+  bp-reader-mcp config --client=gemini          Same, for Gemini CLI (~/.gemini/settings.json).
+  bp-reader-mcp config --client=codex           Same, for Codex (~/.codex/config.toml, TOML).
   bp-reader-mcp config --mock                   Emit a mock-backend-only snippet — no UE project
 												or engine required. For fixture-backed testing
 												of MCP client integrations.
@@ -251,7 +253,7 @@ R"(      "env": {{
 	//     (.vscode/mcp.json) and VS Code's native MCP support.
 	const char* placement = nullptr;
 	if (client == "claude-code" || client == "claude-desktop" ||
-		client == "cursor" || client == "windsurf") {
+		client == "cursor" || client == "windsurf" || client == "gemini") {
 		std::cout << fmt::format(
 R"({{
   "mcpServers": {{
@@ -266,6 +268,7 @@ R"({{
 		else if (client == "claude-desktop") placement = "claude_desktop_config.json (Settings > Developer > Edit Config)";
 		else if (client == "cursor")    placement = "<project>/.cursor/mcp.json (or ~/.cursor/mcp.json for global)";
 		else if (client == "windsurf")  placement = "~/.codeium/windsurf/mcp_config.json";
+		else if (client == "gemini")    placement = "~/.gemini/settings.json (or <project>/.gemini/settings.json)";
 	} else if (client == "copilot" || client == "vscode") {
 		std::cout << fmt::format(
 R"({{
@@ -279,9 +282,34 @@ R"({{
 }}
 )", fmt::arg("exe", exePath), fmt::arg("env", envBlock));
 		placement = "<project>/.vscode/mcp.json";
+	} else if (client == "codex") {
+		// Codex uses TOML: a [mcp_servers.<name>] table + a nested .env table.
+		// A JSON-escaped Windows path (\\) is also valid in a TOML basic
+		// string, so we reuse exePath as-is inside the double quotes.
+		std::string tomlEnv = mockMode
+			? std::string(
+R"([mcp_servers.bp-reader.env]
+BP_READER_BACKEND = "mock"
+)")
+			: std::string(
+R"([mcp_servers.bp-reader.env]
+BP_READER_PREWARM = "1"
+BP_READER_EDITOR_ARGS = "-EnableAllPlugins"
+)");
+		if (!mockMode && !cfgName.empty() && cfgName != "Development") {
+			tomlEnv += fmt::format("BP_READER_EDITOR_CONFIG = \"{}\"\n", cfgName);
+		}
+		std::cout << fmt::format(
+R"([mcp_servers.bp-reader]
+command = "{exe}"
+args = []
+
+{env})", fmt::arg("exe", exePath), fmt::arg("env", tomlEnv));
+		placement = "~/.codex/config.toml";
 	} else {
 		std::cerr << "config: unknown --client='" << client
-				  << "' (try claude-code, claude-desktop, cursor, windsurf, copilot, or vscode)\n";
+				  << "' (try claude-code, claude-desktop, cursor, windsurf, "
+					 "copilot, vscode, gemini, or codex)\n";
 		return 1;
 	}
 	if (placement) {
