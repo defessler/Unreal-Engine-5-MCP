@@ -98,13 +98,10 @@ std::string ReadUpluginVersion(const std::filesystem::path& pluginDir) {
 std::string GitHeadShort(const std::filesystem::path& dir) {
 #if defined(_WIN32)
 	const char* devnull = "2>nul";
-	const char* mode = "r";
 	auto openPipe  = [](const char* c) { return _popen(c, "r"); };
 	auto closePipe = [](FILE* f) { return _pclose(f); };
 #else
 	const char* devnull = "2>/dev/null";
-	const char* mode = "r";
-	(void)mode;
 	auto openPipe  = [](const char* c) { return popen(c, "r"); };
 	auto closePipe = [](FILE* f) { return pclose(f); };
 #endif
