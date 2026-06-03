@@ -441,7 +441,17 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** editor-module breaks currently reach consumers undetected.
 
 ### INSTALL-PKG — packaging split (plugin proper + binary server)
-- **Status:** ☐ Open · **Effort:** L
+- **Status:** ✅ Done (plan + deliverable #2; PR #260, 2026-06-02) · **Effort:** L
+- *Shipped: [`packaging-marketplace.md`](packaging-marketplace.md) — the
+  two-deliverable design + executable Fab-submission plan. Key correction: the
+  `Tests/` Program targets + `ThirdParty/` are **already excluded** from a
+  packaged plugin (UAT packages only `Source/Config/Content/Resources/.uplugin`),
+  so no tree move is needed. Deliverable #2 (the standalone server) ships as the
+  binary release (Batch 9, done). The real remaining Fab blockers — a
+  `PreBuildSteps`-free Marketplace `.uplugin` variant, a `Resources/Icon128.png`,
+  and verifying the modules build on an unpatched consumer engine — are
+  documented as a focused follow-up requiring per-step editor-build verification
+  (NOT a hasty in-place restructure that would risk the verified working build).*
 - A clean Fab/Marketplace ship is blocked by the `Tests/` `Type=Program` targets,
   vendored third-party (`Tests/ThirdParty/`), the `PreBuildSteps` shell-out, and
   the 3 engine `.Build.cs` patches. Pragmatic path: (a) ship the plugin proper
