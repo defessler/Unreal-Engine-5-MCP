@@ -10,6 +10,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'install', label: 'Install', icon: '⬇', description: 'Mount plugin & build server' },
   { id: 'providers', label: 'Providers', icon: '⚙', description: 'Configure AI clients' },
+  { id: 'settings', label: 'Settings', icon: '🔧', description: 'Server flags & env vars' },
   { id: 'tester', label: 'Tester', icon: '▶', description: 'Test MCP tool calls' },
   { id: 'update', label: 'Update', icon: '↑', description: 'Check for updates' },
 ];
@@ -46,7 +47,7 @@ export default function Sidebar({ current, onNav }: SidebarProps) {
         ))}
       </nav>
       <div className="px-4 py-3 border-t border-ue-border">
-        <div className="text-xs text-gray-600">v1.0.0</div>
+        <div className="text-xs text-gray-600">v0.4.0</div>
       </div>
     </aside>
   );
