@@ -52,7 +52,7 @@ jobs:
         env:
           BP_READER_BACKEND: mock
         run: |
-          & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcpTests.exe"
+          & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe"
           if ($LASTEXITCODE -ne 0) { Write-Host "doctest suite failed ($LASTEXITCODE)"; exit 1 }
           Write-Host "doctest suite passed."
 
