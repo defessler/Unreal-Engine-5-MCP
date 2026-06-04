@@ -10,6 +10,33 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.3.0] — 2026-06-04
+
+### Added
+- **258 tools** (was 254): `list_timelines`, `read_timeline` (UTimelineTemplate + FRichCurve keys); `list_anim_montages`, `read_anim_montage` (sections, notifies, slot tracks for GAS/action game workflows).
+- **AnimBlueprint state machine read** (`read_anim_blueprint`): real walk of `UAnimationStateMachineGraph` via the AnimGraph module — states, transitions, and their connections. `add_anim_state` now creates real `UAnimStateNode` objects (was a stub).
+- **Full UPROPERTY metadata in `list_variables`**: decoded `EPropertyFlags` as named booleans (`blueprint_read_write`, `replicated`, `transient`, `save_game`, etc.), `rep_notify_func`, `cpp_type` (exact C++ typename), and the full `meta=()` key-value map per property.
+- **UFUNCTION flags + metadata in `get_function`**: `is_pure`, `is_callable`, `is_const`, `is_static`, and `func_meta` (HidePin, DefaultToSelf, AutoCreateRefTerm, Keywords, etc.) per function graph.
+- **UPROPERTY metadata in `get_class_info`**: `blueprint_read_write`, `blueprint_read_only`, `edit_anywhere`, `replicated`, `transient`, `save_game` flags + `rep_notify_func` + full metadata map per property.
+- **CDO struct defaults as JSON**: `FVector`/`FRotator`/`FLinearColor`/`FColor`/`FQuat`/etc. defaults emitted as `{"X":0,"Y":0,"Z":0}` instead of UE text format `"(X=0,Y=0,Z=0)"`.
+- **Complete tool annotations** (MCP 2025-03-26): all 258 tools now have `readOnlyHint`, `destructiveHint`, `idempotentHint` correctly set — enables Claude Code auto-approval and ChatGPT store compliance.
+- **`serverInfo.description`** in MCP initialize response (MCP 2025-11-25).
+- **`MCP-Protocol-Version` header** on all HTTP POST responses (MCP 2025-06-18 §transports).
+- **Destructive-op confirmation guard**: set `BP_READER_REQUIRE_CONFIRM=1` to require `_confirm:true` on any destructive tool before it executes.
+- **Title field on all 258 tools** (MCP 2025-06-18): every tool now has a human-readable display name shown in client UIs.
+
+### Performance
+- **No temp-file I/O per daemon call** (PERF-1): result JSON written directly to a stack-allocated `FString` via `__MEM__:<ptr>` sentinel — eliminates two filesystem operations per call.
+- **5ms daemon poll** (PERF-2): was 50ms — 10× throughput improvement on rapid-fire read sessions.
+- **12 more cached tools** (PERF-3/4): `GetReferencers`, `GetDependencies`, `ListAssets`, `FindAsset`, `ReadDataTable`, `ReadMaterial`, `ReadWidgetBlueprint`, `ReadBehaviorTree`, `ReadStateTree`, `ReadNiagaraSystem`, `ReadLevelSequence`, `ReadAnimBlueprint` now use the TTL+mtime cache.
+- **No O(N) filesystem stats in `list_blueprints`** (PERF-5): per-BP `GetTimeStamp` syscall skipped by default (opt-in with `-IncludeMtime`).
+
+### Fixed
+- C4996 `std::getenv` MSVC warnings eliminated across all 15 callsites — replaced with `bpr::env::Get()` / `bpr::env::GetOrDefault()`.
+
+### Changed
+- Tool descriptions improved for `get_graph`, `get_function`, `find_node` with explicit "when to use vs alternative" guidance.
+
 ## [Unreleased]
 
 ### Added
