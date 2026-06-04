@@ -147,7 +147,102 @@ try {
     }
     $code = $LASTEXITCODE
     if ($code -ne 0) { throw "$tag configure step failed (exit $code)." }
-    Write-Host "$tag Update complete. If the server sources changed, rebuild with Build-MCPServer.bat or drop in a prebuilt release exe."
+
+    # ---- Phase 3: prebuilt-exe download + accurate rebuild detection --------
+    # Determine the deployed source VersionName (the newly-downloaded .uplugin).
+    $destPlugin  = Join-Path $projectDir 'Plugins\BlueprintReader'
+    $upluginPath = Join-Path $destPlugin 'BlueprintReader.uplugin'
+    $srcVersionName = $null
+    if (Test-Path -LiteralPath $upluginPath) {
+        try { $srcVersionName = (Get-Content -Raw -LiteralPath $upluginPath | ConvertFrom-Json).VersionName } catch {}
+    }
+
+    # Get the running exe's stamped version.
+    $exePath   = Join-Path $destPlugin 'Binaries\Win64\BlueprintReaderMcp.exe'
+    $exeVersion = $null
+    if (Test-Path -LiteralPath $exePath) {
+        try {
+            $vl = & $exePath --version 2>$null | Select-Object -First 1
+            if ($vl -match 'bp-reader-mcp\s+(\S+)') { $exeVersion = $Matches[1] }
+        } catch {}
+    }
+
+    # Check GitHub releases API for a prebuilt asset matching the new source version.
+    $prebuiltSwapped = $false
+    if ($srcVersionName) {
+        $tag = "v$srcVersionName"
+        try {
+            $base     = ($Repo -replace '\.git/?$', '').TrimEnd('/')
+            $apiUrl   = "https://api.github.com/repos/$($base -replace 'https://github.com/','')/releases/tags/$tag"
+            # Try direct tag lookup; fall back to /releases/latest
+            try {
+                $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+                $resp  = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing `
+                             -Headers @{'User-Agent'='bp-reader-update/1.0'} `
+                             -MaximumRedirection 3 -TimeoutSec 8 -ErrorAction Stop
+                $ProgressPreference = $oldPref
+                $release = $resp.Content | ConvertFrom-Json
+            } catch {
+                $release = $null
+            }
+            if ($release -and $release.assets) {
+                $asset = $release.assets | Where-Object { $_.name -like '*win64*.zip' } | Select-Object -First 1
+                if ($asset) {
+                    Write-Host "[BlueprintReader/Update] Downloading prebuilt exe from $tag ..."
+                    $zipTmp = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-prebuilt-$([guid]::NewGuid().ToString('N').Substring(0,8)).zip"
+                    $binDir = Join-Path $destPlugin 'Binaries\Win64'
+                    $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+                    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipTmp `
+                        -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 120 -ErrorAction Stop
+                    $ProgressPreference = $oldPref
+                    # Extract to a temp dir, verify --version, then move.
+                    $unzipTmp = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-prebuilt-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+                    Expand-Archive -LiteralPath $zipTmp -DestinationPath $unzipTmp -Force
+                    Remove-Item -LiteralPath $zipTmp -ErrorAction SilentlyContinue
+                    $candidateExe = Get-ChildItem -Recurse -LiteralPath $unzipTmp -Filter 'BlueprintReaderMcp.exe' | Select-Object -First 1
+                    if ($candidateExe) {
+                        $newVer = $null
+                        try { $vl = & $candidateExe.FullName --version 2>$null | Select-Object -First 1; if ($vl -match 'bp-reader-mcp\s+(\S+)') { $newVer = $Matches[1] } } catch {}
+                        if ($newVer) {
+                            # Stop any running server so we can overwrite the locked exe.
+                            Get-Process BlueprintReaderMcp -ErrorAction SilentlyContinue | Stop-Process -Force
+                            Start-Sleep -Seconds 1
+                            New-Item -ItemType Directory -Force $binDir | Out-Null
+                            Copy-Item -LiteralPath $candidateExe.FullName -Destination (Join-Path $binDir 'BlueprintReaderMcp.exe') -Force
+                            # Copy fixtures alongside the exe if present.
+                            $fixturesSrc = Join-Path (Split-Path -Parent $candidateExe.FullName) 'fixtures'
+                            if (Test-Path -LiteralPath $fixturesSrc) {
+                                Copy-Item -LiteralPath $fixturesSrc -Destination $binDir -Recurse -Force
+                            }
+                            $exeVersion      = $newVer
+                            $prebuiltSwapped = $true
+                            Write-Host "[BlueprintReader/Update] Prebuilt exe installed: $newVer"
+                        }
+                    }
+                    Remove-Item -Recurse -Force -LiteralPath $unzipTmp -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {
+            Write-Warning "[BlueprintReader/Update] Could not download prebuilt exe (network/release error): $($_.Exception.Message)"
+        }
+        $tag = '[BlueprintReader/Update]'  # restore the outer $tag
+    }
+
+    # ---- Accurate rebuild detection ----------------------------------------
+    if ($prebuiltSwapped) {
+        Write-Host "$tag Update complete. Server exe is current ($exeVersion) - no rebuild needed."
+    } elseif (-not $exeVersion -or -not (Test-Path -LiteralPath $exePath)) {
+        Write-Host "$tag Update complete. Server exe not found - build it with Scripts\Build-MCPServer.bat."
+    } else {
+        # Compare deployed source VersionName to running exe stamp (strip git hash).
+        $exeBase  = ($exeVersion -split '\+')[0] -replace '^v', ''
+        $srcBase  = if ($srcVersionName) { $srcVersionName -replace '^v', '' } else { '' }
+        if ($srcBase -and $exeBase -ne $srcBase) {
+            Write-Host "$tag Update complete. Source changed ($srcBase) vs running exe ($exeBase) - rebuild with Scripts\Build-MCPServer.bat."
+        } else {
+            Write-Host "$tag Update complete. Server exe is current ($exeVersion)."
+        }
+    }
     exit 0
 }
 finally {
