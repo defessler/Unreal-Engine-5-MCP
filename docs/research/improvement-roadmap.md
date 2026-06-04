@@ -530,17 +530,17 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Claude Code uses `readOnlyHint:true` for auto-approval in `--auto-approve` mode; ChatGPT store requires correct hints for app submission. Both are already spec-defined since 2024-11-05.
 
 ### MCP-3 — Input validation errors as `isError:true` tool results {#mcp-3}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** S
 - Currently, bad/missing args return JSON-RPC error code `-32602`. The 2025-11-25 spec says this MUST be a valid `CallToolResult` with `isError:true` and actionable message text so the model can self-correct without treating it as a transport error. Catch `std::invalid_argument` in the tool dispatch wrapper and re-emit as a tool error result.
 - **Why:** Spec MUST compliance; better model self-correction on bad args.
 
 ### MCP-4 — `structuredContent` alongside `content[].text` {#mcp-4}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** S
 - We declare `outputSchema` on ~220 tools but do NOT emit `structuredContent`. Gemini CLI **errors** when `outputSchema` is declared without `structuredContent` ("Tool has an output schema but did not return structured content"). Fix: when `outputSchema` is non-empty and the result is a JSON object, populate `structuredContent` with the same JSON object alongside the existing `content[0].text` serialization. Claude Code ignores `structuredContent` but Gemini requires it. Cross-cuts with UX-P1a (we already emit it for the default dispatch path — extend to all tools uniformly).
 - **Why:** Gemini CLI compatibility; programmatic clients; spec compliance.
 
 ### MCP-5 — `description` on serverInfo + `listChanged:true` in capabilities {#mcp-5}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** S
 - Add a `description` string field to `serverInfo` in `InitializeResult` (e.g. "UE5 Blueprint introspection + mutation + transpile"). Declare `"tools": {"listChanged": true}` in server capabilities so clients know to re-fetch `tools/list` when `BP_READER_ALLOW_WRITE` or `BP_READER_ALLOW_TRANSPILE` toggles at runtime.
 - **Why:** Best practice; clients can show the server description in their UIs; mode-toggle without reconnect.
 
@@ -576,7 +576,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Every character game with locomotion/combat needs AnimBPs. Current stubs mislead AI into thinking AnimGraph is writable when it isn't.
 
 ### EDIT-2 — Timeline read + write (UTimelineTemplate + UCurveFloat) {#edit-2}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** M
 - `K2Node_Timeline` appears in graph reads with `kind=Timeline` + `timelineName`, but `UBlueprint::Timelines` is never walked. Zero tools for track data, key frames, or timeline properties. New tools needed: `read_timeline(asset, name)` → `{tracks: [{name, type, keys: [{time, value, interp}]}], length, loop, auto_play}`; `add_timeline_track(asset, timeline_name, type, track_name)`; `set_curve_key(asset, timeline_name, track_name, time, value, interp_mode)`. No special module needed — `UBlueprint::Timelines` is directly accessible. BPIR transpiler emits `// TODO[bpr-unsupported]` — this would fix it too.
 - **Why:** Very high frequency (door animations, weapon recoil, UI transitions, etc.). UTimelineTemplate is on UBlueprint directly — easiest new read/write surface.
 
@@ -612,12 +612,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Required for accurate `UPROPERTY()` + `UFUNCTION()` declaration in transpiled code; needed for Details customization generation.
 
 ### REFLECT-3 — CDO complex-type defaults as parsed JSON {#reflect-3}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** S
 - `Property->ExportTextItem_InContainer(...)` on a `FVector` CDO returns `"(X=0.000000,Y=0.000000,Z=0.000000)"` — a string the AI has to parse. Post-process those text defaults through a small set of type-aware parsers (FVector, FRotator, FLinearColor, FTransform) and emit `{"X":0,"Y":0,"Z":0}` directly. For unknown struct types, keep the raw text string as a fallback.
 - **Why:** AI-friendly property defaults; eliminates a common source of vector/rotator parsing errors in generated code.
 
 ### REFLECT-4 — Parameter metadata in function introspection {#reflect-4}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (96ad5f1c, 2026-06-04) · **Effort:** S
 - `get_function` / `GetFunction` returns parameter names and types but not their metadata specifiers (`HidePin`, `DefaultToSelf`, `AutoCreateRefTerm`, `ExpandEnumAsExecs`, `ExpandBoolAsExecs`, `ArrayParm`, `DeterminesOutputType`). These drive how the BP call node renders. Add `param_meta` map per parameter in the function's wire shape.
 - **Why:** Required for `generate_k2node_skeleton` (EDIT-5) and for AI-generated `UFUNCTION()` declarations to correctly specify pin behavior.
 
@@ -731,6 +731,10 @@ Newest first. One line per change to this file.
   H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
   H2 (single-op write lock env-gated, live-verified code=6);
   A3 (package + object path both resolve, live-verified). 859 mock/0 final.
+- **2026-06-04** — Second research batch (96ad5f1c): MCP-3/4/5 (all were/became done);
+  REFLECT-3 (CDO FVector/FRotator defaults as JSON); REFLECT-4 (is_pure/callable/const +
+  func_meta in GraphInfoToJson); PERF-5 (conditional stat guard in list_blueprints);
+  EDIT-2 (list_timelines + read_timeline; full backend stack; 256 tools). 859 mock/0.
 - **2026-06-04** — Implemented MCP-1, PERF-2/3/4, REFLECT-1/2 from research (eb99a2a0):
   title field on all 254 tools (curated table + snake_case auto-fallback);
   daemon poll 5ms (10x throughput, live-verified);

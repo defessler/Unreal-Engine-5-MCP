@@ -789,6 +789,22 @@ namespace
 	{
 		if (!OutputPath.IsEmpty())
 		{
+			// PERF-1: __MEM__:<ptr> sentinel — write directly to the FString
+			// at the given address instead of going through disk.  The pointer
+			// was cast to uint64 by the CmdletServer / LiveServer caller; we
+			// reinterpret it back.  This eliminates two filesystem operations
+			// (write + read + delete) per daemon call.
+			static const FString kMemPrefix(TEXT("__MEM__:"));
+			if (OutputPath.StartsWith(kMemPrefix))
+			{
+				const uint64 Addr = FCString::Strtoui64(*OutputPath + kMemPrefix.Len(), nullptr, 10);
+				if (Addr != 0)
+				{
+					FString* pOut = reinterpret_cast<FString*>(Addr);
+					*pOut = Json;
+					return 0;
+				}
+			}
 			if (!FFileHelper::SaveStringToFile(Json, *OutputPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("Failed to write output to: %s"), *OutputPath);

@@ -189,13 +189,14 @@ public:
 				}
 			}
 
-			// Add a unique -Out= path so the dispatch writes its JSON
-			// somewhere we can read it back. Cmdlet mode uses a per-call
-			// temp file just like the daemon does — RunOneOp's existing
-			// EmitJson path stays unchanged.
-			const FString OutPath = FPaths::Combine(
-				FPaths::ProjectIntermediateDir(),
-				FString::Printf(TEXT("bpr-cmdlet-%s.json"), *FGuid::NewGuid().ToString(EGuidFormats::DigitsLower)));
+			// PERF-1: use an in-memory sentinel path instead of a temp file.
+			// EmitJson writes to the sentinel path "__MEM__:<ptr>", which the
+			// commandlet detects and copies directly into *pJsonOut instead of
+			// touching disk. This eliminates the two filesystem operations
+			// (write + read + delete) per call on the warm-daemon path.
+			FString JsonBody;
+			const FString OutPath = FString::Printf(
+				TEXT("__MEM__:%llu"), reinterpret_cast<uint64>(&JsonBody));
 			Params.Append(FString::Printf(TEXT(" -Out=\"%s\" -Compact"), *OutPath));
 
 			// Dispatch to the game thread and block until done. Pass
@@ -203,12 +204,9 @@ public:
 			// right registry slot (RunOneOpFromLiveServer installs the
 			// FConnectionScope internally).
 			//
-			// Lifetime contract for the &Code capture: this lambda
-			// accesses `Code` by reference, which is only safe because
-			// `DoneEvent->Wait()` below blocks the runnable thread
-			// until the lambda has completed. A future refactor that
-			// lets this return before the task fires would be a bug —
-			// the lambda would write to a stack frame that's gone.
+			// Lifetime contract: JsonBody lives on the connection-thread stack.
+			// DoneEvent->Wait() blocks until the game-thread lambda completes,
+			// so JsonBody is always alive when the lambda writes into it.
 			int32 Code = -1;
 			FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
 			const uint64 ConnId = ConnectionId;
@@ -246,15 +244,21 @@ public:
 			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
 			BlueprintReader::UnregisterProgressQueue(ConnId);
 
-			// Read the JSON the dispatch wrote to OutPath.
-			FString JsonBody;
-			if (FFileHelper::LoadFileToString(JsonBody, *OutPath))
+			// PERF-1: JsonBody was written directly by EmitJson via the
+			// __MEM__ sentinel. No disk I/O needed; JsonBody is already set.
+			// Fallback: if EmitJson couldn't resolve the sentinel (e.g. a
+			// legacy code path didn't recognise it), try reading the temp
+			// file from the old path.
+			if (JsonBody.IsEmpty())
 			{
-				IFileManager::Get().Delete(*OutPath);
-			}
-			else
-			{
-				JsonBody = TEXT("{}");
+				if (FFileHelper::LoadFileToString(JsonBody, *OutPath))
+				{
+					IFileManager::Get().Delete(*OutPath);
+				}
+				else
+				{
+					JsonBody = TEXT("{}");
+				}
 			}
 
 			// Frame the response. JsonBody is already a JSON literal —
