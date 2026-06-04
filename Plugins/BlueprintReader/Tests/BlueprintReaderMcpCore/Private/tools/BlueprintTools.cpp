@@ -154,18 +154,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"sort",   SortProperty()},
 			}},
 		};
-		d.output_schema = {
-			{"type", "array"},
-			{"items", {
-				{"type", "object"},
-				{"properties", {
-					{"asset_path", {{"type", "string"}}},
-					{"name",       {{"type", "string"}}},
-					{"class_name", {{"type", "string"}}},
-				}},
-				{"required", nlohmann::json::array({"asset_path","class_name"})},
-			}},
-		};
+		d.output_schema = PaginatedSchema();
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			const bool recursive = args.value("recursive", true);
@@ -179,8 +168,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 					{"class_name", e.className},
 				});
 			}
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -287,24 +275,13 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"sort",   SortProperty()},
 			}},
 		};
-		d.output_schema = {
-			{"type", "array"},
-			{"items", {
-				{"type", "object"},
-				{"properties", {
-					{"asset_path",   {{"type", "string"}}},
-					{"parent_class", {{"type", "string"}}},
-				}},
-				{"required", nlohmann::json::array({"asset_path"})},
-			}},
-		};
+		d.output_schema = PaginatedSchema();
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto ctl = ParseResponseControls(args);
 			auto items = reader.ListBlueprints(path);
 			nlohmann::json body = items;
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -357,8 +334,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.ReadBlueprint(asset));
 			});
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -426,8 +402,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			// array — body is an object, so ApplyResponseControls' top-level
 			// slice wouldn't reach it.
 			PaginateField(body, "overrides", ctl);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -467,8 +442,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string fname = RequireString(args, "function_name");
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = DecompileFunction(reader, asset, fname);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -498,8 +472,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string asset = RequireAssetPath(args);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = DecompileBlueprint(reader, asset);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -1005,8 +978,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 					}
 				}
 			}
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -1164,8 +1136,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 					}
 				}
 			}
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -1190,29 +1161,13 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
-		// Array of SCS components. Shape verified against BPComponent::to_json:
-		// all 5 keys always emitted (parent is null for root components;
-		// properties is the override list, possibly empty). `fields` narrows it.
-		d.output_schema = {
-			{"type","array"},
-			{"items", {
-				{"type","object"},
-				{"properties", {
-					{"name",       {{"type","string"}}},
-					{"class",      {{"type","string"}}},
-					{"parent",     {{"type", nlohmann::json::array({"string","null"})}}},
-					{"is_root",    {{"type","boolean"}}},
-					{"properties", {{"type","array"}}},
-				}},
-				{"required", nlohmann::json::array({"name","class","parent","is_root","properties"})},
-			}},
-		};
+		// Paginated envelope. Each result item is a BPComponent.
+		d.output_schema = PaginatedSchema();
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireAssetPath(args);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = reader.GetComponents(asset);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -1237,41 +1192,13 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
 		};
-		// Array of member variables. Only `name` + `type` are structurally
-		// guaranteed; the rest are present when non-default (or null for empty
-		// optional strings). `fields` projection narrows this shape.
-		d.output_schema = {
-			{"type","array"},
-			{"items", {
-				{"type","object"},
-				{"properties", {
-					{"name", {{"type","string"}}},
-					{"type", {{"type","object"},
-						{"properties", {
-							{"category",            {{"type","string"}}},
-							{"sub_category",        {{"type","string"}}},
-							{"sub_category_object", {{"type", nlohmann::json::array({"string","null"})}}},
-							{"is_array",            {{"type","boolean"}}},
-							{"is_set",              {{"type","boolean"}}},
-							{"is_map",              {{"type","boolean"}}},
-						}}}},
-					{"default_value",   {{"type", nlohmann::json::array({"string","null"})}}},
-					{"category",        {{"type", nlohmann::json::array({"string","null"})}}},
-					{"is_replicated",   {{"type","boolean"}}},
-					{"is_editable",     {{"type","boolean"}}},
-					{"expose_on_spawn", {{"type","boolean"}}},
-					{"rep_condition",   {{"type", nlohmann::json::array({"string","null"})}}},
-					{"rep_notify_func", {{"type", nlohmann::json::array({"string","null"})}}},
-				}},
-				{"required", nlohmann::json::array({"name","type"})},
-			}},
-		};
+		// Paginated envelope. Each result item is a BPVariable.
+		d.output_schema = PaginatedSchema();
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireAssetPath(args);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = reader.ListVariables(asset);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 

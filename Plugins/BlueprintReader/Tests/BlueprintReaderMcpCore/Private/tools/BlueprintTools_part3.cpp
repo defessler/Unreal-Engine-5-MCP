@@ -467,12 +467,13 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListBehaviorTrees(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& s : summaries)
 			{
 				arr.push_back(s);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -673,12 +674,13 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListDataAssets(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& s : summaries)
 			{
 				arr.push_back(s);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -824,12 +826,13 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto summaries = reader.ListStateTrees(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& s : summaries)
 			{
 				arr.push_back(s);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -1267,8 +1270,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			// sort/project/typo-warn via the shared response controls.
 			PaginateField(body, "properties", ctl);
 			PaginateField(body, "functions", ctl);
-			ApplyResponseControls(body, ctl);
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -1331,11 +1333,12 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string n = RequireString(args, "class_name");
 			auto fns = reader.ListFunctions(n);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& f : fns) {
 				arr.push_back({{"name", f.name}, {"flags", f.flagsCsv}});
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -2730,12 +2733,13 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListNiagaraSystems(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& v : s)
 			{
 				arr.push_back(v);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -2871,12 +2875,13 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListLevelSequences(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& v : s)
 			{
 				arr.push_back(v);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 
@@ -3107,12 +3112,13 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
 			auto s = reader.ListAnimBlueprints(path);
+		auto ctl = ParseResponseControls(args);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& v : s)
 			{
 				arr.push_back(v);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 

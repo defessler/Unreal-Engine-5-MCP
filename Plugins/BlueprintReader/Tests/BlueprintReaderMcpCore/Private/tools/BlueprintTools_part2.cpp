@@ -123,7 +123,8 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 				}},
 			}},
 		};
-		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			auto ctl = ParseResponseControls(args);
 			auto r = reader.GetDirtyPackages();
 			nlohmann::json body = nlohmann::json::array();
 			for (const auto& p : r.packages) {
@@ -132,7 +133,7 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 					{"is_content",   p.isContentPackage},
 				});
 			}
-			return body;
+			return ListResponse(std::move(body), ctl);
 		});
 	}
 
@@ -2983,13 +2984,14 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string path = OptString(args, "path", "/Game");
+			auto ctl = ParseResponseControls(args);
 			auto summaries = reader.ListMaterials(path);
 			nlohmann::json arr = nlohmann::json::array();
 			for (const auto& s : summaries)
 			{
 				arr.push_back(s);
 			}
-			return arr;
+			return ListResponse(std::move(arr), ctl);
 		});
 	}
 

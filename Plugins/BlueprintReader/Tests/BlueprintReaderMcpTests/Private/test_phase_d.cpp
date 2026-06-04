@@ -185,11 +185,15 @@ TEST_CASE("ToolRegistry: list_* tools default to outputSchema.type=array") {
 	auto spec = registry.ListSpec();
 	for (const auto& t : spec) {
 		const std::string name = t["name"].get<std::string>();
-		if (name == "list_blueprints" || name == "list_data_tables" ||
-			name == "list_variables"  || name == "list_node_kinds"  ||
-			name == "list_assets") {
+		// list_node_kinds + list_data_tables still return bare arrays;
+		// list_blueprints / list_variables / list_assets are paginated envelopes.
+		if (name == "list_data_tables" || name == "list_node_kinds") {
 			CAPTURE(name);
 			CHECK(t["outputSchema"]["type"] == "array");
+		}
+		if (name == "list_blueprints" || name == "list_variables" || name == "list_assets") {
+			CAPTURE(name);
+			CHECK(t["outputSchema"]["type"] == "object");
 		}
 	}
 }

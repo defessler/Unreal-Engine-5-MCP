@@ -8,6 +8,7 @@
 #include "tools/ToolRegistry.h"
 
 #include "test_helpers.h"
+using bpr::test::AsResults;
 
 #include <cstdint>
 #include <stdexcept>
@@ -89,33 +90,37 @@ TEST_CASE("Cursor: negative offset clamps to 0 on encode") {
 TEST_CASE("list_blueprints: cursor=encoded(2) skips first 2 entries") {
 	Fixture f;
 	auto all = f.Call("list_blueprints", json{{"path", "/Game"}});
-	REQUIRE(all.is_array());
-	REQUIRE(all.size() >= 3);
+	auto& allRows = AsResults(all);
+	REQUIRE(allRows.is_array());
+	REQUIRE(allRows.size() >= 3);
 
 	const auto cursor = tools::EncodeCursor(2);
 	auto page = f.Call("list_blueprints", json{
 		{"path", "/Game"},
 		{"cursor", cursor}});
-	REQUIRE(page.is_array());
-	CHECK(page.size() == all.size() - 2);
+	auto& pageRows = AsResults(page);
+	REQUIRE(pageRows.is_array());
+	CHECK(pageRows.size() == allRows.size() - 2);
 	// First entry of the cursored page should match the third entry
 	// of the full list.
-	CHECK(page[0] == all[2]);
+	CHECK(pageRows[0] == allRows[2]);
 }
 
 TEST_CASE("list_blueprints: cursor overrides offset when both are passed") {
 	Fixture f;
 	auto all = f.Call("list_blueprints", json{{"path", "/Game"}});
-	REQUIRE(all.size() >= 4);
+	auto& allRows = AsResults(all);
+	REQUIRE(allRows.size() >= 4);
 
 	const auto cursor = tools::EncodeCursor(3);
 	auto page = f.Call("list_blueprints", json{
 		{"path", "/Game"},
 		{"offset", 1},     // would skip 1 if cursor wasn't present
 		{"cursor", cursor}});
-	REQUIRE(page.is_array());
-	CHECK(page.size() == all.size() - 3);
-	CHECK(page[0] == all[3]);
+	auto& pageRows = AsResults(page);
+	REQUIRE(pageRows.is_array());
+	CHECK(pageRows.size() == allRows.size() - 3);
+	CHECK(pageRows[0] == allRows[3]);
 }
 
 TEST_CASE("list_blueprints: cursor + limit gives a single page") {
@@ -125,8 +130,9 @@ TEST_CASE("list_blueprints: cursor + limit gives a single page") {
 		{"path", "/Game"},
 		{"cursor", cursor},
 		{"limit", 2}});
-	REQUIRE(page.is_array());
-	CHECK(page.size() == 2);
+	auto& pageRows = AsResults(page);
+	REQUIRE(pageRows.is_array());
+	CHECK(pageRows.size() == 2);
 }
 
 TEST_CASE("list_blueprints: malformed cursor → invalid_argument") {
@@ -167,23 +173,26 @@ TEST_CASE("cursor walking: page through full list using returned offsets") {
 	// element, encode cursor of offset 2, fetch page 2.
 	Fixture f;
 	auto all = f.Call("list_blueprints", json{{"path", "/Game"}});
-	REQUIRE(all.size() >= 4);
+	auto& allRows = AsResults(all);
+	REQUIRE(allRows.size() >= 4);
 
 	auto page1 = f.Call("list_blueprints", json{
 		{"path", "/Game"}, {"limit", 2}});
-	REQUIRE(page1.is_array());
-	CHECK(page1.size() == 2);
+	auto& page1Rows = AsResults(page1);
+	REQUIRE(page1Rows.is_array());
+	CHECK(page1Rows.size() == 2);
 
 	const auto cursor = tools::EncodeCursor(2);
 	auto page2 = f.Call("list_blueprints", json{
 		{"path", "/Game"}, {"cursor", cursor}, {"limit", 2}});
-	REQUIRE(page2.is_array());
-	CHECK(page2.size() == 2);
+	auto& page2Rows = AsResults(page2);
+	REQUIRE(page2Rows.is_array());
+	CHECK(page2Rows.size() == 2);
 	// Combined, page1 + page2 should equal the first 4 of `all`.
-	CHECK(page1[0] == all[0]);
-	CHECK(page1[1] == all[1]);
-	CHECK(page2[0] == all[2]);
-	CHECK(page2[1] == all[3]);
+	CHECK(page1Rows[0] == allRows[0]);
+	CHECK(page1Rows[1] == allRows[1]);
+	CHECK(page2Rows[0] == allRows[2]);
+	CHECK(page2Rows[1] == allRows[3]);
 }
 
 TEST_CASE("list_variables: cursor pagination works (smoke test for other list_*)") {
@@ -192,7 +201,7 @@ TEST_CASE("list_variables: cursor pagination works (smoke test for other list_*)
 	// Just verify it doesn't throw — list_variables uses ParseResponseControls.
 	auto out = f.Call("list_variables", json{
 		{"asset_path", "/Game/AI/BP_Enemy"}, {"cursor", cursor}});
-	CHECK(out.is_array());
+	CHECK(AsResults(out).is_array());
 }
 
 TEST_CASE("Cursor: EncodeCursor(0) round-trips through DecodeCursor") {
