@@ -415,7 +415,7 @@ public:
 	// EndBatch returns the daemon's flush ack (recompiled list + compile
 	// diagnostics, C1).
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 
 	// Tear down the daemon (sends QUIT, joins, closes pipes) so the user
 	// can release the project lock without restarting the MCP server.

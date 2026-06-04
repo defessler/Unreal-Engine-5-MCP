@@ -376,7 +376,7 @@ public:
 	// that subsequent ops in the same batch would re-fetch. Flushed by
 	// EndBatch's trailing call to InvalidateAsset for each pending entry.
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 	nlohmann::json ShutdownDaemon() override;
 
 	// Drop everything for `assetPath`, plus the global ListBlueprints

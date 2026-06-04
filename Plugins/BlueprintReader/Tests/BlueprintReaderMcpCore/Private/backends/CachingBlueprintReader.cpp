@@ -186,8 +186,8 @@ void CachingBlueprintReader::BeginBatch() {
 	inner_->BeginBatch();
 }
 
-nlohmann::json CachingBlueprintReader::EndBatch(bool skipCompile) {
-	nlohmann::json flushAck = inner_->EndBatch(skipCompile);
+nlohmann::json CachingBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
+	nlohmann::json flushAck = inner_->EndBatch(skipCompile, rollback);
 	std::set<std::string> toInvalidate;
 	bool flushGlobal = false;
 	{

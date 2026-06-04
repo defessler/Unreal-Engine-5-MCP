@@ -144,7 +144,7 @@ public:
 
 	// ----- batch + meta ---------------------------------------------
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 	nlohmann::json ShutdownDaemon() override;
 	// Exec tool — forward to the active backend. Without this override the
 	// call would hit IBlueprintReader's throwing default ("not supported")

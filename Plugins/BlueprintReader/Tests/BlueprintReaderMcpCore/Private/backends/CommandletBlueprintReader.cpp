@@ -5046,10 +5046,12 @@ void CommandletBlueprintReader::BeginBatch() {
 	(void)RunOp(args);
 }
 
-nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile) {
+nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=EndBatch");
-	if (skipCompile) {
+	if (rollback) {
+		args.push_back(L"-Rollback");   // commandlet cancels the FScopedTransaction
+	} else if (skipCompile) {
 		args.push_back(L"-Skip");
 	}
 	return RunOp(args);
