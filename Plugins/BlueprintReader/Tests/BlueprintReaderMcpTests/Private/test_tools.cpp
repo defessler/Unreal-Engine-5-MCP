@@ -34,7 +34,7 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 252 tools (251 prior + read_actor_instance) with input schemas") {
+TEST_CASE("ToolRegistry exposes 258 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
 	CHECK(spec.size() == 258);
