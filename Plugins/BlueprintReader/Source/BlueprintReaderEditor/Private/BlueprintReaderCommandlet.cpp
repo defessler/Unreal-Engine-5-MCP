@@ -12247,30 +12247,23 @@ namespace
 			}
 
 			const FString PackagePath = Data.PackageName.ToString();
-			// PERF-5: derive modified_iso from the asset registry's package data
-			// instead of a per-asset IFileManager::GetTimeStamp syscall. On a
-			// 1000-BP project the old code paid 1000 stat syscalls on the game
-			// thread for every cold list_blueprints call. FAssetPackageData is
-			// already in memory after ScanSynchronous — zero additional I/O.
+			// PERF-5: skip the per-asset IFileManager::GetTimeStamp syscall by
+			// default. modified_iso is used for cache invalidation, but the
+			// CachingBlueprintReader already stats the .uasset file on cache
+			// lookup (ResolveUasset + SafeMtime). Computing it again here for
+			// every BP in the list just pays O(N) syscalls redundantly.
+			// Callers that need the exact mtime should use read_blueprint instead.
+			// Pass -IncludeMtime=true to opt into the stat (for backward compat
+			// with any client that relied on this field).
+			static const bool bIncludeMtimeByDefault = false;
+			const bool bIncludeMtime = bIncludeMtimeByDefault ||
+				FParse::Param(*Params, TEXT("IncludeMtime"));
 			FString Modified;
+			if (bIncludeMtime)
 			{
-				FAssetPackageData PkgData;
-				if (IAssetRegistry::GetChecked().TryGetAssetPackageData(
-						Data.PackageName, PkgData) == UE::AssetRegistry::EExists::Exists)
-				{
-					// UE stores the cook/save time in FAssetPackageData::FileVersionUE
-					// but not a wall-clock timestamp. Fall back to the filename-based
-					// stat only when the package data is not available or doesn't carry
-					// a meaningful timestamp. For typical projects the mtime is only
-					// used for cache invalidation — the CachingBlueprintReader already
-					// stats the file itself (ResolveUasset) — so omitting it here is
-					// acceptable; clients that need exact mtime can call read_blueprint.
-					// For now, derive it from the on-disk file, but batch the lookup so
-					// it doesn't block the game thread per-asset:
-					const FString FileOnDisk = FPackageName::LongPackageNameToFilename(
-						PackagePath, FPackageName::GetAssetPackageExtension());
-					Modified = IsoDateForFile(FileOnDisk);
-				}
+				const FString FileOnDisk = FPackageName::LongPackageNameToFilename(
+					PackagePath, FPackageName::GetAssetPackageExtension());
+				Modified = IsoDateForFile(FileOnDisk);
 			}
 
 			TSharedRef<FJsonObject> Summary = FBlueprintReaderWireJson::SummaryToJson(

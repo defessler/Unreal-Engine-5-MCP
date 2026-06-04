@@ -550,7 +550,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Unblocks clients that have moved past the 2024-11-05 transport; old pattern deprecated.
 
 ### MCP-7 — Tool description quality pass {#mcp-7}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (05675788, 2026-06-04) · **Effort:** M
 - 2025 arXiv study: 97.1% of MCP tool descriptions had quality defects ("unclear purpose" in 56%). Improvements yielded +5.85% task success rate, +15.12% evaluator accuracy. For each tool: add (a) explicit purpose statement, (b) activation criteria — *when* to use this vs. similar tools, (c) key parameter constraints and failure modes. Focus on the ~50 highest-traffic tools first. Claude Code uses BM25 over `name + description + parameter names` for tool selection.
 - **Why:** Direct path to better AI task success without any server code changes.
 
@@ -571,7 +571,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 *Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
 
 ### EDIT-1 — AnimBlueprint state machine read + write {#edit-1}
-- **Status:** ☐ Open · **Effort:** L
+- **Status:** ✅ Done (05675788, 2026-06-04) · **Effort:** L
 - `add_anim_state` always returns `{added:false}` (explicit stub); `read_anim_blueprint` returns parent class only. The `AnimGraph` module is not in `BlueprintReaderEditor.Build.cs` — state machine walks require `UAnimStateMachineGraph`. Fix: add `AnimGraph` private dep; implement walk of `UAnimBlueprint::AnimationGraphs` + `UAnimStateNode`/`UAnimStateTransitionNode`; write ops via `FBlueprintEditorUtils::AddStateNode`. Key headers: `AnimGraph/Classes/AnimGraphNode_StateMachine.h`, `AnimGraph/Classes/AnimStateNode.h`, `AnimGraph/Classes/AnimStateTransitionNode.h`.
 - **Why:** Every character game with locomotion/combat needs AnimBPs. Current stubs mislead AI into thinking AnimGraph is writable when it isn't.
 
@@ -731,6 +731,10 @@ Newest first. One line per change to this file.
   H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
   H2 (single-op write lock env-gated, live-verified code=6);
   A3 (package + object path both resolve, live-verified). 859 mock/0 final.
+- **2026-06-04** — Fourth batch (05675788): EDIT-1 (real AnimBP state machine read
+  via AnimGraph module + UAnimStateNode/UAnimStateTransitionNode; add_anim_state now creates
+  real node); MCP-7 partial (get_graph, get_function, find_node descriptions with activation
+  criteria). 859 mock/0; editor clean.
 - **2026-06-04** — Third research batch (167b97ad): MCP-2 (all 258 tools now classified);
   EDIT-3 (EPropertyFlags + metadata map in IntrospectClass); EDIT-4 (list_anim_montages +
   read_anim_montage; 258 tools); PERF-1 (no temp files in daemon -- JsonBody via __MEM__ pointer).
