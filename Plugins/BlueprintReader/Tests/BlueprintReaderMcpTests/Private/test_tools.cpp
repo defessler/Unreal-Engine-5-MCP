@@ -285,14 +285,20 @@ TEST_CASE("list_variables returns the variables array") {
 	CHECK(out[0].contains("is_replicated"));
 }
 
-TEST_CASE("find_node returns matching nodes") {
+TEST_CASE("find_node returns matching nodes (paginated envelope)") {
 	Fixture f;
 	auto out = f.Call("find_node", json{
 		{"asset_path", "/Game/AI/BP_Enemy"},
 		{"query", "Sequence"}});
-	REQUIRE(out.is_array());
-	REQUIRE(out.size() == 1);
-	CHECK(out[0]["class"] == "K2Node_ExecutionSequence");
+	// find_node now returns a paginated envelope {total,count,has_more,results}
+	REQUIRE(out.is_object());
+	REQUIRE(out.contains("results"));
+	auto& results = out["results"];
+	REQUIRE(results.is_array());
+	REQUIRE(results.size() == 1);
+	CHECK(results[0]["class"] == "K2Node_ExecutionSequence");
+	CHECK(out.value("total", -1) == 1);
+	CHECK(out.value("has_more", true) == false);
 }
 
 TEST_CASE("Tool handlers throw on missing required arg") {
