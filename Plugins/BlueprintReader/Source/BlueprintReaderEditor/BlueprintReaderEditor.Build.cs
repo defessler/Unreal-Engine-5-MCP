@@ -160,7 +160,12 @@ public class BlueprintReaderEditor : ModuleRules
 			// Phase 14 — get_source_control_provider reads ISourceControlModule.
 			"SourceControl",
 			// Phase 17 — get_monitor_info links FDisplayMetrics::RebuildDisplayMetrics.
-			"ApplicationCore"
+			"ApplicationCore",
+			// EDIT-1: AnimBlueprint state machine introspection.
+			// UAnimStateMachineGraph / UAnimStateNode / UAnimStateTransitionNode
+			// live in AnimGraph (editor-only). Required to walk state machine
+			// graphs in read_anim_blueprint / add_anim_state.
+			"AnimGraph"
 		});
 
 		// Phase 14 — get_active_cook_target queries ITargetPlatformManagerModule
