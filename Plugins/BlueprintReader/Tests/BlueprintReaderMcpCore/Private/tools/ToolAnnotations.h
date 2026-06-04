@@ -43,4 +43,8 @@ ToolAnnotations AnnotationsFor(const std::string& tool_name);
 // name as a fallback.
 std::string TitleFor(const std::string& tool_name);
 
+// Returns true when the named tool is in the DestructiveSet — used by
+// the MCP-9 confirmation guard in Mcp.cpp.
+bool IsDestructive(const std::string& tool_name);
+
 }    // namespace bpr::tools
