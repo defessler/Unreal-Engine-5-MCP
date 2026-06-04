@@ -1,0 +1,18 @@
+{
+  "appId": "com.defessler.blueprint-reader-toolbox",
+  "productName": "BlueprintReader Toolbox",
+  "win": {
+    "target": "nsis"
+  },
+  "directories": {
+    "output": "../Binaries/Toolbox"
+  },
+  "files": [
+    "dist/**",
+    "electron-dist/**",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "electron-dist/main.js"
+  }
+}
