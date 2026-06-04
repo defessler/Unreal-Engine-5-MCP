@@ -110,6 +110,10 @@ private:
 
 	const FixtureEntry& Require(std::string_view assetPath) const;
 
+	// EDIT-2: timeline tools — throw on mock (no fixture support yet)
+	BPRJson ListTimelines(std::string_view a) override;
+	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
+
 	// asset_path -> entry.
 	std::map<std::string, FixtureEntry, std::less<>> assets_;
 };

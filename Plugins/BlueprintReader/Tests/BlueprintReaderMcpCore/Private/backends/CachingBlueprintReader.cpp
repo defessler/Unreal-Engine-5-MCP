@@ -1300,6 +1300,16 @@ CachingBlueprintReader::CompileAnimBlueprint(std::string_view a) {
 // is stable until a write op touches an asset — now cached (PERF-3). Config
 // is typically stable per-session; build-lighting and write ops pass through.
 BPRJson CachingBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
+BPRJson CachingBlueprintReader::ListTimelines(std::string_view a) {
+	return inner_->ListTimelines(a);
+}
+BPRJson CachingBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) {
+	auto key = MakeKey("rtimeline", a, n);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<BPRJson>(inner_->ReadTimeline(a, n));
+	});
+	return *std::static_pointer_cast<const BPRJson>(sp);
+}
 
 IBlueprintReader::AssetGraphResult
 CachingBlueprintReader::GetReferencers(std::string_view a) {

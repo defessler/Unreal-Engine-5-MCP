@@ -180,8 +180,9 @@ void RegisterHandlersImpl(jr::Server& server,
 			{"protocolVersion", negotiated},
 			{"capabilities", capabilities},
 			{"serverInfo", {
-				{"name", info.name},
-				{"version", info.version},
+				{"name",        info.name},
+				{"version",     info.version},
+				{"description", info.description},
 			}},
 		};
 		// MCP `instructions` is optional. Ship only when ServerInfo has

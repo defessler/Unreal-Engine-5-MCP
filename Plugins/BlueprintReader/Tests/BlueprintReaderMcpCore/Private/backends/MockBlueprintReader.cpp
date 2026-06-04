@@ -377,6 +377,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"list_gameplay_tags", "add_gameplay_tag", "read_ability_set",
 		"list_anim_blueprints", "read_anim_blueprint",
 		"add_anim_state", "compile_anim_blueprint",
+		"list_timelines", "read_timeline",  // EDIT-2: no timeline fixtures yet
 		// Class info — fixtures don't include the UClass registry
 		"find_class", "get_class_info", "list_functions",
 		// Asset management
@@ -569,4 +570,12 @@ std::vector<BPNode> MockBlueprintReader::FindNode(std::string_view assetPath,
 	return out;
 }
 
+BPRJson MockBlueprintReader::ListTimelines(std::string_view) {
+	throw BlueprintReaderError("ListTimelines not implemented in mock backend");
+}
+BPRJson MockBlueprintReader::ReadTimeline(std::string_view, std::string_view) {
+	throw BlueprintReaderError("ReadTimeline not implemented in mock backend");
+}
+
 }    // namespace bpr::backends
+

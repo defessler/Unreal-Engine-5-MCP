@@ -2576,6 +2576,14 @@ public:
 		throw BlueprintReaderError("GetEditorState not supported by this backend");
 	}
 
+	// EDIT-2: Timeline read tools. Return JSON directly (irregular shape).
+	virtual BPRJson ListTimelines(std::string_view assetPath) {
+		throw BlueprintReaderError("ListTimelines not supported by this backend");
+	}
+	virtual BPRJson ReadTimeline(std::string_view assetPath, std::string_view timelineName) {
+		throw BlueprintReaderError("ReadTimeline not supported by this backend");
+	}
+
 	// Run a Python script in the editor. Gated server-side by
 	// BP_READER_ALLOW_PYTHON=1 — when off, returns
 	// {ok: false, error: "python_disabled"} rather than throwing.

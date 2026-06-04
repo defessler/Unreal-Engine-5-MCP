@@ -284,6 +284,8 @@ public:
 	LiveCodingResult LiveCodingCompile() override;
 	SelectionResult GetSelectedActors() override;
 	BPRJson GetEditorState() override;
+	BPRJson ListTimelines(std::string_view a) override;
+	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
 	PythonResult RunPythonScript(std::string_view code) override;
 	AssetGraphResult GetReferencers(std::string_view assetPath) override;
 	AssetGraphResult GetDependencies(std::string_view assetPath) override;

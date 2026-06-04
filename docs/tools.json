@@ -8874,6 +8874,106 @@
     }
   },
   {
+    "category": "blueprint",
+    "description": "[blueprint] List all Timeline nodes in a Blueprint (names, track counts, length, loop, auto_play). Quick summary — use `read_timeline` for track keys.",
+    "input_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_path"
+      ],
+      "type": "object"
+    },
+    "name": "list_timelines",
+    "output_schema": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "blueprint",
+    "description": "[blueprint] Read a Timeline from a Blueprint: float/vector/event/linear_color tracks with their FRichCurveKey arrays (time, value, interp). Provide `timeline_name` to select one; omit to read the first timeline.",
+    "input_schema": {
+      "properties": {
+        "asset_path": {
+          "description": "Blueprint asset path",
+          "type": "string"
+        },
+        "timeline_name": {
+          "description": "Timeline variable name (omit for first)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_path"
+      ],
+      "type": "object"
+    },
+    "name": "read_timeline",
+    "output_schema": {
+      "properties": {
+        "auto_play": {
+          "type": "boolean"
+        },
+        "length": {
+          "type": "number"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "replicated": {
+          "type": "boolean"
+        },
+        "tracks": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "length",
+        "loop",
+        "auto_play",
+        "replicated",
+        "tracks"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "category": "anim",
     "description": "[anim] Add a state to a named state machine inside a UAnimBlueprint. NOT to be confused with `add_state_tree_state` (StateTree). Scaffold only — final state authoring still uses the AnimGraph editor.",
     "input_schema": {

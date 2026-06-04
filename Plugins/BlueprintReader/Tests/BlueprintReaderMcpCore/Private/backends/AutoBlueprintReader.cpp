@@ -976,6 +976,12 @@ IBlueprintReader::AssetGraphResult AutoBlueprintReader::GetDependencies(std::str
 BPRJson AutoBlueprintReader::GetEditorState() {
 	FORWARD(GetEditorState);
 }
+BPRJson AutoBlueprintReader::ListTimelines(std::string_view a) {
+	FORWARD(ListTimelines, a);
+}
+BPRJson AutoBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) {
+	FORWARD(ReadTimeline, a, n);
+}
 IBlueprintReader::AssetGraphResult AutoBlueprintReader::GetReferencers(std::string_view assetPath) {
 	FORWARD(GetReferencers, assetPath);
 }
