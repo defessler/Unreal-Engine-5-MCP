@@ -13,6 +13,7 @@
 #include <string>
 
 using namespace bpr;
+using bpr::test::AsResults;
 using nlohmann::json;
 
 namespace test_tools_detail {
@@ -79,21 +80,23 @@ TEST_CASE("ToolRegistry::Add only HARD-rejects empty names; soft-warns on others
 TEST_CASE("list_blueprints: default sort is natural (backend order preserved)") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{{"path", "/Game"}});
-	REQUIRE(out.is_array());
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
 	// Mock fixtures define a specific order; just verify the call works
 	// without sort and returns something non-empty.
-	CHECK(out.size() > 0);
+	CHECK(rows.size() > 0);
 }
 
 TEST_CASE("list_blueprints: sort=path returns entries sorted by asset_path") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{{"path", "/Game"}, {"sort", "path"}});
-	REQUIRE(out.is_array());
-	REQUIRE(out.size() >= 2);
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
+	REQUIRE(rows.size() >= 2);
 	// Pairwise check: each entry's asset_path is <= the next.
-	for (size_t i = 1; i < out.size(); ++i) {
-		const auto a = out[i-1].value("asset_path", "");
-		const auto b = out[i].value("asset_path", "");
+	for (size_t i = 1; i < rows.size(); ++i) {
+		const auto a = rows[i-1].value("asset_path", "");
+		const auto b = rows[i].value("asset_path", "");
 		CAPTURE(a);
 		CAPTURE(b);
 		CHECK(a <= b);
@@ -226,11 +229,12 @@ TEST_CASE("Write tools throw on the mock backend (read-only by design)") {
 TEST_CASE("list_blueprints returns canonical BPAssetSummary array") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{{"path", "/Game"}});
-	REQUIRE(out.is_array());
-	CHECK(out.size() == 7);
-	CHECK(out[0].contains("asset_path"));
-	CHECK(out[0].contains("parent_class"));
-	CHECK(out[0].contains("modified_iso"));
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
+	CHECK(rows.size() == 7);
+	CHECK(rows[0].contains("asset_path"));
+	CHECK(rows[0].contains("parent_class"));
+	CHECK(rows[0].contains("modified_iso"));
 }
 
 TEST_CASE("find_dangling_references skips inherited parent-class variable references") {
@@ -280,9 +284,10 @@ TEST_CASE("get_function returns full function shape") {
 TEST_CASE("list_variables returns the variables array") {
 	Fixture f;
 	auto out = f.Call("list_variables", json{{"asset_path", "/Game/AI/BP_Enemy"}});
-	REQUIRE(out.is_array());
-	CHECK(out.size() == 3);
-	CHECK(out[0].contains("is_replicated"));
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
+	CHECK(rows.size() == 3);
+	CHECK(rows[0].contains("is_replicated"));
 }
 
 TEST_CASE("find_node returns matching nodes (paginated envelope)") {
@@ -322,7 +327,7 @@ TEST_CASE("summarize_blueprint returns counts plus parent_class") {
 	CHECK(out["interface_count"].is_number());
 	// Sanity: counts must agree with what list_variables / read_blueprint say.
 	auto vars = f.Call("list_variables", json{{"asset_path", "/Game/AI/BP_Enemy"}});
-	CHECK(out["variable_count"] == static_cast<int>(vars.size()));
+	CHECK(out["variable_count"] == static_cast<int>(AsResults(vars).size()));
 }
 
 TEST_CASE("summarize_blueprint payload is small (~few hundred bytes)") {
@@ -427,18 +432,21 @@ TEST_CASE("KnownNodeKinds() stays in sync with list_node_kinds (UX-P1b)") {
 TEST_CASE("list_blueprints honors limit/offset pagination") {
 	Fixture f;
 	auto all = f.Call("list_blueprints", json{{"path","/Game"}});
-	REQUIRE(all.is_array());
-	REQUIRE(all.size() >= 2);
+	auto& allRows = AsResults(all);
+	REQUIRE(allRows.is_array());
+	REQUIRE(allRows.size() >= 2);
 
 	auto first = f.Call("list_blueprints", json{{"path","/Game"},{"limit",1}});
-	REQUIRE(first.is_array());
-	CHECK(first.size() == 1);
-	CHECK(first[0]["asset_path"] == all[0]["asset_path"]);
+	auto& firstRows = AsResults(first);
+	REQUIRE(firstRows.is_array());
+	CHECK(firstRows.size() == 1);
+	CHECK(firstRows[0]["asset_path"] == allRows[0]["asset_path"]);
 
 	auto second = f.Call("list_blueprints", json{{"path","/Game"},{"limit",1},{"offset",1}});
-	REQUIRE(second.is_array());
-	CHECK(second.size() == 1);
-	CHECK(second[0]["asset_path"] == all[1]["asset_path"]);
+	auto& secondRows = AsResults(second);
+	REQUIRE(secondRows.is_array());
+	CHECK(secondRows.size() == 1);
+	CHECK(secondRows[0]["asset_path"] == allRows[1]["asset_path"]);
 }
 
 TEST_CASE("list_blueprints with fields returns just the requested keys per element") {
@@ -446,9 +454,10 @@ TEST_CASE("list_blueprints with fields returns just the requested keys per eleme
 	auto out = f.Call("list_blueprints", json{
 		{"path","/Game"},
 		{"fields", json::array({"asset_path"})}});
-	REQUIRE(out.is_array());
-	CHECK(out.size() >= 1);
-	for (auto& el : out) {
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
+	CHECK(rows.size() >= 1);
+	for (auto& el : rows) {
 		CHECK(el.size() == 1);
 		CHECK(el.contains("asset_path"));
 	}
@@ -457,15 +466,17 @@ TEST_CASE("list_blueprints with fields returns just the requested keys per eleme
 TEST_CASE("list_variables honors limit/offset and fields together") {
 	Fixture f;
 	auto all = f.Call("list_variables", json{{"asset_path","/Game/AI/BP_Enemy"}});
-	REQUIRE(all.is_array());
+	auto& allVars = AsResults(all);
+	REQUIRE(allVars.is_array());
 
 	auto sliced = f.Call("list_variables", json{
 		{"asset_path","/Game/AI/BP_Enemy"},
 		{"limit", 2},
 		{"fields", json::array({"name"})}});
-	REQUIRE(sliced.is_array());
-	CHECK(sliced.size() == std::min<std::size_t>(2, all.size()));
-	for (auto& v : sliced) {
+	auto& slicedVars = AsResults(sliced);
+	REQUIRE(slicedVars.is_array());
+	CHECK(slicedVars.size() == std::min<std::size_t>(2, allVars.size()));
+	for (auto& v : slicedVars) {
 		CHECK(v.size() == 1);
 		CHECK(v.contains("name"));
 	}
@@ -488,8 +499,9 @@ TEST_CASE("offset past end yields empty array, not error") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{
 		{"path","/Game"}, {"offset", 9999}});
-	REQUIRE(out.is_array());
-	CHECK(out.empty());
+	auto& rows = AsResults(out);
+	REQUIRE(rows.is_array());
+	CHECK(rows.empty());
 }
 
 TEST_CASE("fields with non-string element throws invalid_argument") {

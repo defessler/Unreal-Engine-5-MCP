@@ -45,25 +45,36 @@
     },
     "name": "list_assets",
     "output_schema": {
-      "items": {
-        "properties": {
-          "asset_path": {
-            "type": "string"
-          },
-          "class_name": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
+      "properties": {
+        "count": {
+          "type": "integer"
         },
-        "required": [
-          "asset_path",
-          "class_name"
-        ],
-        "type": "object"
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
       },
-      "type": "array"
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
     }
   },
   {
@@ -207,21 +218,36 @@
     },
     "name": "list_blueprints",
     "output_schema": {
-      "items": {
-        "properties": {
-          "asset_path": {
-            "type": "string"
-          },
-          "parent_class": {
-            "type": "string"
-          }
+      "properties": {
+        "count": {
+          "type": "integer"
         },
-        "required": [
-          "asset_path"
-        ],
-        "type": "object"
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
       },
-      "type": "array"
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
     }
   },
   {
@@ -987,37 +1013,36 @@
     },
     "name": "get_components",
     "output_schema": {
-      "items": {
-        "properties": {
-          "class": {
-            "type": "string"
-          },
-          "is_root": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "parent": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "properties": {
-            "type": "array"
-          }
+      "properties": {
+        "count": {
+          "type": "integer"
         },
-        "required": [
-          "name",
-          "class",
-          "parent",
-          "is_root",
-          "properties"
-        ],
-        "type": "object"
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
       },
-      "type": "array"
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
     }
   },
   {
@@ -1056,78 +1081,36 @@
     },
     "name": "list_variables",
     "output_schema": {
-      "items": {
-        "properties": {
-          "category": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "default_value": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "expose_on_spawn": {
-            "type": "boolean"
-          },
-          "is_editable": {
-            "type": "boolean"
-          },
-          "is_replicated": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "rep_condition": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "rep_notify_func": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "type": {
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "is_array": {
-                "type": "boolean"
-              },
-              "is_map": {
-                "type": "boolean"
-              },
-              "is_set": {
-                "type": "boolean"
-              },
-              "sub_category": {
-                "type": "string"
-              },
-              "sub_category_object": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": "object"
-          }
+      "properties": {
+        "count": {
+          "type": "integer"
         },
-        "required": [
-          "name",
-          "type"
-        ],
-        "type": "object"
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
       },
-      "type": "array"
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
     }
   },
   {
@@ -1175,54 +1158,36 @@
     },
     "name": "find_node",
     "output_schema": {
-      "items": {
-        "properties": {
-          "class": {
-            "type": "string"
-          },
-          "comment": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "graph_name": {
-            "type": "string"
-          },
-          "graph_type": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "meta": {
-            "type": "object"
-          },
-          "pins": {
-            "type": "array"
-          },
-          "position": {
-            "type": "object"
-          },
-          "title": {
-            "type": "string"
-          }
+      "properties": {
+        "count": {
+          "type": "integer"
         },
-        "required": [
-          "id",
-          "class",
-          "title",
-          "position",
-          "comment",
-          "pins",
-          "meta"
-        ],
-        "type": "object"
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
       },
-      "type": "array"
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
     }
   },
   {

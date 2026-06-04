@@ -256,6 +256,21 @@ nlohmann::json CursorProperty() {
 						"deprecates `offset`. Invalid cursor → -32602."},
 	};
 }
+// The standard paginated-envelope output_schema used by all list_* tools.
+// Items are plain objects; tools may add additional items metadata if needed.
+nlohmann::json PaginatedSchema() {
+	return {
+		{"type","object"},
+		{"properties", {
+			{"total",       {{"type","integer"}}},
+			{"count",       {{"type","integer"}}},
+			{"has_more",    {{"type","boolean"}}},
+			{"next_cursor", {{"type",nlohmann::json::array({"string","null"})}}},
+			{"results",     {{"type","array"}, {"items",{{"type","object"}}}}},
+		}},
+		{"required", nlohmann::json::array({"total","count","has_more","results"})},
+	};
+}
 nlohmann::json SortProperty() {
 	return {
 		{"type", "string"},
@@ -372,6 +387,10 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 			ctl.offset = static_cast<int>(*decoded);
 		}
 	}
+	// C4: absolute clamp — explicit limit can't exceed 1000, regardless of what
+	// the caller requested. Prevents a runaway `limit=1000000` from returning a
+	// multi-MB payload and crashing the MCP client.
+	if (ctl.limit > 1000) { ctl.limit = 1000; }
 	if (ctl.offset < 0)
 	{
 		throw std::invalid_argument(R"(argument "offset" must be >= 0)");
@@ -525,6 +544,31 @@ nlohmann::json BuildPaginatedBody(nlohmann::json rows,
 		out["_warnings"] = std::move(fieldWarnings);
 	}
 	return out;
+}
+
+// C4 helper: wrap a plain array response into the paginated envelope with a
+// default page size of 200.  List/find tools that return a bare array call this
+// instead of returning the array directly; lean-mode pruning is applied to
+// each element before paging.
+//
+// When body is an OBJECT (not an array), falls back to ApplyResponseControls
+// so the conversion of `ApplyResponseControls(body,ctl); return body;` to
+// `return ListResponse(std::move(body),ctl);` is safe for all callers regardless
+// of whether they return an array or an object.
+//
+// Usage:
+//   return ListResponse(std::move(myArray), ParseResponseControls(args));
+nlohmann::json ListResponse(nlohmann::json rows, const ResponseControls& ctl,
+							int defaultLimit = 200) {
+	if (!rows.is_array()) {
+		// Object-body tool: apply normal response controls (sort/slice/project/prune).
+		ApplyResponseControls(rows, ctl);
+		return rows;
+	}
+	if (ctl.lean) {
+		for (auto& n : rows) { PruneEmpty(n); }
+	}
+	return BuildPaginatedBody(std::move(rows), ctl, defaultLimit);
 }
 
 // On AssetNotFound, run a fuzzy basename lookup against the asset

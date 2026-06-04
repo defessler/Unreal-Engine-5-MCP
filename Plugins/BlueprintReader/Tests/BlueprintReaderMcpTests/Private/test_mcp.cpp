@@ -14,6 +14,7 @@
 #include "tools/ToolsetMeta.h"
 
 #include "test_helpers.h"
+using bpr::test::AsResults;
 
 #include <algorithm>
 #include <sstream>
@@ -194,11 +195,12 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	REQUIRE(callResult["content"].is_array());
 	REQUIRE(callResult["content"].size() == 1);
 	auto inner = json::parse(callResult["content"][0]["text"].get<std::string>());
-	REQUIRE(inner.is_array());
-	CHECK(inner.size() == 7); // 7 fixtures all under /Game
+	auto& innerRows = AsResults(inner);
+	REQUIRE(innerRows.is_array());
+	CHECK(innerRows.size() == 7); // 7 fixtures all under /Game
 	// Make sure the canonical asset_path key is present, not assetPath.
-	CHECK(inner[0].contains("asset_path"));
-	CHECK(inner[0].contains("parent_class"));
+	CHECK(innerRows[0].contains("asset_path"));
+	CHECK(innerRows[0].contains("parent_class"));
 }
 
 TEST_CASE("MCP initialize negotiates 2025-11-25 and stays back-compatible") {
@@ -440,8 +442,9 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	auto r3 = server.Dispatch(req3);
 	REQUIRE(r3.has_value());
 	auto inner3 = json::parse((*r3)["result"]["content"][0]["text"].get<std::string>());
-	REQUIRE(inner3.is_array());
-	CHECK(inner3.size() == 7);  // same 7 fixtures the direct-call test checks
+	auto& inner3Rows = AsResults(inner3);
+	REQUIRE(inner3Rows.is_array());
+	CHECK(inner3Rows.size() == 7);  // same 7 fixtures the direct-call test checks
 }
 
 TEST_CASE("call_tool rejects unknown tool names with a clear error") {

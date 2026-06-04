@@ -44,4 +44,26 @@ inline std::unique_ptr<backends::MockBlueprintReader> MakeMockReaderUnique() {
 	return std::make_unique<backends::MockBlueprintReader>(FixturesDir());
 }
 
+// C4 helper: extract the `results` array from a paginated envelope, or return
+// the body itself if it's already a plain array.  Lets tests written for the
+// bare-array shape work transparently with the new paginated envelope:
+//
+//   auto out = f.Call("list_blueprints", ...);
+//   auto& rows = AsResults(out);  // works whether out is array or envelope
+//   REQUIRE(rows.is_array());
+//   CHECK(rows.size() > 0);
+//
+inline const nlohmann::json& AsResults(const nlohmann::json& body) {
+	if (body.is_object() && body.contains("results") && body.at("results").is_array()) {
+		return body.at("results");
+	}
+	return body;
+}
+inline nlohmann::json& AsResults(nlohmann::json& body) {
+	if (body.is_object() && body.contains("results") && body.at("results").is_array()) {
+		return body.at("results");
+	}
+	return body;
+}
+
 }    // namespace bpr::test
