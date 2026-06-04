@@ -9003,10 +9003,11 @@
           "type": "boolean"
         },
         "on_failure": {
-          "description": "What EndBatch does after a mid-batch failure. \"compile\" (default): best-effort — compile + save what landed before the failure. Matches today's per-op behavior. \"skip\": don't compile, don't save — nothing reaches disk. The in-memory daemon state stays dirty until restart, so subsequent reads in the same session can see the partial mutations; this is a documented limitation of strict-atomic mode.",
+          "description": "What EndBatch does after a mid-batch failure. \"compile\" (default): best-effort -- compile + save what landed before the failure. \"skip\": don't compile, don't save -- nothing reaches disk (in-memory state stays dirty until restart). \"rollback\": cancel the FScopedTransaction to revert all in-memory mutations to the exact pre-batch state -- the BP is left as it was before apply_ops was called.",
           "enum": [
             "compile",
-            "skip"
+            "skip",
+            "rollback"
           ],
           "type": "string"
         },
