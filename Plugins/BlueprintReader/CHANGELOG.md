@@ -10,6 +10,14 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.4.0] — 2026-06-04
+
+First full public release. Consolidates all work from v0.1–v0.3:
+- 258 MCP tools across read, write, editor-control, and transpile categories
+- BlueprintReader Toolbox — Electron GUI installer, provider configurator, and MCP tester
+- Full install release bundle: plugin ZIP + Toolbox NSIS installer + server-only ZIP
+- All features from v0.2.0 and v0.3.x (see prior changelog entries for details)
+
 ## [0.3.2] — 2026-06-04
 
 ### Added
