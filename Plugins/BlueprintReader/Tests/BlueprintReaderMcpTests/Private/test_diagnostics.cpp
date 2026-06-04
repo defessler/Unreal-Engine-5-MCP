@@ -77,6 +77,15 @@ FakeProject MakeFakeProject(const std::string& projectName,
 	std::ofstream(f.pluginDir / "Source" / "BlueprintReaderEditor" /
 				  "BlueprintReaderEditor.Build.cs");
 
+	// Write a minimal .uplugin so FindPluginDir() can locate the plugin root
+	// (it searches for BlueprintReader.uplugin walking up from fixturesDir).
+	// Use the same VersionName as the stamped BPR_VERSION so the staleness check
+	// doesn't produce a spurious warning in tests that expect a clean report.
+	{
+		json up_j = {{"FileVersion", 3}, {"VersionName", std::string(BPR_VERSION)}};
+		std::ofstream(f.pluginDir / "BlueprintReader.uplugin") << up_j.dump(2);
+	}
+
 	return f;
 }
 
@@ -329,4 +338,77 @@ TEST_CASE("env: DetectEditorConfig falls back to suffixed variant when "
 	auto cfg = env::DetectEditorConfig(f.pluginDir);
 	REQUIRE(cfg.has_value());
 	CHECK(*cfg == "DebugGame");
+}
+
+// -------- U2: update-cache notice ------------------------------------------
+
+TEST_CASE("doctor: update-available warning when cache says update_available=true") {
+	auto f = MakeFakeProject("UpdCache1", "0.1.0", false, "Development");
+	// Write a fake update cache under <projectRoot>/Saved/
+	const auto savedDir  = f.projectRoot / "Saved";
+	std::filesystem::create_directories(savedDir);
+	const auto cacheFile = savedDir / "bp-reader-update.json";
+	nlohmann::json cache = {
+		{"checked_iso",      "2026-01-01T00:00:00Z"},
+		{"latest_tag",       "v0.2.0"},
+		{"current",          "0.1.0"},
+		{"update_available", true},
+	};
+	std::ofstream(cacheFile) << cache.dump();
+
+	// Use mock backend + the fake fixturesDir so FindPluginDir resolves back to the
+	// fake plugin and the update-cache path (<projectRoot>/Saved/) is located.
+	auto cfg = MockCfgFromFake(f);
+	cfg.backend = "mock";
+
+	auto report = diag::RunSetupChecks(cfg);
+	const bool hasUpdateWarning = std::any_of(
+		report.findings.begin(), report.findings.end(),
+		[](const diag::Finding& fi) {
+			return fi.severity == diag::Severity::Warning &&
+				   fi.label.find("v0.2.0") != std::string::npos;
+		});
+	CHECK_MESSAGE(hasUpdateWarning, "expected an update-available warning for v0.2.0");
+}
+
+TEST_CASE("doctor: no update warning when cache says update_available=false") {
+	auto f = MakeFakeProject("UpdCache2", "0.2.0", false, "Development");
+	const auto savedDir  = f.projectRoot / "Saved";
+	std::filesystem::create_directories(savedDir);
+	const auto cacheFile = savedDir / "bp-reader-update.json";
+	nlohmann::json cache = {
+		{"checked_iso",      "2026-01-01T00:00:00Z"},
+		{"latest_tag",       "v0.2.0"},
+		{"current",          "0.2.0"},
+		{"update_available", false},
+	};
+	std::ofstream(cacheFile) << cache.dump();
+
+	auto cfg = MockCfgFromFake(f);
+	cfg.backend = "mock";
+
+	auto report = diag::RunSetupChecks(cfg);
+	const bool hasUpdateWarning = std::any_of(
+		report.findings.begin(), report.findings.end(),
+		[](const diag::Finding& fi) {
+			return fi.severity == diag::Severity::Warning &&
+				   fi.label.find("Update available") != std::string::npos;
+		});
+	CHECK_FALSE(hasUpdateWarning);
+}
+
+TEST_CASE("doctor: no update warning when cache file is absent") {
+	auto f = MakeFakeProject("UpdCache3", "0.1.0", false, "Development");
+	// Don't create any cache file.
+	auto cfg = MockCfgFromFake(f);
+	cfg.backend = "mock";
+
+	auto report = diag::RunSetupChecks(cfg);
+	const bool hasUpdateWarning = std::any_of(
+		report.findings.begin(), report.findings.end(),
+		[](const diag::Finding& fi) {
+			return fi.severity == diag::Severity::Warning &&
+				   fi.label.find("Update available") != std::string::npos;
+		});
+	CHECK_FALSE(hasUpdateWarning);
 }

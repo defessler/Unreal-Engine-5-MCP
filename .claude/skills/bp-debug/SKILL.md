@@ -280,3 +280,18 @@ common patterns above, and the failure persists across
   stderr tail.
 - Suggest filing an issue at
   github.com/defessler/Unreal-Engine-5-MCP/issues with that bundle.
+
+## Staying current
+
+If you suspect a bug is already fixed in a newer release, or if the user reports
+unexpected behavior, check whether they're on the latest version:
+
+1. Run `bp-reader-mcp doctor` — it surfaces an "Update available: vX.Y.Z" warning
+   when a newer release exists on GitHub.
+2. To update: run `Setup-Plugin.bat` from the plugin root (or
+   `Scripts\Update-Plugin.ps1`). Downloads the latest plugin from GitHub over
+   HTTPS (no git required), redeploys it preserving the built server binary, and
+   reconfigures the MCP client config + Claude assets.
+3. To check manually without doctor: `Scripts\Check-Update.bat`.
+4. After updating, restart the MCP client to pick up any new tools or changed
+   descriptions.
