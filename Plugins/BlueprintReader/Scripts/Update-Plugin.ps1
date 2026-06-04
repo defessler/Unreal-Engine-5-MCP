@@ -71,8 +71,16 @@ try {
         }
 
         # ---- Self-update: if the updater itself changed, hand off to the new one ----
-        $runHash   = (Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash
-        $cloneHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $cloneUpdate).Hash
+        # Compare line-ending-normalized content so a CRLF/LF difference (git
+        # autocrlf, editor settings) doesn't trigger a spurious re-exec every run.
+        $hashOf = {
+            param($p)
+            $text  = ([System.IO.File]::ReadAllText($p)) -replace "`r`n", "`n"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($text)
+            [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($bytes))
+        }
+        $runHash   = & $hashOf $PSCommandPath
+        $cloneHash = & $hashOf $cloneUpdate
         if ($runHash -ne $cloneHash) {
             Write-Host "$tag Update-Plugin.ps1 changed upstream - re-running the new version..."
             # Native-exe arg array: each element becomes one argv token, which the
