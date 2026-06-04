@@ -268,11 +268,73 @@ nlohmann::json SortProperty() {
 	};
 }
 
+// Post-serialization JSON pruning — strips noise from tool responses so the
+// AI receives a leaner payload.  Only touches the MCP-server-composed JSON;
+// the editor-side emitters are untouched (their from_json decoders would throw
+// on missing keys).  Controlled by ResponseControls::lean (default true); set
+// BP_READER_VERBOSE=1 to disable session-wide.
+//
+// Rules applied (in order):
+//  1. Nulls and empty strings are removed from every object, recursively.
+//  2. Empty arrays are removed for known high-cardinality, low-signal keys.
+//  3. When a graph-body has a top-level "connections[]" key, the per-pin
+//     "linked_to[]" arrays are dropped from each node's "pins[]" — they are
+//     redundant (connections[] already encodes the same link data) and keeping
+//     both doubles the link payload.  Single-node bodies (get_node / find_node
+//     rows) have no "connections[]" so their "linked_to[]" is preserved.
+// Arrays that are guaranteed noise when empty — not declared `required` in any
+// tool output_schema, and zero-length only bloats the payload.
+// NOTE: we only remove empty ARRAYS for these specific keys.  We do NOT remove
+// null or empty-string values because many schemas declare those keys as
+// `required` (e.g. `comment`, `default_value`) — removing a required key breaks
+// schema validation even if the value is null/empty.
+// The real token savings come from these empty arrays (every pin emits
+// `linked_to:[]`; every graph emits `connections:[]`) rather than from
+// individual null fields.
+static const std::vector<std::string> kEmptyArrayBloatKeys{
+	"linked_to", "connections", "delegate_params",
+};
+void PruneEmpty(nlohmann::json& v, int depth = 0) {
+	if (depth > 32) { return; }  // guard against pathological nesting
+	if (v.is_object()) {
+		std::vector<std::string> toErase;
+		for (auto& [k, child] : v.items()) {
+			if (child.is_array() && child.empty()) {
+				for (const auto& bk : kEmptyArrayBloatKeys) {
+					if (k == bk) { toErase.push_back(k); break; }
+				}
+			} else {
+				PruneEmpty(child, depth + 1);
+			}
+		}
+		for (const auto& k : toErase) { v.erase(k); }
+	} else if (v.is_array()) {
+		for (auto& elem : v) { PruneEmpty(elem, depth + 1); }
+	}
+}
+// Drop per-pin linked_to[] when the enclosing graph body already has connections[].
+// Called after PruneEmpty so we don't re-add empties; only runs on object bodies.
+void DeduplicateConnections(nlohmann::json& body) {
+	if (!body.is_object()) { return; }
+	if (!body.contains("connections")) { return; }
+	auto nit = body.find("nodes");
+	if (nit == body.end() || !nit->is_array()) { return; }
+	for (auto& node : *nit) {
+		if (!node.is_object()) { continue; }
+		auto pit = node.find("pins");
+		if (pit == node.end() || !pit->is_array()) { continue; }
+		for (auto& pin : *pit) {
+			if (pin.is_object()) { pin.erase("linked_to"); }
+		}
+	}
+}
+
 // Mutate `body` to apply sort + offset/limit (when body is an array) and
 // field projection. Convenience helper called from every read-tool handler.
 struct ResponseControls {
 	int offset = 0;
 	int limit  = -1;  // -1 => no cap
+	bool lean  = true; // strip null/empty fields + dedup connections/linked_to
 	std::vector<std::string> fields;
 	std::string sort = "natural";  // "natural" | "name" | "path"
 };
@@ -282,6 +344,17 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	ctl.limit  = OptInt(args, "limit", -1);
 	ctl.fields = ParseFieldsArg(args);
 	ctl.sort   = OptString(args, "sort", "natural");
+	// Lean mode: strip null/empty fields and dedup connection data.  Default on;
+	// set BP_READER_VERBOSE=1 (or pass verbose:true) to opt out session-wide.
+	{
+		const char* envVerbose = std::getenv("BP_READER_VERBOSE");
+		if (envVerbose && *envVerbose && std::string_view(envVerbose) != "0") {
+			ctl.lean = false;
+		}
+		if (args.is_object() && args.value("verbose", false)) {
+			ctl.lean = false;
+		}
+	}
 	// Phase 5: opaque cursors take precedence over `offset`. A client
 	// that walks via cursor doesn't need to know about offsets at all —
 	// they just pass back the next_cursor we returned previously.
@@ -363,6 +436,12 @@ void ApplyResponseControls(nlohmann::json& body, const ResponseControls& ctl) {
 		body = std::move(sliced);
 	}
 	ApplyProjection(body, ctl.fields);
+	// C1/C2: lean-mode post-processing — prune noise + deduplicate links.
+	// Runs after projection so the user's fields= selection is already done.
+	if (ctl.lean) {
+		PruneEmpty(body);
+		DeduplicateConnections(body);
+	}
 	// Attach the typo warnings. Only possible on an object body — a bare-array
 	// response has nowhere to hang a sibling key; those flow through
 	// BuildPaginatedBody (an object) when pagination warnings matter.
