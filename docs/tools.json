@@ -8874,6 +8874,101 @@
     }
   },
   {
+    "category": "anim",
+    "description": "[anim] List UAnimMontage assets under a content path (default `/Game`). Returns asset_path and name per montage. Use `read_anim_montage` for sections, notifies, and slot tracks.",
+    "input_schema": {
+      "properties": {
+        "path": {
+          "description": "Content path prefix",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_anim_montages",
+    "output_schema": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "count",
+        "has_more",
+        "results"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "anim",
+    "description": "[anim] Read a UAnimMontage: sections (name, start_time, next_section), notifies (name, trigger_time, duration, notify_class), slot tracks (slot_name, anim segments with anim_sequence path). Essential for GAS-based projects where abilities drive all character actions through montages.",
+    "input_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_path"
+      ],
+      "type": "object"
+    },
+    "name": "read_anim_montage",
+    "output_schema": {
+      "properties": {
+        "asset_path": {
+          "type": "string"
+        },
+        "blend_in": {
+          "type": "number"
+        },
+        "blend_out": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notifies": {
+          "type": "array"
+        },
+        "sections": {
+          "type": "array"
+        },
+        "slot_tracks": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "asset_path",
+        "name",
+        "sections",
+        "notifies",
+        "slot_tracks"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "category": "blueprint",
     "description": "[blueprint] List all Timeline nodes in a Blueprint (names, track counts, length, loop, auto_play). Quick summary — use `read_timeline` for track keys.",
     "input_schema": {

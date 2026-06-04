@@ -3161,6 +3161,57 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		});
 	}
 
+	// EDIT-4: AnimMontage read tools --------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_anim_montages";
+		d.description =
+			"[anim] List UAnimMontage assets under a content path (default `/Game`). "
+			"Returns asset_path and name per montage. Use `read_anim_montage` for sections, "
+			"notifies, and slot tracks.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"path", {{"type","string"},{"description","Content path prefix"}}}}},
+		};
+		d.output_schema = PaginatedSchema();
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string path = OptString(args, "path", "/Game");
+			auto ctl = ParseResponseControls(args);
+			return ListResponse(reader.ListAnimMontages(path), ctl);
+		});
+	}
+	{
+		ToolDescriptor d;
+		d.name = "read_anim_montage";
+		d.description =
+			"[anim] Read a UAnimMontage: sections (name, start_time, next_section), "
+			"notifies (name, trigger_time, duration, notify_class), slot tracks "
+			"(slot_name, anim segments with anim_sequence path). Essential for GAS-based "
+			"projects where abilities drive all character actions through montages.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {{"asset_path",{{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"asset_path",  {{"type","string"}}},
+				{"name",        {{"type","string"}}},
+				{"blend_in",    {{"type","number"}}},
+				{"blend_out",   {{"type","number"}}},
+				{"sections",    {{"type","array"}}},
+				{"notifies",    {{"type","array"}}},
+				{"slot_tracks", {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path","name","sections","notifies","slot_tracks"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireAssetPath(args);
+			return reader.ReadAnimMontage(asset);
+		});
+	}
+
 	// EDIT-2: Timeline read tools -----------------------------------------------
 	{
 		ToolDescriptor d;

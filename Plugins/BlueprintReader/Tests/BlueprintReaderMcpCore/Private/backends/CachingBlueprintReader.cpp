@@ -1310,6 +1310,16 @@ BPRJson CachingBlueprintReader::ReadTimeline(std::string_view a, std::string_vie
 	});
 	return *std::static_pointer_cast<const BPRJson>(sp);
 }
+BPRJson CachingBlueprintReader::ListAnimMontages(std::string_view p) {
+	return inner_->ListAnimMontages(p);
+}
+BPRJson CachingBlueprintReader::ReadAnimMontage(std::string_view a) {
+	auto key = MakeKey("rmontage", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<BPRJson>(inner_->ReadAnimMontage(a));
+	});
+	return *std::static_pointer_cast<const BPRJson>(sp);
+}
 
 IBlueprintReader::AssetGraphResult
 CachingBlueprintReader::GetReferencers(std::string_view a) {

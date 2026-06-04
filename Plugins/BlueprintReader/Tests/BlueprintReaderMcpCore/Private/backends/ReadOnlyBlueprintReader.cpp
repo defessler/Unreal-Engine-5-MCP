@@ -863,6 +863,9 @@ ReadOnlyBlueprintReader::CompileAnimBlueprint(std::string_view) {
 BPRJson ReadOnlyBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
 BPRJson ReadOnlyBlueprintReader::ListTimelines(std::string_view a) { return inner_->ListTimelines(a); }
 BPRJson ReadOnlyBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) { return inner_->ReadTimeline(a, n); }
+BPRJson ReadOnlyBlueprintReader::ListAnimMontages(std::string_view p) { return inner_->ListAnimMontages(p); }
+BPRJson ReadOnlyBlueprintReader::ReadAnimMontage(std::string_view a) { return inner_->ReadAnimMontage(a); }
+
 IBlueprintReader::AssetGraphResult
 ReadOnlyBlueprintReader::GetReferencers(std::string_view a) { return inner_->GetReferencers(a); }
 IBlueprintReader::AssetGraphResult

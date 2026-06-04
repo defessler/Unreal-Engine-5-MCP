@@ -982,6 +982,13 @@ BPRJson AutoBlueprintReader::ListTimelines(std::string_view a) {
 BPRJson AutoBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) {
 	FORWARD(ReadTimeline, a, n);
 }
+BPRJson AutoBlueprintReader::ListAnimMontages(std::string_view p) {
+	FORWARD(ListAnimMontages, p);
+}
+BPRJson AutoBlueprintReader::ReadAnimMontage(std::string_view a) {
+	FORWARD(ReadAnimMontage, a);
+}
+
 IBlueprintReader::AssetGraphResult AutoBlueprintReader::GetReferencers(std::string_view assetPath) {
 	FORWARD(GetReferencers, assetPath);
 }

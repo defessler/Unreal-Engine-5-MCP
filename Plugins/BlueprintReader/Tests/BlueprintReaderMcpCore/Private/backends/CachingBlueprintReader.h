@@ -396,6 +396,8 @@ public:
 	BPRJson GetEditorState() override;
 	BPRJson ListTimelines(std::string_view a) override;
 	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
+	BPRJson ListAnimMontages(std::string_view p) override;
+	BPRJson ReadAnimMontage(std::string_view a) override;
 	AssetGraphResult GetReferencers(std::string_view) override;
 	AssetGraphResult GetDependencies(std::string_view) override;
 	ConfigReadResult ReadConfigValue(std::string_view, std::string_view, std::string_view) override;

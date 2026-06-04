@@ -2576,12 +2576,19 @@ public:
 		throw BlueprintReaderError("GetEditorState not supported by this backend");
 	}
 
-	// EDIT-2: Timeline read tools. Return JSON directly (irregular shape).
+	/// EDIT-2: Timeline read tools. Return JSON directly (irregular shape).
 	virtual BPRJson ListTimelines(std::string_view assetPath) {
 		throw BlueprintReaderError("ListTimelines not supported by this backend");
 	}
 	virtual BPRJson ReadTimeline(std::string_view assetPath, std::string_view timelineName) {
 		throw BlueprintReaderError("ReadTimeline not supported by this backend");
+	}
+	// EDIT-4: AnimMontage read tools.
+	virtual BPRJson ListAnimMontages(std::string_view path) {
+		throw BlueprintReaderError("ListAnimMontages not supported by this backend");
+	}
+	virtual BPRJson ReadAnimMontage(std::string_view assetPath) {
+		throw BlueprintReaderError("ReadAnimMontage not supported by this backend");
 	}
 
 	// Run a Python script in the editor. Gated server-side by

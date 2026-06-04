@@ -3053,6 +3053,15 @@ BPRJson SocketBlueprintReader::ReadTimeline(std::string_view a, std::string_view
 	if (!n.empty()) args.push_back("-Name=" + std::string(n));
 	return RunOp(args);
 }
+BPRJson SocketBlueprintReader::ListAnimMontages(std::string_view p) {
+	std::vector<std::string> args = {"-Op=ListAnimMontages"};
+	if (!p.empty()) args.push_back("-Path=" + std::string(p));
+	return RunOp(args);
+}
+BPRJson SocketBlueprintReader::ReadAnimMontage(std::string_view a) {
+	std::vector<std::string> args = {"-Op=ReadAnimMontage", "-Asset=" + std::string(a)};
+	return RunOp(args);
+}
 
 IBlueprintReader::PythonResult
 SocketBlueprintReader::RunPythonScript(std::string_view code) {
