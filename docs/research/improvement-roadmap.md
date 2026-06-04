@@ -545,7 +545,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Best practice; clients can show the server description in their UIs; mode-toggle without reconnect.
 
 ### MCP-6 — Streamable HTTP transport (replace deprecated SSE) {#mcp-6}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (b4ed004a, 2026-06-04) · **Effort:** M
 - `HttpTransport.h` implements the deprecated 2024-11-05 two-endpoint pattern (`/sse` + `/message`). The 2025-03-26 spec replaced it with a single `/mcp` endpoint supporting POST (client→server) and GET (SSE stream). Newer clients probe by POSTing `InitializeRequest` to `/mcp`; if they get 405 they fall back. Also required: `MCP-Protocol-Version` header on all HTTP requests after initialize (2025-06-18). Keep old endpoints for backward compat.
 - **Why:** Unblocks clients that have moved past the 2024-11-05 transport; old pattern deprecated.
 
@@ -560,7 +560,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Long-running ops currently time out in some clients; async tasks fix this correctly.
 
 ### MCP-9 — Elicitation for destructive write confirmation {#mcp-9}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (b4ed004a, 2026-06-04) · **Effort:** M
 - When the client declares `elicitation` capability (2025-06-18+), pause destructive ops (`delete_variable`, `delete_function`, `delete_node`, `delete_asset`, `build_lighting`) and call `elicitation/create` to request `{confirm: boolean}` from the user. Fall back to immediate execution when the client doesn't declare elicitation.
 - **Why:** Better UX for irreversible operations; prevents accidental deletions from AI-generated call sequences.
 
