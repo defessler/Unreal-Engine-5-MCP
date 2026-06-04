@@ -25,14 +25,25 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_LIVE_HOST`       | `127.0.0.1`                            | Hostname for the live backend's TCP connection. Loopback only; non-loopback connections are rejected by the editor-side listener. |
 | `BP_READER_LIVE_PORT`       | (unset → live backend disabled)        | TCP port for the live backend. **Set in BOTH** the editor's process env (the listener binds here) AND the MCP server's process env (the client connects here). Pick anything 8400–8500 range that's not in use. |
 | `BP_READER_LIVE_TOKEN`      | (unset → live backend refuses to start) | Shared secret for the live backend's auth handshake. **Set in BOTH** processes; values must match. Pick a random string. Treat like a password — anyone with localhost access who can read your env vars can mutate BPs. |
-| `BP_READER_TOOLS`           | (unset → all ~252 tools)               | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, leaving razor-thin headroom for the full bp-reader surface. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
-| `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` drops just those categories from the full ~252-tool surface. |
+| `BP_READER_TOOLS`           | (unset → all ~258 tools)               | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, leaving razor-thin headroom for the full bp-reader surface. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
+| `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` drops just those categories from the full ~258-tool surface. |
 | `BP_READER_ALLOW_PYTHON`    | `0` (off)                              | `1`/`true`/`yes`/`on` enables the `run_python_script` tool. Off by default — arbitrary Python in the editor has full `unreal.*` API access and bypasses every safety convention the curated tool surface establishes. When disabled, calling `run_python_script` returns `{ok: false, error: "python_disabled", hint: ...}` rather than executing. |
 | `BP_READER_ALLOW_TRANSPILE` | `0` (off)                              | `1`/`true`/`yes`/`on` enables the 6 BP↔C++ transpile tools (`decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function`). Off by default — the transpile path writes source files, parses caller-supplied C++, and shells to UBT downstream, so opt-in keeps the surface explicit. When disabled, the tools stay listed in `tools/list` but every call returns `{ok: false, error: "transpile_disabled", hint: ...}`. To remove them from `tools/list` entirely, use `BP_READER_TOOLS_EXCLUDE=cpp` instead. |
+| `BP_READER_REQUIRE_CONFIRM` | `0` (off)                              | `1`/`true`/`yes`/`on` adds a confirmation gate on every destructive tool (`delete_asset`, `delete_variable`, `delete_node`, `delete_function`, `build_lighting`, etc.). When enabled, those tools return `isError: true` with an actionable message unless the call includes `"_confirm": true` in its arguments. Protects against accidental deletions in AI-agent workflows. |
+| `BP_READER_VERBOSE`         | `0` (off)                              | `1` disables lean-mode response stripping. By default the server prunes empty arrays (`linked_to`, `connections`, `delegate_params`) and de-duplicates redundant link data. Setting `1` restores the full unstripped payload — useful when debugging the wire format or writing tests against raw responses. |
+| `BP_READER_HTTP_PORT`       | (unset — stdio mode)                  | Set to a port number (e.g. `7878`) to run the server as an HTTP/SSE endpoint instead of stdio. Binds to `127.0.0.1` only. The MCP path defaults to `/mcp` (override with `BP_READER_HTTP_PATH`). When set, stdio is disabled — launch the server as a long-running process and point clients at `http://127.0.0.1:<port>/mcp`. |
+| `BP_READER_HTTP_PATH`       | `/mcp`                                 | HTTP path for the MCP endpoint when `BP_READER_HTTP_PORT` is set. |
+| `BP_READER_DAEMON_MAX_LIFETIME_SECONDS` | `0` (off)               | Hard wall-clock lifetime cap for the headless daemon. When set (e.g. `3600`), the off-game-thread watchdog force-exits the daemon after this many seconds regardless of activity — guards against a wedged-open connection that keeps the idle-shutdown timer from ever firing. `0` disables the cap. |
+| `BP_READER_DAEMON_WEDGE_SECONDS` | `120`                            | Off-game-thread watchdog timeout. If the game thread stops bumping its heartbeat for this many seconds (e.g. stuck in a long compile or asset save), the watchdog force-exits the daemon. Set `0` to disable. Requires the daemon to be running with `BP_READER_DAEMON=1`. |
+| `BP_READER_TOOL_ALLOW`      | (empty — allow all)                   | Comma-separated list of ECMAScript regex patterns. A tool is advertised on `tools/list` only when its name matches at least one pattern. Applied before `BP_READER_TOOL_BLOCK`. Example: `^(list|read|get|find|summarize|peek)` exposes only read-shaped tool names. |
+| `BP_READER_TOOL_BLOCK`      | (empty — block nothing)               | Comma-separated list of ECMAScript regex patterns. A tool is removed from `tools/list` when its name matches any pattern. Applied after `BP_READER_TOOL_ALLOW`. Example: `^(build_lighting|cook_content|package_project)` hides the long-running build ops. |
+| `BP_READER_AUTO_CHECKOUT`   | `1` (on)                               | Before a write op mutates an asset, auto-checks it out of source control (Perforce/Git) non-interactively. Stops a live editor from popping a blocking "Check Out?" modal mid-call. Set `0` to manage checkouts yourself. |
+| `BP_READER_PLUGIN_DENYLIST` | (empty)                                | Comma-separated plugin names; each becomes a `-DisablePlugin=<name>` arg on the headless editor spawn. Use to skip a plugin that crashes in `StartupModule` (e.g. `DLSS`). Caveat: `-DisablePlugin` does not override `.uproject`-force-enabled plugins. |
+| `BP_READER_SORT_DEFAULT`    | (empty)                                | When set (e.g. `natural`), overrides the `sort` argument on every list call for that session — useful to enforce consistent ordering in tests or logs regardless of what clients pass. |
 
 ## Tool filtering
 
-The full bp-reader surface is ~252 tools (note: with progressive disclosure
+The full bp-reader surface is ~258 tools (note: with progressive disclosure
 on by default, `tools/list` advertises only ~39 — the core set plus meta-tools
 — so most clients' caps are a non-issue without any filtering). Some MCP
 clients cap the total
@@ -72,7 +83,7 @@ Both vars take **category names** as a shorthand for groups of tools:
 | `tests`          | 1     | run_automation_tests |
 | `class-info`     | 3     | find_class + get_class_info + list_functions |
 | `discover`       | 3     | list_node_kinds + list_pin_categories + shutdown_daemon |
-| `all`            | ~252  | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
+| `all`            | ~258  | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
 
 The canonical mapping lives in
 [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp).
@@ -670,7 +681,7 @@ listener bound). Auto mode then always picks commandlet.
 
 ### What works in v1
 
-All ~252 tools route over the same wire: reads, writes, batch ops,
+All ~258 tools route over the same wire: reads, writes, batch ops,
 `compile_function` / `preview_ops`, plus the BP↔C++ transpile group
 (`decompile_function`, `decompile_blueprint`, `transpile_function`,
 `transpile_blueprint`, `write_generated_source`, `parse_cpp_function`).
