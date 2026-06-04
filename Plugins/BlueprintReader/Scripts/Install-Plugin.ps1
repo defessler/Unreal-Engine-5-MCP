@@ -46,7 +46,7 @@ if (-not $ProjectFile) {
 if (-not $EngineDir) {
     $EngineDir = Resolve-BprEngineDir $ProjectFile
     if ($EngineDir) { Write-Host "$tag Inferred -EngineDir: $EngineDir" }
-    else { throw "$tag could not infer the engine dir from the .uproject EngineAssociation - pass -EngineDir." }
+    else { throw "$tag no UE engine found (checked the .uproject EngineAssociation, the HKLM/HKCU registry, and the common Launcher dirs) - pass -EngineDir `"<...>\UE_5.8`" or set BP_READER_ENGINE_DIR." }
 }
 
 if (-not (Test-Path $ProjectFile)) { throw "$tag .uproject not found: $ProjectFile" }
