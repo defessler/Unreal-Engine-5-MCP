@@ -88,11 +88,30 @@ count** — a 20-step refactor is sub-second after the first call. Batch with
 5. **Don't invent a multi-tool workaround for an unsupported op** — state
    what *is* supported.
 
+## Staying current
+
+Run `bp-reader-mcp doctor` to check for staleness and update availability. If an
+update is available, run `Setup-Plugin.bat` (or `Scripts/Update-Plugin.ps1`) from
+the plugin root — it downloads the latest plugin from GitHub over HTTPS (no git
+required), redeploys it (preserving the built server binary), and reconfigures the
+MCP client config + Claude assets.
+
+You can also check manually:
+```
+Scripts\Check-Update.bat            # prints "vX.Y.Z available" or "up to date"
+Scripts\Update-Plugin.bat           # no-build refresh + reconfigure
+Scripts\Build-MCPServer.bat         # rebuild the server exe (after a source update)
+```
+
+After installing an update, restart Claude Code / your MCP client to pick up any
+new skills or changed tool descriptions.
+
 ## Deeper docs
 
 - **Claude skills** — auto-discovered per-task playbooks (bp-reader, bp-batches,
   bp-cpp, bp-debug) + the bp-audit agent. Deployed to `.claude/skills/` in this
   project; source in `Plugins/BlueprintReader/Claude/skills/`.
+- **Changelog** — what changed in each release: `Plugins/BlueprintReader/CHANGELOG.md`.
 - **Repo docs** — build / test / maintain (`CLAUDE.md`), full setup, per-tool
   I/O shapes, env vars (README), and the wiki (Tool-Reference, BPIR,
   Configuration, Usage, Troubleshooting):

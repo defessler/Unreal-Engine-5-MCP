@@ -210,6 +210,41 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 		}
 	}
 
+	// -------- update availability (U2) — reads the cache written by Check-Update.ps1 --------
+	// The server never makes a network call; Check-Update.ps1 writes the cache and
+	// doctor reads it. Suppressed when the cache is absent (user hasn't run Check-Update
+	// yet) or older than 24 h (stale). No external dependencies required.
+	{
+		auto pluginDir = FindPluginDir(cfg);
+		if (!pluginDir.empty()) {
+			// Locate <ProjectDir>/Saved/bp-reader-update.json by walking up from the exe.
+			// The plugin is at <project>/Plugins/BlueprintReader; Saved/ is at <project>/Saved/.
+			auto projectDir = std::filesystem::path(pluginDir).parent_path().parent_path();
+			auto cacheFile  = projectDir / "Saved" / "bp-reader-update.json";
+			if (std::filesystem::is_regular_file(cacheFile)) {
+				try {
+					std::ifstream ifs(cacheFile);
+					auto j = nlohmann::json::parse(ifs);
+					if (j.value("update_available", false)) {
+						const std::string latest  = j.value("latest_tag",  std::string(""));
+						const std::string current = j.value("current",     std::string(""));
+						if (!latest.empty()) {
+							r.findings.push_back(Warning(
+								"Update available: " + latest +
+								(current.empty() ? "" : " (current: " + current + ")"),
+								"",
+								"Run Setup-Plugin.bat (or Scripts/Update-Plugin.ps1) to "
+								"download the latest plugin and reconfigure. The server "
+								"binary will be updated automatically from the GitHub release."));
+						}
+					}
+				} catch (...) {
+					// Malformed cache — ignore; Check-Update.ps1 will overwrite it next run.
+				}
+			}
+		}
+	}
+
 	// -------- mock backend short-circuits the rest --------
 	if (cfg.backend == "mock") {
 		if (std::filesystem::is_directory(cfg.fixturesDir)) {
