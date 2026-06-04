@@ -63,11 +63,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: Plugins/BlueprintReader/Toolbox/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
 
       - name: Install Toolbox dependencies
         working-directory: Plugins/BlueprintReader/Toolbox
-        run: npm ci
+        run: npm install
 
       - name: Build Toolbox (Electron + NSIS installer)
         working-directory: Plugins/BlueprintReader/Toolbox
@@ -119,17 +119,6 @@ jobs:
             Write-Host "Toolbox installer: $toolboxDst ($([math]::Round($toolboxInstaller.Length/1MB,1)) MB)"
           }
 
-          # ── Asset 3: server-only bundle (backward compat) ─────────────────
-          $serverStage = "server-stage"
-          New-Item -ItemType Directory -Force $serverStage | Out-Null
-          Copy-Item "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" $serverStage
-          Copy-Item -Recurse "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\fixtures" "$serverStage\fixtures"
-          if (Test-Path ".mcp.json.example") { Copy-Item ".mcp.json.example" $serverStage }
-          Set-Content "$serverStage\VERSION.txt" -Value $ver
-          $serverZip = "BlueprintReaderMcp-$tag-win64.zip"
-          Compress-Archive -Path "$serverStage\*" -DestinationPath $serverZip -Force
-          Write-Host "Server bundle:  $serverZip ($([math]::Round((Get-Item $serverZip).Length/1MB,1)) MB)"
-
       # ── 4. Upload workflow artifacts (always — even on workflow_dispatch) ──
       - name: Upload plugin ZIP artifact
         uses: actions/upload-artifact@v4
@@ -145,13 +134,6 @@ jobs:
           path: BlueprintReader-*-toolbox-win64-setup.exe
           if-no-files-found: warn   # warn (not error) in case NSIS fails on runner
 
-      - name: Upload server bundle artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BlueprintReaderMcp-win64
-          path: BlueprintReaderMcp-*-win64.zip
-          if-no-files-found: error
-
       # ── 5. Attach all assets to the GitHub Release (tag pushes only) ──────
       - name: Create / update GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -160,13 +142,12 @@ jobs:
           files: |
             BlueprintReader-*-plugin.zip
             BlueprintReader-*-toolbox-win64-setup.exe
-            BlueprintReaderMcp-*-win64.zip
           fail_on_unmatched_files: false
           generate_release_notes: true
           body: |
             ## Install options
 
-            ### Option A — Full plugin bundle (recommended)
+            ### Option A — Plugin bundle (recommended)
             Download **`BlueprintReader-${{ github.ref_name }}-plugin.zip`**, unzip it,
             and drop the `BlueprintReader/` folder into `<YourProject>/Plugins/`.
             Then run **`Plugins/BlueprintReader/Setup-Plugin.bat`** — it configures all
@@ -176,13 +157,8 @@ jobs:
             ### Option B — GUI installer (Toolbox)
             Download **`BlueprintReader-${{ github.ref_name }}-toolbox-win64-setup.exe`**
             and run it. The Toolbox GUI walks you through project selection, AI provider
-            configuration, and includes an interactive MCP tester.
-
-            ### Option C — Server binary only
-            Download **`BlueprintReaderMcp-${{ github.ref_name }}-win64.zip`** for just
-            the standalone server exe + fixtures. Suitable for CI/headless setups or
-            if you already have the plugin installed.
+            configuration, and includes an interactive MCP tester with all 258 tools.
 
             ---
-            Verify the server version: `BlueprintReaderMcp.exe --version`
-            Run health checks: `BlueprintReaderMcp.exe doctor`
+            Verify: `BlueprintReaderMcp.exe --version`
+            Health check: `BlueprintReaderMcp.exe doctor`

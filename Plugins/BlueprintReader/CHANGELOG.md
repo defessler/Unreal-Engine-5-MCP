@@ -10,6 +10,13 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.4.2] — 2026-06-04
+
+### Fixed
+- Release CI: `package-lock.json` now committed so `npm ci` works on GitHub Actions runners
+- Release CI: switched from `npm ci` to `npm install` for robustness; fixed `cache-dependency-path` glob
+- Release CI: removed server-only zip — only plugin bundle and Toolbox installer are published
+
 ## [0.4.1] — 2026-06-04
 
 ### Added
