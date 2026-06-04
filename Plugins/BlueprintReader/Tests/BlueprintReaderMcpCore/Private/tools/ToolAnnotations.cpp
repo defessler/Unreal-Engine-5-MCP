@@ -413,4 +413,10 @@ std::string TitleFor(const std::string& name) {
 	return it != kTitles.end() ? it->second : std::string{};
 }
 
+// MCP-9: returns true when the tool may irreversibly remove or replace data.
+// Used by the confirmation guard in Mcp.cpp (enabled via BP_READER_REQUIRE_CONFIRM).
+bool IsDestructive(const std::string& name) {
+	return DestructiveSet().count(name) > 0;
+}
+
 }    // namespace bpr::tools

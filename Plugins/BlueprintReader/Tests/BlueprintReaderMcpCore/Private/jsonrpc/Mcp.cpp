@@ -1,6 +1,7 @@
 #include "jsonrpc/Mcp.h"
 
 #include "jsonrpc/CallContext.h"
+#include "tools/ToolAnnotations.h"  // IsDestructive (MCP-9 confirmation guard)
 
 #include <chrono>
 #include <optional>
@@ -297,6 +298,30 @@ void RegisterHandlersImpl(jr::Server& server,
 			// envelope, not a JSON-RPC method-not-found.
 			return jr::Response::Ok(MakeToolTextContent(
 				fmt::format("unknown tool: {}", name), /*isError=*/true));
+		}
+		// MCP-9: destructive-op guard. When BP_READER_REQUIRE_CONFIRM=1,
+		// any tool in the DestructiveSet must be called with _confirm:true
+		// in arguments to proceed. This guards against accidental irreversible
+		// mutations — the agent gets a clear "add _confirm:true to proceed"
+		// error rather than silently deleting data.
+		{
+			static const bool kRequireConfirm = [](){
+				const char* v = std::getenv("BP_READER_REQUIRE_CONFIRM");
+				return v && *v && std::string_view(v) != "0";
+			}();
+			if (kRequireConfirm && tools::IsDestructive(name)) {
+				bool confirmed = arguments.is_object() &&
+					arguments.value("_confirm", false);
+				if (!confirmed) {
+					return jr::Response::Ok(MakeToolTextContent(
+						fmt::format("tool '{}' is destructive and requires "
+							"explicit confirmation. Pass _confirm:true in "
+							"arguments to proceed, or unset "
+							"BP_READER_REQUIRE_CONFIRM to disable this guard.",
+							name),
+						/*isError=*/true));
+				}
+			}
 		}
 
 		const auto t0 = std::chrono::steady_clock::now();

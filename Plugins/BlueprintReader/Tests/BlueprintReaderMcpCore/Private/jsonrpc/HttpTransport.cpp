@@ -215,6 +215,14 @@ HttpResponse Handle(const HttpRequest& req, Server& server, const std::string& m
 			return resp;
 		}
 		resp.body = dispatched->dump();
+		// MCP-6: MCP-Protocol-Version header required on all HTTP responses
+		// after initialize per MCP 2025-06-18 §transports. We emit it on
+		// every POST response; older clients that don't declare 2025-06-18
+		// will ignore the extra header (no back-compat risk).
+		resp.headers["MCP-Protocol-Version"] = "2025-11-25";
+		// MCP-6: content-type as JSON (spec: MUST be application/json or
+		// text/event-stream; POST responses are always JSON).
+		resp.headers["Content-Type"] = "application/json";
 		return resp;
 	}
 
