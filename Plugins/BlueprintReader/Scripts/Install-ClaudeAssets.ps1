@@ -182,6 +182,32 @@ foreach ($item in $plan) {
     }
 }
 
+# ---- Reconcile: prune stale plugin-managed assets -------------------
+# The plugin owns the bp-* namespace under .claude/. If an update removed a
+# skill or agent, drop the deployed copy so the project mirrors the current
+# plugin. Bounded to bp-* so consumer-authored .claude/ content is untouched.
+$srcSkillNames = @()
+if (Test-Path $skillSrc) { $srcSkillNames = @((Get-ChildItem -Path $skillSrc -Directory).Name) }
+$srcAgentNames = @()
+if (Test-Path $agentSrc) { $srcAgentNames = @((Get-ChildItem -Path $agentSrc -File -Filter '*.md').Name) }
+
+$deployedSkills = Join-Path $claudeDst 'skills'
+if (Test-Path $deployedSkills) {
+    Get-ChildItem -Path $deployedSkills -Directory -Filter 'bp-*' |
+        Where-Object { $_.Name -notin $srcSkillNames } | ForEach-Object {
+            Write-Host ("  PRUNE  skill: {0} (no longer in the plugin)" -f $_.FullName) -ForegroundColor Yellow
+            if (-not $DryRun) { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+        }
+}
+$deployedAgents = Join-Path $claudeDst 'agents'
+if (Test-Path $deployedAgents) {
+    Get-ChildItem -Path $deployedAgents -File -Filter 'bp-*.md' |
+        Where-Object { $_.Name -notin $srcAgentNames } | ForEach-Object {
+            Write-Host ("  PRUNE  agent: {0} (no longer in the plugin)" -f $_.FullName) -ForegroundColor Yellow
+            if (-not $DryRun) { Remove-Item -LiteralPath $_.FullName -Force }
+        }
+}
+
 if ($DryRun) {
     Write-Host "Dry run complete. Re-run without -DryRun to apply." -ForegroundColor Yellow
 }

@@ -109,8 +109,9 @@ output surfaces as a clear error.
 ## BPIR schema
 
 For the canonical shape (statement + expression forms, type strings,
-metadata fields), see `wiki/BPIR.md` — the wiki is the authoritative
-schema reference. Quick reminders:
+metadata fields), see the BPIR wiki page
+(<https://github.com/defessler/Unreal-Engine-5-MCP/wiki/BPIR>) — the
+authoritative schema reference. Quick reminders:
 
 - Type strings reuse BP type shorthand: `"float"`, `"object:Actor"`,
   `"[]float"`, `"{string:int}"`, …
@@ -143,8 +144,9 @@ diagnostic directly.
 ## Auto-lowered structural patterns
 
 These used to need manual TODO porting; decompile + codegen now emit
-real compilable scaffolds for them automatically. See
-[10-bp-to-cpp-node-coverage.md](../../../docs/design/10-bp-to-cpp-node-coverage.md)
+real compilable scaffolds for them automatically. See the node-coverage status
+doc
+(<https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/design/10-bp-to-cpp-node-coverage.md>)
 for the full status legend.
 
 | K2 node | Auto-lowering |
