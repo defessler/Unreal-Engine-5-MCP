@@ -163,11 +163,9 @@ constexpr uint32_t kInlineImageMaxDim = 1280;
 // untrusted C++, and shells out to UBT downstream, so opt-in is
 // the safer default.
 bool TranspileEnabled() {
-	const char* raw = std::getenv("BP_READER_ALLOW_TRANSPILE");
-	if (!raw || !*raw) {
-		return false;
-	}
-	std::string v(raw);
+	auto raw = bpr::env::Get("BP_READER_ALLOW_TRANSPILE");
+	if (!raw) { return false; }
+	std::string v = *raw;
 	for (char& c : v) {
 		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 	}
@@ -362,8 +360,8 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	// Lean mode: strip null/empty fields and dedup connection data.  Default on;
 	// set BP_READER_VERBOSE=1 (or pass verbose:true) to opt out session-wide.
 	{
-		const char* envVerbose = std::getenv("BP_READER_VERBOSE");
-		if (envVerbose && *envVerbose && std::string_view(envVerbose) != "0") {
+		auto envVerbose = bpr::env::Get("BP_READER_VERBOSE");
+		if (envVerbose && *envVerbose != "0") {
 			ctl.lean = false;
 		}
 		if (args.is_object() && args.value("verbose", false)) {
@@ -406,10 +404,8 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	// Per Phase B: BP_READER_SORT_DEFAULT env var can force "natural"
 	// behavior session-wide even when a client sends sort=name. Kill-
 	// switch for clients that misbehave. Default empty = honor the arg.
-	if (const char* envSort = std::getenv("BP_READER_SORT_DEFAULT")) {
-		if (envSort && *envSort) {
-			ctl.sort = envSort;
-		}
+	if (auto envSort = bpr::env::Get("BP_READER_SORT_DEFAULT"); envSort && !envSort->empty()) {
+		ctl.sort = *envSort;
 	}
 	return ctl;
 }
