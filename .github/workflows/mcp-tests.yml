@@ -14,10 +14,12 @@ on:
     paths:
       - 'Plugins/BlueprintReader/Tests/**'
       - '.github/workflows/mcp-tests.yml'
+      - 'docs/tools.json'   # catalog drift check fires on catalog updates too
   pull_request:
     paths:
       - 'Plugins/BlueprintReader/Tests/**'
       - '.github/workflows/mcp-tests.yml'
+      - 'docs/tools.json'
 
 jobs:
   build-and-test:
