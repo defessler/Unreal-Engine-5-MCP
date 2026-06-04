@@ -9,6 +9,7 @@
 // Content/AI/BP_TestEnemy (regenerable via -run=BPRSeed).
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/CommandletBlueprintReader.h"
 

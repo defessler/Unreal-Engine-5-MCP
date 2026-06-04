@@ -1,5 +1,6 @@
 #include "jsonrpc/Mcp.h"
 
+#include "Env.h"
 #include "jsonrpc/CallContext.h"
 #include "tools/ToolAnnotations.h"  // IsDestructive (MCP-9 confirmation guard)
 
@@ -306,8 +307,8 @@ void RegisterHandlersImpl(jr::Server& server,
 		// error rather than silently deleting data.
 		{
 			static const bool kRequireConfirm = [](){
-				const char* v = std::getenv("BP_READER_REQUIRE_CONFIRM");
-				return v && *v && std::string_view(v) != "0";
+				auto v = bpr::env::Get("BP_READER_REQUIRE_CONFIRM");
+				return v && *v != "0";
 			}();
 			if (kRequireConfirm && tools::IsDestructive(name)) {
 				bool confirmed = arguments.is_object() &&

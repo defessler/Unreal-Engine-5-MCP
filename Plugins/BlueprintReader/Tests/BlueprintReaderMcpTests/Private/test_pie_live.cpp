@@ -9,6 +9,7 @@
 // (it spawns a real -nullrhi editor/daemon and issues one PIE call).
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/CommandletBlueprintReader.h"
 

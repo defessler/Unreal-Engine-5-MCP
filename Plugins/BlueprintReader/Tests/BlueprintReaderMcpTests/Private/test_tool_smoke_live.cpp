@@ -20,6 +20,7 @@
 // daemon and issues ~220 calls.
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "tools/ToolRegistry.h"
 #include "tools/BlueprintTools.h"

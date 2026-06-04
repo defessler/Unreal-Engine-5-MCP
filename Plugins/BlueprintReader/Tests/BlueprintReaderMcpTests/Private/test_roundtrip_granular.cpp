@@ -16,6 +16,7 @@
 // differences are restricted to function graphs that have parameters.
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/CommandletBlueprintReader.h"
 #include "roundtrip/BPSpec.h"

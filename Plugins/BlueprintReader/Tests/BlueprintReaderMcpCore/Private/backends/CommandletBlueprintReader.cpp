@@ -600,17 +600,16 @@ CommandletBlueprintReader::CommandletBlueprintReader(Config cfg)
 	{
 		const std::string& cfgName = cfg_.editorConfig;
 		std::filesystem::path candidate;
-		const char* envCmd = std::getenv("BP_READER_EDITOR_CMD");
-		if (envCmd != nullptr && envCmd[0] != '\0' &&
-		    std::filesystem::exists(envCmd)) {
-			candidate = std::filesystem::path(envCmd);
+		const auto envCmdVal   = bpr::env::GetOrDefault("BP_READER_EDITOR_CMD",    "");
+		const auto envTargetVal = bpr::env::GetOrDefault("BP_READER_EDITOR_TARGET", "");
+		if (!envCmdVal.empty() && std::filesystem::exists(envCmdVal)) {
+			candidate = std::filesystem::path(envCmdVal);
 		} else {
-			const char* envTarget = std::getenv("BP_READER_EDITOR_TARGET");
-			if (envTarget != nullptr && envTarget[0] != '\0') {
+			if (!envTargetVal.empty()) {
 				const auto projectBin = cfg_.uproject.parent_path() /
 				                        "Binaries" / "Win64";
 				auto projectCandidate = projectBin /
-					fmt::format("{}-Cmd.exe", envTarget);
+					fmt::format("{}-Cmd.exe", envTargetVal);
 				if (std::filesystem::exists(projectCandidate)) {
 					candidate = projectCandidate;
 				}
@@ -1047,9 +1046,10 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 			// disables retry). We hold the spawn lock throughout, so a second
 			// MCP server can't double-spawn while we retry.
 			int attempts = 2;
-			if (const char* rawRetries = std::getenv("BP_READER_DAEMON_SPAWN_RETRIES")) {
-				if (*rawRetries) {
-					const int n = std::atoi(rawRetries);
+			{
+				auto rawRetries = bpr::env::GetOrDefault("BP_READER_DAEMON_SPAWN_RETRIES", "");
+				if (!rawRetries.empty()) {
+					const int n = std::atoi(rawRetries.c_str());
 					if (n >= 0) { attempts = n + 1; }
 				}
 			}

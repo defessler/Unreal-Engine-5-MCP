@@ -2,6 +2,7 @@
 // when BP_READER_READ_ONLY=1 is set (coexistence with an open editor).
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/BackendFactory.h"
 #include "backends/MockBlueprintReader.h"
@@ -43,7 +44,7 @@ struct ScopedEnv {
 		}
 		_putenv_s(key, value ? value : "");
 #else
-		if (const char* p = std::getenv(key)) {
+		if (auto pVal = bpr::env::Get(key); pVal) {
 			prev_ = p;
 		}
 		if (value && *value) {
