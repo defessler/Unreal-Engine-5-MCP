@@ -228,32 +228,30 @@ namespace
 
 	const FBPGraphInfo* FindGraphByName(const FBlueprintInfo& Info, const FString& Name)
 	{
-		auto Search = [&](const TArray<FBPGraphInfo>& Graphs) -> const FBPGraphInfo*
+		// Exact (case-insensitive) first, then a whitespace-trimmed pass so a name
+		// whose stored form was sanitized of a trailing/leading space still resolves
+		// from the caller's display-name. Both sides trimmed identically.
+		const FString Trimmed = Name.TrimStartAndEnd();
+		auto Search = [&](const TArray<FBPGraphInfo>& Graphs, bool bTrim) -> const FBPGraphInfo*
 		{
 			for (const FBPGraphInfo& G : Graphs)
 			{
-				if (G.Name.Equals(Name, ESearchCase::IgnoreCase))
+				const bool bHit = bTrim
+					? G.Name.TrimStartAndEnd().Equals(Trimmed, ESearchCase::IgnoreCase)
+					: G.Name.Equals(Name, ESearchCase::IgnoreCase);
+				if (bHit)
 				{
 					return &G;
 				}
 			}
 			return nullptr;
 		};
-		if (auto* G = Search(Info.EventGraphs))
+		for (bool bTrim : { false, true })
 		{
-			return G;
-		}
-		if (auto* G = Search(Info.FunctionGraphs))
-		{
-			return G;
-		}
-		if (auto* G = Search(Info.MacroGraphs))
-		{
-			return G;
-		}
-		if (auto* G = Search(Info.DelegateSignatureGraphs))
-		{
-			return G;
+			if (auto* G = Search(Info.EventGraphs, bTrim))            { return G; }
+			if (auto* G = Search(Info.FunctionGraphs, bTrim))         { return G; }
+			if (auto* G = Search(Info.MacroGraphs, bTrim))            { return G; }
+			if (auto* G = Search(Info.DelegateSignatureGraphs, bTrim)){ return G; }
 		}
 		return nullptr;
 	}
@@ -496,9 +494,21 @@ TSharedPtr<FJsonObject> FBlueprintReaderWireJson::GraphToJson(const FBlueprintIn
 
 TSharedPtr<FJsonObject> FBlueprintReaderWireJson::FunctionToJson(const FBlueprintInfo& Info, const FString& FunctionName)
 {
+	// Match exact (case-insensitive) when any function has that exact name; else
+	// fall back to a whitespace-trimmed compare (handles a name sanitized of a
+	// trailing/leading space). Pre-checking exact-exists preserves exact precedence.
+	const FString Trimmed = FunctionName.TrimStartAndEnd();
+	bool bExactExists = false;
+	for (const FBPGraphInfo& C : Info.FunctionGraphs)
+	{
+		if (C.Name.Equals(FunctionName, ESearchCase::IgnoreCase)) { bExactExists = true; break; }
+	}
 	for (const FBPGraphInfo& G : Info.FunctionGraphs)
 	{
-		if (!G.Name.Equals(FunctionName, ESearchCase::IgnoreCase))
+		const bool bHit = bExactExists
+			? G.Name.Equals(FunctionName, ESearchCase::IgnoreCase)
+			: G.Name.TrimStartAndEnd().Equals(Trimmed, ESearchCase::IgnoreCase);
+		if (!bHit)
 		{
 			continue;
 		}

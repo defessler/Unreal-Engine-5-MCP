@@ -966,28 +966,30 @@ namespace
 
 	UEdGraph* FindGraphByName(UBlueprint* BP, const FString& Name)
 	{
-		auto Search = [&](const TArray<UEdGraph*>& Graphs) -> UEdGraph*
+		// Exact (case-insensitive) match first; then a whitespace-trimmed pass so a
+		// graph whose stored FName was sanitized of a trailing/leading space (UE
+		// trims function names on creation) still resolves from the display-name the
+		// caller has. Both sides are trimmed identically in the fallback pass.
+		const FString Trimmed = Name.TrimStartAndEnd();
+		auto Search = [&](const TArray<UEdGraph*>& Graphs, bool bTrim) -> UEdGraph*
 		{
 			for (UEdGraph* G : Graphs)
 			{
-				if (G && G->GetFName().ToString().Equals(Name, ESearchCase::IgnoreCase))
-				{
-					return G;
-				}
+				if (!G) { continue; }
+				const FString GName = G->GetFName().ToString();
+				const bool bHit = bTrim
+					? GName.TrimStartAndEnd().Equals(Trimmed, ESearchCase::IgnoreCase)
+					: GName.Equals(Name, ESearchCase::IgnoreCase);
+				if (bHit) { return G; }
 			}
 			return nullptr;
 		};
-		if (UEdGraph* G = Search(BP->UbergraphPages))
+		// Preserve Ubergraph > Function > Macro precedence within each pass.
+		for (bool bTrim : { false, true })
 		{
-			return G;
-		}
-		if (UEdGraph* G = Search(BP->FunctionGraphs))
-		{
-			return G;
-		}
-		if (UEdGraph* G = Search(BP->MacroGraphs))
-		{
-			return G;
+			if (UEdGraph* G = Search(BP->UbergraphPages, bTrim)) { return G; }
+			if (UEdGraph* G = Search(BP->FunctionGraphs, bTrim)) { return G; }
+			if (UEdGraph* G = Search(BP->MacroGraphs, bTrim))    { return G; }
 		}
 		return nullptr;
 	}
@@ -12127,8 +12129,16 @@ int32 RunOneOp(const FString& Params)
 		auto Obj = FBlueprintReaderWireJson::GraphToJson(*Info, GraphName);
 		if (!Obj.IsValid())
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("Graph '%s' not found in %s"), *GraphName, *AssetPath);
-			return 4;
+			TArray<FString> Avail;
+			for (const FBPGraphInfo& G : Info->EventGraphs)             { Avail.Add(G.Name); }
+			for (const FBPGraphInfo& G : Info->FunctionGraphs)          { Avail.Add(G.Name); }
+			for (const FBPGraphInfo& G : Info->MacroGraphs)             { Avail.Add(G.Name); }
+			for (const FBPGraphInfo& G : Info->DelegateSignatureGraphs) { Avail.Add(G.Name); }
+			const FString Msg = FString::Printf(
+				TEXT("graph '%s' not found in %s; available graphs: [%s]"),
+				*GraphName, *AssetPath, *FString::Join(Avail, TEXT(", ")));
+			UE_LOG(LogBlueprintReader, Error, TEXT("%s"), *Msg);
+			return EmitError(OutputPath, bPretty, 4, Msg);
 		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj.ToSharedRef(), bPretty), OutputPath);
 	}
@@ -12144,8 +12154,13 @@ int32 RunOneOp(const FString& Params)
 		auto Obj = FBlueprintReaderWireJson::FunctionToJson(*Info, FunctionName);
 		if (!Obj.IsValid())
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("Function '%s' not found in %s"), *FunctionName, *AssetPath);
-			return 4;
+			TArray<FString> Avail;
+			for (const FBPGraphInfo& G : Info->FunctionGraphs) { Avail.Add(G.Name); }
+			const FString Msg = FString::Printf(
+				TEXT("function '%s' not found in %s; available functions: [%s]"),
+				*FunctionName, *AssetPath, *FString::Join(Avail, TEXT(", ")));
+			UE_LOG(LogBlueprintReader, Error, TEXT("%s"), *Msg);
+			return EmitError(OutputPath, bPretty, 4, Msg);
 		}
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj.ToSharedRef(), bPretty), OutputPath);
 	}
