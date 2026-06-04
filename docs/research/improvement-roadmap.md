@@ -220,6 +220,22 @@ items are refinements, with two genuine silent-failure traps (P0).
 - **Why:** low leverage (only costs tokens once an agent widens past `core`), but
   cheap.
 
+### UX-P3a — robust graph/function name resolution + diagnosable NotFound {#ux-p3a}
+- **Status:** ✅ Done (eb1c2b50, 2026-06-03) · **Effort:** S
+- *Client report: function/graph names containing a space (or a trailing space)
+  were unaddressable by `get_function`/`get_graph`/`get_node` + the write ops,
+  while `find_node`/`read_blueprint` saw them. Root cause was the missing
+  server-side arg-quoting in the reporter's 2026-06-02 build (already fixed in
+  38ac0346 — the daemon/live arg join now quotes space-bearing `-Key=Value`
+  values on all three backends). Added the report's requested robustness on top,
+  live-verified on UE 5.8: `FindGraphByName` (write path) + the WireJson
+  graph/function matchers (read path) do exact-then-whitespace-trimmed matching;
+  `get_graph`/`get_function` NotFound now emit the available names via
+  `EmitError`; the error label strips the `-Op=` prefix (`op=Function`, not the
+  `op=-Op=Function` glitch).*
+- **Why:** spaces are common in UE function names; a whole BP was un-editable, and
+  the generic code-4 gave callers no signal it was a name-resolution miss.
+
 ---
 
 ## 3. BP↔C++ transpiling
@@ -479,6 +495,24 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** unblocks real distribution and fixes the "Tests/ dir is actually
   production code" awkwardness.
 
+### INSTALL-M5 — no-build update path + self-contained plugin bundle {#install-m5}
+- **Status:** ✅ Done (direct to main, 2026-06-03) · **Effort:** M · Cross-cuts INSTALL-M1
+- *Added `Setup-Plugin.bat` (plugin root) → `Scripts/Update-Plugin.ps1`: a
+  build-free refresh that downloads the plugin ZIP from GitHub over HTTPS (no git),
+  self-updates (re-execs the freshly-downloaded updater if it changed), redeploys
+  via `Install-Plugin.ps1 -SkipBuild` (robocopy /MIR preserves the built
+  Binaries), and reconfigures. `Install-ClaudeAssets.ps1` now reconciles — prunes
+  stale `bp-*` skills/agents no longer in the plugin (bounded to the bp-*
+  namespace). Made the deployable AI assets self-contained: the outside-plugin
+  `docs/`/`wiki/` cross-refs in `AGENTS.md` + `bp-cpp/SKILL.md` became stable
+  GitHub URLs (a fresh plugin-only install has no dangling refs), plus a
+  plugin-root README. `_Common.ps1` engine inference now falls back to the
+  installed engine when a project's EngineAssociation doesn't resolve (empty /
+  unregistered GUID / unknown version). Also fixed a CI regression: mcp-tests +
+  release workflows now run the exes from the plugin Binaries dir.*
+- **Why:** lets a consumer pull the latest plugin + reconfigure without a rebuild,
+  and makes the plugin folder a complete, drop-in bundle.
+
 ---
 
 ## Revision log
@@ -536,3 +570,13 @@ Newest first. One line per change to this file.
   Q3 (transpiling, TRANS-*) is intentionally deferred — its cross-leverage
   seams (progress bridge, governance gate, structuredContent, capability flag)
   were kept clean for a future focused effort.**
+- **2026-06-03** — UX-P3a (eb1c2b50): trim-tolerant graph/function resolution +
+  candidate-list NotFound + `op=` label fix, from a client space-named-function
+  report (root cause was a stale pre-38ac0346 build). Live-verified on UE 5.8:
+  embedded-space + trailing-space names resolve, trimmed input hits the
+  trailing-space graph, and a missing name returns the candidate list end-to-end.
+- **2026-06-03** — INSTALL-M5: `Setup-Plugin.bat`/`Update-Plugin.ps1` no-build
+  ZIP update (self-updating) + `Install-ClaudeAssets` reconcile-prune +
+  self-contained AI-asset URLs + plugin-root README + engine-inference fallback.
+  CI exe path fixed (mcp-tests + release run from the plugin Binaries). Mock
+  suite 841/0.
