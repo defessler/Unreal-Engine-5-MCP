@@ -515,6 +515,145 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 
 ---
 
+## 5. MCP spec parity (2025-11-25 features not yet used)
+
+*Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
+
+### MCP-1 — `title` field on all tools {#mcp-1}
+- **Status:** ☐ Open · **Effort:** S
+- Add `title` (human-readable display name) as a top-level field on every Tool descriptor, distinct from the programmatic `name`. Both Claude Desktop and ChatGPT display `title` in the UI. Purely additive metadata — zero behavioral change. Example: `name="get_graph"` → `title="Get Blueprint Graph"`.
+- **Why:** Zero-risk quality-of-life improvement for all client UIs; included in 2025-06-18 spec.
+
+### MCP-2 — Complete tool annotations (readOnlyHint, destructiveHint, idempotentHint) {#mcp-2}
+- **Status:** ☐ Open · **Effort:** S
+- `ToolAnnotations.cpp` has the framework but not all four hints filled in for all tools. Correct policy: read tools in read-only mode → `{readOnlyHint:true, destructiveHint:false, idempotentHint:true, openWorldHint:false}`; write tools → `{readOnlyHint:false, destructiveHint:true}`. Reflect the runtime read/write mode in the annotations so Claude Code's auto-approval logic sees the correct hints.
+- **Why:** Claude Code uses `readOnlyHint:true` for auto-approval in `--auto-approve` mode; ChatGPT store requires correct hints for app submission. Both are already spec-defined since 2024-11-05.
+
+### MCP-3 — Input validation errors as `isError:true` tool results {#mcp-3}
+- **Status:** ☐ Open · **Effort:** S
+- Currently, bad/missing args return JSON-RPC error code `-32602`. The 2025-11-25 spec says this MUST be a valid `CallToolResult` with `isError:true` and actionable message text so the model can self-correct without treating it as a transport error. Catch `std::invalid_argument` in the tool dispatch wrapper and re-emit as a tool error result.
+- **Why:** Spec MUST compliance; better model self-correction on bad args.
+
+### MCP-4 — `structuredContent` alongside `content[].text` {#mcp-4}
+- **Status:** ☐ Open · **Effort:** S
+- We declare `outputSchema` on ~220 tools but do NOT emit `structuredContent`. Gemini CLI **errors** when `outputSchema` is declared without `structuredContent` ("Tool has an output schema but did not return structured content"). Fix: when `outputSchema` is non-empty and the result is a JSON object, populate `structuredContent` with the same JSON object alongside the existing `content[0].text` serialization. Claude Code ignores `structuredContent` but Gemini requires it. Cross-cuts with UX-P1a (we already emit it for the default dispatch path — extend to all tools uniformly).
+- **Why:** Gemini CLI compatibility; programmatic clients; spec compliance.
+
+### MCP-5 — `description` on serverInfo + `listChanged:true` in capabilities {#mcp-5}
+- **Status:** ☐ Open · **Effort:** S
+- Add a `description` string field to `serverInfo` in `InitializeResult` (e.g. "UE5 Blueprint introspection + mutation + transpile"). Declare `"tools": {"listChanged": true}` in server capabilities so clients know to re-fetch `tools/list` when `BP_READER_ALLOW_WRITE` or `BP_READER_ALLOW_TRANSPILE` toggles at runtime.
+- **Why:** Best practice; clients can show the server description in their UIs; mode-toggle without reconnect.
+
+### MCP-6 — Streamable HTTP transport (replace deprecated SSE) {#mcp-6}
+- **Status:** ☐ Open · **Effort:** M
+- `HttpTransport.h` implements the deprecated 2024-11-05 two-endpoint pattern (`/sse` + `/message`). The 2025-03-26 spec replaced it with a single `/mcp` endpoint supporting POST (client→server) and GET (SSE stream). Newer clients probe by POSTing `InitializeRequest` to `/mcp`; if they get 405 they fall back. Also required: `MCP-Protocol-Version` header on all HTTP requests after initialize (2025-06-18). Keep old endpoints for backward compat.
+- **Why:** Unblocks clients that have moved past the 2024-11-05 transport; old pattern deprecated.
+
+### MCP-7 — Tool description quality pass {#mcp-7}
+- **Status:** ☐ Open · **Effort:** M
+- 2025 arXiv study: 97.1% of MCP tool descriptions had quality defects ("unclear purpose" in 56%). Improvements yielded +5.85% task success rate, +15.12% evaluator accuracy. For each tool: add (a) explicit purpose statement, (b) activation criteria — *when* to use this vs. similar tools, (c) key parameter constraints and failure modes. Focus on the ~50 highest-traffic tools first. Claude Code uses BM25 over `name + description + parameter names` for tool selection.
+- **Why:** Direct path to better AI task success without any server code changes.
+
+### MCP-8 — Tasks primitive for long-running ops {#mcp-8}
+- **Status:** ☐ Open · **Effort:** L
+- Mark `compile_blueprint`, `build_lighting`, `run_automation_tests`, `cook_content`, `package_project`, and large `apply_ops` batches with `execution: {taskSupport: "optional"}`. Implement basic `tasks/get` and `tasks/cancel` methods. Clients can call with `{"task":{"ttl":60000}}` to get a taskId and poll instead of blocking. **Note:** Tasks are experimental in 2025-11-25 and the 2026-07-28 RC redesigns them — implement conservatively or wait for 2026-07-28 stable GA.
+- **Why:** Long-running ops currently time out in some clients; async tasks fix this correctly.
+
+### MCP-9 — Elicitation for destructive write confirmation {#mcp-9}
+- **Status:** ☐ Open · **Effort:** M
+- When the client declares `elicitation` capability (2025-06-18+), pause destructive ops (`delete_variable`, `delete_function`, `delete_node`, `delete_asset`, `build_lighting`) and call `elicitation/create` to request `{confirm: boolean}` from the user. Fall back to immediate execution when the client doesn't declare elicitation.
+- **Why:** Better UX for irreversible operations; prevents accidental deletions from AI-generated call sequences.
+
+---
+
+## 6. UE5 editor customization gaps
+
+*Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
+
+### EDIT-1 — AnimBlueprint state machine read + write {#edit-1}
+- **Status:** ☐ Open · **Effort:** L
+- `add_anim_state` always returns `{added:false}` (explicit stub); `read_anim_blueprint` returns parent class only. The `AnimGraph` module is not in `BlueprintReaderEditor.Build.cs` — state machine walks require `UAnimStateMachineGraph`. Fix: add `AnimGraph` private dep; implement walk of `UAnimBlueprint::AnimationGraphs` + `UAnimStateNode`/`UAnimStateTransitionNode`; write ops via `FBlueprintEditorUtils::AddStateNode`. Key headers: `AnimGraph/Classes/AnimGraphNode_StateMachine.h`, `AnimGraph/Classes/AnimStateNode.h`, `AnimGraph/Classes/AnimStateTransitionNode.h`.
+- **Why:** Every character game with locomotion/combat needs AnimBPs. Current stubs mislead AI into thinking AnimGraph is writable when it isn't.
+
+### EDIT-2 — Timeline read + write (UTimelineTemplate + UCurveFloat) {#edit-2}
+- **Status:** ☐ Open · **Effort:** M
+- `K2Node_Timeline` appears in graph reads with `kind=Timeline` + `timelineName`, but `UBlueprint::Timelines` is never walked. Zero tools for track data, key frames, or timeline properties. New tools needed: `read_timeline(asset, name)` → `{tracks: [{name, type, keys: [{time, value, interp}]}], length, loop, auto_play}`; `add_timeline_track(asset, timeline_name, type, track_name)`; `set_curve_key(asset, timeline_name, track_name, time, value, interp_mode)`. No special module needed — `UBlueprint::Timelines` is directly accessible. BPIR transpiler emits `// TODO[bpr-unsupported]` — this would fix it too.
+- **Why:** Very high frequency (door animations, weapon recoil, UI transitions, etc.). UTimelineTemplate is on UBlueprint directly — easiest new read/write surface.
+
+### EDIT-3 — UPROPERTY metadata specifiers in class introspection {#edit-3}
+- **Status:** ☐ Open · **Effort:** M
+- `get_class_info` returns `{name, typeName, category, declaredOn}` per property — no metadata specifiers. Fix: use `FField::GetMetaDataMap()` to add a `metadata` map per property; decode `PropertyFlags` as named booleans (`{blueprint_read_write, replicated, transient, edit_anywhere, ...}`) instead of raw hex; surface `RepNotifyFunc`, `GetCPPType()` per property. New tool: `get_registered_customizations()` — lists registered `IDetailCustomization` and `IPropertyTypeCustomization` from `FPropertyEditorModule`.
+- **Why:** AI can't reason about access semantics, EditConditions, or Details panel behavior without this. Needed for Details customization generation and accurate `UPROPERTY()` declaration in transpiled code.
+
+### EDIT-4 — AnimMontage read + write {#edit-4}
+- **Status:** ☐ Open · **Effort:** M
+- Zero tools for AnimMontage assets. `UAnimMontage` has `TArray<FCompositeSection>`, `TArray<FAnimNotifyEvent>`, and slot tracks — all UPROPERTY arrays readable via standard reflection. New tools: `read_anim_montage(asset)` → sections + notifies + slots; `add_montage_section(asset, name, start_time)`; `add_montage_notify(asset, notify_class, trigger_time)`; `set_montage_slot(asset, slot_name, anim_sequence_path, start_time, length)`.
+- **Why:** All GAS/action game projects drive character actions through Montages. Notify names in ABP event graphs (`AnimNotify_<Name>`) are only visible from the montage side.
+
+### EDIT-5 — Custom K2Node: describe + generate skeleton {#edit-5}
+- **Status:** ☐ Open · **Effort:** L
+- `transpile_blueprint` emits `// TODO[bpr-unsupported]` for every non-built-in K2 node class. Two new tools: (a) `describe_k2node(class_path)` — given a custom UK2Node class path, reads its `AllocateDefaultPins` output, `GetMenuActions` category/tooltip, `IsNodePure`, and what `ExpandNode` produced at last compile; (b) `generate_k2node_skeleton(pin_spec, target_function)` — emit compilable `.h`/`.cpp` implementing `AllocateDefaultPins`, `GetMenuActions`, and a canonical `ExpandNode`. Builds on the C++ emit infrastructure in the transpiler.
+- **Why:** Plugin authors and framework teams building custom BP extension nodes. Lower frequency than EDIT-1/2 but high value for those teams.
+
+---
+
+## 7. Reflection enrichment
+
+*Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
+
+### REFLECT-1 — Decode PropertyFlags as named booleans {#reflect-1}
+- **Status:** ☐ Open · **Effort:** S
+- The current wire format emits `PropertyFlags` as a raw hex integer. Replace with (or add alongside) a named-boolean breakdown: `{blueprint_read_write: bool, blueprint_read_only: bool, replicated: bool, rep_notify: bool, transient: bool, save_game: bool, edit_anywhere: bool, edit_defaults_only: bool, edit_instance_only: bool, asset_registry_searchable: bool, ...}`. Decode from `EPropertyFlags` bit constants already defined in `ObjectMacros.h`.
+- **Why:** AI can reason about access semantics without knowing bit positions; eliminates a common source of incorrect UPROPERTY() declaration in generated code.
+
+### REFLECT-2 — Surface full property reflection in class introspection {#reflect-2}
+- **Status:** ☐ Open · **Effort:** S
+- Extend `get_class_info` / `IntrospectClass` per-property to include: (a) `metadata` map from `FField::GetMetaDataMap()` (Category, EditCondition, DisplayName, ClampMin/Max, etc.), (b) `rep_notify_func` from `FProperty::RepNotifyFunc`, (c) `cpp_type` from `FProperty::GetCPPType()`. Also add parameter-level metadata for functions: `HidePin`, `DefaultToSelf`, `AutoCreateRefTerm`, `ExpandEnumAsExecs` — readable via `Param->GetMetaData(...)` on `TFieldIterator<FProperty>(Function)`.
+- **Why:** Required for accurate `UPROPERTY()` + `UFUNCTION()` declaration in transpiled code; needed for Details customization generation.
+
+### REFLECT-3 — CDO complex-type defaults as parsed JSON {#reflect-3}
+- **Status:** ☐ Open · **Effort:** S
+- `Property->ExportTextItem_InContainer(...)` on a `FVector` CDO returns `"(X=0.000000,Y=0.000000,Z=0.000000)"` — a string the AI has to parse. Post-process those text defaults through a small set of type-aware parsers (FVector, FRotator, FLinearColor, FTransform) and emit `{"X":0,"Y":0,"Z":0}` directly. For unknown struct types, keep the raw text string as a fallback.
+- **Why:** AI-friendly property defaults; eliminates a common source of vector/rotator parsing errors in generated code.
+
+### REFLECT-4 — Parameter metadata in function introspection {#reflect-4}
+- **Status:** ☐ Open · **Effort:** S
+- `get_function` / `GetFunction` returns parameter names and types but not their metadata specifiers (`HidePin`, `DefaultToSelf`, `AutoCreateRefTerm`, `ExpandEnumAsExecs`, `ExpandBoolAsExecs`, `ArrayParm`, `DeterminesOutputType`). These drive how the BP call node renders. Add `param_meta` map per parameter in the function's wire shape.
+- **Why:** Required for `generate_k2node_skeleton` (EDIT-5) and for AI-generated `UFUNCTION()` declarations to correctly specify pin behavior.
+
+---
+
+## 8. Performance improvements
+
+*Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
+
+### PERF-1 — Eliminate per-call temp-file I/O in daemon (result over TCP) {#perf-1}
+- **Status:** ☐ Open · **Effort:** M
+- Every daemon call writes JSON to `<Intermediate>/bpr-cmdlet-<guid>.json`, the connection thread reads it back, then deletes it — adding 5–20 ms of filesystem I/O per call (2 syscalls). Fix: pass the result directly over the TCP connection instead of via temp file. `EmitJson` needs to accept a write target (file path OR socket buffer); the CmdletServer connection thread reads from the buffer instead of reading a file. This is the single highest-value latency improvement for the warm-daemon path. File: `BlueprintReaderCmdletServer.cpp:197-251`.
+- **Why:** Eliminates the largest controllable per-call overhead on the daemon path.
+
+### PERF-2 — Reduce daemon poll interval 50ms → 5ms {#perf-2}
+- **Status:** ☐ Open · **Effort:** S
+- `BlueprintReaderCmdletServer.cpp:241`: `while (!DoneEvent->Wait(50))` polls the game-thread dispatch at 50 ms intervals. This creates a 0–50 ms wait per call even for sub-millisecond ops. Reducing to 5 ms gives 10× throughput improvement with negligible CPU cost (the thread stays asleep most of the time). The `FEvent::Wait(5)` overload is directly available.
+- **Why:** 20 calls/sec maximum → 200 calls/sec maximum with a one-line change. High leverage for interactive AI sessions that make many rapid reads.
+
+### PERF-3 — Cache `GetReferencers`, `GetDependencies`, `ListAssets`, `FindAsset` {#perf-3}
+- **Status:** ☐ Open · **Effort:** S
+- These are asset-registry graph queries that never change between write ops. `CachingBlueprintReader.cpp:1250-1252` explicitly passes them through uncached. Add the same TTL+mtime cache pattern already used for `ListBlueprints`/`ReadBlueprint`. For `ListAssets`/`FindAsset`: these are pure registry queries with no filesystem artifact to mtime-check — use TTL-only (60 s is safe; a write op calls `InvalidateAsset` anyway).
+- **Why:** `GetReferencers` and `FindAsset` are called frequently in large-project sessions (every time an AI wants to understand what uses a BP). Currently pay a full daemon round-trip every time.
+
+### PERF-4 — Cache the remaining asset-type read tools {#perf-4}
+- **Status:** ☐ Open · **Effort:** S
+- `ReadDataTable`, `ReadDataAsset`, `ReadMaterial`, `ReadWidgetBlueprint`, `ReadBehaviorTree`, `ReadStateTree`, `ReadNiagaraSystem`, `ReadLevelSequence`, `ReadAnimBlueprint` are all pass-through (confirmed in `CachingBlueprintReader.cpp`). All are `.uasset` files under `/Game/` — the same TTL+mtime cache pattern used for BPs applies directly. Add to `CachingBlueprintReader` with per-type cache keys.
+- **Why:** These tools are called on assets that change rarely; each currently pays a full commandlet round-trip. Caching drops subsequent reads to sub-millisecond.
+
+### PERF-5 — Replace per-BP filesystem stats in `list_blueprints` {#perf-5}
+- **Status:** ☐ Open · **Effort:** M
+- `BlueprintReaderCommandlet.cpp:11837`: `IsoDateForFile(FileOnDisk)` is called per BP inside `RunListOp`. On a 1000-BP project this is 1000 `IFileManager::GetTimeStamp` syscalls in a loop on the game thread — a hidden O(N) cost. Fix option A: derive `modified_iso` from `FAssetPackageData` (available from the registry, no syscall). Fix option B: batch the stat calls asynchronously before returning. The `FAssetRegistryModule::Get().GetAssetPackageData()` API provides `DiskSize` and hash — enough to detect changes without a stat.
+- **Why:** Removing O(N) syscalls from `list_blueprints` matters for any session that lists a large project's BPs more than once (the caching backend invalidates this on every write op).
+
+---
+
 ## Revision log
 
 Newest first. One line per change to this file.
@@ -592,3 +731,7 @@ Newest first. One line per change to this file.
   H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
   H2 (single-op write lock env-gated, live-verified code=6);
   A3 (package + object path both resolve, live-verified). 859 mock/0 final.
+- **2026-06-04** — Research pass: MCP 2025-11-25 spec gaps, UE5 editor customization gaps,
+  UPROPERTY/UFUNCTION/reflection architecture, performance bottlenecks. Added 5 new
+  sections (MCP-1–9, EDIT-1–5, REFLECT-1–4, PERF-1–5) — 23 new `☐ Open` items.
+  Source: `docs/research/research-2026-06-04-mcp-ue5-gaps.md`.
