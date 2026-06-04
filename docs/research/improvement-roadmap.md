@@ -580,3 +580,15 @@ Newest first. One line per change to this file.
   self-contained AI-asset URLs + plugin-root README + engine-inference fallback.
   CI exe path fixed (mcp-tests + release run from the plugin Binaries). Mock
   suite 841/0.
+- **2026-06-04** — Hardening + conciseness + updates batch (v0.2.0):
+  A1 (inbound asset_path normalisation, 96+29 call sites, 849→849 mock);
+  C1+C2 (lean default empty-array prune + dedup connections/linked_to);
+  C3 (node cap 300 + paginated find_node envelope);
+  C4+A2 (blanket 200-item default + clamp on all list tools + schema backfill, 859/0);
+  U1 (Check-Update.ps1 GitHub releases API + cache); U2 (doctor reads cache);
+  U4 (CHANGELOG + staying-current guidance); U3 (Update-Plugin prebuilt exe + accurate rebuild detection);
+  U5 (v0.2.0 tag + release publish);
+  H3 (off-game-thread daemon watchdog FRunnable, live-verified 8s max-lifetime → alive=0);
+  H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
+  H2 (single-op write lock env-gated, live-verified code=6);
+  A3 (package + object path both resolve, live-verified). 859 mock/0 final.
