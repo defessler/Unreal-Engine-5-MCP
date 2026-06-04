@@ -30,6 +30,7 @@
 // the PARENT runs those — this file leaves them auto-skipping by default.
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/AutoBlueprintReader.h"
 #include "backends/CommandletBlueprintReader.h"

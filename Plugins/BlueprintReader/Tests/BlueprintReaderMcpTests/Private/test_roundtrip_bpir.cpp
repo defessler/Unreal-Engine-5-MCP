@@ -26,6 +26,7 @@
 // land, callers can re-enable those checks.
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/CommandletBlueprintReader.h"
 #include "roundtrip/BPIRRoundtrip.h"

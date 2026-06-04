@@ -19,6 +19,7 @@
 // task — keeping that scope creep out of this commit.
 
 #include "BPIRRoundtrip.h"
+#include "Env.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -184,9 +185,8 @@ BPIRRoundtripResult RunBPIRRoundtrip(backends::IBlueprintReader& reader,
 	// BP_READER_SKIP_PREBUILD=1 stops the editor target from re-invoking
 	// the plugin's MCP-server PreBuildStep.
 	{
-		const char* envTarget = std::getenv("BP_READER_EDITOR_TARGET");
-		std::string editorTarget = (envTarget && *envTarget)
-			? std::string(envTarget) : std::string("LyraEditor");
+		auto envTargetVal = bpr::env::GetOrDefault("BP_READER_EDITOR_TARGET", "LyraEditor");
+		std::string editorTarget = envTargetVal;
 		const std::string buildBat =
 			std::string(engineDir) + "/Engine/Build/BatchFiles/Build.bat";
 		const std::string cmd =

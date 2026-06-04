@@ -6,6 +6,7 @@
 // produce /Game/AI/BP_TestEnemy and /Game/AI/BP_TestPickup.
 
 #include <doctest/doctest.h>
+#include "Env.h"
 
 #include "backends/CommandletBlueprintReader.h"
 
