@@ -499,7 +499,12 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	}
 	int code = j.value("code", -1);
 	if (code != 0) {
-		const std::string opName = args.empty() ? "<unknown>" : args[0];
+		// args[0] is the "-Op=<Name>" wire flag; surface just <Name> in the error
+		// label (the raw "-Op=Function" form read as a formatting glitch to callers).
+		std::string opName = args.empty() ? "<unknown>" : args[0];
+		if (const std::string kOpFlag = "-Op="; opName.rfind(kOpFlag, 0) == 0) {
+			opName = opName.substr(kOpFlag.size());
+		}
 		const std::string assetPath = ExtractFlag(args, "-Asset=");
 		const auto* info = LookupErrorCode(code);
 		const std::string name = info ? info->name : "UnknownCode";
