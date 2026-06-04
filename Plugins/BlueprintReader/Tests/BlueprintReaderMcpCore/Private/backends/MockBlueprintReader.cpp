@@ -378,6 +378,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"list_anim_blueprints", "read_anim_blueprint",
 		"add_anim_state", "compile_anim_blueprint",
 		"list_timelines", "read_timeline",  // EDIT-2: no timeline fixtures yet
+		"list_anim_montages", "read_anim_montage",  // EDIT-4: no montage fixtures yet
 		// Class info — fixtures don't include the UClass registry
 		"find_class", "get_class_info", "list_functions",
 		// Asset management
@@ -576,6 +577,13 @@ BPRJson MockBlueprintReader::ListTimelines(std::string_view) {
 BPRJson MockBlueprintReader::ReadTimeline(std::string_view, std::string_view) {
 	throw BlueprintReaderError("ReadTimeline not implemented in mock backend");
 }
+BPRJson MockBlueprintReader::ListAnimMontages(std::string_view) {
+	throw BlueprintReaderError("ListAnimMontages not implemented in mock backend");
+}
+BPRJson MockBlueprintReader::ReadAnimMontage(std::string_view) {
+	throw BlueprintReaderError("ReadAnimMontage not implemented in mock backend");
+}
+
 
 }    // namespace bpr::backends
 

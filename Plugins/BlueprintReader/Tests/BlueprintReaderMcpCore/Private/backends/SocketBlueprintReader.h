@@ -286,6 +286,8 @@ public:
 	BPRJson GetEditorState() override;
 	BPRJson ListTimelines(std::string_view a) override;
 	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
+	BPRJson ListAnimMontages(std::string_view p) override;
+	BPRJson ReadAnimMontage(std::string_view a) override;
 	PythonResult RunPythonScript(std::string_view code) override;
 	AssetGraphResult GetReferencers(std::string_view assetPath) override;
 	AssetGraphResult GetDependencies(std::string_view assetPath) override;

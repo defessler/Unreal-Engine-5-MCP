@@ -37,7 +37,7 @@ using namespace test_tools_detail;
 TEST_CASE("ToolRegistry exposes 252 tools (251 prior + read_actor_instance) with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 256);
+	CHECK(spec.size() == 258);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

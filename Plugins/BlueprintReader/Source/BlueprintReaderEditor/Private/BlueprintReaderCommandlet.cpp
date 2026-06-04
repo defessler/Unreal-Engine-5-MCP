@@ -74,6 +74,7 @@
 #include "Curves/CurveFloat.h"              // UCurveFloat, FRichCurve, FRichCurveKey
 #include "Curves/CurveVector.h"             // UCurveVector
 #include "Curves/CurveLinearColor.h"        // UCurveLinearColor
+#include "Animation/AnimMontage.h"          // UAnimMontage, FCompositeSection, FAnimNotifyEvent
 #include "UObject/Interface.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
@@ -519,6 +520,9 @@ namespace
 		// EDIT-2: Timeline read tools.
 		ReadTimeline,    // read all UTimelineTemplate tracks + key data from a BP
 		ListTimelines,   // list the names and types of all timelines in a BP
+		// EDIT-4: AnimMontage read tool
+		ReadAnimMontage,
+		ListAnimMontages,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -759,6 +763,9 @@ namespace
 		// EDIT-2
 		if (OpStr.Equals(TEXT("ReadTimeline"),   ESearchCase::IgnoreCase))        { OutOp = EOp::ReadTimeline;  return true; }
 		if (OpStr.Equals(TEXT("ListTimelines"),  ESearchCase::IgnoreCase))        { OutOp = EOp::ListTimelines; return true; }
+		// EDIT-4
+		if (OpStr.Equals(TEXT("ReadAnimMontage"),  ESearchCase::IgnoreCase))      { OutOp = EOp::ReadAnimMontage;  return true; }
+		if (OpStr.Equals(TEXT("ListAnimMontages"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListAnimMontages; return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5462,6 +5469,31 @@ namespace
 			{
 				P->SetStringField(TEXT("declared_on"), Owner->GetName());
 			}
+			// EDIT-3: UPROPERTY access flags and metadata specifiers.
+			const EPropertyFlags Flags = It->PropertyFlags;
+			P->SetBoolField(TEXT("blueprint_read_write"),
+				(Flags & CPF_BlueprintVisible) != 0 && (Flags & CPF_BlueprintReadOnly) == 0);
+			P->SetBoolField(TEXT("blueprint_read_only"),
+				(Flags & CPF_BlueprintReadOnly) != 0);
+			P->SetBoolField(TEXT("edit_anywhere"), (Flags & CPF_Edit) != 0);
+			P->SetBoolField(TEXT("replicated"),    (Flags & CPF_Net) != 0);
+			P->SetBoolField(TEXT("transient"),     (Flags & CPF_Transient) != 0);
+			P->SetBoolField(TEXT("save_game"),     (Flags & CPF_SaveGame) != 0);
+			if ((Flags & CPF_Net) && It->RepNotifyFunc != NAME_None)
+			{
+				P->SetStringField(TEXT("rep_notify_func"), It->RepNotifyFunc.ToString());
+			}
+#if WITH_METADATA
+			if (const TMap<FName, FString>* MetaMap = It->GetMetaDataMap(); MetaMap && MetaMap->Num() > 0)
+			{
+				auto MetaObj = MakeShared<FJsonObject>();
+				for (const auto& KV : *MetaMap)
+				{
+					MetaObj->SetStringField(KV.Key.ToString(), KV.Value);
+				}
+				P->SetObjectField(TEXT("meta"), MetaObj);
+			}
+#endif
 			Props.Add(MakeShared<FJsonValueObject>(P));
 		}
 
@@ -8633,6 +8665,109 @@ namespace
 	// Shared responder for editor UI-state surfaces (outliner expansion,
 	// details-panel filter, active toasts, status-bar text) that live in
 	// transient Slate widgets. No out-of-process bridge yet — returns
+	// ----- EDIT-4: AnimMontage read tools ---------------------------------
+	int32 RunListAnimMontagesOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Path;
+		FParse::Value(*Params, TEXT("Path="), Path);
+		if (Path.IsEmpty()) { Path = TEXT("/Game"); }
+		IAssetRegistry& AR = IAssetRegistry::GetChecked();
+		TArray<FAssetData> Assets;
+		AR.GetAssetsByPath(*Path, Assets, /*bRecursive=*/true);
+		TArray<TSharedPtr<FJsonValue>> Out;
+		for (const FAssetData& D : Assets)
+		{
+			if (D.AssetClassPath.GetAssetName().ToString() != TEXT("AnimMontage")) { continue; }
+			auto E = MakeShared<FJsonObject>();
+			E->SetStringField(TEXT("asset_path"), D.PackageName.ToString());
+			E->SetStringField(TEXT("name"),       D.AssetName.ToString());
+			Out.Add(MakeShared<FJsonValueObject>(E));
+		}
+		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunReadAnimMontageOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString AssetPath;
+		if (!FParse::Value(*Params, TEXT("Asset="), AssetPath))
+		{
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing -Asset="));
+		}
+		// Load the montage asset directly.
+		FString Resolved = AssetPath;
+		if (!Resolved.Contains(TEXT(".")))
+		{
+			FString Leaf;
+			Resolved.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+			Resolved = Resolved + TEXT(".") + Leaf;
+		}
+		UAnimMontage* Montage = LoadObject<UAnimMontage>(nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!IsValid(Montage))
+		{
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("AnimMontage '%s' not found"), *AssetPath));
+		}
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetStringField(TEXT("asset_path"), AssetPath);
+		Out->SetStringField(TEXT("name"),       Montage->GetName());
+		Out->SetNumberField(TEXT("blend_in"),   Montage->BlendIn.GetBlendTime());
+		Out->SetNumberField(TEXT("blend_out"),  Montage->BlendOut.GetBlendTime());
+
+		// Sections
+		TArray<TSharedPtr<FJsonValue>> Sections;
+		for (const FCompositeSection& S : Montage->CompositeSections)
+		{
+			auto Sec = MakeShared<FJsonObject>();
+			Sec->SetStringField(TEXT("name"),       S.SectionName.ToString());
+			Sec->SetNumberField(TEXT("start_time"), S.GetTime());
+			Sec->SetStringField(TEXT("next"),       S.NextSectionName.ToString());
+			Sections.Add(MakeShared<FJsonValueObject>(Sec));
+		}
+		Out->SetArrayField(TEXT("sections"), Sections);
+
+		// Notifies
+		TArray<TSharedPtr<FJsonValue>> Notifies;
+		for (const FAnimNotifyEvent& N : Montage->Notifies)
+		{
+			auto Ntf = MakeShared<FJsonObject>();
+			Ntf->SetStringField(TEXT("name"),         N.NotifyName.ToString());
+			Ntf->SetNumberField(TEXT("trigger_time"),  N.GetTriggerTime());
+			Ntf->SetNumberField(TEXT("duration"),      N.GetDuration());
+			if (IsValid(N.Notify))
+			{
+				Ntf->SetStringField(TEXT("notify_class"), N.Notify->GetClass()->GetName());
+			}
+			Notifies.Add(MakeShared<FJsonValueObject>(Ntf));
+		}
+		Out->SetArrayField(TEXT("notifies"), Notifies);
+
+		// Slot tracks
+		TArray<TSharedPtr<FJsonValue>> Slots;
+		for (const FSlotAnimationTrack& Slot : Montage->SlotAnimTracks)
+		{
+			auto SlotObj = MakeShared<FJsonObject>();
+			SlotObj->SetStringField(TEXT("slot_name"), Slot.SlotName.ToString());
+			TArray<TSharedPtr<FJsonValue>> Segs;
+			for (const FAnimSegment& Seg : Slot.AnimTrack.AnimSegments)
+			{
+				auto SegObj = MakeShared<FJsonObject>();
+				SegObj->SetNumberField(TEXT("start_pos"), Seg.StartPos);
+				SegObj->SetNumberField(TEXT("anim_start_time"), Seg.AnimStartTime);
+				SegObj->SetNumberField(TEXT("anim_end_time"),   Seg.AnimEndTime);
+				UAnimSequenceBase* AnimRef = Seg.GetAnimReference();
+				if (IsValid(AnimRef))
+				{
+					SegObj->SetStringField(TEXT("anim_sequence"), AnimRef->GetPathName());
+				}
+				Segs.Add(MakeShared<FJsonValueObject>(SegObj));
+			}
+			SlotObj->SetArrayField(TEXT("segments"), Segs);
+			Slots.Add(MakeShared<FJsonValueObject>(SlotObj));
+		}
+		Out->SetArrayField(TEXT("slot_tracks"), Slots);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// ----- EDIT-2: Timeline read tools ------------------------------------
 	// Helper: serialize one FRichCurveKey to JSON.
 	TSharedPtr<FJsonObject> RichKeyToJson(const FRichCurveKey& Key)
@@ -12357,6 +12492,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::GetUiStateStub,             &RunGetUiStateStubOp },
 		{ EOp::ReadTimeline,               &RunReadTimelineOp },
 		{ EOp::ListTimelines,              &RunListTimelinesOp },
+		{ EOp::ReadAnimMontage,            &RunReadAnimMontageOp },
+		{ EOp::ListAnimMontages,           &RunListAnimMontagesOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

@@ -4779,6 +4779,16 @@ BPRJson CommandletBlueprintReader::ReadTimeline(std::string_view a, std::string_
 	if (!n.empty()) args.push_back(L"-Name=" + std::wstring(n.begin(), n.end()));
 	return RunOp(args);
 }
+BPRJson CommandletBlueprintReader::ListAnimMontages(std::string_view p) {
+	std::vector<std::wstring> args = {L"-Op=ListAnimMontages"};
+	if (!p.empty()) args.push_back(L"-Path=" + std::wstring(p.begin(), p.end()));
+	return RunOp(args);
+}
+BPRJson CommandletBlueprintReader::ReadAnimMontage(std::string_view a) {
+	std::vector<std::wstring> args = {L"-Op=ReadAnimMontage",
+		L"-Asset=" + std::wstring(a.begin(), a.end())};
+	return RunOp(args);
+}
 
 IBlueprintReader::PythonResult
 CommandletBlueprintReader::RunPythonScript(std::string_view code) {
