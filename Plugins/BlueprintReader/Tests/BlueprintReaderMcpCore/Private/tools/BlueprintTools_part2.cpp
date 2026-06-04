@@ -89,7 +89,7 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			const std::string asset = RequireString(args, "asset_path");
+			const std::string asset = RequireAssetPath(args);
 			auto r = reader.GetCompileStatus(asset);
 			nlohmann::json body = {
 				{"asset_path", r.assetPath},
@@ -271,7 +271,7 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string assetPath = RequireString(args, "asset_path");
+			std::string assetPath = RequireAssetPath(args);
 			auto r = reader.OpenAssetEditor(assetPath);
 			return nlohmann::json{
 				{"ok",         true},
@@ -305,7 +305,7 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string assetPath = RequireString(args, "asset_path");
+			std::string assetPath = RequireAssetPath(args);
 			auto r = reader.CloseAssetEditor(assetPath);
 			return nlohmann::json{
 				{"ok",         true},
@@ -346,7 +346,7 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetAnimEditorState(asset);
 			return nlohmann::json{
 				{"valid",                r.valid},
@@ -989,7 +989,7 @@ void RegisterTools_03b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetNiagaraModuleSelection(asset);
 			return nlohmann::json{
 				{"valid",                 r.valid},
@@ -1027,7 +1027,7 @@ void RegisterTools_03b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetCurveEditorSelection(asset);
 			return nlohmann::json{
 				{"valid",                r.valid},
@@ -1070,7 +1070,7 @@ void RegisterTools_03b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetSequencerState(asset);
 			return nlohmann::json{
 				{"valid",                         r.valid},
@@ -1152,7 +1152,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetMeshPreviewState(asset);
 			return nlohmann::json{
 				{"valid",             r.valid},
@@ -1192,7 +1192,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetMaterialEditorState(asset);
 			return nlohmann::json{
 				{"valid",                       r.valid},
@@ -1231,7 +1231,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetUmgEditorState(asset);
 			return nlohmann::json{
 				{"valid",                 r.valid},
@@ -1271,7 +1271,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetStaticMeshInfo(asset);
 			nlohmann::json lods = nlohmann::json::array();
 			for (const auto& l : r.lods) {
@@ -1320,7 +1320,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetMaterialInstanceParams(asset);
 			nlohmann::json scalars  = nlohmann::json::array();
 			nlohmann::json vectors  = nlohmann::json::array();
@@ -1378,7 +1378,7 @@ void RegisterTools_04(ToolRegistry& registry, backends::IBlueprintReader& reader
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.GetBlueprintEditorState(asset);
 			return nlohmann::json{
 				{"valid",              r.valid},
@@ -2575,7 +2575,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","row_name","already_existed","created"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string row   = RequireString(args, "row_name");
 			nlohmann::json values = args.value("values", nlohmann::json::object());
 			bool overwrite = args.value("overwrite", false);
@@ -2623,7 +2623,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","row_name","field_name","old_value","new_value"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string row   = RequireString(args, "row_name");
 			std::string field = RequireString(args, "field_name");
 			std::string value = RequireString(args, "value");
@@ -2678,7 +2678,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","name","component_class","already_existed","created"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string name  = RequireString(args, "name");
 			std::string cls   = RequireString(args, "component_class");
 			std::string parent = OptString(args, "parent", "");
@@ -2719,7 +2719,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","name","removed"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string name  = RequireString(args, "name");
 			auto r = reader.RemoveComponent(asset, name);
 			return nlohmann::json{
@@ -2761,7 +2761,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","name","new_parent","socket","reparented"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset  = RequireString(args, "asset_path");
+			std::string asset  = RequireAssetPath(args);
 			std::string name   = RequireString(args, "name");
 			std::string parent = OptString(args, "new_parent", "");
 			std::string socket = OptString(args, "socket", "");
@@ -2816,7 +2816,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","component","property","old_value","new_value","default_value","has_override"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string comp  = RequireString(args, "component");
 			std::string prop  = RequireString(args, "property");
 			std::string value = RequireString(args, "value");
@@ -2900,7 +2900,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto r = reader.CreateMaterial(asset);
 			return nlohmann::json{
 				{"ok", true},
@@ -2943,7 +2943,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset  = RequireString(args, "asset_path");
+			std::string asset  = RequireAssetPath(args);
 			std::string parent = OptString(args, "parent", "");
 			auto r = reader.CreateMaterialInstance(asset, parent);
 			return nlohmann::json{
@@ -3020,7 +3020,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","expressions","connections","parameter_names"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			auto m = reader.ReadMaterial(asset);
 			nlohmann::json exprs = nlohmann::json::array();
 			for (const auto& e : m.expressions) {
@@ -3080,7 +3080,7 @@ void RegisterTools_05(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"required", nlohmann::json::array({"ok","asset_path","expression_id","class"})},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireString(args, "asset_path");
+			std::string asset = RequireAssetPath(args);
 			std::string cls   = RequireString(args, "expression_class");
 			int x = args.value("x", 0);
 			int y = args.value("y", 0);
