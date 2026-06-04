@@ -3161,6 +3161,60 @@ void RegisterTools_08b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		});
 	}
 
+	// EDIT-2: Timeline read tools -----------------------------------------------
+	{
+		ToolDescriptor d;
+		d.name = "list_timelines";
+		d.description =
+			"[blueprint] List all Timeline nodes in a Blueprint (names, track counts, "
+			"length, loop, auto_play). Quick summary — use `read_timeline` for track keys.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {{"asset_path", {{"type","string"}}}}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = PaginatedSchema();
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset = RequireAssetPath(args);
+			auto ctl = ParseResponseControls(args);
+			auto rows = reader.ListTimelines(asset);
+			return ListResponse(std::move(rows), ctl);
+		});
+	}
+	{
+		ToolDescriptor d;
+		d.name = "read_timeline";
+		d.description =
+			"[blueprint] Read a Timeline from a Blueprint: float/vector/event/linear_color "
+			"tracks with their FRichCurveKey arrays (time, value, interp). "
+			"Provide `timeline_name` to select one; omit to read the first timeline.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"asset_path",     {{"type","string"},{"description","Blueprint asset path"}}},
+				{"timeline_name",  {{"type","string"},{"description","Timeline variable name (omit for first)"}}},
+			}},
+			{"required", nlohmann::json::array({"asset_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"name",       {{"type","string"}}},
+				{"length",     {{"type","number"}}},
+				{"loop",       {{"type","boolean"}}},
+				{"auto_play",  {{"type","boolean"}}},
+				{"replicated", {{"type","boolean"}}},
+				{"tracks",     {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"name","length","loop","auto_play","replicated","tracks"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			std::string asset  = RequireAssetPath(args);
+			std::string tname  = OptString(args, "timeline_name", "");
+			return reader.ReadTimeline(asset, tname);
+		});
+	}
+
 	{
 		ToolDescriptor d;
 		d.name = "add_anim_state";

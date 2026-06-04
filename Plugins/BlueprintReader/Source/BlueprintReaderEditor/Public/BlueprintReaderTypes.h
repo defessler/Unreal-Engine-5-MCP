@@ -105,6 +105,17 @@ struct FBPGraphInfo
 	FString WireType;             // "EventGraph" | "Function" | "Macro" | "Construction" | "DelegateSignature"
 	TArray<FBPNodeInfo> Nodes;
 	TArray<FBPVariableInfo> LocalVariables;
+	// REFLECT-4: UFUNCTION-level metadata from the generated class.
+	// Populated only for Function graphs (not EventGraph/Macro/etc.).
+	// Covers function flags like BlueprintCallable, BlueprintPure, and
+	// meta keys like HidePin, DefaultToSelf, AutoCreateRefTerm, Keywords,
+	// ExpandEnumAsExecs, CompactNodeTitle, etc. Empty for event graphs and
+	// functions whose metadata is not accessible (skeleton-class only).
+	TMap<FName, FString> FunctionMeta;
+	bool bIsBlueprintPure    = false;
+	bool bIsBlueprintCallable = false;
+	bool bIsConst            = false;
+	bool bIsStatic           = false;
 };
 
 // Single property override on an SCS subobject. Captured as a raw

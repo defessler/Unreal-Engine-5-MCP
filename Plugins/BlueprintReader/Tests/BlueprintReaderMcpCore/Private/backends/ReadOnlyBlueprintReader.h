@@ -360,6 +360,8 @@ public:
 	// write, like set_cvar); build_lighting passes through (build artifact,
 	// not a .uasset edit — matches cook/package).
 	BPRJson GetEditorState() override;
+	BPRJson ListTimelines(std::string_view a) override;
+	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
 	AssetGraphResult GetReferencers(std::string_view) override;
 	AssetGraphResult GetDependencies(std::string_view) override;
 	ConfigReadResult ReadConfigValue(std::string_view, std::string_view, std::string_view) override;

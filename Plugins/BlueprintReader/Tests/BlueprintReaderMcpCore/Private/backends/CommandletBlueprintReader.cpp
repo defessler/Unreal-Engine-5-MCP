@@ -4768,6 +4768,17 @@ BPRJson CommandletBlueprintReader::GetEditorState() {
 	}
 	return j;
 }
+BPRJson CommandletBlueprintReader::ListTimelines(std::string_view a) {
+	std::vector<std::wstring> args = {L"-Op=ListTimelines",
+		L"-Asset=" + std::wstring(a.begin(), a.end())};
+	return RunOp(args);
+}
+BPRJson CommandletBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) {
+	std::vector<std::wstring> args = {L"-Op=ReadTimeline",
+		L"-Asset=" + std::wstring(a.begin(), a.end())};
+	if (!n.empty()) args.push_back(L"-Name=" + std::wstring(n.begin(), n.end()));
+	return RunOp(args);
+}
 
 IBlueprintReader::PythonResult
 CommandletBlueprintReader::RunPythonScript(std::string_view code) {

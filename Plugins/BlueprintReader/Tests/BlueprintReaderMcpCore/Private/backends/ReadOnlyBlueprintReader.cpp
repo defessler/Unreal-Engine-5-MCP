@@ -861,6 +861,8 @@ ReadOnlyBlueprintReader::CompileAnimBlueprint(std::string_view) {
 // ----- Editor state / asset-graph / config (previously missing) -----------
 // Reads pass through; set_config_value rejects (persistent settings write).
 BPRJson ReadOnlyBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
+BPRJson ReadOnlyBlueprintReader::ListTimelines(std::string_view a) { return inner_->ListTimelines(a); }
+BPRJson ReadOnlyBlueprintReader::ReadTimeline(std::string_view a, std::string_view n) { return inner_->ReadTimeline(a, n); }
 IBlueprintReader::AssetGraphResult
 ReadOnlyBlueprintReader::GetReferencers(std::string_view a) { return inner_->GetReferencers(a); }
 IBlueprintReader::AssetGraphResult

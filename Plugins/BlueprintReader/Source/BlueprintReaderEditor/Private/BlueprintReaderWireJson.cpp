@@ -107,6 +107,63 @@ namespace
 			}
 			Obj->SetObjectField(TEXT("meta"), MetaObj);
 		}
+		// REFLECT-3: parse the CDO default_value text for common struct types
+		// into a JSON object so AI doesn't have to parse UE's text format.
+		// "(X=0.000000,Y=0.000000,Z=0.000000)" -> {"X":0,"Y":0,"Z":0}.
+		// Only attempted when CppType is a known simple struct — falls back
+		// to omitting default_value_json for unknown types.
+		if (!V.DefaultValue.IsEmpty() && !V.CppType.IsEmpty())
+		{
+			// Parse "(Key=Value,Key=Value,...)" into a JSON object.
+			// Returns nullptr if the text doesn't match the pattern.
+			auto ParseUEStruct = [](const FString& Text) -> TSharedPtr<FJsonObject>
+			{
+				FString T = Text.TrimStartAndEnd();
+				if (!T.StartsWith(TEXT("(")) || !T.EndsWith(TEXT(")")))
+				{
+					return nullptr;
+				}
+				T = T.Mid(1, T.Len() - 2);  // strip outer parens
+				TSharedPtr<FJsonObject> Obj2 = MakeShared<FJsonObject>();
+				TArray<FString> Pairs;
+				T.ParseIntoArray(Pairs, TEXT(","), /*bCullEmpty=*/true);
+				for (const FString& Pair : Pairs)
+				{
+					int32 Eq;
+					if (!Pair.FindChar(TEXT('='), Eq))
+					{
+						return nullptr;  // unexpected format
+					}
+					FString Key = Pair.Left(Eq).TrimStartAndEnd();
+					FString Val = Pair.Mid(Eq + 1).TrimStartAndEnd();
+					double Num = 0.0;
+					if (LexTryParseString(Num, *Val))
+					{
+						Obj2->SetNumberField(Key, Num);
+					}
+					else
+					{
+						Obj2->SetStringField(Key, Val);
+					}
+				}
+				return Obj2;
+			};
+			// Known simple struct types whose default text is parseable.
+			static const TSet<FString> kKnownStructs = {
+				TEXT("FVector"), TEXT("FVector2D"), TEXT("FVector4"),
+				TEXT("FRotator"), TEXT("FQuat"),
+				TEXT("FLinearColor"), TEXT("FColor"),
+				TEXT("FIntPoint"), TEXT("FIntVector"),
+			};
+			const FString BaseType = V.CppType.TrimStartAndEnd();
+			if (kKnownStructs.Contains(BaseType))
+			{
+				if (TSharedPtr<FJsonObject> Parsed = ParseUEStruct(V.DefaultValue))
+				{
+					Obj->SetObjectField(TEXT("default_value_json"), Parsed.ToSharedRef());
+				}
+			}
+		}
 		// Multicast delegate variables: surface signature params for
 		// CppClassEmit's DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
 		// variant selection. Empty for non-delegate vars (omitted from
@@ -254,6 +311,24 @@ namespace
 		}
 		Obj->SetArrayField(TEXT("nodes"), Nodes);
 		Obj->SetArrayField(TEXT("connections"), ConnectionsForGraph(G));
+		// REFLECT-4: function flags + UFUNCTION metadata.
+		// Only present on Function graphs; absent on EventGraph/Macro/etc.
+		if (G.WireType == TEXT("Function") || G.WireType == TEXT("Construction"))
+		{
+			Obj->SetBoolField(TEXT("is_pure"),     G.bIsBlueprintPure);
+			Obj->SetBoolField(TEXT("is_callable"), G.bIsBlueprintCallable);
+			Obj->SetBoolField(TEXT("is_const"),    G.bIsConst);
+			Obj->SetBoolField(TEXT("is_static"),   G.bIsStatic);
+			if (G.FunctionMeta.Num() > 0)
+			{
+				auto MetaObj = MakeShared<FJsonObject>();
+				for (const auto& KV : G.FunctionMeta)
+				{
+					MetaObj->SetStringField(KV.Key.ToString(), KV.Value);
+				}
+				Obj->SetObjectField(TEXT("func_meta"), MetaObj);
+			}
+		}
 		return Obj;
 	}
 

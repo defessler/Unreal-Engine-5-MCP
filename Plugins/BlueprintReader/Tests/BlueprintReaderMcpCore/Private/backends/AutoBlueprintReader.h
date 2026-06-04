@@ -300,6 +300,8 @@ public:
 	CVarValue GetCVar(std::string_view name) override;
 	AssetGraphResult GetDependencies(std::string_view assetPath) override;
 	BPRJson GetEditorState() override;
+	BPRJson ListTimelines(std::string_view a) override;
+	BPRJson ReadTimeline(std::string_view a, std::string_view n) override;
 	AssetGraphResult GetReferencers(std::string_view assetPath) override;
 	SelectionResult GetSelectedActors() override;
 	StatGroupResult GetStats(std::string_view) override;

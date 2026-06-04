@@ -28,6 +28,13 @@ namespace bpr::mcp {
 struct ServerInfo {
     std::string name = "bp-reader-mcp";
     std::string version = "0.1.0";
+    // Optional human-readable description for the server; emitted in the
+    // `serverInfo` block of the InitializeResult per MCP 2025-11-25 §lifecycle.
+    // Clients display this in their MCP server management UIs.
+    std::string description =
+        "UE5 Blueprint introspection, mutation, and BP<->C++ transpile server. "
+        "254 tools: read, write, editor-control, transpile. Read-only by default "
+        "(BP_READER_ALLOW_WRITE=1 for writes).";
     // Latest MCP spec we target by default. Mcp.cpp's initialize handler
     // performs version negotiation: if the client requests an older known
     // version (2024-11-05, 2025-03-26, 2025-06-18), the server echoes it

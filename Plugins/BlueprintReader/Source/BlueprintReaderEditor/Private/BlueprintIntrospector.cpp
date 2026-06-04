@@ -948,6 +948,49 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 			G.Name.Equals(TEXT("ConstructionScript"), ESearchCase::IgnoreCase) ||
 			G.Name.Equals(TEXT("UserConstructionScript"), ESearchCase::IgnoreCase);
 		G.WireType = bIsConstruction ? TEXT("Construction") : TEXT("Function");
+		// REFLECT-4: populate function-level metadata from the generated class.
+		// The UFunction has all UFUNCTION flags and meta=(...) key-value pairs
+		// that can't be reconstructed from the K2 graph alone (HidePin,
+		// DefaultToSelf, AutoCreateRefTerm, Keywords, ExpandEnumAsExecs, etc.).
+		if (!bIsConstruction)
+		{
+			UClass* GenClass = Blueprint->GeneratedClass;
+			if (!IsValid(GenClass))
+			{
+				GenClass = Blueprint->SkeletonGeneratedClass;
+			}
+			if (IsValid(GenClass))
+			{
+				if (UFunction* Func = GenClass->FindFunctionByName(FName(*G.Name)))
+				{
+					G.bIsBlueprintPure     = Func->HasAnyFunctionFlags(FUNC_BlueprintPure);
+					G.bIsBlueprintCallable = Func->HasAnyFunctionFlags(FUNC_BlueprintCallable);
+					G.bIsConst             = Func->HasAnyFunctionFlags(FUNC_Const);
+					G.bIsStatic            = Func->HasAnyFunctionFlags(FUNC_Static);
+#if WITH_METADATA
+					// UFunction metadata is stored on the package's UMetaData object.
+					// Walk the common keys that are most useful for AI-generated code.
+					static const FName kKeys[] = {
+						TEXT("Keywords"), TEXT("Category"),
+						TEXT("DefaultToSelf"), TEXT("HidePin"),
+						TEXT("AutoCreateRefTerm"), TEXT("WorldContext"),
+						TEXT("ExpandEnumAsExecs"), TEXT("ExpandBoolAsExecs"),
+						TEXT("DeterminesOutputType"), TEXT("DynamicOutputParam"),
+						TEXT("CompactNodeTitle"), TEXT("BlueprintThreadSafe"),
+						TEXT("BlueprintInternalUseOnly"), TEXT("CallableWithoutWorldContext"),
+						TEXT("ReturnDisplayName"), TEXT("ShortTooltip"),
+					};
+					for (const FName& Key : kKeys)
+					{
+						if (Func->HasMetaData(Key))
+						{
+							G.FunctionMeta.Add(Key, Func->GetMetaData(Key));
+						}
+					}
+#endif
+				}
+			}
+		}
 		Info.FunctionGraphs.Add(MoveTemp(G));
 	}
 	for (UEdGraph* Graph : Blueprint->UbergraphPages)
