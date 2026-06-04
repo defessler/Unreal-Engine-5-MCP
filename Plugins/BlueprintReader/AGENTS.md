@@ -28,8 +28,9 @@ them.** Two rules:
      widening — cheapest when you already know the tool name.
    - `list_toolsets` / `describe_toolset` enumerate what's available.
 
-For an offline catalog (without running the server) see the generated
-**`docs/TOOLS.md`** and the README tool table.
+For an offline catalog (without running the server) see the generated tool
+reference at
+<https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/TOOLS.md>.
 
 ## Wire format (read before your first call)
 
@@ -82,16 +83,17 @@ count** — a 20-step refactor is sub-second after the first call. Batch with
 3. **Don't treat the mock backend as writable** — write tools throw a clear
    message; surface it (set `BP_READER_ALLOW_WRITE=1` / use a real backend).
 4. **Don't hardcode tool counts or fixture asset names** — both rotate; read
-   `tools/list` / `docs/TOOLS.md`.
+   `tools/list` (or the generated catalog at
+   <https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/TOOLS.md>).
 5. **Don't invent a multi-tool workaround for an unsupported op** — state
    what *is* supported.
 
 ## Deeper docs
 
-- **`CLAUDE.md`** (repo root) — building / testing / maintaining the plugin
-  + MCP server itself (for agents *modifying* this project).
-- **`Plugins/BlueprintReader/Claude/skills/`** — Claude-auto-discovered skills
-  with per-task playbooks (bp-reader, bp-batches, bp-cpp, bp-debug) + the
-  bp-audit agent.
-- **`README.md`** + **`wiki/`** (Tool-Reference, BPIR, Configuration, Usage,
-  Troubleshooting) — full setup, per-tool I/O shapes, env vars.
+- **Claude skills** — auto-discovered per-task playbooks (bp-reader, bp-batches,
+  bp-cpp, bp-debug) + the bp-audit agent. Deployed to `.claude/skills/` in this
+  project; source in `Plugins/BlueprintReader/Claude/skills/`.
+- **Repo docs** — build / test / maintain (`CLAUDE.md`), full setup, per-tool
+  I/O shapes, env vars (README), and the wiki (Tool-Reference, BPIR,
+  Configuration, Usage, Troubleshooting):
+  <https://github.com/defessler/Unreal-Engine-5-MCP>.
