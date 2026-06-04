@@ -10,6 +10,17 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.3.1] — 2026-06-04
+
+### Added
+- **BlueprintReader Toolbox** — standalone Electron + React + TypeScript GUI app at `Plugins/BlueprintReader/Toolbox/`:
+  - **Install page**: one-click `Install-Plugin.ps1` with streaming log output, auto-detected project path and engine dir
+  - **Providers page**: live status cards (configured / stale / missing) for all 5 AI clients (Claude Code, Cursor, VSCode, Gemini, Codex) + Skills/Agents deploy button
+  - **Tester page**: fuzzy-search across all 258 tools (catalog bundled from `docs/tools.json`), auto-generated argument forms from `inputSchema`, `POST /mcp` calls + SSE EventSource for live notifications, 20-entry call history. Supports all backends: Mock, Commandlet, Live, Auto.
+  - **Update page**: `Check-Update.ps1` cache display + one-click `Update-Plugin.ps1` with streaming log
+  - Launch via `Toolbox.bat` at the plugin root
+  - Build: `cd Plugins/BlueprintReader/Toolbox && npm install && npm run dev` (dev) or `npm run dist` (NSIS installer → `Binaries/Toolbox/`)
+
 ## [0.3.0] — 2026-06-04
 
 ### Added
