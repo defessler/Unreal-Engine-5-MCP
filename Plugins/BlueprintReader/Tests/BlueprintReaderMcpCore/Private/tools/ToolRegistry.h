@@ -80,6 +80,12 @@ struct ToolDescriptor {
 	// registration sites don't need touching. Explicit values on the
 	// descriptor take precedence (no override).
 	ToolAnnotations annotations;
+	// Optional. Human-readable display name per MCP 2025-06-18 `title`
+	// field. Separate from the programmatic `name` identifier. When
+	// non-empty, emitted as "title" on tools/list; clients (Claude
+	// Desktop, ChatGPT) display it in their UI instead of the raw name.
+	// When empty, `name` is used as-is by clients.
+	std::string title;
 };
 
 // Tool name validation per MCP 2025-11-25 spec:

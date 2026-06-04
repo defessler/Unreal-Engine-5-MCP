@@ -67,6 +67,17 @@ struct FBPVariableInfo
 	bool bIsEditable = false;
 	bool bIsBlueprintReadOnly = false;
 	bool bIsExposeOnSpawn = false;
+	// REFLECT-1/2: additional flags and metadata surfaced in the wire format
+	// so AI can reason about access semantics without knowing EPropertyFlags
+	// bit positions, and so transpile/codegen tools have full UPROPERTY info.
+	bool bIsBlueprintReadWrite = false;   // CPF_BlueprintVisible && !CPF_BlueprintReadOnly
+	bool bIsSaveGame = false;             // CPF_SaveGame
+	bool bIsConfig = false;               // CPF_Config
+	bool bIsAssetRegistrySearchable = false; // CPF_AssetRegistrySearchable
+	bool bIsAdvancedDisplay = false;      // CPF_AdvancedDisplay
+	FString RepNotifyFunc;                // Populated when bIsReplicated && ReplicatedUsing=Func
+	FString CppType;                      // FProperty::GetCPPType() — exact C++ typename
+	TMap<FName, FString> MetaData;        // All UPROPERTY meta=(...) key-value pairs
 	// Populated only when Type is mcdelegate / MulticastDelegate /
 	// MulticastInlineDelegate. Empty otherwise. Allows codegen to emit
 	// the matching DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params(F<Name>,

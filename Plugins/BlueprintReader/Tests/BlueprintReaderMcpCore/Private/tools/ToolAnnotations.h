@@ -37,4 +37,10 @@ namespace bpr::tools {
 // the descriptor's annotations untouched.
 ToolAnnotations AnnotationsFor(const std::string& tool_name);
 
+// Look up the curated human-readable title (MCP 2025-06-18 `title` field)
+// for a tool by name.  Returns empty string for tools not in the curated
+// table; ToolRegistry::Add then auto-derives a title from the snake_case
+// name as a fallback.
+std::string TitleFor(const std::string& tool_name);
+
 }    // namespace bpr::tools

@@ -238,7 +238,7 @@ public:
 						RequestId, P.Current, P.Total, *Msg));
 				}
 			};
-			while (!DoneEvent->Wait(50))
+			while (!DoneEvent->Wait(5))   // PERF-2: was 50 ms; 5 ms gives 10× throughput on rapid-fire reads
 			{
 				DrainAndSendProgress();
 			}

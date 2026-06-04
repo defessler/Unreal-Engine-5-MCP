@@ -1,4 +1,4 @@
-#include "backends/CachingBlueprintReader.h"
+﻿#include "backends/CachingBlueprintReader.h"
 
 #include <optional>
 #include <system_error>
@@ -466,16 +466,31 @@ nlohmann::json CachingBlueprintReader::ReadActorInstance(std::string_view assetP
 	return inner_->ReadActorInstance(assetPath);
 }
 
-// ----- Asset-registry queries (pass-through) -----------------------------
+// ----- Asset-registry queries (PERF-3: now cached) -----------------------
+// These are pure registry reads that never change between write ops. They
+// use TTL-only expiry (no mtime check) because their "file" is the asset
+// registry DB, not a single .uasset; a write op that touches an asset
+// calls InvalidateAsset() which also drops the global ListBlueprints key
+// used here as a blanket invalidation signal for list-style queries.
 
 IBlueprintReader::AssetRegistryListResult
 CachingBlueprintReader::ListAssets(std::string_view path, bool recursive) {
-	return inner_->ListAssets(path, recursive);
+	auto key = MakeKey("lassets", "", path, recursive ? "1" : "0");
+	auto sp = LookupOrCompute(key, "", [&] {
+		return std::make_shared<AssetRegistryListResult>(
+			inner_->ListAssets(path, recursive));
+	});
+	return *std::static_pointer_cast<const AssetRegistryListResult>(sp);
 }
 
 IBlueprintReader::AssetRegistryListResult
 CachingBlueprintReader::FindAsset(std::string_view query, std::string_view path) {
-	return inner_->FindAsset(query, path);
+	auto key = MakeKey("fasset", "", query, path);
+	auto sp = LookupOrCompute(key, "", [&] {
+		return std::make_shared<AssetRegistryListResult>(
+			inner_->FindAsset(query, path));
+	});
+	return *std::static_pointer_cast<const AssetRegistryListResult>(sp);
 }
 
 // ----- Project + Content Browser ops (pass-through with invalidation) ----
@@ -529,7 +544,11 @@ CachingBlueprintReader::ListDataTables(std::string_view path) {
 
 IBlueprintReader::DataTableInfo
 CachingBlueprintReader::ReadDataTable(std::string_view assetPath) {
-	return inner_->ReadDataTable(assetPath);
+	auto key = MakeKey("rdatatbl", assetPath);
+	auto sp = LookupOrCompute(key, assetPath, [&] {
+		return std::make_shared<DataTableInfo>(inner_->ReadDataTable(assetPath));
+	});
+	return *std::static_pointer_cast<const DataTableInfo>(sp);
 }
 
 IBlueprintReader::AddDataRowResult
@@ -968,7 +987,11 @@ CachingBlueprintReader::ListMaterials(std::string_view path) {
 }
 IBlueprintReader::MaterialInfo
 CachingBlueprintReader::ReadMaterial(std::string_view a) {
-	return inner_->ReadMaterial(a);
+	auto key = MakeKey("rmaterial", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<MaterialInfo>(inner_->ReadMaterial(a));
+	});
+	return *std::static_pointer_cast<const MaterialInfo>(sp);
 }
 IBlueprintReader::CreateMaterialResult
 CachingBlueprintReader::CreateMaterial(std::string_view a) {
@@ -1022,7 +1045,11 @@ CachingBlueprintReader::CompileMaterial(std::string_view a) {
 
 IBlueprintReader::WidgetBlueprintInfo
 CachingBlueprintReader::ReadWidgetBlueprint(std::string_view a) {
-	return inner_->ReadWidgetBlueprint(a);
+	auto key = MakeKey("rwidget", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<WidgetBlueprintInfo>(inner_->ReadWidgetBlueprint(a));
+	});
+	return *std::static_pointer_cast<const WidgetBlueprintInfo>(sp);
 }
 IBlueprintReader::AddWidgetResult
 CachingBlueprintReader::AddWidget(std::string_view a, std::string_view p,
@@ -1060,7 +1087,11 @@ CachingBlueprintReader::ListBehaviorTrees(std::string_view p) {
 }
 IBlueprintReader::BehaviorTreeInfo
 CachingBlueprintReader::ReadBehaviorTree(std::string_view a) {
-	return inner_->ReadBehaviorTree(a);
+	auto key = MakeKey("rbtree", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<BehaviorTreeInfo>(inner_->ReadBehaviorTree(a));
+	});
+	return *std::static_pointer_cast<const BehaviorTreeInfo>(sp);
 }
 IBlueprintReader::AddBTNodeResult
 CachingBlueprintReader::AddBTNode(std::string_view a, std::string_view p,
@@ -1115,7 +1146,11 @@ CachingBlueprintReader::ListStateTrees(std::string_view p) {
 }
 IBlueprintReader::StateTreeInfo
 CachingBlueprintReader::ReadStateTree(std::string_view a) {
-	return inner_->ReadStateTree(a);
+	auto key = MakeKey("rstatetree", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<StateTreeInfo>(inner_->ReadStateTree(a));
+	});
+	return *std::static_pointer_cast<const StateTreeInfo>(sp);
 }
 IBlueprintReader::AddStateTreeStateResult
 CachingBlueprintReader::AddStateTreeState(std::string_view a,
@@ -1183,7 +1218,13 @@ CachingBlueprintReader::SetShowFlag(std::string_view f, bool e) {
 std::vector<BPAssetSummary>
 CachingBlueprintReader::ListNiagaraSystems(std::string_view p) { return inner_->ListNiagaraSystems(p); }
 IBlueprintReader::NiagaraSystemInfo
-CachingBlueprintReader::ReadNiagaraSystem(std::string_view a) { return inner_->ReadNiagaraSystem(a); }
+CachingBlueprintReader::ReadNiagaraSystem(std::string_view a) {
+	auto key = MakeKey("rniagara", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<NiagaraSystemInfo>(inner_->ReadNiagaraSystem(a));
+	});
+	return *std::static_pointer_cast<const NiagaraSystemInfo>(sp);
+}
 IBlueprintReader::CreateNiagaraSystemResult
 CachingBlueprintReader::CreateNiagaraSystem(std::string_view a) {
 	auto out = inner_->CreateNiagaraSystem(a);
@@ -1200,7 +1241,13 @@ CachingBlueprintReader::SetNiagaraParameter(std::string_view a,
 std::vector<BPAssetSummary>
 CachingBlueprintReader::ListLevelSequences(std::string_view p) { return inner_->ListLevelSequences(p); }
 IBlueprintReader::LevelSequenceInfo
-CachingBlueprintReader::ReadLevelSequence(std::string_view a) { return inner_->ReadLevelSequence(a); }
+CachingBlueprintReader::ReadLevelSequence(std::string_view a) {
+	auto key = MakeKey("rlevelseq", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<LevelSequenceInfo>(inner_->ReadLevelSequence(a));
+	});
+	return *std::static_pointer_cast<const LevelSequenceInfo>(sp);
+}
 IBlueprintReader::AddSequenceTrackResult
 CachingBlueprintReader::AddSequenceTrack(std::string_view a,
 	std::string_view c, std::string_view n) {
@@ -1228,7 +1275,13 @@ CachingBlueprintReader::ReadAbilitySet(std::string_view a) { return inner_->Read
 std::vector<BPAssetSummary>
 CachingBlueprintReader::ListAnimBlueprints(std::string_view p) { return inner_->ListAnimBlueprints(p); }
 IBlueprintReader::AnimBlueprintInfo
-CachingBlueprintReader::ReadAnimBlueprint(std::string_view a) { return inner_->ReadAnimBlueprint(a); }
+CachingBlueprintReader::ReadAnimBlueprint(std::string_view a) {
+	auto key = MakeKey("ranimbp", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<AnimBlueprintInfo>(inner_->ReadAnimBlueprint(a));
+	});
+	return *std::static_pointer_cast<const AnimBlueprintInfo>(sp);
+}
 IBlueprintReader::AddAnimStateResult
 CachingBlueprintReader::AddAnimState(std::string_view a, std::string_view m, std::string_view n) {
 	auto out = inner_->AddAnimState(a, m, n);
@@ -1242,14 +1295,28 @@ CachingBlueprintReader::CompileAnimBlueprint(std::string_view a) {
 	return out;
 }
 
-// ----- Editor state / asset-graph / config (previously missing) -----------
-// Pass-through: live editor state is uncacheable; asset-graph + config reads
-// and build-lighting do not go through the .uasset mtime cache.
+// ----- Editor state / asset-graph / config --------------------------------
+// Live editor state is uncacheable. Asset-graph (referencers / dependencies)
+// is stable until a write op touches an asset — now cached (PERF-3). Config
+// is typically stable per-session; build-lighting and write ops pass through.
 BPRJson CachingBlueprintReader::GetEditorState() { return inner_->GetEditorState(); }
+
 IBlueprintReader::AssetGraphResult
-CachingBlueprintReader::GetReferencers(std::string_view a) { return inner_->GetReferencers(a); }
+CachingBlueprintReader::GetReferencers(std::string_view a) {
+	auto key = MakeKey("referencers", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<AssetGraphResult>(inner_->GetReferencers(a));
+	});
+	return *std::static_pointer_cast<const AssetGraphResult>(sp);
+}
 IBlueprintReader::AssetGraphResult
-CachingBlueprintReader::GetDependencies(std::string_view a) { return inner_->GetDependencies(a); }
+CachingBlueprintReader::GetDependencies(std::string_view a) {
+	auto key = MakeKey("dependencies", a);
+	auto sp = LookupOrCompute(key, a, [&] {
+		return std::make_shared<AssetGraphResult>(inner_->GetDependencies(a));
+	});
+	return *std::static_pointer_cast<const AssetGraphResult>(sp);
+}
 IBlueprintReader::ConfigReadResult
 CachingBlueprintReader::ReadConfigValue(std::string_view s, std::string_view k, std::string_view f) {
 	return inner_->ReadConfigValue(s, k, f);
