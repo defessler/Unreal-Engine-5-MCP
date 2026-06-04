@@ -10,6 +10,18 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.4.1] — 2026-06-04
+
+### Added
+- **Toolbox Settings page**: 28 environment flags organized into Backend, Permissions, Tools, Performance, and HTTP transport groups. Each flag has inline descriptions, a matching input control, and a "Copy env block" button that generates the ready-to-paste `"env": { ... }` JSON for any MCP client config.
+
+### Fixed
+- `wiki/Configuration.md`: added 11 previously undocumented flags (`BP_READER_REQUIRE_CONFIRM`, `BP_READER_VERBOSE`, `BP_READER_HTTP_PORT/PATH`, `BP_READER_DAEMON_WEDGE_SECONDS`, `BP_READER_TOOL_ALLOW/BLOCK`, `BP_READER_AUTO_CHECKOUT`, `BP_READER_PLUGIN_DENYLIST`, etc.)
+- Stale tool-count references updated from 252/254 → 258 across CLAUDE.md, wiki, Toolbox, and source comments
+- Toolbox sidebar version corrected from `v1.0.0` to `v0.4.0`
+- `[Unreleased]` CHANGELOG section removed (all items were already shipped)
+- `.mcp.json` untracked from git (contained hardcoded local paths); added to `.gitignore`
+
 ## [0.4.0] — 2026-06-04
 
 First full public release. Consolidates all work from v0.1–v0.3:
