@@ -10,6 +10,11 @@ flows into `bp-reader-mcp --version`, the `doctor` report, and the MCP
 
 ---
 
+## [0.3.2] — 2026-06-04
+
+### Added
+- **Full install release bundle**: release now publishes three assets per tag — complete plugin ZIP (entire `Plugins/BlueprintReader/` with prebuilt server exe), Electron Toolbox NSIS installer, and the server-only ZIP (backward compat).
+
 ## [0.3.1] — 2026-06-04
 
 ### Added
