@@ -35,6 +35,36 @@
 
 namespace bpr::tools {
 namespace blueprint_tools_detail {
+
+// Strip a trailing object-path suffix from a UE asset path so both the package
+// form (/Game/AI/BP_Foo) and the object form (/Game/AI/BP_Foo.BP_Foo) are
+// accepted transparently.  The editor commandlet's LoadMutableBlueprint tolerates
+// both forms for BP assets, but the mock backend does an exact-keyed lookup and
+// non-BP LoadObject callsites (DataTable, Material, …) do not append the suffix
+// themselves — so without this step the object form silently fails on mock and
+// on those callsites.  The output side already normalises via ToPackagePath;
+// this mirrors that on the input side so the two are symmetric.
+//
+// Declared outside the anonymous namespace so it can be included and called
+// from test files (anonymous-namespace names have internal linkage and cannot
+// be named from a different TU).
+inline std::string NormalizeAssetPath(std::string path) {
+	// Trim leading/trailing whitespace.
+	auto trimL = path.find_first_not_of(" \t\r\n");
+	if (trimL == std::string::npos) { return path; }
+	auto trimR = path.find_last_not_of(" \t\r\n");
+	path = path.substr(trimL, trimR - trimL + 1);
+	// Normalise backslashes to forward slashes.
+	for (char& c : path) { if (c == '\\') { c = '/'; } }
+	// Strip the trailing ".ClassName" object suffix (only after the last '/').
+	auto lastSlash = path.rfind('/');
+	auto dotPos    = path.rfind('.');
+	if (dotPos != std::string::npos && (lastSlash == std::string::npos || dotPos > lastSlash)) {
+		path.erase(dotPos);
+	}
+	return path;
+}
+
 namespace {   // per-TU internal linkage: included by 3 TUs, no ODR clash, no inline churn
 
 // Returns by value (copy) instead of const-ref into the json. The ref form
@@ -539,6 +569,29 @@ auto WithAssetNotFoundHint(backends::IBlueprintReader& reader,
 }
 
 }  // anonymous
+
+// Require/opt wrappers that call NormalizeAssetPath before returning.
+// Use these for every "asset_path" argument so both the package form
+// (/Game/AI/BP_Foo) and the object form (/Game/AI/BP_Foo.BP_Foo) are accepted.
+// Declared outside the anonymous namespace so they are nameable from test TUs.
+inline std::string RequireAssetPath(const nlohmann::json& obj,
+									std::string_view key = "asset_path") {
+	auto it = obj.find(key);
+	if (it == obj.end() || !it->is_string()) {
+		throw std::invalid_argument(fmt::format(R"(missing or non-string argument "{}")", key));
+	}
+	return NormalizeAssetPath(it->get<std::string>());
+}
+inline std::string OptAssetPath(const nlohmann::json& obj, std::string_view key,
+								std::string fallback = "") {
+	auto it = obj.find(key);
+	if (it == obj.end() || it->is_null()) { return NormalizeAssetPath(std::move(fallback)); }
+	if (!it->is_string()) {
+		throw std::invalid_argument(fmt::format(R"(argument "{}" must be a string)", key));
+	}
+	return NormalizeAssetPath(it->get<std::string>());
+}
+
 }  // namespace blueprint_tools_detail
 
 // Chunk registration helpers (split across BlueprintTools*.cpp to keep each

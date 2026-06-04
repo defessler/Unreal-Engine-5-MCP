@@ -1,4 +1,5 @@
 #include "tools/ApplyOps.h"
+#include "tools/BlueprintToolsDetail.h"
 #include "tools/TypeShorthand.h"
 #include "jsonrpc/CallContext.h"
 
@@ -123,7 +124,7 @@ int GetInt(const nlohmann::json& obj, std::string_view key) {
 
 nlohmann::json OpAddVariable(backends::IBlueprintReader& reader,
 							 const nlohmann::json& op, SlotMap&) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string name  = GetString(op, "name");
 	auto typeIt = op.find("type");
 	if (typeIt == op.end()) {
@@ -176,7 +177,7 @@ std::string FindEntryNodeForExistingFunction(backends::IBlueprintReader& reader,
 
 nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
 							 const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string name  = GetString(op, "name");
 	try {
 		auto meta = reader.ReadBlueprint(asset);
@@ -226,7 +227,7 @@ nlohmann::json OpAddFunction(backends::IBlueprintReader& reader,
 nlohmann::json OpAddFunctionParam(backends::IBlueprintReader& reader,
 								  const nlohmann::json& op, SlotMap&,
 								  bool isOutput) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string fn    = GetString(op, "function_name");
 	std::string param = GetString(op, "param_name");
 	auto typeIt = op.find("type");
@@ -245,7 +246,7 @@ nlohmann::json OpAddFunctionParam(backends::IBlueprintReader& reader,
 
 nlohmann::json OpAddNode(backends::IBlueprintReader& reader,
 						 const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string graph = GetString(op, "graph_name");
 	std::string kind  = GetString(op, "kind");
 	int x = GetInt(op, "x");
@@ -315,7 +316,7 @@ nlohmann::json OpAddNode(backends::IBlueprintReader& reader,
 
 nlohmann::json OpWirePins(backends::IBlueprintReader& reader,
 						  const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string graph = GetString(op, "graph_name");
 	std::string fromNode, toNode;
 	{
@@ -336,7 +337,7 @@ nlohmann::json OpWirePins(backends::IBlueprintReader& reader,
 
 nlohmann::json OpSetNodePosition(backends::IBlueprintReader& reader,
 								 const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string graph = GetString(op, "graph_name");
 	auto nIt = op.find("node_id");
 	if (nIt == op.end()) {
@@ -352,7 +353,7 @@ nlohmann::json OpSetNodePosition(backends::IBlueprintReader& reader,
 
 nlohmann::json OpDeleteNode(backends::IBlueprintReader& reader,
 							const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string graph = GetString(op, "graph_name");
 	auto nIt = op.find("node_id");
 	if (nIt == op.end()) {
@@ -365,13 +366,13 @@ nlohmann::json OpDeleteNode(backends::IBlueprintReader& reader,
 
 nlohmann::json OpDeleteVariable(backends::IBlueprintReader& reader,
 								const nlohmann::json& op, SlotMap&) {
-	reader.DeleteVariable(GetString(op, "asset_path"), GetString(op, "name"));
+	reader.DeleteVariable(blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path")), GetString(op, "name"));
 	return {{"ok", true}};
 }
 
 nlohmann::json OpRenameVariable(backends::IBlueprintReader& reader,
 								const nlohmann::json& op, SlotMap&) {
-	reader.RenameVariable(GetString(op, "asset_path"),
+	reader.RenameVariable(blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path")),
 						  GetString(op, "old_name"),
 						  GetString(op, "new_name"));
 	return {{"ok", true}};
@@ -379,13 +380,13 @@ nlohmann::json OpRenameVariable(backends::IBlueprintReader& reader,
 
 nlohmann::json OpDeleteFunction(backends::IBlueprintReader& reader,
 								const nlohmann::json& op, SlotMap&) {
-	reader.DeleteFunction(GetString(op, "asset_path"), GetString(op, "name"));
+	reader.DeleteFunction(blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path")), GetString(op, "name"));
 	return {{"ok", true}};
 }
 
 nlohmann::json OpSetVariableDefault(backends::IBlueprintReader& reader,
 									const nlohmann::json& op, SlotMap&) {
-	reader.SetVariableDefault(GetString(op, "asset_path"),
+	reader.SetVariableDefault(blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path")),
 							  GetString(op, "name"),
 							  OptStr(op, "default_value", ""));
 	return {{"ok", true}};
@@ -393,7 +394,7 @@ nlohmann::json OpSetVariableDefault(backends::IBlueprintReader& reader,
 
 nlohmann::json OpCreateBlueprint(backends::IBlueprintReader& reader,
 								 const nlohmann::json& op, SlotMap&) {
-	std::string asset  = GetString(op, "asset_path");
+	std::string asset  = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string parent = GetString(op, "parent_class");
 	auto r = reader.CreateBlueprint(asset, parent);
 	return {
@@ -406,7 +407,7 @@ nlohmann::json OpCreateBlueprint(backends::IBlueprintReader& reader,
 
 nlohmann::json OpSetPinDefault(backends::IBlueprintReader& reader,
 							   const nlohmann::json& op, SlotMap& slots) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string graph = GetString(op, "graph_name");
 	auto nIt = op.find("node_id");
 	if (nIt == op.end()) {
@@ -423,7 +424,7 @@ nlohmann::json OpSetPinDefault(backends::IBlueprintReader& reader,
 
 nlohmann::json OpRetypeVariable(backends::IBlueprintReader& reader,
 								const nlohmann::json& op, SlotMap&) {
-	std::string asset = GetString(op, "asset_path");
+	std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string name  = GetString(op, "name");
 	auto typeIt = op.find("type");
 	if (typeIt == op.end()) {
@@ -437,7 +438,7 @@ nlohmann::json OpRetypeVariable(backends::IBlueprintReader& reader,
 nlohmann::json OpSetVariableCategory(backends::IBlueprintReader& reader,
 									 const nlohmann::json& op, SlotMap&) {
 	reader.SetVariableCategory(
-		GetString(op, "asset_path"),
+		blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path")),
 		GetString(op, "name"),
 		OptStr(op, "category", ""));
 	return {{"ok", true}};
@@ -445,7 +446,7 @@ nlohmann::json OpSetVariableCategory(backends::IBlueprintReader& reader,
 
 nlohmann::json OpDuplicateBlueprint(backends::IBlueprintReader& reader,
 									const nlohmann::json& op, SlotMap&) {
-	std::string source = GetString(op, "asset_path");
+	std::string source = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 	std::string dest   = GetString(op, "dest_asset_path");
 	auto r = reader.DuplicateBlueprint(source, dest);
 	return {
@@ -568,7 +569,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 	auto noteAsset = [&](std::string_view a) { wouldCompile.insert(std::string(a)); };
 
 	if (kind == "create_blueprint") {
-		std::string asset  = GetString(op, "asset_path");
+		std::string asset  = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "parent_class");
 		if (auto idIt = op.find("id"); idIt != op.end() && idIt->is_string()) {
 			slots[idIt->get<std::string>()] = MintPlaceholderGuid(placeholderCounter);
@@ -577,7 +578,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "add_variable") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "name");
 		if (op.find("type") == op.end()) {
 			throw std::invalid_argument(R"(add_variable op requires "type")");
@@ -589,7 +590,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 	}
 	if (kind == "delete_variable" || kind == "rename_variable" ||
 		kind == "set_variable_default") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		// Confirm variable exists (read-only check).
 		if (kind == "delete_variable" || kind == "set_variable_default") {
 			std::string name = GetString(op, "name");
@@ -614,13 +615,13 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "add_function" || kind == "delete_function") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "name");
 		noteAsset(asset);
 		return;
 	}
 	if (kind == "add_function_input" || kind == "add_function_output") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "function_name");
 		(void)GetString(op, "param_name");
 		if (op.find("type") == op.end()) {
@@ -632,7 +633,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "add_node") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "graph_name");
 		(void)GetString(op, "kind");
 		(void)GetInt(op, "x");
@@ -644,7 +645,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "wire_pins") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "graph_name");
 		auto fnIt = op.find("from_node");
 		auto tnIt = op.find("to_node");
@@ -662,7 +663,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "set_node_position") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
 		if (nIt == op.end())
@@ -675,7 +676,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "delete_node") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
 		if (nIt == op.end())
@@ -687,7 +688,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "set_pin_default") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "graph_name");
 		auto nIt = op.find("node_id");
 		if (nIt == op.end())
@@ -700,7 +701,7 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "retype_variable") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "name");
 		if (op.find("type") == op.end()) {
 			throw std::invalid_argument(R"(retype_variable op requires "type")");
@@ -710,14 +711,14 @@ void ValidateOp(backends::IBlueprintReader& reader, const nlohmann::json& op,
 		return;
 	}
 	if (kind == "set_variable_category") {
-		std::string asset = GetString(op, "asset_path");
+		std::string asset = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		(void)GetString(op, "name");
 		// category is optional (empty clears it)
 		noteAsset(asset);
 		return;
 	}
 	if (kind == "duplicate_blueprint") {
-		std::string source = GetString(op, "asset_path");
+		std::string source = blueprint_tools_detail::NormalizeAssetPath(GetString(op, "asset_path"));
 		std::string dest   = GetString(op, "dest_asset_path");
 		if (dest.size() < 6 || dest.compare(0, 6, "/Game/") != 0) {
 			throw std::invalid_argument(
