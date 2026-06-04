@@ -160,8 +160,8 @@ nlohmann::json ReadOnlyBlueprintReader::ReadActorInstance(std::string_view asset
 void ReadOnlyBlueprintReader::BeginBatch() {
 	inner_->BeginBatch();
 }
-nlohmann::json ReadOnlyBlueprintReader::EndBatch(bool skipCompile) {
-	return inner_->EndBatch(skipCompile);
+nlohmann::json ReadOnlyBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
+	return inner_->EndBatch(skipCompile, rollback);
 }
 
 nlohmann::json ReadOnlyBlueprintReader::ShutdownDaemon() {
