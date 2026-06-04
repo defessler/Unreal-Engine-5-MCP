@@ -1,4 +1,4 @@
-#include "tools/BlueprintTools.h"
+﻿#include "tools/BlueprintTools.h"
 #include "tools/ApplyOps.h"
 #include "tools/Bpir.h"
 #include "tools/codegen/CppClassEmit.h"
@@ -970,29 +970,40 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireAssetPath(args);
 			std::string graph = OptString(args, "graph_name", "EventGraph");
-			// Lean by default: graph reads return the summary shape (node
-		// identity, no per-node pin arrays or the connections list) unless
-		// the caller asks for full detail with summary:false. Big token
-		// savings on the common "what's the shape of this graph" read.
-		const bool summary = args.value("summary", true);
+			// Lean by default: return the summary shape (node identity, no per-node
+			// pin arrays or the connections list) unless summary:false is passed.
+			const bool summary = args.value("summary", true);
+			// C3: node cap (safety bound + token limit). Applied in full mode only;
+			// summary mode already elides pins so individual nodes are tiny.
+			const int maxNodes = args.value("max_nodes", 300);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetGraph(asset, graph));
 			});
 			if (summary && ctl.fields.empty()) {  // explicit `fields` wins over `summary`
-				// Drop pin detail from each node + the global connections
-				// array. Node identity (id, kind, title, comment, position)
-				// is preserved — enough to map the graph's structure
-				// without paying for tens of KB of pin metadata.
 				if (body.contains("nodes") && body["nodes"].is_array()) {
 					for (auto& n : body["nodes"]) {
-						if (n.is_object()) {
-							n.erase("pins");
-						}
+						if (n.is_object()) { n.erase("pins"); }
 					}
 				}
 				body.erase("connections");
 				body["_summary"] = true;
+			} else if (!summary && maxNodes > 0) {
+				// Cap the nodes array and add pagination siblings.
+				auto nit = body.find("nodes");
+				if (nit != body.end() && nit->is_array()) {
+					const int total = static_cast<int>(nit->size());
+					if (total > maxNodes) {
+						const int off = std::max(0, ctl.offset);
+						const int end = std::min(off + maxNodes, total);
+						nlohmann::json sliced = nlohmann::json::array();
+						for (int i = off; i < end; ++i) { sliced.push_back(std::move((*nit)[i])); }
+						*nit = std::move(sliced);
+						body["nodes_total"]     = total;
+						body["nodes_truncated"] = true;
+						body["next_cursor"]     = EncodeCursor(static_cast<std::int64_t>(end));
+					}
+				}
 			}
 			ApplyResponseControls(body, ctl);
 			return body;
@@ -1118,28 +1129,40 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			std::string asset = RequireAssetPath(args);
 			std::string fn = RequireString(args, "function_name");
-			// Lean by default: graph reads return the summary shape (node
-		// identity, no per-node pin arrays or the connections list) unless
-		// the caller asks for full detail with summary:false. Big token
-		// savings on the common "what's the shape of this graph" read.
-		const bool summary = args.value("summary", true);
+			const bool summary = args.value("summary", true);
+			const int maxNodes = args.value("max_nodes", 300);
 			auto ctl = ParseResponseControls(args);
 			nlohmann::json body = WithAssetNotFoundHint(reader, asset, [&] {
 				return nlohmann::json(reader.GetFunction(asset, fn));
 			});
-			if (summary && ctl.fields.empty()) {  // explicit `fields` wins over `summary`
+			if (summary && ctl.fields.empty()) {
 				if (body.contains("graph") && body["graph"].is_object()) {
 					auto& g = body["graph"];
 					if (g.contains("nodes") && g["nodes"].is_array()) {
 						for (auto& n : g["nodes"]) {
-							if (n.is_object()) {
-								n.erase("pins");
-							}
+							if (n.is_object()) { n.erase("pins"); }
 						}
 					}
 					g.erase("connections");
 				}
 				body["_summary"] = true;
+			} else if (!summary && maxNodes > 0 &&
+					   body.contains("graph") && body["graph"].is_object()) {
+				auto& g = body["graph"];
+				auto nit = g.find("nodes");
+				if (nit != g.end() && nit->is_array()) {
+					const int total = static_cast<int>(nit->size());
+					if (total > maxNodes) {
+						const int off = std::max(0, ctl.offset);
+						const int end = std::min(off + maxNodes, total);
+						nlohmann::json sliced = nlohmann::json::array();
+						for (int i = off; i < end; ++i) { sliced.push_back(std::move((*nit)[i])); }
+						*nit = std::move(sliced);
+						g["nodes_total"]     = total;
+						g["nodes_truncated"] = true;
+						g["next_cursor"]     = EncodeCursor(static_cast<std::int64_t>(end));
+					}
+				}
 			}
 			ApplyResponseControls(body, ctl);
 			return body;
@@ -1279,37 +1302,30 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			}},
 			{"required", nlohmann::json::array({"asset_path", "query"})},
 		};
-		// Array of matching nodes (BPNode shape). id/class/title/position/
-		// comment/pins/meta always emitted; kind (mirrored from meta.kind) and
-		// graph_name/graph_type (find_node hits) are conditional. `fields` narrows.
-		d.output_schema = {
-			{"type","array"},
-			{"items", {
+			// Paginated envelope. Default limit=200; clients walk with next_cursor.
+			// Each result item is a BPNode (same shape as get_node).
+			d.output_schema = {
 				{"type","object"},
 				{"properties", {
-					{"id",         {{"type","string"}}},
-					{"class",      {{"type","string"}}},
-					{"title",      {{"type","string"}}},
-					{"position",   {{"type","object"}}},
-					{"comment",    {{"type", nlohmann::json::array({"string","null"})}}},
-					{"pins",       {{"type","array"}}},
-					{"meta",       {{"type","object"}}},
-					{"kind",       {{"type","string"}}},
-					{"graph_name", {{"type","string"}}},
-					{"graph_type", {{"type","string"}}},
+					{"total",       {{"type","integer"}}},
+					{"count",       {{"type","integer"}}},
+					{"has_more",    {{"type","boolean"}}},
+					{"next_cursor", {{"type",nlohmann::json::array({"string","null"})}}},
+					{"results",     {{"type","array"}, {"items",{{"type","object"}}}}},
 				}},
-				{"required", nlohmann::json::array({"id","class","title","position","comment","pins","meta"})},
-			}},
-		};
-		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
-			std::string asset = RequireAssetPath(args);
-			std::string q = RequireString(args, "query");
-			std::string kind = OptString(args, "kind", "");
-			auto ctl = ParseResponseControls(args);
-			nlohmann::json body = reader.FindNode(asset, q, kind);
-			ApplyResponseControls(body, ctl);
-			return body;
-		});
+				{"required", nlohmann::json::array({"total","count","has_more","results"})},
+			};
+			registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+				std::string asset = RequireAssetPath(args);
+				std::string q = RequireString(args, "query");
+				std::string kind = OptString(args, "kind", "");
+				auto ctl = ParseResponseControls(args);
+				nlohmann::json rows = reader.FindNode(asset, q, kind);
+				if (ctl.lean) {
+					for (auto& n : rows) { PruneEmpty(n); }
+				}
+				return BuildPaginatedBody(std::move(rows), ctl, 200);
+			});
 	}
 
 	// ===== Write tools =====================================================
