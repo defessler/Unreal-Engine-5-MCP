@@ -1,14 +1,15 @@
 #requires -Version 7
 # Update-Plugin.ps1 - refresh an installed plugin from GitHub WITHOUT building.
 #
-# Pulls the latest plugin from the GitHub repo into a temp clone, redeploys it
-# over the existing install (preserving the built Binaries - this script never
-# compiles anything), then re-runs the configure steps (MCP client config +
-# Claude/AGENTS assets + doctor) via Install-Plugin.ps1 -SkipBuild.
+# Downloads the latest plugin from the GitHub repo (a ZIP archive over HTTPS - no
+# git required) into a temp dir, redeploys it over the existing install (preserving
+# the built Binaries - this script never compiles anything), then re-runs the
+# configure steps (MCP client config + Claude/AGENTS assets + doctor) via
+# Install-Plugin.ps1 -SkipBuild.
 #
 # Self-updating: if the update changed THIS script (or any of the configure
-# scripts), the work is performed by the freshly-cloned copies, so an in-flight
-# behaviour change in the update takes effect on this same run. When the cloned
+# scripts), the work is performed by the freshly-downloaded copies, so an in-flight
+# behaviour change in the update takes effect on this same run. When the downloaded
 # Update-Plugin.ps1 differs from the running one, the run hands off to the new
 # version (one re-exec, guarded so it can't loop).
 #
@@ -32,8 +33,8 @@ param(
     [string]$Client = 'ClaudeCode',
     [switch]$Force,
     # --- internal (set on the self-update hand-off) ---
-    # Path to the freshly-cloned <clone>/Plugins/BlueprintReader; when set we skip
-    # the clone and deploy/configure straight from it.
+    # Path to the freshly-downloaded <extract>/Plugins/BlueprintReader; when set we
+    # skip the download and deploy/configure straight from it.
     [string]$SourceDir,
     [switch]$PostUpdate
 )
@@ -55,19 +56,39 @@ if (-not (Test-Path -LiteralPath $ProjectFile)) { throw "$tag .uproject not foun
 $tmpClone = $null
 try {
     if (-not $PostUpdate) {
-        # ---- Phase 1: fetch the latest plugin from GitHub into a temp clone ----
-        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-            throw "$tag git is required to pull the latest plugin but was not found on PATH."
-        }
+        # ---- Phase 1: download the latest plugin from GitHub as a ZIP ----------
+        # No git dependency - just HTTPS. The codeload archive resolves $Ref as a
+        # branch, tag, or full SHA and unpacks to a single <repo>-<ref> top folder.
         $tmpClone = Join-Path ([System.IO.Path]::GetTempPath()) ("bpr-update-" + [guid]::NewGuid().ToString('N').Substring(0,12))
-        Write-Host "$tag Cloning $Repo ($Ref) ..."
-        & git clone --depth 1 --branch $Ref $Repo $tmpClone 2>&1 | ForEach-Object { Write-Host "  $_" }
-        if ($LASTEXITCODE -ne 0) { throw "$tag git clone failed (exit $LASTEXITCODE)." }
+        New-Item -ItemType Directory -Force $tmpClone | Out-Null
+        $base   = ($Repo -replace '\.git/?$', '').TrimEnd('/')
+        $zipUrl = "$base/archive/$Ref.zip"
+        $zipPath = Join-Path $tmpClone 'plugin.zip'
+        Write-Host "$tag Downloading $zipUrl ..."
+        try {
+            $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -MaximumRedirection 5
+            $ProgressPreference = $oldPref
+        } catch {
+            throw "$tag download failed for $zipUrl : $($_.Exception.Message)"
+        }
+        Write-Host "$tag Extracting ..."
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $tmpClone -Force
+        Remove-Item -LiteralPath $zipPath -ErrorAction SilentlyContinue
 
-        $clonePlugin = Join-Path $tmpClone 'Plugins\BlueprintReader'
+        # The archive unpacks to one top-level <repo>-<ref> dir; find the one that
+        # actually contains the plugin (don't guess the folder name - $Ref may
+        # contain '/', which GitHub rewrites to '-').
+        $extracted = Get-ChildItem -LiteralPath $tmpClone -Directory |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Plugins\BlueprintReader\BlueprintReader.uplugin') } |
+            Select-Object -First 1
+        if (-not $extracted) {
+            throw "$tag the downloaded archive doesn't contain Plugins/BlueprintReader - wrong repo/ref ($Ref)?"
+        }
+        $clonePlugin = Join-Path $extracted.FullName 'Plugins\BlueprintReader'
         $cloneUpdate = Join-Path $clonePlugin 'Scripts\Update-Plugin.ps1'
         if (-not (Test-Path -LiteralPath $cloneUpdate)) {
-            throw "$tag the clone is missing Plugins/BlueprintReader/Scripts/Update-Plugin.ps1 - wrong repo/ref?"
+            throw "$tag the archive is missing Plugins/BlueprintReader/Scripts/Update-Plugin.ps1 - wrong repo/ref?"
         }
 
         # ---- Self-update: if the updater itself changed, hand off to the new one ----
@@ -92,7 +113,7 @@ try {
             & pwsh.exe @cli
             exit $LASTEXITCODE   # finally{} cleans up $tmpClone
         }
-        Write-Host "$tag Updater unchanged - proceeding with the freshly-cloned plugin."
+        Write-Host "$tag Updater unchanged - proceeding with the downloaded plugin."
         $SourceDir = $clonePlugin
     }
 
@@ -104,7 +125,7 @@ try {
     # Install-Plugin.ps1 -SkipBuild does the mount (robocopy /MIR, which excludes
     # Binaries/Intermediate/.git so the built server survives) then writes the
     # client config, deploys the Claude/AGENTS assets, and runs doctor. Running
-    # the CLONE's copy means the latest configure logic is used too.
+    # the downloaded copy means the latest configure logic is used too.
     $projectDir = (Resolve-Path (Split-Path -Parent $ProjectFile)).Path
     $destPlugin = Join-Path $projectDir 'Plugins\BlueprintReader'
     if ((Test-Path -LiteralPath $destPlugin) -and

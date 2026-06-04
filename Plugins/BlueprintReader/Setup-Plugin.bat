@@ -9,7 +9,7 @@ REM
 REM Drop the plugin into <Project>\Plugins\BlueprintReader and run this from there.
 REM Paths are inferred - no arguments required. Runs with -ExecutionPolicy Bypass
 REM so the machine's PowerShell policy never blocks it. Requires PowerShell 7
-REM (pwsh) + git on PATH.
+REM (pwsh); the plugin is fetched as a ZIP over HTTPS (no git needed).
 REM
 REM Optional args (forwarded to Scripts\Update-Plugin.ps1):
 REM   -Client <ClaudeCode^|Cursor^|VSCode^|Gemini^|Codex^|All>   (default ClaudeCode)
