@@ -648,7 +648,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** These tools are called on assets that change rarely; each currently pays a full commandlet round-trip. Caching drops subsequent reads to sub-millisecond.
 
 ### PERF-5 — Replace per-BP filesystem stats in `list_blueprints` {#perf-5}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (3efb0920, 2026-06-04) · **Effort:** M
 - `BlueprintReaderCommandlet.cpp:11837`: `IsoDateForFile(FileOnDisk)` is called per BP inside `RunListOp`. On a 1000-BP project this is 1000 `IFileManager::GetTimeStamp` syscalls in a loop on the game thread — a hidden O(N) cost. Fix option A: derive `modified_iso` from `FAssetPackageData` (available from the registry, no syscall). Fix option B: batch the stat calls asynchronously before returning. The `FAssetRegistryModule::Get().GetAssetPackageData()` API provides `DiskSize` and hash — enough to detect changes without a stat.
 - **Why:** Removing O(N) syscalls from `list_blueprints` matters for any session that lists a large project's BPs more than once (the caching backend invalidates this on every write op).
 
