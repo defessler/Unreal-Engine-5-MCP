@@ -1,16 +1,20 @@
-name: Release MCP server
+name: Release
 
-# Builds the standalone BlueprintReaderMcp.exe via the engine-free CMake
-# fallback (Plugins/BlueprintReader/Tests/CMakeLists.txt) and publishes it as a
-# downloadable asset, so consumers can grab a prebuilt server instead of
-# building it. The exe is pure C++20 (bCompileAgainstEngine=false) and
-# engine-version-independent — a binary built here drives a UE 5.x editor the
-# same as a locally-built one. The version stamp (BPR_VERSION + git short-hash,
-# INSTALL-1) is baked in at configure time, so `--version` on the downloaded
-# exe reports the tag it was built from.
+# Builds and publishes three release assets on every v* tag push:
 #
-#   * push a tag `v*`  -> build, smoke, and attach the bundle to the GitHub Release
-#   * workflow_dispatch -> build + smoke + upload as a workflow artifact (no Release)
+#   1. BlueprintReader-vX.Y.Z-plugin.zip
+#      Complete plugin bundle: the entire Plugins/BlueprintReader/ tree with the
+#      prebuilt server exe already in Binaries/Win64/. Drop the folder into
+#      <Project>/Plugins/BlueprintReader/ and run Setup-Plugin.bat — done.
+#
+#   2. BlueprintReader-vX.Y.Z-toolbox-win64-setup.exe
+#      Electron GUI installer (Install / Providers / Tester / Update panels).
+#      Built from Plugins/BlueprintReader/Toolbox/ via electron-builder + NSIS.
+#
+#   3. BlueprintReaderMcp-vX.Y.Z-win64.zip  (backward-compat server-only bundle)
+#      Just the exe + fixtures — for users who only need the server binary.
+#
+# workflow_dispatch: builds all three and uploads as workflow artifacts (no Release).
 
 on:
   push:
@@ -27,7 +31,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # full history + tags so the git-hash version stamp resolves
+          fetch-depth: 0   # full history + tags so the git-hash stamp resolves
 
       - name: Set up MSVC toolchain
         uses: ilammy/msvc-dev-cmd@v1
@@ -36,15 +40,15 @@ jobs:
         shell: pwsh
         run: choco install ninja -y --no-progress
 
+      # ── 1. Build the MCP server (CMake, engine-free) ──────────────────────
       - name: Configure (CMake + Ninja, RelWithDebInfo)
         run: cmake -S Plugins/BlueprintReader/Tests -B build/mcp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
-      - name: Build (server + tests)
-        # Serial: the heavy TUs (BlueprintTools.cpp etc.) each need a lot of
-        # compiler heap; -j 1 keeps the hosted runner from OOMing (C1060).
+      - name: Build MCP server + tests
+        # Serial: heavy TUs each need lots of compiler heap; -j 1 avoids OOM.
         run: cmake --build build/mcp -j 1
 
-      - name: Smoke (mock suite + --version)
+      - name: Smoke test (mock suite + --version)
         shell: pwsh
         env:
           BP_READER_BACKEND: mock
@@ -53,41 +57,132 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Host "doctest suite failed ($LASTEXITCODE)"; exit 1 }
           & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" --version
 
-      - name: Stage release bundle
+      # ── 2. Build the Toolbox Electron app ─────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Plugins/BlueprintReader/Toolbox/package-lock.json
+
+      - name: Install Toolbox dependencies
+        working-directory: Plugins/BlueprintReader/Toolbox
+        run: npm ci
+
+      - name: Build Toolbox (Electron + NSIS installer)
+        working-directory: Plugins/BlueprintReader/Toolbox
         shell: pwsh
         run: |
-          $stage = "release-bundle"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" $stage
-          Copy-Item -Recurse "Plugins\BlueprintReader\Binaries\Win64\fixtures" "$stage\fixtures"
-          Copy-Item ".mcp.json.example" $stage
-          $ver = & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" --version
-          Set-Content "$stage\VERSION.txt" -Value $ver
-          $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "dev" }
-          Compress-Archive -Path "$stage\*" -DestinationPath "BlueprintReaderMcp-$tag-win64.zip" -Force
+          npm run dist
+          # electron-builder writes to ../Binaries/Toolbox/ per electron-builder.config.json
+          $setup = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
+            -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            Write-Warning "Toolbox installer not found — build may have skipped on this platform"
+          } else {
+            Write-Host "Toolbox installer: $($setup.FullName)"
+          }
 
-      - name: Upload workflow artifact (always)
+      # ── 3. Stage all release assets ────────────────────────────────────────
+      - name: Stage release bundles
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "dev" }
+          $ver  = & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" --version
+
+          # ── Asset 1: complete plugin ZIP ───────────────────────────────────
+          # Copy the entire Plugins/BlueprintReader tree (the server exe is
+          # already in Binaries/Win64/ from the CMake build step above) but
+          # exclude build artifacts so the ZIP stays lean.
+          $pluginSrc  = "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader"
+          $pluginStage = "plugin-stage\BlueprintReader"
+          New-Item -ItemType Directory -Force $pluginStage | Out-Null
+          & robocopy $pluginSrc $pluginStage /MIR /NFL /NDL /NJH /NJS /NP `
+            /XD "Intermediate" `
+            /XD "$pluginSrc\Binaries\Toolbox" `
+            /XF "*.pdb" "*.ilk" "*.exp" "*.lib" | Out-Null
+          # robocopy exit 0-7 = success; 8+ = error
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+          # Write a VERSION.txt so users can verify what they downloaded
+          Set-Content "$pluginStage\VERSION.txt" -Value $ver
+          $pluginZip = "BlueprintReader-$tag-plugin.zip"
+          Compress-Archive -Path "plugin-stage\*" -DestinationPath $pluginZip -Force
+          Write-Host "Plugin bundle: $pluginZip ($([math]::Round((Get-Item $pluginZip).Length/1MB,1)) MB)"
+
+          # ── Asset 2: Toolbox installer ─────────────────────────────────────
+          $toolboxInstaller = Get-ChildItem `
+            "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
+            -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($toolboxInstaller) {
+            $toolboxDst = "BlueprintReader-$tag-toolbox-win64-setup.exe"
+            Copy-Item $toolboxInstaller.FullName $toolboxDst
+            Write-Host "Toolbox installer: $toolboxDst ($([math]::Round($toolboxInstaller.Length/1MB,1)) MB)"
+          }
+
+          # ── Asset 3: server-only bundle (backward compat) ─────────────────
+          $serverStage = "server-stage"
+          New-Item -ItemType Directory -Force $serverStage | Out-Null
+          Copy-Item "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" $serverStage
+          Copy-Item -Recurse "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\fixtures" "$serverStage\fixtures"
+          if (Test-Path ".mcp.json.example") { Copy-Item ".mcp.json.example" $serverStage }
+          Set-Content "$serverStage\VERSION.txt" -Value $ver
+          $serverZip = "BlueprintReaderMcp-$tag-win64.zip"
+          Compress-Archive -Path "$serverStage\*" -DestinationPath $serverZip -Force
+          Write-Host "Server bundle:  $serverZip ($([math]::Round((Get-Item $serverZip).Length/1MB,1)) MB)"
+
+      # ── 4. Upload workflow artifacts (always — even on workflow_dispatch) ──
+      - name: Upload plugin ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlueprintReader-plugin
+          path: BlueprintReader-*-plugin.zip
+          if-no-files-found: error
+
+      - name: Upload Toolbox installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlueprintReader-toolbox
+          path: BlueprintReader-*-toolbox-win64-setup.exe
+          if-no-files-found: warn   # warn (not error) in case NSIS fails on runner
+
+      - name: Upload server bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: BlueprintReaderMcp-win64
           path: BlueprintReaderMcp-*-win64.zip
           if-no-files-found: error
 
-      - name: Attach to GitHub Release (tag pushes only)
+      # ── 5. Attach all assets to the GitHub Release (tag pushes only) ──────
+      - name: Create / update GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: BlueprintReaderMcp-*-win64.zip
-          fail_on_unmatched_files: true
+          files: |
+            BlueprintReader-*-plugin.zip
+            BlueprintReader-*-toolbox-win64-setup.exe
+            BlueprintReaderMcp-*-win64.zip
+          fail_on_unmatched_files: false
           generate_release_notes: true
           body: |
-            **Prebuilt BlueprintReaderMcp.exe** (Win64, engine-version-independent).
+            ## Install options
 
-            Download `BlueprintReaderMcp-*-win64.zip`, unzip, and point your MCP
-            client at `BlueprintReaderMcp.exe` — copy `.mcp.json.example` or run
-            `BlueprintReaderMcp.exe config --client=claude-code` (also `cursor`,
-            `windsurf`, `copilot`, `vscode`, `gemini`, `codex`). The bundled
-            `fixtures/` enable the mock backend with no UE install; point
-            `BP_READER_PROJECT` at a `.uproject` for live/commandlet work.
+            ### Option A — Full plugin bundle (recommended)
+            Download **`BlueprintReader-${{ github.ref_name }}-plugin.zip`**, unzip it,
+            and drop the `BlueprintReader/` folder into `<YourProject>/Plugins/`.
+            Then run **`Plugins/BlueprintReader/Setup-Plugin.bat`** — it configures all
+            AI clients and verifies the install. The server exe is pre-placed in
+            `Binaries/Win64/`; no build step needed.
 
-            Verify with `BlueprintReaderMcp.exe --version` (matches this tag).
+            ### Option B — GUI installer (Toolbox)
+            Download **`BlueprintReader-${{ github.ref_name }}-toolbox-win64-setup.exe`**
+            and run it. The Toolbox GUI walks you through project selection, AI provider
+            configuration, and includes an interactive MCP tester.
+
+            ### Option C — Server binary only
+            Download **`BlueprintReaderMcp-${{ github.ref_name }}-win64.zip`** for just
+            the standalone server exe + fixtures. Suitable for CI/headless setups or
+            if you already have the plugin installed.
+
+            ---
+            Verify the server version: `BlueprintReaderMcp.exe --version`
+            Run health checks: `BlueprintReaderMcp.exe doctor`
