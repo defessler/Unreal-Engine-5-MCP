@@ -399,7 +399,7 @@ public:
 
 	// ----- batch sentinels ------------------------------------------
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 
 	// ShutdownDaemon doesn't apply to live mode (the editor runs
 	// independently of the MCP server's lifetime). Returns

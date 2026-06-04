@@ -2788,7 +2788,12 @@ public:
 	// EndBatch (in-memory state stays dirty until daemon restarts;
 	// documented as a limitation of strict-atomic mode).
 	virtual void BeginBatch() {}
-	virtual nlohmann::json EndBatch(bool /*skipCompile*/ = false) {
+	// skipCompile: true = don't compile/save (on_failure="skip").
+	// rollback:    true = undo all in-memory mutations via FScopedTransaction
+	//              (on_failure="rollback"); implies !skipCompile since there is
+	//              nothing to save after a full undo.
+	virtual nlohmann::json EndBatch(bool /*skipCompile*/ = false,
+									bool /*rollback*/    = false) {
 		return nlohmann::json::object();
 	}
 

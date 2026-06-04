@@ -522,8 +522,8 @@ nlohmann::json AutoBlueprintReader::ReadActorInstance(std::string_view assetPath
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);
 }
-nlohmann::json AutoBlueprintReader::EndBatch(bool skipCompile) {
-	FORWARD(EndBatch, skipCompile);
+nlohmann::json AutoBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
+	FORWARD(EndBatch, skipCompile, rollback);
 }
 IBlueprintReader::ProjectMetadata
 AutoBlueprintReader::GetProjectMetadata() {

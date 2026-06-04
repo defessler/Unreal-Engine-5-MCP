@@ -4315,10 +4315,11 @@ void SocketBlueprintReader::BeginBatch() {
 	(void)RunOp({"-Op=BeginBatch"});
 }
 
-nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile) {
+nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
 	std::vector<std::string> args = {"-Op=EndBatch"};
-	if (skipCompile)
-	{
+	if (rollback) {
+		args.push_back("-Rollback");
+	} else if (skipCompile) {
 		args.push_back("-Skip");
 	}
 	return RunOp(args);

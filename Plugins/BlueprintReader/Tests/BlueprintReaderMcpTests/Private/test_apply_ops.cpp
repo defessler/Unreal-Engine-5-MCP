@@ -218,7 +218,7 @@ public:
 	// own no-op default that's fine for unit tests. EndBatch can return
 	// a synthetic compile-diagnostics payload for C1 tests.
 	void BeginBatch() override { ++beginBatchCalls; }
-	nlohmann::json EndBatch(bool skipCompile = false) override {
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override {
 		++endBatchCalls;
 		if (skipCompile)
 		{

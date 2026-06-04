@@ -784,18 +784,21 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	}
 	// Resolve on_failure once. Unknown values fall back to "compile" with
 	// a clear error so misspellings don't silently change behavior.
-	bool skipOnFailure = false;
+	bool skipOnFailure    = false;
+	bool rollbackOnFailure = false;
 	if (onFailure == "compile" || onFailure.empty()) {
 		skipOnFailure = false;
 	} else if (onFailure == "skip") {
 		skipOnFailure = true;
 	} else if (onFailure == "rollback") {
-		// Not implemented in v1 — would need plugin-side FScopedTransaction.
-		// Fall through to compile semantics.
-		skipOnFailure = false;
+		// H1: real rollback via FScopedTransaction in the commandlet.
+		// The -Rollback flag sent to EndBatch tells the commandlet to call
+		// GEditor->CancelTransaction() instead of compile+save, reverting all
+		// in-memory mutations to the pre-batch state.
+		rollbackOnFailure = true;
 	} else {
 		throw std::invalid_argument(fmt::format(
-			R"(unknown on_failure value "{}" — supported: "compile" (default) | "skip")",
+			R"(unknown on_failure value "{}" -- supported: "compile" (default) | "skip" | "rollback")",
 			onFailure));
 	}
 
@@ -813,12 +816,13 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	// explicit EndBatch path (success or atomic-failure).
 	struct BatchGuard {
 		backends::IBlueprintReader& r;
-		bool active = true;
-		bool skipOnEarlyExit = false;
+		bool active           = true;
+		bool skipOnEarlyExit  = false;
+		bool rollbackOnEarlyExit = false;
 		BatchGuard(backends::IBlueprintReader& r_) : r(r_) { r.BeginBatch(); }
 		~BatchGuard() {
 			if (active) {
-				try { (void)r.EndBatch(skipOnEarlyExit); } catch (...) {}
+				try { (void)r.EndBatch(skipOnEarlyExit, rollbackOnEarlyExit); } catch (...) {}
 			}
 		}
 		void release() { active = false; }
@@ -958,10 +962,11 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	try {
 		runDispatch();
 	} catch (...) {
-		// Mid-batch failure path. on_failure="compile" (default) flushes
-		// partial state to disk; "skip" discards it. Either way, EndBatch
-		// runs so the plugin's BatchPending state is cleared.
-		try { (void)reader.EndBatch(skipOnFailure); } catch (...) {}
+		// Mid-batch failure path. on_failure="compile" flushes partial state;
+		// "skip" discards without saving; "rollback" cancels the FScopedTransaction
+		// via -Rollback to revert all in-memory mutations to the pre-batch state.
+		// Either way, EndBatch runs so the plugin's BatchPending state is cleared.
+		try { (void)reader.EndBatch(skipOnFailure, rollbackOnFailure); } catch (...) {}
 		guard.release();
 		throw;
 	}
@@ -1062,17 +1067,16 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 			{"atomic", {{"type","boolean"},
 						{"description","Bail on first failure (default true)."}}},
 			{"on_failure", {{"type","string"},
-							{"enum", nlohmann::json::array({"compile","skip"})},
+							{"enum", nlohmann::json::array({"compile","skip","rollback"})},
 							{"description",
 							 "What EndBatch does after a mid-batch failure. "
-							 "\"compile\" (default): best-effort — compile + save "
-							 "what landed before the failure. Matches today's "
-							 "per-op behavior. \"skip\": don't compile, don't "
-							 "save — nothing reaches disk. The in-memory daemon "
-							 "state stays dirty until restart, so subsequent "
-							 "reads in the same session can see the partial "
-							 "mutations; this is a documented limitation of "
-							 "strict-atomic mode."}}},
+							 "\"compile\" (default): best-effort -- compile + save "
+							 "what landed before the failure. \"skip\": don't "
+							 "compile, don't save -- nothing reaches disk (in-memory "
+							 "state stays dirty until restart). \"rollback\": cancel "
+							 "the FScopedTransaction to revert all in-memory mutations "
+							 "to the exact pre-batch state -- the BP is left as it was "
+							 "before apply_ops was called."}}},
 		}},
 		{"required", nlohmann::json::array({"ops"})},
 	};

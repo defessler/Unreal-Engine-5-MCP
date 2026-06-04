@@ -916,15 +916,41 @@ namespace
 			return nullptr;
 		}
 
-		// Cross-session BP write lock: when this connection is in an
-		// open batch and another connection already holds the lock on
-		// this BP, refuse the mutation. The agent gets a structured
-		// `blueprint_locked_by_other_session` response (set via the TLS
-		// side channel, picked up in the dispatcher); the in-memory BP
-		// is NOT touched so the holding session's pending state stays
-		// clean. Non-batch ops skip the lock — single-op mutations are
-		// committed immediately so there's no interleave window.
-		if (BatchDeferFlag())
+		// Cross-session BP write lock. Two modes:
+		//   Batch mode (BatchDeferFlag()==true): lock is held for the
+		//     duration of the batch and released by EndBatch. Other sessions
+		//     get blueprint_locked_by_other_session and cannot touch the BP.
+		//   Single-op mode (H2, opt-in via BP_READER_LOCK_SINGLE_OP=1):
+		//     lock is acquired here and released immediately after compile+save
+		//     by the RAII guard below. Prevents two sessions from interleaving
+		//     load->mutate->save on the same BP (last-writer-wins race). Off by
+		//     default because single-op writes are already serialized through the
+		//     game-thread funnel; the lock adds safety without changing semantics.
+		static bool bLockSingleOp = [](){
+			const FString v = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_LOCK_SINGLE_OP"));
+			return v == TEXT("1") || v.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+		}();
+		const bool bShouldLock = BatchDeferFlag() || bLockSingleOp;
+		// RAII: for single-op writes, release the lock after compile+save (or on
+		// any early return). For batch writes the lock is owned by EndBatch;
+		// releasing here would allow interleaving — so only release when not in batch.
+		struct FSingleOpLockGuard
+		{
+			uint64 ConnId;
+			bool   bRelease;
+			~FSingleOpLockGuard()
+			{
+				if (bRelease)
+				{
+					// ReleaseAllWriteOwnership is safe here: single-op writes
+					// hold at most one BP lock at a time (acquired above).
+					BlueprintReader::FBatchRegistry::Get()
+						.ReleaseAllWriteOwnership(ConnId);
+				}
+			}
+		};
+		FSingleOpLockGuard SingleOpLock{0, false};
+		if (bShouldLock)
 		{
 			const uint64 MyConn = BlueprintReader::GetCurrentConnectionId();
 			uint64 HeldBy = 0;
@@ -954,6 +980,14 @@ namespace
 					(unsigned long long)HeldBy,
 					(unsigned long long)MyConn);
 				return nullptr;
+			}
+			// Lock acquired successfully. For single-op writes, set up the RAII
+			// guard to release it after compile+save; for batch writes, leave
+			// bRelease=false (EndBatch owns the release).
+			if (!BatchDeferFlag())
+			{
+				SingleOpLock.ConnId   = MyConn;
+				SingleOpLock.bRelease = true;
 			}
 		}
 		// Check the asset out of source control now — before any caller
@@ -1225,9 +1259,19 @@ namespace
 		// BPs whose pending edits we just discarded. Surfaced by audit.
 		BlueprintReader::FBatchRegistry::Get()
 			.ReleaseAllWriteOwnership(BlueprintReader::GetCurrentConnectionId());
+		// H1: open an FScopedTransaction so EndBatch can optionally roll back
+		// all in-memory mutations when on_failure="rollback". Only available
+		// in-editor (GEditor may be null in a pure commandlet with no editor
+		// subsystem). Non-fatal — rollback gracefully falls back to skip if
+		// the transaction can't be opened.
+		if (IsValid(GEditor))
+		{
+			GEditor->BeginTransaction(FText::FromString(TEXT("bp-reader: apply_ops batch")));
+		}
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("batch_open"), true);
+		Obj->SetBoolField(TEXT("rollback_available"), IsValid(GEditor));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -1246,18 +1290,35 @@ namespace
 		BlueprintReader::FBatchRegistry::Get()
 			.ReleaseAllWriteOwnership(BlueprintReader::GetCurrentConnectionId());
 
-		// `-Skip` flag (passed by RunOps when on_failure="skip" + a mid-batch
-		// failure occurred): discard the pending compile + save. The
-		// in-memory UBlueprints stay dirty for this daemon session — agent
-		// must avoid acting on them until the daemon restarts or they're
-		// explicitly reloaded. Documented limitation; matches the "don't
-		// persist partial state" contract of strict atomic mode.
+		// `-Skip` flag: discard pending compile + save (on_failure="skip").
+		// `-Rollback` flag: cancel the FScopedTransaction opened in BeginBatch to
+		// revert all in-memory mutations to the pre-batch state (on_failure="rollback").
 		const bool bSkipCompile = FParse::Param(*Params, TEXT("Skip"));
+		const bool bRollback    = FParse::Param(*Params, TEXT("Rollback"));
+
+		// H1: close the FScopedTransaction opened in BeginBatch.
+		// Cancel on rollback (undoes all in-memory mutations); end normally otherwise
+		// (the compile + save below commits them to disk).
+		if (IsValid(GEditor))
+		{
+			if (bRollback)
+			{
+				// CancelTransaction undoes every Modify() call since BeginTransaction.
+				GEditor->CancelTransaction(0);
+			}
+			else
+			{
+				GEditor->EndTransaction();
+			}
+		}
 
 		TArray<TSharedPtr<FJsonValue>> Recompiled;
 		TArray<TSharedPtr<FJsonValue>> AllDiagnostics;
 		int32 Failures = 0;
 		int32 Errors = 0, Warnings = 0;
+		// bRollback: the CancelTransaction above already reverted in-memory state;
+		// skip the compile + save loop entirely (there is nothing to save).
+		const bool bSkipCompileAll = bSkipCompile || bRollback;
 		for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
 		{
 			UBlueprint* BP = Weak.Get();
@@ -1266,7 +1327,7 @@ namespace
 				continue;  // GC'd between batch ops — nothing to save
 			}
 			const FString AssetPath = BP->GetPathName();
-			if (bSkipCompile)
+			if (bSkipCompileAll)
 			{
 				// Don't compile, don't save — just record what would have
 				// been recompiled so the caller knows which BPs are now
