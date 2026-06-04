@@ -1,5 +1,6 @@
 #include "tools/ToolAnnotations.h"
 
+#include <map>
 #include <set>
 #include <string>
 
@@ -245,6 +246,92 @@ ToolAnnotations AnnotationsFor(const std::string& name) {
 	// stay untouched. Lets test stubs and future tools register
 	// without inheriting a wrong classification.
 	return a;
+}
+
+// MCP-1: curated human-readable titles for the highest-traffic tools.
+// ToolRegistry::Add auto-derives a title from the snake_case name for
+// any tool not in this table, so only the most important ones need
+// explicit entries here.
+std::string TitleFor(const std::string& name) {
+	static const std::map<std::string, std::string, std::less<>> kTitles = {
+		// Core Blueprint reads
+		{"list_blueprints",          "List Blueprint Assets"},
+		{"list_assets",              "List Assets"},
+		{"find_asset",               "Find Asset by Keyword"},
+		{"read_blueprint",           "Read Blueprint (Full)"},
+		{"summarize_blueprint",      "Summarize Blueprint"},
+		{"get_graph",                "Get Blueprint Graph"},
+		{"peek_graph",               "Preview Graph (Histogram)"},
+		{"get_function",             "Get Function Graph"},
+		{"get_node",                 "Get Node by ID"},
+		{"find_node",                "Find Nodes by Query"},
+		{"find_overriders",          "Find Overriding Blueprints"},
+		{"find_dangling_references", "Find Dangling References"},
+		{"list_variables",           "List Blueprint Variables"},
+		{"list_functions",           "List Blueprint Functions"},
+		{"get_components",           "Get Blueprint Components"},
+		{"bp_structural_diff",       "Compare Blueprint Structure"},
+		{"get_class_info",           "Inspect C++ Class"},
+		{"find_class",               "Find C++ Class"},
+		// Blueprint mutation
+		{"add_variable",             "Add Blueprint Variable"},
+		{"delete_variable",          "Delete Blueprint Variable"},
+		{"rename_variable",          "Rename Blueprint Variable"},
+		{"retype_variable",          "Retype Blueprint Variable"},
+		{"set_variable_default",     "Set Variable Default Value"},
+		{"set_variable_category",    "Set Variable Category"},
+		{"add_function",             "Add Blueprint Function"},
+		{"delete_function",          "Delete Blueprint Function"},
+		{"add_function_input",       "Add Function Input"},
+		{"add_function_output",      "Add Function Output"},
+		{"add_node",                 "Add Node to Graph"},
+		{"delete_node",              "Delete Graph Node"},
+		{"wire_pins",                "Wire Pins Together"},
+		{"set_pin_default",          "Set Pin Default Value"},
+		{"set_node_position",        "Move Node in Graph"},
+		{"apply_ops",                "Apply Batch Operations"},
+		{"compile_blueprint",        "Compile Blueprint"},
+		{"create_blueprint",         "Create New Blueprint"},
+		{"duplicate_blueprint",      "Duplicate Blueprint"},
+		{"delete_asset",             "Delete Asset"},
+		{"move_asset",               "Move/Rename Asset"},
+		{"clone_graph",              "Clone Graph into Blueprint"},
+		{"implement_interface",      "Add Interface to Blueprint"},
+		// Actor instance
+		{"read_actor_instance",      "Read Actor Instance Overrides"},
+		// Transpile / BPIR
+		{"decompile_function",       "Decompile Function to BPIR"},
+		{"decompile_blueprint",      "Decompile Blueprint to BPIR"},
+		{"transpile_function",       "Transpile Function to C++"},
+		{"transpile_blueprint",      "Transpile Blueprint to C++"},
+		{"parse_cpp_function",       "Parse C++ Function to BPIR"},
+		{"write_generated_source",   "Write Generated C++ Source"},
+		// Editor control
+		{"start_pie",                "Start Play-in-Editor"},
+		{"stop_pie",                 "Stop Play-in-Editor"},
+		{"save_all",                 "Save All Modified Assets"},
+		{"compile_live_coding",      "Compile via Live Coding"},
+		{"build_lighting",           "Build Level Lighting"},
+		{"run_automation_tests",     "Run Automation Tests"},
+		// Discovery / meta
+		{"list_node_kinds",          "List Spawnable Node Kinds"},
+		{"list_pin_categories",      "List Pin Type Categories"},
+		{"enable_tool_category",     "Enable Tool Category"},
+		{"list_toolsets",            "List Tool Categories"},
+		{"describe_toolset",         "Describe Tool Category"},
+		// Per-asset-type reads
+		{"read_data_table",          "Read Data Table"},
+		{"read_material",            "Read Material"},
+		{"read_widget_blueprint",    "Read Widget Blueprint"},
+		{"read_behavior_tree",       "Read Behavior Tree"},
+		{"read_anim_blueprint",      "Read Anim Blueprint"},
+		{"read_niagara_system",      "Read Niagara System"},
+		{"read_level_sequence",      "Read Level Sequence"},
+		{"get_referencers",          "Get Asset Referencers"},
+		{"get_dependencies",         "Get Asset Dependencies"},
+	};
+	auto it = kTitles.find(name);
+	return it != kTitles.end() ? it->second : std::string{};
 }
 
 }    // namespace bpr::tools

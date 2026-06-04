@@ -74,8 +74,39 @@ namespace
 		Obj->SetObjectField(TEXT("type"), StructuredPinTypeToJson(V.StructuredType));
 		SetStringOrNull(Obj, TEXT("default_value"), V.DefaultValue);
 		SetStringOrNull(Obj, TEXT("category"), V.Category);
-		Obj->SetBoolField(TEXT("is_replicated"), V.bIsReplicated);
-		Obj->SetBoolField(TEXT("is_editable"), V.bIsEditable);
+		// REFLECT-1: all access flags decoded as named booleans so AI can
+		// reason about UPROPERTY semantics without knowing EPropertyFlags bits.
+		Obj->SetBoolField(TEXT("is_replicated"),              V.bIsReplicated);
+		Obj->SetBoolField(TEXT("is_editable"),                V.bIsEditable);
+		Obj->SetBoolField(TEXT("is_blueprint_read_write"),    V.bIsBlueprintReadWrite);
+		Obj->SetBoolField(TEXT("is_blueprint_read_only"),     V.bIsBlueprintReadOnly);
+		Obj->SetBoolField(TEXT("expose_on_spawn"),            V.bIsExposeOnSpawn);
+		Obj->SetBoolField(TEXT("is_transient"),               V.bIsTransient);
+		Obj->SetBoolField(TEXT("is_save_game"),               V.bIsSaveGame);
+		Obj->SetBoolField(TEXT("is_config"),                  V.bIsConfig);
+		Obj->SetBoolField(TEXT("is_asset_registry_searchable"), V.bIsAssetRegistrySearchable);
+		Obj->SetBoolField(TEXT("is_advanced_display"),        V.bIsAdvancedDisplay);
+		// RepNotify function name (only meaningful when is_replicated=true).
+		if (!V.RepNotifyFunc.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("rep_notify_func"), V.RepNotifyFunc);
+		}
+		// REFLECT-2: exact C++ typename (e.g. "TArray<FVector>") — useful for
+		// transpile tools and for generating accurate UPROPERTY() declarations.
+		if (!V.CppType.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("cpp_type"), V.CppType);
+		}
+		// REFLECT-2: all UPROPERTY meta=(...) key-value pairs (editor builds only).
+		if (V.MetaData.Num() > 0)
+		{
+			auto MetaObj = MakeShared<FJsonObject>();
+			for (const auto& KV : V.MetaData)
+			{
+				MetaObj->SetStringField(KV.Key.ToString(), KV.Value);
+			}
+			Obj->SetObjectField(TEXT("meta"), MetaObj);
+		}
 		// Multicast delegate variables: surface signature params for
 		// CppClassEmit's DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params
 		// variant selection. Empty for non-delegate vars (omitted from

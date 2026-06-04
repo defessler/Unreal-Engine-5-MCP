@@ -76,6 +76,28 @@ void ToolRegistry::Add(ToolDescriptor desc, ToolFn fn) {
 	if (!desc.annotations.IsSet()) {
 		desc.annotations = AnnotationsFor(desc.name);
 	}
+	// Auto-title (MCP-1): when the caller didn't set an explicit title,
+	// first check the curated TitleFor() table, then derive one from the
+	// snake_case name as a fallback. Callers can override via desc.title.
+	if (desc.title.empty() && !desc.name.empty()) {
+		desc.title = TitleFor(desc.name);
+		if (desc.title.empty()) {
+			// Fallback: snake_case → Title Case (replace _ with space).
+			std::string t;
+			t.reserve(desc.name.size() + 4);
+			bool nextUpper = true;
+			for (char c : desc.name) {
+				if (c == '_' || c == '-' || c == '.') {
+					t.push_back(' ');
+					nextUpper = true;
+				} else {
+					t.push_back(nextUpper ? static_cast<char>(std::toupper(static_cast<unsigned char>(c))) : c);
+					nextUpper = false;
+				}
+			}
+			desc.title = std::move(t);
+		}
+	}
 	// Replace-in-place semantics: if a tool with this name was registered
 	// before, overwrite both the descriptor and the function. Without this,
 	// re-registering the same tool name appended a duplicate descriptor and
@@ -156,6 +178,12 @@ nlohmann::json ToolRegistry::ListSpec() const {
 			{"description", d.description},
 			{"inputSchema", d.input_schema},
 		};
+		// MCP 2025-06-18 §title — human-readable display name separate from
+		// the programmatic `name`. Clients like Claude Desktop and ChatGPT
+		// display this in their UIs. Only emit when explicitly set.
+		if (!d.title.empty()) {
+			entry["title"] = d.title;
+		}
 		// MCP 2025-06-18 §outputSchema. We advertise one for every tool —
 		// explicit when the registration site declared a tight shape, else
 		// a permissive default keyed by tool name (array vs object). Older

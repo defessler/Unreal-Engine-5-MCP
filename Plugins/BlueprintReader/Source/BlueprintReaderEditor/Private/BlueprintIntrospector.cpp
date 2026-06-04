@@ -1,4 +1,4 @@
-#include "BlueprintIntrospector.h"
+﻿#include "BlueprintIntrospector.h"
 
 #include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -76,11 +76,30 @@ namespace
 		V.Type = FBlueprintIntrospector::FormatPinType(Var.VarType);
 		V.StructuredType = FBlueprintIntrospector::MakeStructuredPinType(Var.VarType);
 		V.DefaultValue = Var.DefaultValue;
-		V.bIsReplicated        = (Var.PropertyFlags & CPF_Net) != 0;
-		V.bIsTransient         = (Var.PropertyFlags & CPF_Transient) != 0;
-		V.bIsEditable          = (Var.PropertyFlags & CPF_Edit) != 0;
-		V.bIsBlueprintReadOnly = (Var.PropertyFlags & CPF_BlueprintReadOnly) != 0;
-		V.bIsExposeOnSpawn     = Var.HasMetaData(TEXT("ExposeOnSpawn"));
+		V.bIsReplicated             = (Var.PropertyFlags & CPF_Net) != 0;
+		V.bIsTransient              = (Var.PropertyFlags & CPF_Transient) != 0;
+		V.bIsEditable               = (Var.PropertyFlags & CPF_Edit) != 0;
+		V.bIsBlueprintReadOnly      = (Var.PropertyFlags & CPF_BlueprintReadOnly) != 0;
+		V.bIsExposeOnSpawn          = Var.HasMetaData(TEXT("ExposeOnSpawn"));
+		// REFLECT-1: additional flags decoded from EPropertyFlags.
+		V.bIsBlueprintReadWrite        = ((Var.PropertyFlags & CPF_BlueprintVisible) != 0) &&
+		                                  ((Var.PropertyFlags & CPF_BlueprintReadOnly) == 0);
+		V.bIsSaveGame                  = (Var.PropertyFlags & CPF_SaveGame) != 0;
+		V.bIsConfig                    = (Var.PropertyFlags & CPF_Config) != 0;
+		V.bIsAssetRegistrySearchable   = (Var.PropertyFlags & CPF_AssetRegistrySearchable) != 0;
+		V.bIsAdvancedDisplay           = (Var.PropertyFlags & CPF_AdvancedDisplay) != 0;
+		// RepNotify function name (only meaningful when bIsReplicated).
+		if (V.bIsReplicated && !Var.RepNotifyFunc.IsNone())
+		{
+			V.RepNotifyFunc = Var.RepNotifyFunc.ToString();
+		}
+		// REFLECT-2: surface all UPROPERTY meta=(...) key-value pairs.
+#if WITH_METADATA
+		for (const auto& KV : Var.MetaDataArray)
+		{
+			V.MetaData.Add(KV.DataKey, KV.DataValue);
+		}
+#endif
 		return V;
 	}
 
@@ -778,15 +797,35 @@ TOptional<FBlueprintInfo> FBlueprintIntrospector::Read(UBlueprint* Blueprint)
 			// DECLARE_DYNAMIC_MULTICAST_DELEGATE_<N>Params variant.
 			PopulateDelegateParams(V, GenClass);
 
-			if (V.DefaultValue.IsEmpty() && CDO && IsValid(CdoClass))
+			if (IsValid(CdoClass))
 			{
 				if (FProperty* Prop = FindFProperty<FProperty>(CdoClass, Var.VarName))
 				{
-					FString Exported;
-					Prop->ExportTextItem_Direct(Exported,
-						Prop->ContainerPtrToValuePtr<void>(CDO),
-						nullptr, CDO, PPF_None);
-					V.DefaultValue = MoveTemp(Exported);
+					// CDO export for the default value.
+					if (V.DefaultValue.IsEmpty() && CDO)
+					{
+						FString Exported;
+						Prop->ExportTextItem_Direct(Exported,
+							Prop->ContainerPtrToValuePtr<void>(CDO),
+							nullptr, CDO, PPF_None);
+						V.DefaultValue = MoveTemp(Exported);
+					}
+					// REFLECT-2: exact C++ typename and RepNotify func from FProperty.
+					V.CppType = Prop->GetCPPType();
+					if (Prop->RepNotifyFunc != NAME_None)
+					{
+						V.RepNotifyFunc = Prop->RepNotifyFunc.ToString();
+					}
+					// REFLECT-2: full UPROPERTY meta=(...) map.
+#if WITH_METADATA
+					if (const TMap<FName, FString>* RawMeta = Prop->GetMetaDataMap())
+					{
+						for (const auto& KV : *RawMeta)
+						{
+							V.MetaData.Add(KV.Key, KV.Value);
+						}
+					}
+#endif
 				}
 			}
 
