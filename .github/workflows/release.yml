@@ -49,19 +49,19 @@ jobs:
         env:
           BP_READER_BACKEND: mock
         run: |
-          & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcpTests.exe"
+          & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe"
           if ($LASTEXITCODE -ne 0) { Write-Host "doctest suite failed ($LASTEXITCODE)"; exit 1 }
-          & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcp.exe" --version
+          & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" --version
 
       - name: Stage release bundle
         shell: pwsh
         run: |
           $stage = "release-bundle"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "Binaries\Win64\BlueprintReaderMcp.exe" $stage
-          Copy-Item -Recurse "Binaries\Win64\fixtures" "$stage\fixtures"
+          Copy-Item "Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" $stage
+          Copy-Item -Recurse "Plugins\BlueprintReader\Binaries\Win64\fixtures" "$stage\fixtures"
           Copy-Item ".mcp.json.example" $stage
-          $ver = & "$env:GITHUB_WORKSPACE\Binaries\Win64\BlueprintReaderMcp.exe" --version
+          $ver = & "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe" --version
           Set-Content "$stage\VERSION.txt" -Value $ver
           $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "dev" }
           Compress-Archive -Path "$stage\*" -DestinationPath "BlueprintReaderMcp-$tag-win64.zip" -Force
