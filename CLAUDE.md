@@ -103,7 +103,7 @@ UE5_MCP/                                      ← repo root (tracks plugin + doc
 │       │       └── backends/                   Mock, Commandlet, Live, Auto, Caching, ReadOnly
 │       ├── BlueprintReaderMcpTests/            doctest suite → BlueprintReaderMcpTests.exe
 │       │   ├── BlueprintReaderMcpTests.{Target,Build}.cs
-│       │   ├── Private/                        800+ cases (mock + live)
+│       │   ├── Private/                        859+ cases (mock + live)
 │       │   └── fixtures/                       BP_*.json mock-backend data
 │       └── ThirdParty/                         vendored: nlohmann_json, fmt, doctest
 ├── Content/AI/                                 BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
@@ -171,7 +171,7 @@ explicit (heavier, less often needed):
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
-:: doctest suite (800+ cases) — not pulled in automatically:
+:: doctest suite (859+ cases) — not pulled in automatically:
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcpTests Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
@@ -297,7 +297,7 @@ replacement).
 Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-800+ cases / 33000+ assertions pass in <5 s; the live-only cases
+859+ cases / 34000+ assertions pass in <5 s; the live-only cases
 auto-skip when env vars aren't set.
 
 CI (`.github/workflows/mcp-tests.yml`) builds the MCP server + doctest
