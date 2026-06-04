@@ -520,7 +520,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 *Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
 
 ### MCP-1 — `title` field on all tools {#mcp-1}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - Add `title` (human-readable display name) as a top-level field on every Tool descriptor, distinct from the programmatic `name`. Both Claude Desktop and ChatGPT display `title` in the UI. Purely additive metadata — zero behavioral change. Example: `name="get_graph"` → `title="Get Blueprint Graph"`.
 - **Why:** Zero-risk quality-of-life improvement for all client UIs; included in 2025-06-18 spec.
 
@@ -602,12 +602,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 *Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
 
 ### REFLECT-1 — Decode PropertyFlags as named booleans {#reflect-1}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - The current wire format emits `PropertyFlags` as a raw hex integer. Replace with (or add alongside) a named-boolean breakdown: `{blueprint_read_write: bool, blueprint_read_only: bool, replicated: bool, rep_notify: bool, transient: bool, save_game: bool, edit_anywhere: bool, edit_defaults_only: bool, edit_instance_only: bool, asset_registry_searchable: bool, ...}`. Decode from `EPropertyFlags` bit constants already defined in `ObjectMacros.h`.
 - **Why:** AI can reason about access semantics without knowing bit positions; eliminates a common source of incorrect UPROPERTY() declaration in generated code.
 
 ### REFLECT-2 — Surface full property reflection in class introspection {#reflect-2}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - Extend `get_class_info` / `IntrospectClass` per-property to include: (a) `metadata` map from `FField::GetMetaDataMap()` (Category, EditCondition, DisplayName, ClampMin/Max, etc.), (b) `rep_notify_func` from `FProperty::RepNotifyFunc`, (c) `cpp_type` from `FProperty::GetCPPType()`. Also add parameter-level metadata for functions: `HidePin`, `DefaultToSelf`, `AutoCreateRefTerm`, `ExpandEnumAsExecs` — readable via `Param->GetMetaData(...)` on `TFieldIterator<FProperty>(Function)`.
 - **Why:** Required for accurate `UPROPERTY()` + `UFUNCTION()` declaration in transpiled code; needed for Details customization generation.
 
@@ -633,17 +633,17 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Eliminates the largest controllable per-call overhead on the daemon path.
 
 ### PERF-2 — Reduce daemon poll interval 50ms → 5ms {#perf-2}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - `BlueprintReaderCmdletServer.cpp:241`: `while (!DoneEvent->Wait(50))` polls the game-thread dispatch at 50 ms intervals. This creates a 0–50 ms wait per call even for sub-millisecond ops. Reducing to 5 ms gives 10× throughput improvement with negligible CPU cost (the thread stays asleep most of the time). The `FEvent::Wait(5)` overload is directly available.
 - **Why:** 20 calls/sec maximum → 200 calls/sec maximum with a one-line change. High leverage for interactive AI sessions that make many rapid reads.
 
 ### PERF-3 — Cache `GetReferencers`, `GetDependencies`, `ListAssets`, `FindAsset` {#perf-3}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - These are asset-registry graph queries that never change between write ops. `CachingBlueprintReader.cpp:1250-1252` explicitly passes them through uncached. Add the same TTL+mtime cache pattern already used for `ListBlueprints`/`ReadBlueprint`. For `ListAssets`/`FindAsset`: these are pure registry queries with no filesystem artifact to mtime-check — use TTL-only (60 s is safe; a write op calls `InvalidateAsset` anyway).
 - **Why:** `GetReferencers` and `FindAsset` are called frequently in large-project sessions (every time an AI wants to understand what uses a BP). Currently pay a full daemon round-trip every time.
 
 ### PERF-4 — Cache the remaining asset-type read tools {#perf-4}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (eb99a2a0, 2026-06-04) · **Effort:** S
 - `ReadDataTable`, `ReadDataAsset`, `ReadMaterial`, `ReadWidgetBlueprint`, `ReadBehaviorTree`, `ReadStateTree`, `ReadNiagaraSystem`, `ReadLevelSequence`, `ReadAnimBlueprint` are all pass-through (confirmed in `CachingBlueprintReader.cpp`). All are `.uasset` files under `/Game/` — the same TTL+mtime cache pattern used for BPs applies directly. Add to `CachingBlueprintReader` with per-type cache keys.
 - **Why:** These tools are called on assets that change rarely; each currently pays a full commandlet round-trip. Caching drops subsequent reads to sub-millisecond.
 
@@ -731,6 +731,12 @@ Newest first. One line per change to this file.
   H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
   H2 (single-op write lock env-gated, live-verified code=6);
   A3 (package + object path both resolve, live-verified). 859 mock/0 final.
+- **2026-06-04** — Implemented MCP-1, PERF-2/3/4, REFLECT-1/2 from research (eb99a2a0):
+  title field on all 254 tools (curated table + snake_case auto-fallback);
+  daemon poll 5ms (10x throughput, live-verified);
+  12 uncached tools now cached (GetReferencers/FindAsset/ReadMaterial/etc.);
+  EPropertyFlags decoded as named booleans + CppType + RepNotifyFunc + MetaDataMap in VariableToJson.
+  859 mock/0; editor build clean on UE 5.8.
 - **2026-06-04** — Research pass: MCP 2025-11-25 spec gaps, UE5 editor customization gaps,
   UPROPERTY/UFUNCTION/reflection architecture, performance bottlenecks. Added 5 new
   sections (MCP-1–9, EDIT-1–5, REFLECT-1–4, PERF-1–5) — 23 new `☐ Open` items.
