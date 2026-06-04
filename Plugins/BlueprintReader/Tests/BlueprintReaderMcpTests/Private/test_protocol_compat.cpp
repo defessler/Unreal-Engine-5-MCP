@@ -290,9 +290,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// clone_graph + implement_interface.
 	// Re-baselined 2026-06-01 at 252 tools after +1 read tool:
 	// read_actor_instance (OFPA / arbitrary-UObject reader).
-	// Re-baselined 2026-06-04 at 258 tools after +2 montage tools:
-	// list_anim_montages + read_anim_montage (EDIT-4).
-	constexpr uint64_t kCurrentToolsHash = 0x9FD5D0EC21EBEA00ULL;
+	// Re-baselined 2026-06-04 at 258 tools after MCP-7 description quality pass:
+	// get_graph, get_function, find_node descriptions improved with activation criteria.
+	constexpr uint64_t kCurrentToolsHash = 0x1D8AD979BE5CB2CDULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

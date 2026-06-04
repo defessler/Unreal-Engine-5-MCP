@@ -525,7 +525,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Zero-risk quality-of-life improvement for all client UIs; included in 2025-06-18 spec.
 
 ### MCP-2 — Complete tool annotations (readOnlyHint, destructiveHint, idempotentHint) {#mcp-2}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (167b97ad, 2026-06-04) · **Effort:** S
 - `ToolAnnotations.cpp` has the framework but not all four hints filled in for all tools. Correct policy: read tools in read-only mode → `{readOnlyHint:true, destructiveHint:false, idempotentHint:true, openWorldHint:false}`; write tools → `{readOnlyHint:false, destructiveHint:true}`. Reflect the runtime read/write mode in the annotations so Claude Code's auto-approval logic sees the correct hints.
 - **Why:** Claude Code uses `readOnlyHint:true` for auto-approval in `--auto-approve` mode; ChatGPT store requires correct hints for app submission. Both are already spec-defined since 2024-11-05.
 
@@ -581,12 +581,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Very high frequency (door animations, weapon recoil, UI transitions, etc.). UTimelineTemplate is on UBlueprint directly — easiest new read/write surface.
 
 ### EDIT-3 — UPROPERTY metadata specifiers in class introspection {#edit-3}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (167b97ad, 2026-06-04) · **Effort:** M
 - `get_class_info` returns `{name, typeName, category, declaredOn}` per property — no metadata specifiers. Fix: use `FField::GetMetaDataMap()` to add a `metadata` map per property; decode `PropertyFlags` as named booleans (`{blueprint_read_write, replicated, transient, edit_anywhere, ...}`) instead of raw hex; surface `RepNotifyFunc`, `GetCPPType()` per property. New tool: `get_registered_customizations()` — lists registered `IDetailCustomization` and `IPropertyTypeCustomization` from `FPropertyEditorModule`.
 - **Why:** AI can't reason about access semantics, EditConditions, or Details panel behavior without this. Needed for Details customization generation and accurate `UPROPERTY()` declaration in transpiled code.
 
 ### EDIT-4 — AnimMontage read + write {#edit-4}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (167b97ad, 2026-06-04) · **Effort:** M
 - Zero tools for AnimMontage assets. `UAnimMontage` has `TArray<FCompositeSection>`, `TArray<FAnimNotifyEvent>`, and slot tracks — all UPROPERTY arrays readable via standard reflection. New tools: `read_anim_montage(asset)` → sections + notifies + slots; `add_montage_section(asset, name, start_time)`; `add_montage_notify(asset, notify_class, trigger_time)`; `set_montage_slot(asset, slot_name, anim_sequence_path, start_time, length)`.
 - **Why:** All GAS/action game projects drive character actions through Montages. Notify names in ABP event graphs (`AnimNotify_<Name>`) are only visible from the montage side.
 
@@ -628,7 +628,7 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 *Research source: [research-2026-06-04-mcp-ue5-gaps.md](research-2026-06-04-mcp-ue5-gaps.md)*
 
 ### PERF-1 — Eliminate per-call temp-file I/O in daemon (result over TCP) {#perf-1}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (167b97ad, 2026-06-04) · **Effort:** M
 - Every daemon call writes JSON to `<Intermediate>/bpr-cmdlet-<guid>.json`, the connection thread reads it back, then deletes it — adding 5–20 ms of filesystem I/O per call (2 syscalls). Fix: pass the result directly over the TCP connection instead of via temp file. `EmitJson` needs to accept a write target (file path OR socket buffer); the CmdletServer connection thread reads from the buffer instead of reading a file. This is the single highest-value latency improvement for the warm-daemon path. File: `BlueprintReaderCmdletServer.cpp:197-251`.
 - **Why:** Eliminates the largest controllable per-call overhead on the daemon path.
 
@@ -731,6 +731,10 @@ Newest first. One line per change to this file.
   H1 (real FScopedTransaction rollback live-verified diff=0 pre-batch state);
   H2 (single-op write lock env-gated, live-verified code=6);
   A3 (package + object path both resolve, live-verified). 859 mock/0 final.
+- **2026-06-04** — Third research batch (167b97ad): MCP-2 (all 258 tools now classified);
+  EDIT-3 (EPropertyFlags + metadata map in IntrospectClass); EDIT-4 (list_anim_montages +
+  read_anim_montage; 258 tools); PERF-1 (no temp files in daemon -- JsonBody via __MEM__ pointer).
+  859 mock/0; editor clean.
 - **2026-06-04** — Second research batch (96ad5f1c): MCP-3/4/5 (all were/became done);
   REFLECT-3 (CDO FVector/FRotator defaults as JSON); REFLECT-4 (is_pure/callable/const +
   func_meta in GraphInfoToJson); PERF-5 (conditional stat guard in list_blueprints);

@@ -69,11 +69,11 @@
 | `delete_node` | Delete a K2 node by GUID. Breaks any links into/out of it. Recompiles + saves. |
 | `delete_variable` | Remove a Blueprint member variable by name. Recompiles + saves. |
 | `find_dangling_references` | Walk a Blueprint's function bodies (and optionally top-level graphs) for nodes referencing variables / intra-BP functions that no longer exist on the BP. Catches the renamed-or-deleted-but-node-sti... |
-| `find_node` | Search nodes within a Blueprint by class or title (case-insensitive substring). Optional `kind` further filters by the K2 extras kind, e.g. CallFunction, VariableGet, Event, CustomEvent, DynamicCas... |
+| `find_node` | Search all nodes in a Blueprint by class name or title substring (case-insensitive) — searches ALL graphs at once, unlike `get_graph` which reads one named graph. Use this to answer "does this BP... |
 | `find_overriders` | Find Blueprints under `path` that match a structural query: extend `parent_class`, override `function_name`, and/or implement `interface`. All filters are optional but at least one must be set. Ret... |
 | `get_components` | List the SCS components (StaticMeshComponent, LightComponent, child actors, etc.) attached to a blueprint, with parent/child hierarchy. Each entry: {name, class, parent, is_root}. Supports `fields`... |
-| `get_function` | Fetch a Blueprint function: signature (inputs/outputs), locals, and body graph. Use `fields` to project (e.g. ["inputs[].name", "outputs[].name"] for just the signature). The body graph is under th... |
-| `get_graph` | Fetch a Blueprint graph (nodes + connections) by name. Defaults to EventGraph. Big graphs are big — pass `fields` (e.g. ["nodes[].title", "nodes[].kind"]) to drop fields you don't need, or `summa... |
+| `get_function` | Fetch a specific Blueprint function by name: signature (inputs, outputs, locals) + body graph. Use when you know the function name and want its full definition. For unknown function names, use `fin... |
+| `get_graph` | Fetch a Blueprint graph by name (default: EventGraph). Use this when you need to see specific node wiring — inputs/outputs, execution flow, or connected pins. For a quick structural overview (nod... |
 | `get_node` | Fetch a single K2 node by GUID inside a graph. Returns the node's class, title, position, pins, and links — same shape as one entry from `get_graph`'s nodes array, minus the round-trip cost of fe... |
 | `implement_interface` | Add `interface` to the implemented-interfaces list of the `asset` Blueprint, generating the stub function graphs the interface requires. `interface` accepts a BP-interface package path (/Game/...) ... |
 | `list_blueprints` | List Blueprint assets under a content path. Defaults to /Game. On big projects this can return thousands of entries — use `limit`/`offset` to page, and `fields` (e.g. ["asset_path"]) to drop colu... |
