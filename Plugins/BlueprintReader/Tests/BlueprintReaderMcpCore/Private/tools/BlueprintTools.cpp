@@ -906,10 +906,13 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		ToolDescriptor d;
 		d.name = "get_graph";
 		d.description =
-			"[blueprint] Fetch a Blueprint graph (nodes + connections) by name. Defaults to EventGraph. "
-			"Big graphs are big — pass `fields` (e.g. [\"nodes[].title\", \"nodes[].kind\"]) "
-			"to drop fields you don't need, or `summary: true` to drop "
-			"per-node pin arrays and the connections list in one shot.";
+			"[blueprint] Fetch a Blueprint graph by name (default: EventGraph). "
+			"Use this when you need to see specific node wiring — inputs/outputs, "
+			"execution flow, or connected pins. "
+			"For a quick structural overview (node count, kinds) without pin detail, prefer `peek_graph`. "
+			"For a named function graph, `get_function` is more targeted. "
+			"`summary:true` (default) drops per-node pin arrays for a lean structural view; "
+			"pass `summary:false` + `max_nodes` to see full pin detail on a capped slice.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -1060,13 +1063,13 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		ToolDescriptor d;
 		d.name = "get_function";
 		d.description =
-			"[blueprint] Fetch a Blueprint function: signature (inputs/outputs), locals, "
-			"and body graph. Use `fields` to project (e.g. "
-			"[\"inputs[].name\", \"outputs[].name\"] for just the signature). "
-			"The body graph is under the `graph` key — use `graph.nodes[].id` "
-			"(not `body.nodes[].id`) in `fields` paths. "
-			"Use `summary: true` to drop per-node pin arrays and the graph's "
-			"connections list.";
+			"[blueprint] Fetch a specific Blueprint function by name: signature "
+			"(inputs, outputs, locals) + body graph. "
+			"Use when you know the function name and want its full definition. "
+			"For unknown function names, use `find_node kind=FunctionEntry` first. "
+			"The graph body is under the `graph` key. "
+			"`summary:true` (default) drops per-node pin arrays for a lean view; "
+			"`summary:false` returns the full graph with `max_nodes` cap.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
@@ -1207,11 +1210,14 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		ToolDescriptor d;
 		d.name = "find_node";
 		d.description =
-			"[blueprint] Search nodes within a Blueprint by class or title (case-insensitive substring). "
-			"Optional `kind` further filters by the K2 extras kind, e.g. CallFunction, "
-			"VariableGet, Event, CustomEvent, DynamicCast, MacroInstance, "
-			"FunctionEntry, FunctionResult. Supports `fields`/`limit`/`offset` — typical "
-			"use is `fields=[\"id\", \"title\", \"kind\"]` to keep responses small.";
+			"[blueprint] Search all nodes in a Blueprint by class name or title substring "
+			"(case-insensitive) — searches ALL graphs at once, unlike `get_graph` which "
+			"reads one named graph. Use this to answer \"does this BP call Foo anywhere?\" "
+			"or \"where is event OnDeath defined?\". "
+			"Typical call: `fields=[\"id\",\"title\",\"kind\",\"graph_name\"]`. "
+			"`kind` filter values: CallFunction, VariableGet, VariableSet, Event, "
+			"CustomEvent, DynamicCast, MacroInstance, FunctionEntry, FunctionResult, "
+			"Branch, Sequence.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
