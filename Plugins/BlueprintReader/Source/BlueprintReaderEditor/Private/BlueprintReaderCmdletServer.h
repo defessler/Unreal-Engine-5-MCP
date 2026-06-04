@@ -133,6 +133,11 @@ public:
 	// too so any code racing it sees the shutdown flag.
 	void TerminateOnSignal();
 
+	// H3: friend declaration so FDaemonWatchdog (defined in the anonymous
+	// namespace of BlueprintReaderCmdletServer.cpp) can read the private
+	// timing fields (MaxLifetimeSeconds, StartedAtUnix) without a public API.
+	friend class FDaemonWatchdog;
+
 private:
 	// FTcpListener accept callback. Spawns a per-connection worker
 	// thread; returns true so the listener keeps the connection (the
@@ -223,6 +228,7 @@ private:
 	int32                MaxLifetimeSeconds = 0;
 	int64                StartedAtUnix      = 0;
 
+
 	// Monotonic counter handing each accepted socket a unique
 	// ConnectionId. Used by FBatchRegistry to key per-session state so
 	// two clients can run concurrent BeginBatch/EndBatch cycles without
@@ -231,6 +237,14 @@ private:
 	FThreadSafeCounter64 NextConnectionId;
 
 public:
+	// H3: off-game-thread liveness watchdog. LastGameThreadTickUnix is
+	// bumped on every game-thread loop iteration (BlueprintReaderCommandlet.cpp
+	// RunDaemon); WedgeTimeoutSeconds is the tolerance (0 = disabled). Public so
+	// the FDaemonWatchdog runnable and the game-thread loop can both reach them.
+	FThreadSafeCounter64              LastGameThreadTickUnix;
+	int32                             WedgeTimeoutSeconds = 120;
+	TUniquePtr<class FRunnableThread> WatchdogThread;
+
 	// Allocate the next ConnectionId. Called once per accepted socket
 	// in OnIncomingConnection.
 	uint64 AllocateConnectionId();
