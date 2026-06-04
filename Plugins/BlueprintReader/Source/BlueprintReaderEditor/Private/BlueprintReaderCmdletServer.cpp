@@ -387,6 +387,63 @@ TUniquePtr<FCmdletServerState> GCmdletState;
 
 } // anonymous namespace
 
+// H3: off-game-thread daemon liveness watchdog. Defined in namespace BlueprintReader
+// (not the anonymous inner namespace) so the friend declaration in the header can
+// resolve it. Reads only atomics + wall-clock, never UObjects — safe on any thread.
+class FDaemonWatchdog : public FRunnable
+{
+public:
+	explicit FDaemonWatchdog(FCmdletServer& InServer) : Server(InServer) {}
+
+	bool Init() override { return true; }
+
+	uint32 Run() override
+	{
+		while (!bStop)
+		{
+			FPlatformProcess::Sleep(5.0f);  // poll every 5 s
+			if (bStop) { break; }
+
+			const int64 Now         = FDateTime::UtcNow().ToUnixTimestamp();
+			const int64 LastTick    = Server.LastGameThreadTickUnix.GetValue();
+			const int64 Started     = Server.StartedAtUnix;
+			const int32 MaxLifetime = Server.MaxLifetimeSeconds;
+			const int32 WedgeSecs   = Server.WedgeTimeoutSeconds;
+
+			bool bForce = false;
+			if (MaxLifetime > 0 && Started > 0 && Now - Started >= MaxLifetime)
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Warning,
+					TEXT("FDaemonWatchdog: max-lifetime %d s exceeded (%lld s running) - force-exiting"),
+					MaxLifetime, static_cast<long long>(Now - Started));
+				bForce = true;
+			}
+			if (!bForce && WedgeSecs > 0 && LastTick > 0 && Now - LastTick >= WedgeSecs)
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Warning,
+					TEXT("FDaemonWatchdog: game thread wedged (%lld s silent) - force-exiting"),
+					static_cast<long long>(Now - LastTick));
+				bForce = true;
+			}
+			if (bForce)
+			{
+				Server.TerminateOnSignal();
+				FPlatformMisc::RequestExit(/*bForce=*/true);
+				// Hard fallback in case RequestExit doesn't terminate immediately.
+				FPlatformProcess::Sleep(3.0f);
+				::ExitProcess(1);
+			}
+		}
+		return 0;
+	}
+
+	void Stop() override { bStop = true; }
+
+private:
+	FCmdletServer&  Server;
+	FThreadSafeBool bStop = false;
+};
+
 FCmdletServer::FCmdletServer() {}
 FCmdletServer::~FCmdletServer() { Stop(); }
 
@@ -696,6 +753,33 @@ bool FCmdletServer::Start(int32 Port)
 	// token automatically. Failure here is non-fatal — explicit env-var
 	// configuration still works.
 	HandshakeWritten = WriteHandshakeFile();
+
+	// H3: spawn the off-game-thread liveness watchdog. Default wedge timeout
+	// is 120 s; set BP_READER_DAEMON_WEDGE_SECONDS=0 to disable.
+	{
+		FString WedgeStr = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_DAEMON_WEDGE_SECONDS"));
+		if (!WedgeStr.IsEmpty())
+		{
+			const int32 Parsed = FCString::Atoi(*WedgeStr);
+			WedgeTimeoutSeconds = (Parsed >= 0) ? Parsed : WedgeTimeoutSeconds;
+			UE_LOG(LogBlueprintReaderCmdlet, Display,
+				TEXT("FCmdletServer: game-thread wedge timeout %d s"), WedgeTimeoutSeconds);
+		}
+		FDaemonWatchdog* WatchdogRunnable = new FDaemonWatchdog(*this);
+		FRunnableThread* RawThread = FRunnableThread::Create(
+			WatchdogRunnable, TEXT("BPR-DaemonWatchdog"), 0, TPri_BelowNormal);
+		if (RawThread)
+		{
+			WatchdogThread = TUniquePtr<FRunnableThread>(RawThread);
+		}
+		else
+		{
+			delete WatchdogRunnable;
+			UE_LOG(LogBlueprintReaderCmdlet, Warning,
+				TEXT("FCmdletServer: failed to start liveness watchdog thread"));
+		}
+	}
+
 	return true;
 }
 
@@ -732,6 +816,14 @@ void FCmdletServer::Stop()
 	// down anything else so any code path that polls WantsShutdown()
 	// sees the request immediately.
 	bShuttingDown = true;
+
+	// H3: stop the liveness watchdog before anything else so it doesn't
+	// race a normal clean shutdown and force-exit while we're tearing down.
+	if (WatchdogThread.IsValid())
+	{
+		WatchdogThread->Kill(/*bShouldWait=*/true);
+		WatchdogThread.Reset();
+	}
 	// Drop the handshake file FIRST so MCP-server probes immediately
 	// start failing rather than racing the listener teardown.
 	if (HandshakeWritten)

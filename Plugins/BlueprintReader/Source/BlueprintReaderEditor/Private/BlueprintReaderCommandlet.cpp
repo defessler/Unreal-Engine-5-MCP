@@ -12471,6 +12471,10 @@ int32 RunDaemon()
 		FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
 		FTSTicker::GetCoreTicker().Tick(0.05f);
 		FPlatformProcess::Sleep(0.05f);
+		// H3: bump the heartbeat so the liveness watchdog knows the game
+		// thread is still responsive. Uses FThreadSafeCounter64 which the
+		// watchdog reads off-thread with no lock — atomic read/write is safe.
+		Server.LastGameThreadTickUnix.Set(FDateTime::UtcNow().ToUnixTimestamp());
 	}
 
 	// Remove the handler before Stop() runs so a late-arriving Ctrl-C
