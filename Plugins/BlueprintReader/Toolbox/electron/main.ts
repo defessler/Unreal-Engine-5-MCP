@@ -16,8 +16,30 @@ const isDev = !app.isPackaged;
 // Path inference
 // ---------------------------------------------------------------------------
 
+// Persistent project path stored in userData so the portable exe remembers
+// the project across launches. Written by the 'save-project' IPC handler
+// when the user picks a .uproject on the Install page.
+function savedProjectFilePath(): string {
+  return path.join(app.getPath('userData'), 'project.json');
+}
+function loadSavedProject(): string {
+  try {
+    const raw = fs.readFileSync(savedProjectFilePath(), 'utf8');
+    const obj = JSON.parse(raw) as { uproject?: string };
+    const up = obj.uproject ?? '';
+    if (up && fs.existsSync(up)) return path.dirname(up);
+  } catch { /* not saved yet */ }
+  return '';
+}
+function saveProject(uprojectPath: string): void {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(savedProjectFilePath(), JSON.stringify({ uproject: uprojectPath }), 'utf8');
+  } catch { /* ignore write errors */ }
+}
+
 function getProjectDir(): string {
-  // 1. CLI arg --project-dir=<path> (set by Toolbox.bat in production)
+  // 1. CLI arg --project-dir=<path>
   const argPrefix = '--project-dir=';
   for (const arg of process.argv) {
     if (arg.startsWith(argPrefix)) {
@@ -25,18 +47,23 @@ function getProjectDir(): string {
       if (fs.existsSync(p)) return p;
     }
   }
-  // 2. Env var (set by Toolbox.bat or user)
+  // 2. Env var
   if (process.env['TOOLBOX_PROJECT_DIR'] && fs.existsSync(process.env['TOOLBOX_PROJECT_DIR'])) {
     return process.env['TOOLBOX_PROJECT_DIR'];
   }
-  // 3. Walk up from __dirname (works in dev: electron/  -> Toolbox/ -> BlueprintReader/ -> Plugins/ -> project)
+  // 3. Persisted project (user selected on Install page)
+  const saved = loadSavedProject();
+  if (saved) return saved;
+  // 4. Walk up from __dirname (works in dev: Toolbox/ -> BlueprintReader/ -> Plugins/ -> project)
   let dir = __dirname;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
+    try {
+      const files = fs.readdirSync(dir).filter(f => f.endsWith('.uproject'));
+      if (files.length > 0) return dir;
+    } catch { /* skip unreadable dirs */ }
     dir = path.dirname(dir);
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.uproject'));
-    if (files.length > 0) return dir;
   }
-  return path.dirname(path.dirname(path.dirname(path.dirname(__dirname))));
+  return '';
 }
 
 function findUproject(projectDir: string): string {
@@ -186,14 +213,23 @@ ipcMain.handle('resolve-engine', (_evt, uprojectPath: string) => {
   return getEngineDir(uprojectPath);
 });
 
+// Persist the user-chosen .uproject so all pages can resolve pluginDir
+// correctly even when the portable exe is run outside the project tree.
+ipcMain.handle('save-project', (_evt, uprojectPath: string) => {
+  saveProject(uprojectPath);
+});
+
 ipcMain.handle('get-paths', () => {
   const projectDir = getProjectDir();
-  const uproject = findUproject(projectDir);
+  // When running as a portable exe outside any project, projectDir may be
+  // empty until the user picks a .uproject on the Install page. Return safe
+  // empty strings rather than a garbage temp-dir path.
+  const uproject = projectDir ? findUproject(projectDir) : '';
   return {
     projectDir,
-    pluginDir: getPluginDir(projectDir),
-    exePath: getExePath(projectDir),
-    engineDir: getEngineDir(uproject),
+    pluginDir: projectDir ? getPluginDir(projectDir) : '',
+    exePath: projectDir ? getExePath(projectDir) : '',
+    engineDir: uproject ? getEngineDir(uproject) : '',
     uproject,
   };
 });
