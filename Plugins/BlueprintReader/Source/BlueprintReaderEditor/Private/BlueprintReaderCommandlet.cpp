@@ -9087,7 +9087,7 @@ namespace
 		{
 			if (!Seen.Contains(VB.Name))
 				Out.Add({TEXT("variables.") + VB.Name, TEXT("added"), DiffNull(),
-				         DiffStr(VB.Type + TEXT(" (default: ") + VB.DefaultValue + TEXT(")")))});
+				         DiffStr(VB.Type + TEXT(" (default: ") + VB.DefaultValue + TEXT(")"))});
 		}
 	}
 
