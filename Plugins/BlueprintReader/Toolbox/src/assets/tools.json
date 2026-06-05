@@ -9305,5 +9305,133 @@
     },
     "name": "compile_function",
     "output_schema": null
+  },
+  {
+    "category": "diff",
+    "description": "[diff] Structural diff between two Blueprint assets. Returns the list of differences (added/removed/changed variables, components, functions, graphs, parent class) as a machine-readable array. Use this before prepare_merge to understand what changed, or to compare a Blueprint to an older revision.",
+    "input_schema": {
+      "properties": {
+        "a": {
+          "description": "First asset path (e.g. /Game/AI/BP_Enemy)",
+          "type": "string"
+        },
+        "b": {
+          "description": "Second asset path to compare against",
+          "type": "string"
+        },
+        "depth": {
+          "description": "structural (default): fast variable/component/function diff. topology: also compares node counts.",
+          "enum": [
+            "structural",
+            "topology"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "type": "object"
+    },
+    "name": "diff_asset",
+    "output_schema": {
+      "properties": {
+        "a": {
+          "type": "string"
+        },
+        "asset_type": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "string"
+        },
+        "differences": {
+          "type": "array"
+        },
+        "identical": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "category": "diff",
+    "description": "[diff] AI-assisted merge context. Computes base->mine and base->theirs diffs, identifies conflicts (same path touched by both), and returns a structured merge context the AI can reason over. After reviewing the context, apply the resolution using existing write tools (add_variable, add_node, wire_pins, apply_ops, etc.) on the target asset.\n\nWorkflow: (1) call prepare_merge to get the context, (2) review conflicts, (3) apply clean_mine + clean_theirs automatically, (4) for each conflict decide which value wins and write it.",
+    "input_schema": {
+      "properties": {
+        "base": {
+          "description": "Common ancestor asset path",
+          "type": "string"
+        },
+        "mine": {
+          "description": "My version asset path",
+          "type": "string"
+        },
+        "target": {
+          "description": "Optional output asset path (defaults to mine)",
+          "type": "string"
+        },
+        "theirs": {
+          "description": "Incoming version asset path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base",
+        "mine",
+        "theirs"
+      ],
+      "type": "object"
+    },
+    "name": "prepare_merge",
+    "output_schema": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "clean_mine": {
+          "type": "array"
+        },
+        "clean_theirs": {
+          "type": "array"
+        },
+        "conflicts": {
+          "type": "array"
+        },
+        "mine": {
+          "type": "string"
+        },
+        "mine_changes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "object"
+        },
+        "target": {
+          "type": "string"
+        },
+        "their_changes": {
+          "type": "array"
+        },
+        "theirs": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
   }
 ]
