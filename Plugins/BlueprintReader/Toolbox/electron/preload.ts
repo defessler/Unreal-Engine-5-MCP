@@ -57,6 +57,9 @@ const api = {
   getAppVersion(): Promise<string> {
     return ipcRenderer.invoke('get-app-version');
   },
+  getEnvPaths(): Promise<{ userProfile: string; appData: string }> {
+    return ipcRenderer.invoke('get-env-paths');
+  },
   saveProject(uprojectPath: string): Promise<void> {
     return ipcRenderer.invoke('save-project', uprojectPath);
   },

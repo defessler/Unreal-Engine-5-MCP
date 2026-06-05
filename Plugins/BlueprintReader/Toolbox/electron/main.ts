@@ -200,6 +200,10 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 // ---------------------------------------------------------------------------
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('get-env-paths', () => ({
+  userProfile: process.env['USERPROFILE'] ?? app.getPath('home'),
+  appData:     process.env['APPDATA']     ?? app.getPath('appData'),
+}));
 
 // Window controls for the custom (frameless) title bar
 ipcMain.handle('minimize-window', () => mainWindow?.minimize());
