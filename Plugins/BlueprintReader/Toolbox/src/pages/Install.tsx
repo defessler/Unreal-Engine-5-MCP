@@ -31,6 +31,9 @@ export default function Install() {
 
   async function resolveEngine(uprojectPath: string) {
     if (!uprojectPath) { setEngineDir(''); setEngineStatus('idle'); return; }
+    // Persist immediately so all other pages (Providers, Tester, etc.) can
+    // resolve pluginDir correctly even before Install is run.
+    bridge.saveProject(uprojectPath);
     setEngineStatus('resolving');
     const dir = await bridge.resolveEngine(uprojectPath);
     if (dir) {

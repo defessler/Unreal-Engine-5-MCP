@@ -54,6 +54,9 @@ const api = {
   isRunning(pid: number): Promise<boolean> {
     return ipcRenderer.invoke('is-running', pid);
   },
+  saveProject(uprojectPath: string): Promise<void> {
+    return ipcRenderer.invoke('save-project', uprojectPath);
+  },
   minimizeWindow(): Promise<void> {
     return ipcRenderer.invoke('minimize-window');
   },
