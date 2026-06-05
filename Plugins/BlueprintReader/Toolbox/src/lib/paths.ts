@@ -29,6 +29,13 @@ export const PROVIDERS: ProviderConfig[] = [
     format: 'json',
   },
   {
+    id: 'Rider',
+    label: 'JetBrains Rider',
+    configPath: (d) => `${d}/.idea/mcp.json`,
+    configKey: ['servers', 'bp-reader'],
+    format: 'json',
+  },
+  {
     id: 'Gemini',
     label: 'Gemini',
     configPath: (d) => `${d}/.gemini/settings.json`,
