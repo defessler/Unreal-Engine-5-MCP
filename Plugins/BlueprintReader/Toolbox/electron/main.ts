@@ -199,6 +199,8 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 // IPC handlers
 // ---------------------------------------------------------------------------
 
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 // Window controls for the custom (frameless) title bar
 ipcMain.handle('minimize-window', () => mainWindow?.minimize());
 ipcMain.handle('maximize-window', () => {

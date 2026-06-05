@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { bridge } from '../lib/bridge';
 import LogStream from '../components/LogStream';
+import { storeUproject, loadUproject, uprojectToPluginDir } from '../lib/paths';
 
 export default function Install() {
-  const [uproject, setUproject] = useState('');
+  // Seed from localStorage first so we don't flash empty UI even on first load.
+  const [uproject, setUproject] = useState(() => loadUproject());
   const [engineDir, setEngineDir] = useState('');
   const [engineStatus, setEngineStatus] = useState<'idle' | 'resolving' | 'found' | 'missing'>('idle');
-  const [pluginDir, setPluginDir] = useState('');
   const [mountType, setMountType] = useState<'copy' | 'symlink'>('copy');
   const [buildServer, setBuildServer] = useState(true);
   const [applyPatches, setApplyPatches] = useState(false);
@@ -15,12 +16,20 @@ export default function Install() {
   const [running, setRunning] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
 
+  // pluginDir is always derived from the current uproject — never from getPaths()
+  // so it's always correct even on first launch before userData is written.
+  const pluginDir = uprojectToPluginDir(uproject);
+
   useEffect(() => {
     bridge.getPaths().then(async (p) => {
-      setPluginDir(p.pluginDir);
-      if (p.uproject) {
-        setUproject(p.uproject);
-        await resolveEngine(p.uproject);
+      // Use saved uproject from userData if localStorage doesn't have one yet.
+      const saved = loadUproject() || p.uproject;
+      if (saved && saved !== uproject) {
+        setUproject(saved);
+        storeUproject(saved);
+        await resolveEngine(saved);
+      } else if (uproject) {
+        await resolveEngine(uproject);
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -31,8 +40,8 @@ export default function Install() {
 
   async function resolveEngine(uprojectPath: string) {
     if (!uprojectPath) { setEngineDir(''); setEngineStatus('idle'); return; }
-    // Persist immediately so all other pages (Providers, Tester, etc.) can
-    // resolve pluginDir correctly even before Install is run.
+    // Persist to both localStorage (same-session cross-page) and userData (next launch).
+    storeUproject(uprojectPath);
     bridge.saveProject(uprojectPath);
     setEngineStatus('resolving');
     const dir = await bridge.resolveEngine(uprojectPath);

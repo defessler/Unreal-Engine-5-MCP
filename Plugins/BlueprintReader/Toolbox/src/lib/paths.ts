@@ -98,3 +98,30 @@ export function getTomlProviderStatus(content: string | null): ProviderStatus {
 export function normalizePathForCompare(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase();
 }
+
+// ── Cross-page project state ──────────────────────────────────────────────
+// The portable exe may not have a saved project on first launch. These helpers
+// use localStorage so that once the user sets a .uproject on the Install page
+// all other pages in the same session immediately see the correct paths.
+
+const STORAGE_KEY = 'bpr-uproject';
+
+export function storeUproject(uproject: string): void {
+  if (uproject) localStorage.setItem(STORAGE_KEY, uproject);
+}
+
+export function loadUproject(): string {
+  return localStorage.getItem(STORAGE_KEY) ?? '';
+}
+
+/** Derive pluginDir from a .uproject path. */
+export function uprojectToPluginDir(uproject: string): string {
+  if (!uproject) return '';
+  const projectDir = uproject.replace(/[/\\][^/\\]+\.uproject$/, '');
+  return `${projectDir}\\Plugins\\BlueprintReader`;
+}
+
+/** Derive the MCP exe path from a .uproject path. */
+export function uprojectToExePath(uproject: string): string {
+  return uprojectToPluginDir(uproject) + '\\Binaries\\Win64\\BlueprintReaderMcp.exe';
+}

@@ -527,6 +527,9 @@ namespace
 		// EDIT-4: AnimMontage read tool
 		ReadAnimMontage,
 		ListAnimMontages,
+		// Diff + merge analysis tools
+		DiffAsset,       // structural diff between two assets
+		PrepareMerge,    // base→mine + base→theirs diffs with conflict identification
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -770,6 +773,8 @@ namespace
 		// EDIT-4
 		if (OpStr.Equals(TEXT("ReadAnimMontage"),  ESearchCase::IgnoreCase))      { OutOp = EOp::ReadAnimMontage;  return true; }
 		if (OpStr.Equals(TEXT("ListAnimMontages"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListAnimMontages; return true; }
+		if (OpStr.Equals(TEXT("DiffAsset"),        ESearchCase::IgnoreCase))      { OutOp = EOp::DiffAsset;        return true; }
+		if (OpStr.Equals(TEXT("PrepareMerge"),     ESearchCase::IgnoreCase))      { OutOp = EOp::PrepareMerge;     return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -9022,6 +9027,306 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// ---- diff_asset / prepare_merge helpers ---------------------------------
+
+	struct FDiffEntry
+	{
+		FString Path;
+		FString Kind;  // "added" | "removed" | "changed"
+		TSharedPtr<FJsonValue> A;  // null for "added"
+		TSharedPtr<FJsonValue> B;  // null for "removed"
+	};
+
+	static TSharedPtr<FJsonValue> DiffNull()        { return MakeShared<FJsonValueNull>(); }
+	static TSharedPtr<FJsonValue> DiffStr(const FString& S) { return MakeShared<FJsonValueString>(S); }
+
+	TSharedPtr<FJsonObject> DiffEntryToJson(const FDiffEntry& E)
+	{
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetStringField(TEXT("path"), E.Path);
+		Obj->SetStringField(TEXT("kind"), E.Kind);
+		Obj->SetField(TEXT("a"), E.A ? E.A : DiffNull());
+		Obj->SetField(TEXT("b"), E.B ? E.B : DiffNull());
+		return Obj;
+	}
+
+	void DiffVariables(const TArray<FBPVariableInfo>& VarsA,
+	                   const TArray<FBPVariableInfo>& VarsB,
+	                   TArray<FDiffEntry>& Out)
+	{
+		// Index B by name for O(n) comparison.
+		TMap<FString, const FBPVariableInfo*> MapB;
+		for (const FBPVariableInfo& V : VarsB) { MapB.Add(V.Name, &V); }
+
+		TSet<FString> Seen;
+		for (const FBPVariableInfo& VA : VarsA)
+		{
+			Seen.Add(VA.Name);
+			const FBPVariableInfo** PB = MapB.Find(VA.Name);
+			if (!PB)
+			{
+				Out.Add({TEXT("variables.") + VA.Name, TEXT("removed"),
+				         DiffStr(VA.Type + TEXT(" (default: ") + VA.DefaultValue + TEXT(")")), DiffNull()});
+			}
+			else
+			{
+				const FBPVariableInfo& VB = **PB;
+				if (VA.Type != VB.Type)
+					Out.Add({TEXT("variables.") + VA.Name + TEXT(".type"), TEXT("changed"), DiffStr(VA.Type), DiffStr(VB.Type)});
+				if (VA.DefaultValue != VB.DefaultValue)
+					Out.Add({TEXT("variables.") + VA.Name + TEXT(".default_value"), TEXT("changed"), DiffStr(VA.DefaultValue), DiffStr(VB.DefaultValue)});
+				if (VA.Category != VB.Category)
+					Out.Add({TEXT("variables.") + VA.Name + TEXT(".category"), TEXT("changed"), DiffStr(VA.Category), DiffStr(VB.Category)});
+				if (VA.bIsReplicated != VB.bIsReplicated)
+					Out.Add({TEXT("variables.") + VA.Name + TEXT(".replication"), TEXT("changed"),
+					         DiffStr(VA.bIsReplicated ? TEXT("true") : TEXT("false")),
+					         DiffStr(VB.bIsReplicated ? TEXT("true") : TEXT("false"))});
+			}
+		}
+		for (const FBPVariableInfo& VB : VarsB)
+		{
+			if (!Seen.Contains(VB.Name))
+				Out.Add({TEXT("variables.") + VB.Name, TEXT("added"), DiffNull(),
+				         DiffStr(VB.Type + TEXT(" (default: ") + VB.DefaultValue + TEXT(")")))});
+		}
+	}
+
+	void DiffComponents(const TArray<FBPComponentInfo>& CompsA,
+	                    const TArray<FBPComponentInfo>& CompsB,
+	                    TArray<FDiffEntry>& Out)
+	{
+		TMap<FString, const FBPComponentInfo*> MapB;
+		for (const FBPComponentInfo& C : CompsB) { MapB.Add(C.Name, &C); }
+
+		TSet<FString> Seen;
+		for (const FBPComponentInfo& CA : CompsA)
+		{
+			Seen.Add(CA.Name);
+			const FBPComponentInfo** PB = MapB.Find(CA.Name);
+			if (!PB)
+			{
+				Out.Add({TEXT("components.") + CA.Name, TEXT("removed"), DiffStr(CA.ClassPath), DiffNull()});
+			}
+			else
+			{
+				const FBPComponentInfo& CB = **PB;
+				if (CA.ClassPath != CB.ClassPath)
+					Out.Add({TEXT("components.") + CA.Name + TEXT(".class"), TEXT("changed"), DiffStr(CA.ClassPath), DiffStr(CB.ClassPath)});
+				if (CA.ParentName != CB.ParentName)
+					Out.Add({TEXT("components.") + CA.Name + TEXT(".parent"), TEXT("changed"), DiffStr(CA.ParentName), DiffStr(CB.ParentName)});
+			}
+		}
+		for (const FBPComponentInfo& CB : CompsB)
+		{
+			if (!Seen.Contains(CB.Name))
+				Out.Add({TEXT("components.") + CB.Name, TEXT("added"), DiffNull(), DiffStr(CB.ClassPath)});
+		}
+	}
+
+	void DiffGraphArrays(const FString& Prefix,
+	                     const TArray<FBPGraphInfo>& GraphsA,
+	                     const TArray<FBPGraphInfo>& GraphsB,
+	                     TArray<FDiffEntry>& Out)
+	{
+		TMap<FString, const FBPGraphInfo*> MapB;
+		for (const FBPGraphInfo& G : GraphsB) { MapB.Add(G.Name, &G); }
+
+		TSet<FString> Seen;
+		for (const FBPGraphInfo& GA : GraphsA)
+		{
+			Seen.Add(GA.Name);
+			const FBPGraphInfo** PB = MapB.Find(GA.Name);
+			if (!PB)
+			{
+				Out.Add({Prefix + TEXT(".") + GA.Name, TEXT("removed"),
+				         DiffStr(FString::Printf(TEXT("%d nodes"), GA.Nodes.Num())), DiffNull()});
+			}
+			else
+			{
+				const FBPGraphInfo& GB = **PB;
+				// Surface node-count delta as an indicator of topological change.
+				if (GA.Nodes.Num() != GB.Nodes.Num())
+					Out.Add({Prefix + TEXT(".") + GA.Name + TEXT(".node_count"), TEXT("changed"),
+					         DiffStr(FString::FromInt(GA.Nodes.Num())),
+					         DiffStr(FString::FromInt(GB.Nodes.Num()))});
+				// Function signature flags.
+				if (GA.bIsBlueprintPure != GB.bIsBlueprintPure)
+					Out.Add({Prefix + TEXT(".") + GA.Name + TEXT(".pure"), TEXT("changed"),
+					         DiffStr(GA.bIsBlueprintPure ? TEXT("true") : TEXT("false")),
+					         DiffStr(GB.bIsBlueprintPure ? TEXT("true") : TEXT("false"))});
+			}
+		}
+		for (const FBPGraphInfo& GB : GraphsB)
+		{
+			if (!Seen.Contains(GB.Name))
+				Out.Add({Prefix + TEXT(".") + GB.Name, TEXT("added"), DiffNull(),
+				         DiffStr(FString::Printf(TEXT("%d nodes"), GB.Nodes.Num()))});
+		}
+	}
+
+	TArray<FDiffEntry> DiffBlueprintInfos(const FBlueprintInfo& A, const FBlueprintInfo& B)
+	{
+		TArray<FDiffEntry> Diffs;
+
+		if (A.ParentClassPath != B.ParentClassPath)
+			Diffs.Add({TEXT("parent_class"), TEXT("changed"), DiffStr(A.ParentClassPath), DiffStr(B.ParentClassPath)});
+		if (A.BlueprintType != B.BlueprintType)
+			Diffs.Add({TEXT("blueprint_type"), TEXT("changed"), DiffStr(A.BlueprintType), DiffStr(B.BlueprintType)});
+
+		// Interfaces: compare sets of paths
+		{
+			TSet<FString> IA, IB;
+			for (const FBPInterfaceInfo& I : A.Interfaces) IA.Add(I.InterfacePath);
+			for (const FBPInterfaceInfo& I : B.Interfaces) IB.Add(I.InterfacePath);
+			for (const FString& P : IA) { if (!IB.Contains(P)) Diffs.Add({TEXT("interfaces.") + P, TEXT("removed"), DiffStr(P), DiffNull()}); }
+			for (const FString& P : IB) { if (!IA.Contains(P)) Diffs.Add({TEXT("interfaces.") + P, TEXT("added"),   DiffNull(), DiffStr(P)}); }
+		}
+
+		DiffVariables(A.Variables, B.Variables, Diffs);
+		DiffComponents(A.Components, B.Components, Diffs);
+		DiffGraphArrays(TEXT("functions"),    A.FunctionGraphs,          B.FunctionGraphs,          Diffs);
+		DiffGraphArrays(TEXT("event_graphs"), A.EventGraphs,             B.EventGraphs,             Diffs);
+		DiffGraphArrays(TEXT("macros"),       A.MacroGraphs,             B.MacroGraphs,             Diffs);
+		return Diffs;
+	}
+
+	int32 EmitDiffResult(const FString& PathA, const FString& PathB, const FString& Depth,
+	                     const TArray<FDiffEntry>& Diffs, const FString& OutputPath, bool bPretty)
+	{
+		TArray<TSharedPtr<FJsonValue>> DiffArr;
+		int32 Added = 0, Removed = 0, Changed = 0;
+		for (const FDiffEntry& E : Diffs)
+		{
+			DiffArr.Add(MakeShared<FJsonValueObject>(DiffEntryToJson(E)));
+			if (E.Kind == TEXT("added"))   ++Added;
+			else if (E.Kind == TEXT("removed")) ++Removed;
+			else                               ++Changed;
+		}
+		auto Summary = MakeShared<FJsonObject>();
+		Summary->SetNumberField(TEXT("added"),   Added);
+		Summary->SetNumberField(TEXT("removed"), Removed);
+		Summary->SetNumberField(TEXT("changed"), Changed);
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"),         true);
+		Out->SetStringField(TEXT("a"),         PathA);
+		Out->SetStringField(TEXT("b"),         PathB);
+		Out->SetStringField(TEXT("depth"),     Depth);
+		Out->SetStringField(TEXT("asset_type"), TEXT("Blueprint"));
+		Out->SetBoolField(TEXT("identical"),   Diffs.IsEmpty());
+		Out->SetArrayField(TEXT("differences"), DiffArr);
+		Out->SetObjectField(TEXT("summary"),   Summary);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	int32 RunDiffAssetOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString PathA, PathB, Depth;
+		if (!FParse::Value(*Params, TEXT("A="), PathA) || PathA.IsEmpty())
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing required arg -A=<asset_path>"));
+		if (!FParse::Value(*Params, TEXT("B="), PathB) || PathB.IsEmpty())
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing required arg -B=<asset_path>"));
+		FParse::Value(*Params, TEXT("Depth="), Depth);
+		if (Depth.IsEmpty()) Depth = TEXT("structural");
+
+		const TOptional<FBlueprintInfo> InfoA = FBlueprintIntrospector::Read(PathA);
+		if (!InfoA.IsSet())
+			return EmitError(OutputPath, bPretty, 4, FString::Printf(TEXT("could not load asset: %s"), *PathA));
+
+		const TOptional<FBlueprintInfo> InfoB = FBlueprintIntrospector::Read(PathB);
+		if (!InfoB.IsSet())
+			return EmitError(OutputPath, bPretty, 4, FString::Printf(TEXT("could not load asset: %s"), *PathB));
+
+		TArray<FDiffEntry> Diffs = DiffBlueprintInfos(*InfoA, *InfoB);
+		return EmitDiffResult(PathA, PathB, Depth, Diffs, OutputPath, bPretty);
+	}
+
+	int32 RunPrepareMergeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString Base, Mine, Theirs, Target;
+		if (!FParse::Value(*Params, TEXT("Base="),   Base)   || Base.IsEmpty())
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing required arg -Base=<asset_path>"));
+		if (!FParse::Value(*Params, TEXT("Mine="),   Mine)   || Mine.IsEmpty())
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing required arg -Mine=<asset_path>"));
+		if (!FParse::Value(*Params, TEXT("Theirs="), Theirs) || Theirs.IsEmpty())
+			return EmitError(OutputPath, bPretty, 1, TEXT("missing required arg -Theirs=<asset_path>"));
+		FParse::Value(*Params, TEXT("Target="), Target);
+		if (Target.IsEmpty()) Target = Mine;
+
+		const TOptional<FBlueprintInfo> InfoBase = FBlueprintIntrospector::Read(Base);
+		if (!InfoBase.IsSet())
+			return EmitError(OutputPath, bPretty, 4, FString::Printf(TEXT("could not load base: %s"), *Base));
+		const TOptional<FBlueprintInfo> InfoMine = FBlueprintIntrospector::Read(Mine);
+		if (!InfoMine.IsSet())
+			return EmitError(OutputPath, bPretty, 4, FString::Printf(TEXT("could not load mine: %s"), *Mine));
+		const TOptional<FBlueprintInfo> InfoTheirs = FBlueprintIntrospector::Read(Theirs);
+		if (!InfoTheirs.IsSet())
+			return EmitError(OutputPath, bPretty, 4, FString::Printf(TEXT("could not load theirs: %s"), *Theirs));
+
+		TArray<FDiffEntry> MineDiffs   = DiffBlueprintInfos(*InfoBase, *InfoMine);
+		TArray<FDiffEntry> TheirsDiffs = DiffBlueprintInfos(*InfoBase, *InfoTheirs);
+
+		// Index both diff sets by path for conflict detection.
+		TMap<FString, const FDiffEntry*> MineByPath, TheirsByPath;
+		for (const FDiffEntry& E : MineDiffs)   MineByPath.Add(E.Path, &E);
+		for (const FDiffEntry& E : TheirsDiffs) TheirsByPath.Add(E.Path, &E);
+
+		// Build conflict list: paths touched by both.
+		TArray<TSharedPtr<FJsonValue>> Conflicts, CleanMine, CleanTheirs;
+		TSet<FString> ConflictPaths;
+
+		for (const FDiffEntry& ME : MineDiffs)
+		{
+			if (TheirsByPath.Contains(ME.Path))
+			{
+				ConflictPaths.Add(ME.Path);
+				const FDiffEntry& TE = *TheirsByPath[ME.Path];
+				// For conflicts, find the base value: it's ME.A (what changed from base in mine)
+				auto CObj = MakeShared<FJsonObject>();
+				CObj->SetStringField(TEXT("path"),   ME.Path);
+				CObj->SetStringField(TEXT("kind"),   TEXT("conflict"));
+				CObj->SetField(TEXT("base"),         ME.A ? ME.A : DiffNull());
+				CObj->SetField(TEXT("mine"),         ME.B ? ME.B : DiffNull());
+				CObj->SetField(TEXT("theirs"),       TE.B ? TE.B : DiffNull());
+				Conflicts.Add(MakeShared<FJsonValueObject>(CObj));
+			}
+			else
+			{
+				CleanMine.Add(MakeShared<FJsonValueObject>(DiffEntryToJson(ME)));
+			}
+		}
+		for (const FDiffEntry& TE : TheirsDiffs)
+		{
+			if (!ConflictPaths.Contains(TE.Path))
+				CleanTheirs.Add(MakeShared<FJsonValueObject>(DiffEntryToJson(TE)));
+		}
+
+		// Serialize mine_changes + their_changes as full arrays.
+		TArray<TSharedPtr<FJsonValue>> MineArr, TheirsArr;
+		for (const FDiffEntry& E : MineDiffs)   MineArr.Add(MakeShared<FJsonValueObject>(DiffEntryToJson(E)));
+		for (const FDiffEntry& E : TheirsDiffs) TheirsArr.Add(MakeShared<FJsonValueObject>(DiffEntryToJson(E)));
+
+		auto Summary = MakeShared<FJsonObject>();
+		Summary->SetNumberField(TEXT("mine_total"),       MineDiffs.Num());
+		Summary->SetNumberField(TEXT("their_total"),      TheirsDiffs.Num());
+		Summary->SetNumberField(TEXT("conflicts"),        Conflicts.Num());
+		Summary->SetNumberField(TEXT("auto_applicable"), CleanMine.Num() + CleanTheirs.Num());
+
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"),           true);
+		Out->SetStringField(TEXT("base"),        Base);
+		Out->SetStringField(TEXT("mine"),        Mine);
+		Out->SetStringField(TEXT("theirs"),      Theirs);
+		Out->SetStringField(TEXT("target"),      Target);
+		Out->SetArrayField(TEXT("mine_changes"), MineArr);
+		Out->SetArrayField(TEXT("their_changes"), TheirsArr);
+		Out->SetArrayField(TEXT("conflicts"),    Conflicts);
+		Out->SetArrayField(TEXT("clean_mine"),   CleanMine);
+		Out->SetArrayField(TEXT("clean_theirs"), CleanTheirs);
+		Out->SetObjectField(TEXT("summary"),     Summary);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// valid:false with a per-feature reason. The tool surface + schema are
 	// the stable contract; a future in-editor Slate-introspection branch can
 	// fill a given feature in here.
@@ -12568,6 +12873,8 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListTimelines,              &RunListTimelinesOp },
 		{ EOp::ReadAnimMontage,            &RunReadAnimMontageOp },
 		{ EOp::ListAnimMontages,           &RunListAnimMontagesOp },
+		{ EOp::DiffAsset,                  &RunDiffAssetOp },
+		{ EOp::PrepareMerge,               &RunPrepareMergeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

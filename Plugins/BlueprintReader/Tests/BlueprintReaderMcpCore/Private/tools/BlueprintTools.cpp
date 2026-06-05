@@ -3909,6 +3909,104 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 
 }
 
+void RegisterDiffTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
+
+	// ------------------------------------------------------------------ diff_asset
+	{
+		ToolDescriptor d;
+		d.name        = "diff_asset";
+		d.description =
+			"[diff] Structural diff between two Blueprint assets. Returns the list of "
+			"differences (added/removed/changed variables, components, functions, "
+			"graphs, parent class) as a machine-readable array. Use this before "
+			"prepare_merge to understand what changed, or to compare a Blueprint to an "
+			"older revision.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"a",     {{"type", "string"}, {"description", "First asset path (e.g. /Game/AI/BP_Enemy)"}}},
+				{"b",     {{"type", "string"}, {"description", "Second asset path to compare against"}}},
+				{"depth", {{"type", "string"}, {"enum", nlohmann::json::array({"structural","topology"})},
+				           {"description", "structural (default): fast variable/component/function diff. topology: also compares node counts."}}},
+			}},
+			{"required", nlohmann::json::array({"a", "b"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"ok",          {{"type", "boolean"}}},
+				{"a",           {{"type", "string"}}},
+				{"b",           {{"type", "string"}}},
+				{"depth",       {{"type", "string"}}},
+				{"asset_type",  {{"type", "string"}}},
+				{"identical",   {{"type", "boolean"}}},
+				{"differences", {{"type", "array"}}},
+				{"summary",     {{"type", "object"}}},
+			}},
+		};
+		auto handler = [&reader](const nlohmann::json& args) -> nlohmann::json {
+			const std::string a     = args.value("a", "");
+			const std::string b     = args.value("b", "");
+			const std::string depth = args.value("depth", "structural");
+			if (a.empty() || b.empty())
+				throw std::invalid_argument("diff_asset requires both 'a' and 'b'");
+			return reader.DiffAsset(a, b, depth);
+		};
+		registry.Add(std::move(d), std::move(handler));
+	}
+
+	// ------------------------------------------------------------ prepare_merge
+	{
+		ToolDescriptor d;
+		d.name        = "prepare_merge";
+		d.description =
+			"[diff] AI-assisted merge context. Computes base->mine and base->theirs diffs, "
+			"identifies conflicts (same path touched by both), and returns a structured "
+			"merge context the AI can reason over. After reviewing the context, apply the "
+			"resolution using existing write tools (add_variable, add_node, wire_pins, "
+			"apply_ops, etc.) on the target asset.\n\n"
+			"Workflow: (1) call prepare_merge to get the context, (2) review conflicts, "
+			"(3) apply clean_mine + clean_theirs automatically, (4) for each conflict "
+			"decide which value wins and write it.";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"base",   {{"type", "string"}, {"description", "Common ancestor asset path"}}},
+				{"mine",   {{"type", "string"}, {"description", "My version asset path"}}},
+				{"theirs", {{"type", "string"}, {"description", "Incoming version asset path"}}},
+				{"target", {{"type", "string"}, {"description", "Optional output asset path (defaults to mine)"}}},
+			}},
+			{"required", nlohmann::json::array({"base", "mine", "theirs"})},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"ok",            {{"type", "boolean"}}},
+				{"base",          {{"type", "string"}}},
+				{"mine",          {{"type", "string"}}},
+				{"theirs",        {{"type", "string"}}},
+				{"target",        {{"type", "string"}}},
+				{"mine_changes",  {{"type", "array"}}},
+				{"their_changes", {{"type", "array"}}},
+				{"conflicts",     {{"type", "array"}}},
+				{"clean_mine",    {{"type", "array"}}},
+				{"clean_theirs",  {{"type", "array"}}},
+				{"summary",       {{"type", "object"}}},
+			}},
+		};
+		auto handler = [&reader](const nlohmann::json& args) -> nlohmann::json {
+			const std::string base   = args.value("base", "");
+			const std::string mine   = args.value("mine", "");
+			const std::string theirs = args.value("theirs", "");
+			const std::string target = args.value("target", "");
+			if (base.empty() || mine.empty() || theirs.empty())
+				throw std::invalid_argument("prepare_merge requires 'base', 'mine', and 'theirs'");
+			return reader.PrepareMerge(base, mine, theirs, target);
+		};
+		registry.Add(std::move(d), std::move(handler));
+	}
+}
+
 void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& reader) {
 	RegisterTools_00(registry, reader);
 	RegisterTools_00b(registry, reader);
@@ -3926,6 +4024,7 @@ void RegisterBlueprintTools(ToolRegistry& registry, backends::IBlueprintReader& 
 	RegisterTools_08(registry, reader);
 	RegisterTools_08b(registry, reader);
 	RegisterTools_09(registry, reader);
+	RegisterDiffTools(registry, reader);
 }
 
 void RegisterProgressiveDisclosureMetaTool(ToolRegistry& registry) {

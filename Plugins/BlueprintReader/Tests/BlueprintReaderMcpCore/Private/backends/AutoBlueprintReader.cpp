@@ -1173,4 +1173,15 @@ nlohmann::json AutoBlueprintReader::ShutdownDaemon() {
 	return commandlet_->ShutdownDaemon();
 }
 
+nlohmann::json AutoBlueprintReader::DiffAsset(
+	std::string_view a, std::string_view b, std::string_view depth) {
+	FORWARD(DiffAsset, a, b, depth);
+}
+
+nlohmann::json AutoBlueprintReader::PrepareMerge(
+	std::string_view base, std::string_view mine,
+	std::string_view theirs, std::string_view target) {
+	FORWARD(PrepareMerge, base, mine, theirs, target);
+}
+
 }    // namespace bpr::backends

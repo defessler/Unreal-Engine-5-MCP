@@ -177,6 +177,17 @@ nlohmann::json CachingBlueprintReader::ShutdownDaemon() {
 	return inner_->ShutdownDaemon();
 }
 
+nlohmann::json CachingBlueprintReader::DiffAsset(
+	std::string_view a, std::string_view b, std::string_view depth) {
+	return inner_->DiffAsset(a, b, depth);
+}
+
+nlohmann::json CachingBlueprintReader::PrepareMerge(
+	std::string_view base, std::string_view mine,
+	std::string_view theirs, std::string_view target) {
+	return inner_->PrepareMerge(base, mine, theirs, target);
+}
+
 // ----- Batch sentinels (A1) ------------------------------------------------
 void CachingBlueprintReader::BeginBatch() {
 	{
