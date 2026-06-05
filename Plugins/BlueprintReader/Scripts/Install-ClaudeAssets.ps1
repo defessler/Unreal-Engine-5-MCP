@@ -11,8 +11,10 @@
 #   <project-root>/.claude/skills, .claude/agents    -> Claude Code
 #   <project-root>/AGENTS.md                          -> Codex / Cursor / Aider / Jules
 #   <project-root>/.github/copilot-instructions.md    -> GitHub Copilot
-# The AGENTS.md/copilot targets are skipped if the consumer already owns a
-# non-plugin file there (pass -Force to overwrite).
+# The AGENTS.md / copilot targets are section-merged: our guidance lives
+# between <!-- blueprintreader:start --> / <!-- blueprintreader:end -->
+# delimiters, so any content the consumer adds to those files is preserved
+# across re-runs -- only the delimited block is refreshed.
 #
 # Typical workflow:
 #   1. Drop / update Plugins/BlueprintReader/ in your UE project.
@@ -33,16 +35,86 @@ param(
     [string]$ProjectRoot,
 
     # Print what would copy without doing anything.
-    [switch]$DryRun,
-
-    # Force overwrite even if .claude/ contains files the script
-    # wouldn't normally touch. (We only manage bp-* skills + the
-    # bp-audit agent -- anything else in .claude/ is preserved by
-    # default.)
-    [switch]$Force
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
+
+# ---- Section-level merge for shared guidance files ------------------
+# AGENTS.md and .github/copilot-instructions.md are shared with the
+# consumer -- they may add their own content. Rather than overwrite
+# (loses their edits) or skip (leaves our guidance stale), we wrap our
+# content in HTML-comment delimiters and only ever touch what's between
+# them:
+#     <!-- blueprintreader:start -->
+#     ...plugin guidance...
+#     <!-- blueprintreader:end -->
+# Cases:
+#   * No file               -> create with just our block
+#   * Has our delimiters     -> replace the inner block in place
+#   * Pre-delimiter file we wrote (legacy marker present, no delimiters)
+#                            -> replace wholesale (one-time migration)
+#   * Consumer-owned file (no marker) -> append our block, keep theirs
+# Honors $DryRun (read from the script scope).
+function Merge-BprSection {
+    param(
+        [Parameter(Mandatory)] [string]$TargetPath,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string]$SourceContent,
+        [string]$Kind = 'file',
+        [string]$LegacyMarker = 'BlueprintReader MCP'
+    )
+
+    $startTag = '<!-- blueprintreader:start -->'
+    $endTag   = '<!-- blueprintreader:end -->'
+    $block    = "$startTag`n$SourceContent`n$endTag"
+
+    if (-not (Test-Path $TargetPath)) {
+        Write-Host ("  {0,-7} {1}: {2}" -f 'CREATE', $Kind, $TargetPath)
+        if (-not $DryRun) {
+            $parent = Split-Path -Parent $TargetPath
+            if ($parent -and -not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            Set-Content -LiteralPath $TargetPath -Value $block -Encoding utf8
+        }
+        return
+    }
+
+    $existing = Get-Content -LiteralPath $TargetPath -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $existing) { $existing = '' }
+
+    $startIdx = $existing.IndexOf($startTag)
+    $endIdx   = $existing.IndexOf($endTag)
+
+    if ($startIdx -ge 0 -and $endIdx -gt $startIdx) {
+        # Delimited block present -- replace only the inner block (string
+        # splice, not regex, so $ and \ in the content are never special).
+        $before  = $existing.Substring(0, $startIdx)
+        $after   = $existing.Substring($endIdx + $endTag.Length)
+        $updated = $before + $block + $after
+        $verb    = 'UPDATE'
+    }
+    elseif ($LegacyMarker -and $existing.Contains($LegacyMarker)) {
+        # A file we wrote before delimiters existed -- replace wholesale so
+        # we don't leave a stale undelimited copy beside the new block.
+        $updated = $block
+        $verb    = 'MIGRATE'
+    }
+    else {
+        # Consumer-owned file -- append our block, leave their content intact.
+        $updated = $existing.TrimEnd() + "`n`n" + $block + "`n"
+        $verb    = 'APPEND'
+    }
+
+    if ($updated -eq $existing) {
+        Write-Host ("  {0,-7} {1}: {2}" -f 'OK', $Kind, $TargetPath)
+        return
+    }
+    Write-Host ("  {0,-7} {1}: {2}" -f $verb, $Kind, $TargetPath)
+    if (-not $DryRun) {
+        Set-Content -LiteralPath $TargetPath -Value $updated -Encoding utf8
+    }
+}
 
 # ---- Locate source + target -----------------------------------------
 
@@ -117,22 +189,20 @@ if (Test-Path $agentSrc) {
 # Same content, single source, no drift. (Claude reads the richer skills under
 # .claude/.) The plugin's own AGENTS.md is ALSO natively discovered by agents
 # working inside Plugins/BlueprintReader/ - no deploy needed for subtree work.
-# `Marker` guards against clobbering a CONSUMER project's hand-written file:
-# we only overwrite a target that's absent or already plugin-managed (unless
-# -Force).
+# These are section-merged (Kind='merge'): a consumer's own content in the
+# file is preserved; only our delimited block is created/refreshed. See
+# Merge-BprSection.
 $agentsSrc = Join-Path $pluginRoot 'AGENTS.md'
 if (Test-Path $agentsSrc) {
     $plan.Add([pscustomobject]@{
         Source = $agentsSrc
         Target = Join-Path $ProjectRoot 'AGENTS.md'
-        Kind   = 'file'
-        Marker = 'BlueprintReader MCP'
+        Kind   = 'merge'
     })
     $plan.Add([pscustomobject]@{
         Source = $agentsSrc
         Target = Join-Path (Join-Path $ProjectRoot '.github') 'copilot-instructions.md'
-        Kind   = 'file'
-        Marker = 'BlueprintReader MCP'
+        Kind   = 'merge'
     })
 }
 
@@ -144,21 +214,15 @@ if ($plan.Count -eq 0) {
 # ---- Execute --------------------------------------------------------
 
 foreach ($item in $plan) {
-    # Don't clobber a consumer project's own AGENTS.md / copilot-instructions:
-    # if the target exists, isn't ours (lacks the marker), and -Force wasn't
-    # passed, skip it. Skills/agents deploy to bp-* namespaced paths and don't
-    # need this guard.
-    if ($item.PSObject.Properties.Name -contains 'Marker' -and
-        (Test-Path $item.Target) -and -not $Force) {
-        $existing = Get-Content -LiteralPath $item.Target -Raw -ErrorAction SilentlyContinue
-        if ($existing -and ($existing -notlike "*$($item.Marker)*")) {
-            Write-Host ("  SKIP   {0}: {1} (consumer-owned; re-run with -Force to overwrite)" -f $item.Kind, $item.Target) -ForegroundColor Yellow
-            continue
-        }
+    # Shared guidance files are section-merged so consumer edits survive.
+    if ($item.Kind -eq 'merge') {
+        $sourceContent = (Get-Content -LiteralPath $item.Source -Raw).TrimEnd()
+        Merge-BprSection -TargetPath $item.Target -SourceContent $sourceContent -Kind $item.Kind
+        continue
     }
 
     $action = if (Test-Path $item.Target) { 'UPDATE' } else { 'CREATE' }
-    Write-Host ("  {0,-6} {1}: {2}" -f $action, $item.Kind, $item.Target)
+    Write-Host ("  {0,-7} {1}: {2}" -f $action, $item.Kind, $item.Target)
 
     if ($DryRun) { continue }
 
