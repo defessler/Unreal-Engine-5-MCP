@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 8,
-	"VersionName": "0.4.2",
+	"Version": 6,
+	"VersionName": "0.4.0",
 	"FriendlyName": "Blueprint Reader",
 	"Description": "Headless blueprint introspection for the UE5_MCP server.",
 	"Category": "Editor",

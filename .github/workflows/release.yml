@@ -100,6 +100,9 @@ jobs:
           & robocopy $pluginSrc $pluginStage /MIR /NFL /NDL /NJH /NJS /NP `
             /XD "Intermediate" `
             /XD "$pluginSrc\Binaries\Toolbox" `
+            /XD "$pluginSrc\Toolbox\node_modules" `
+            /XD "$pluginSrc\Toolbox\dist" `
+            /XD "$pluginSrc\Toolbox\electron-dist" `
             /XF "*.pdb" "*.ilk" "*.exp" "*.lib" | Out-Null
           # robocopy exit 0-7 = success; 8+ = error
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
