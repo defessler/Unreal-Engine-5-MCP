@@ -95,9 +95,26 @@ function coerceArgs(
 let _stepIdCounter = 0;
 function nextStepId() { return `step-${++_stepIdCounter}`; }
 
-const tools = toolCatalog as ToolDescriptor[];
+const tools = toolCatalog as unknown as ToolDescriptor[];
 
 function randomPort() { return 7800 + Math.floor(Math.random() * 100); }
+
+// Read the Settings-page env overrides (localStorage['bpr-env-overrides']) and
+// strip the keys the Tester UI controls itself, so a stored value can't fight
+// the backend/port the user picked here. Everything else (write mode, daemon
+// timeouts, tool filters, etc.) flows through to the spawned server.
+function readSettingsEnv(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('bpr-env-overrides');
+    if (!raw) return {};
+    const all = JSON.parse(raw) as Record<string, string>;
+    delete all['BP_READER_BACKEND'];
+    delete all['BP_READER_HTTP_PORT'];
+    return all;
+  } catch {
+    return {};
+  }
+}
 
 // ── Main component ───────────────────────────────────────────────────────────
 
@@ -160,7 +177,7 @@ export default function Tester() {
     if (clientRef.current) return clientRef.current;
     if (backend === 'mock') {
       const port = randomPort();
-      const pid = await bridge.startServer({ backend: 'mock', port, env: {} });
+      const pid = await bridge.startServer({ backend: 'mock', port, env: readSettingsEnv() });
       setServerPid(pid); setServerStatus('running'); setServerPort(port);
       const c = new McpClient(port);
       clientRef.current = c;
@@ -172,7 +189,8 @@ export default function Tester() {
   async function startServer() {
     setServerStatus('starting'); setServerError('');
     const port = randomPort(); setServerPort(port);
-    const env: Record<string, string> = {};
+    // Base env = Settings-page overrides; specific paths layered on top.
+    const env: Record<string, string> = { ...readSettingsEnv() };
     if (backend !== 'mock') {
       if (engineDir) env['BP_READER_ENGINE_DIR'] = engineDir;
       if (projectDir) env['BP_READER_PROJECT'] =
@@ -306,6 +324,7 @@ export default function Tester() {
   const statusColors: Record<string, string> = {
     stopped: 'text-gray-400', starting: 'text-yellow-400', running: 'text-green-400', error: 'text-red-400',
   };
+  const settingsOverrideCount = Object.keys(readSettingsEnv()).length;
 
   return (
     <div className="flex h-full">
@@ -322,8 +341,15 @@ export default function Tester() {
             ))}
           </div>
           <div className="flex items-center justify-between">
-            <div className={`text-xs ${statusColors[serverStatus]}`}>
-              {serverStatus === 'running' ? `PID ${serverPid} :${serverPort}` : serverStatus}
+            <div className="flex items-center gap-2">
+              <span className={`text-xs ${statusColors[serverStatus]}`}>
+                {serverStatus === 'running' ? `PID ${serverPid} :${serverPort}` : serverStatus}
+              </span>
+              {settingsOverrideCount > 0 && (
+                <span className="text-xs text-ue-accent/80" title="Settings-page env overrides applied on start">
+                  ⚙ {settingsOverrideCount}
+                </span>
+              )}
             </div>
             {serverStatus === 'running' ? (
               <button onClick={stopServer} className="px-2 py-0.5 bg-red-600/20 border border-red-500/30 rounded text-xs text-red-400 hover:bg-red-600/30">Stop</button>
