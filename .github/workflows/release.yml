@@ -104,8 +104,11 @@ jobs:
             /XD "$pluginSrc\Toolbox\dist" `
             /XD "$pluginSrc\Toolbox\electron-dist" `
             /XF "*.pdb" "*.ilk" "*.exp" "*.lib" | Out-Null
-          # robocopy exit 0-7 = success; 8+ = error
+          # robocopy exit 0-7 = success; 8+ = error.
+          # Reset LASTEXITCODE: robocopy exits 1 ("files copied") which
+          # GitHub Actions pwsh would otherwise interpret as a step failure.
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+          $global:LASTEXITCODE = 0
           # Write a VERSION.txt so users can verify what they downloaded
           Set-Content "$pluginStage\VERSION.txt" -Value $ver
           $pluginZip = "BlueprintReader-$tag-plugin.zip"
