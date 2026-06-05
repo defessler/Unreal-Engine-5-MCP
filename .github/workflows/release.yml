@@ -77,10 +77,14 @@ jobs:
           # electron-builder bundles its own NSIS and writes to dist/ (inside Toolbox/).
           # electron-builder.config.json sets output to ../Binaries/Toolbox/ so the .exe
           # lands at Plugins/BlueprintReader/Binaries/Toolbox/<name> Setup <ver>.exe
-          # Filter *.exe (not *Setup*.exe — the filename has spaces and a version number).
-          $setup = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
-            -Filter "*.exe" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notmatch '\.blockmap$' } |
+          # Search recursively under BlueprintReader for the installer .exe.
+          # electron-builder outputs to Binaries/Toolbox/ per package.json "build" config,
+          # but we search broadly in case the path resolves differently on the runner.
+          $setup = Get-ChildItem -Recurse `
+            -Path "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader" `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -eq '.exe' -and $_.Name -notmatch '(BlueprintReaderMcp|Tests)' -and $_.Length -gt 1MB } |
+            Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if (-not $setup) {
             Write-Error "Toolbox installer not found after build — check electron-builder output"
@@ -121,10 +125,11 @@ jobs:
           Write-Host "Plugin bundle: $pluginZip ($([math]::Round((Get-Item $pluginZip).Length/1MB,1)) MB)"
 
           # ── Asset 2: Toolbox installer ─────────────────────────────────────
-          $toolboxInstaller = Get-ChildItem `
-            "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
-            -Filter "*.exe" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notmatch '\.blockmap$' } |
+          $toolboxInstaller = Get-ChildItem -Recurse `
+            "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader" `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -eq '.exe' -and $_.Name -notmatch '(BlueprintReaderMcp|Tests)' -and $_.Length -gt 1MB } |
+            Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if ($toolboxInstaller) {
             $toolboxDst = "BlueprintReader-$tag-toolbox-win64-setup.exe"
