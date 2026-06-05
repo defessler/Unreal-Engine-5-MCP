@@ -486,6 +486,18 @@ bool FCmdletServer::WantsShutdown() const
 				return true;
 			}
 		}
+		else if (GraceSeconds > 0 && StartedAtUnix > 0)
+		{
+			// No client has ever connected. If we've been up longer than
+			// the startup grace period the MCP server that spawned us
+			// must have crashed before completing the TCP handshake —
+			// self-exit so we don't linger as an orphan process.
+			const int64 Now = FDateTime::UtcNow().ToUnixTimestamp();
+			if (Now - StartedAtUnix >= static_cast<int64>(GraceSeconds))
+			{
+				return true;
+			}
+		}
 	}
 	return false;
 }
@@ -627,17 +639,23 @@ bool FCmdletServer::Start(int32 Port)
 		}
 	}
 
-	// Hard max-lifetime backstop (off by default). Stamp the start time and
-	// read the optional cap. When set, WantsShutdown() fires after this many
-	// wall-clock seconds even if a connection never closes — so a wedged
-	// daemon can't outlive its usefulness.
+	// Hard max-lifetime backstop. Default 3600 s; WantsShutdown() fires after
+	// this many wall-clock seconds regardless of active connections, covering
+	// the case where a wedged connection keeps ActiveConnections > 0 forever.
+	// Set BP_READER_DAEMON_MAX_LIFETIME_SECONDS=0 to disable entirely.
 	{
 		StartedAtUnix = FDateTime::UtcNow().ToUnixTimestamp();
 		FString MaxStr = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_DAEMON_MAX_LIFETIME_SECONDS"));
 		if (!MaxStr.IsEmpty())
 		{
 			const int32 Parsed = FCString::Atoi(*MaxStr);
-			if (Parsed > 0)
+			if (Parsed == 0)
+			{
+				MaxLifetimeSeconds = 0;
+				UE_LOG(LogBlueprintReaderCmdlet, Display,
+					TEXT("FCmdletServer: hard max lifetime disabled (BP_READER_DAEMON_MAX_LIFETIME_SECONDS=0)"));
+			}
+			else if (Parsed > 0)
 			{
 				MaxLifetimeSeconds = Parsed;
 				UE_LOG(LogBlueprintReaderCmdlet, Display,
@@ -646,8 +664,36 @@ bool FCmdletServer::Start(int32 Port)
 			else
 			{
 				UE_LOG(LogBlueprintReaderCmdlet, Warning,
-					TEXT("FCmdletServer: BP_READER_DAEMON_MAX_LIFETIME_SECONDS=%s rejected (must be > 0); backstop disabled"),
-					*MaxStr);
+					TEXT("FCmdletServer: BP_READER_DAEMON_MAX_LIFETIME_SECONDS=%s rejected (must be >= 0); using default %d s"),
+					*MaxStr, MaxLifetimeSeconds);
+			}
+		}
+		else
+		{
+			UE_LOG(LogBlueprintReaderCmdlet, Verbose,
+				TEXT("FCmdletServer: hard max lifetime %d s (default)"), MaxLifetimeSeconds);
+		}
+	}
+
+	// Startup grace period. If no client connects within GraceSeconds of
+	// daemon start, WantsShutdown() exits the daemon — prevents orphaned
+	// daemons from a parent MCP server that crashed before TCP handshake.
+	{
+		FString GraceStr = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_DAEMON_GRACE_SECONDS"));
+		if (!GraceStr.IsEmpty())
+		{
+			const int32 Parsed = FCString::Atoi(*GraceStr);
+			if (Parsed >= 0)
+			{
+				GraceSeconds = Parsed;
+				UE_LOG(LogBlueprintReaderCmdlet, Display,
+					TEXT("FCmdletServer: startup grace period %d s (env override)"), GraceSeconds);
+			}
+			else
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Warning,
+					TEXT("FCmdletServer: BP_READER_DAEMON_GRACE_SECONDS=%s rejected (must be >= 0); using default %d s"),
+					*GraceStr, GraceSeconds);
 			}
 		}
 	}

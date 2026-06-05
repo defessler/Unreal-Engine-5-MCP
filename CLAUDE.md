@@ -138,7 +138,8 @@ commandlet (editor closed).
 | `BP_READER_TIMEOUT_SECONDS`   | `120`                              | Per-call subprocess timeout |
 | `BP_READER_DAEMON`            | `1` (on)                           | Set `0` to opt out of daemon mode |
 | `BP_READER_DAEMON_IDLE_SECONDS` | `300`                            | Daemon self-exits after this many seconds with zero active connections (orphan cleanup). Min 5s. |
-| `BP_READER_DAEMON_MAX_LIFETIME_SECONDS` | `0` (off)                | Hard max wall-clock lifetime backstop — daemon self-exits after this long regardless of activity. Guards against a wedged connection that keeps idle-shutdown from ever firing. Off by default. |
+| `BP_READER_DAEMON_MAX_LIFETIME_SECONDS` | `3600`                   | Hard max wall-clock lifetime backstop — daemon self-exits after this long regardless of activity. Guards against a wedged connection that keeps idle-shutdown from ever firing. Set `0` to disable. |
+| `BP_READER_DAEMON_GRACE_SECONDS` | `120`                           | Startup grace period — if no client connects within this many seconds of daemon start, the daemon self-exits. Covers the case where the MCP server spawned the daemon and then crashed before TCP handshake. Set `0` to disable. |
 | `BP_READER_READ_ONLY`         | `1` (on, **default**)              | Read-only by default — every write tool is rejected with a clear error. Guards against two processes mutating the same `.uasset` concurrently. Set `0` (or `BP_READER_ALLOW_WRITE=1`) to enable writes. |
 | `BP_READER_ALLOW_WRITE`       | `0` (off)                          | Discoverable inverse of `BP_READER_READ_ONLY` — set `1` to enable write tools. An explicit `BP_READER_READ_ONLY` wins if both are set. |
 | `BP_READER_ALLOW_TRANSPILE`  | `0` (off)                          | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
