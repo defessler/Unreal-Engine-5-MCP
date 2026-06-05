@@ -89,8 +89,8 @@ export default function Install() {
 
   const engineLabel = () => {
     if (engineStatus === 'resolving') return <span className="text-xs text-yellow-400">Detecting engine…</span>;
-    if (engineStatus === 'found') return <span className="text-xs text-green-400">✓ Engine: {engineDir}</span>;
-    if (engineStatus === 'missing') return <span className="text-xs text-amber-400">Engine not auto-detected — enter manually below</span>;
+    if (engineStatus === 'found') return <span className="text-xs text-green-400">✓ {engineDir}</span>;
+    if (engineStatus === 'missing') return <span className="text-xs text-amber-400">Engine not detected — select it below</span>;
     return null;
   };
 
@@ -122,18 +122,33 @@ export default function Install() {
           <div className="mt-1.5 min-h-[18px] text-xs">{engineLabel()}</div>
         </div>
 
-        {/* Engine manual override — only shown when auto-detect fails */}
-        {engineStatus === 'missing' && (
+        {/* Engine directory — shown when detected (with override option) or when detection failed */}
+        {(engineStatus === 'found' || engineStatus === 'missing') && (
           <div>
             <label className="block text-xs font-medium text-gray-300 mb-1">
-              Engine directory <span className="text-gray-500 font-normal">(manual)</span>
+              Engine directory
+              {engineStatus === 'found' && <span className="text-gray-500 font-normal ml-1">(auto-detected — override if needed)</span>}
             </label>
-            <input
-              className="w-full bg-black/40 border border-ue-border rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-ue-accent"
-              value={engineDir}
-              onChange={(e) => setEngineDir(e.target.value)}
-              placeholder="C:\Program Files\Epic Games\UE_5.8"
-            />
+            <div className="flex gap-2">
+              <input
+                className="flex-1 bg-black/40 border border-ue-border rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-ue-accent"
+                value={engineDir}
+                onChange={(e) => setEngineDir(e.target.value)}
+                placeholder="C:\Program Files\Epic Games\UE_5.8"
+              />
+              <button
+                onClick={async () => {
+                  const p = await bridge.openFileDialog({
+                    title: 'Select Unreal Engine directory',
+                    properties: ['openDirectory'],
+                  });
+                  if (p) setEngineDir(p);
+                }}
+                className="px-3 py-2 bg-ue-panel border border-ue-border rounded text-sm hover:bg-white/10 text-gray-300"
+              >
+                Browse
+              </button>
+            </div>
           </div>
         )}
 
