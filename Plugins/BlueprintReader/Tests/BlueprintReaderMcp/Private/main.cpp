@@ -16,6 +16,7 @@
 // stdout is the JSON-RPC transport — never write anything non-framed there.
 
 #include "backends/BackendFactory.h"
+#include "backends/IBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "Diagnostics.h"
 #include "Env.h"
@@ -33,6 +34,7 @@
 #include "tools/ToolsetMeta.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
@@ -53,6 +55,21 @@
 	#include <windows.h>
 	#include <tlhelp32.h>
 #endif    // defined(_WIN32)
+
+// Global reader pointer used by the signal/ctrl handler and the parent-death
+// watchdog to call ShutdownDaemon() before the process exits. Set once after
+// the backend is created; read from signal context — must be atomic.
+static std::atomic<bpr::backends::IBlueprintReader*> g_activeReader{nullptr};
+
+// Tear down the spawned daemon (if any) so it doesn't outlive this process.
+// Safe to call from any thread or signal context: ShutdownDaemon is
+// internally mutex-protected and no-ops for non-commandlet backends.
+static void CleanupDaemonOnExit() {
+    auto* r = g_activeReader.exchange(nullptr);
+    if (r) {
+        try { r->ShutdownDaemon(); } catch (...) {}
+    }
+}
 
 namespace main_detail {
 
@@ -97,9 +114,10 @@ void InstallParentDeathWatchdog(std::ostream& log) {
 	if (parent == nullptr) { return; }
 	std::thread([parent]() {
 		WaitForSingleObject(parent, INFINITE);
-		// Client is gone — terminate immediately rather than linger on a blocked
-		// stdin read. ExitProcess avoids running static destructors that could
-		// themselves block on the now-dead pipe/handles.
+		// Client is gone. Kill the spawned daemon before exiting so it doesn't
+		// linger as an orphan. ExitProcess then skips static destructors that
+		// could block on the now-dead parent pipe/handles.
+		CleanupDaemonOnExit();
 		::ExitProcess(0);
 	}).detach();
 	log << "[bp-reader-mcp] parent-death watchdog armed (ppid=" << ppid << ")\n";
@@ -472,6 +490,21 @@ int RunServerLoop() {
 		return 1;
 	}
 
+	// Register the active reader for daemon cleanup on unexpected exit.
+	// The console-ctrl handler fires on Ctrl-C / SIGTERM / window-close and
+	// ensures the spawned UnrealEditor-Cmd.exe daemon is terminated before we
+	// exit — preventing orphaned editor processes that accumulate across
+	// sessions. We also register with atexit as a belt-and-suspenders fallback
+	// for code paths that call ::exit() without going through the handler.
+	g_activeReader.store(reader.get());
+	std::atexit(CleanupDaemonOnExit);
+#if defined(_WIN32)
+	SetConsoleCtrlHandler([](DWORD) -> BOOL {
+		CleanupDaemonOnExit();
+		return FALSE;  // let the default handler terminate the process
+	}, TRUE);
+#endif    // defined(_WIN32)
+
 	if (auto* mock = dynamic_cast<backends::MockBlueprintReader*>(reader.get())) {
 		if (env::VerboseLoggingEnabled()) {
 			std::cerr << fmt::format("[bp-reader-mcp] loaded {} fixture(s)\n",
@@ -753,6 +786,9 @@ int RunServerLoop() {
 	}
 
 	server.Run(std::cin, std::cout, std::cerr);
+	// Normal exit via stdin EOF — the reader destructor handles cleanup.
+	// Clear the global so the atexit handler doesn't double-invoke.
+	g_activeReader.store(nullptr);
 	if (env::VerboseLoggingEnabled()) {
 		std::cerr << "[bp-reader-mcp] stdin closed; exiting\n";
 	}

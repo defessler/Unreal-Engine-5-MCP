@@ -223,10 +223,17 @@ private:
 	// Hard max-lifetime backstop (defense-in-depth). Idle-shutdown can't
 	// fire if a client connection wedges open (ActiveConnections never
 	// returns to 0); this caps total wall-clock lifetime regardless of
-	// activity. Off by default (0). Env BP_READER_DAEMON_MAX_LIFETIME_SECONDS
-	// enables it; StartedAtUnix is stamped in Start().
-	int32                MaxLifetimeSeconds = 0;
+	// activity. Default 3600 s (1 h). Env BP_READER_DAEMON_MAX_LIFETIME_SECONDS
+	// overrides; set to 0 to disable. StartedAtUnix is stamped in Start().
+	int32                MaxLifetimeSeconds = 3600;
 	int64                StartedAtUnix      = 0;
+
+	// Startup grace period. If no client has ever connected within this
+	// many seconds of daemon start, the daemon exits — covers the case
+	// where the MCP server spawned it and then crashed before the TCP
+	// handshake completed, leaving the daemon alive indefinitely.
+	// Default 120 s. Env BP_READER_DAEMON_GRACE_SECONDS overrides; 0 disables.
+	int32                GraceSeconds = 120;
 
 
 	// Monotonic counter handing each accepted socket a unique
