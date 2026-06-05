@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import type { Page } from '../App';
+import { bridge } from '../lib/bridge';
 
 interface NavItem {
   id: Page;
@@ -8,11 +10,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'install', label: 'Install', icon: '⬇', description: 'Mount plugin & build server' },
+  { id: 'install',   label: 'Install',   icon: '⬇', description: 'Mount plugin & build server' },
   { id: 'providers', label: 'Providers', icon: '⚙', description: 'Configure AI clients' },
-  { id: 'settings', label: 'Settings', icon: '🔧', description: 'Server flags & env vars' },
-  { id: 'tester', label: 'Tester', icon: '▶', description: 'Test MCP tool calls' },
-  { id: 'update', label: 'Update', icon: '↑', description: 'Check for updates' },
+  { id: 'settings',  label: 'Settings',  icon: '🔧', description: 'Server flags & env vars' },
+  { id: 'tester',    label: 'Tester',    icon: '▶', description: 'Test MCP tool calls' },
+  { id: 'update',    label: 'Update',    icon: '↑', description: 'Check for updates' },
 ];
 
 interface SidebarProps {
@@ -21,6 +23,11 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ current, onNav }: SidebarProps) {
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    bridge.getAppVersion().then(setVersion).catch(() => {});
+  }, []);
+
   return (
     <aside className="w-48 flex-shrink-0 bg-ue-panel border-r border-ue-border flex flex-col">
       <div className="px-4 py-4 border-b border-ue-border">
@@ -47,7 +54,7 @@ export default function Sidebar({ current, onNav }: SidebarProps) {
         ))}
       </nav>
       <div className="px-4 py-3 border-t border-ue-border">
-        <div className="text-xs text-gray-600">v0.4.0</div>
+        <div className="text-xs text-gray-600">{version ? `v${version}` : ''}</div>
       </div>
     </aside>
   );

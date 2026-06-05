@@ -409,6 +409,10 @@ public:
 	// independently of the MCP server's lifetime). Returns
 	// {ok:true, was_running:false}.
 	nlohmann::json ShutdownDaemon() override;
+	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
+	                         std::string_view depth = "structural") override;
+	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,
+	                            std::string_view theirs, std::string_view target = "") override;
 
 	// Public entry-point for clients that already have op-frame args
 	// pre-encoded (CommandletBlueprintReader, which now routes its

@@ -425,6 +425,10 @@ public:
 	// can release the project lock without restarting the MCP server.
 	// The next tool call auto-respawns via the existing fallback path.
 	nlohmann::json ShutdownDaemon() override;
+	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
+	                         std::string_view depth = "structural") override;
+	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,
+	                            std::string_view theirs, std::string_view target = "") override;
 
 	// Spin up the editor daemon now in a background thread. Tool calls
 	// that arrive before the daemon's TCP handshake file is published

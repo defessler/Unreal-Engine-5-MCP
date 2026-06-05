@@ -5109,4 +5109,24 @@ nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
 #endif    // defined(_WIN32)
 }
 
+nlohmann::json CommandletBlueprintReader::DiffAsset(
+	std::string_view a, std::string_view b, std::string_view depth) {
+	std::vector<std::wstring> args = {L"-Op=DiffAsset",
+		L"-A=" + Widen(a), L"-B=" + Widen(b)};
+	if (!depth.empty() && depth != "structural")
+		args.push_back(L"-Depth=" + Widen(depth));
+	return RunOp(args);
+}
+
+nlohmann::json CommandletBlueprintReader::PrepareMerge(
+	std::string_view base, std::string_view mine,
+	std::string_view theirs, std::string_view target) {
+	std::vector<std::wstring> args = {L"-Op=PrepareMerge",
+		L"-Base=" + Widen(base), L"-Mine=" + Widen(mine),
+		L"-Theirs=" + Widen(theirs)};
+	if (!target.empty())
+		args.push_back(L"-Target=" + Widen(target));
+	return RunOp(args);
+}
+
 }    // namespace bpr::backends

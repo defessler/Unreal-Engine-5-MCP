@@ -349,6 +349,10 @@ public:
 	// is the whole reason this mode exists ("let me work in the editor
 	// without daemon contention").
 	nlohmann::json ShutdownDaemon() override;
+	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
+	                         std::string_view depth = "structural") override;
+	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,
+	                            std::string_view theirs, std::string_view target = "") override;
 
 	// Forward to inner. The read-only decorator doesn't change what the
 	// underlying backend can or can't do — it just rejects writes — so

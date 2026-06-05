@@ -480,6 +480,8 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_texture_paint_state",
 		// Take recorder / render queue editor state
 		"get_take_recorder_state", "get_render_queue",
+		// Diff/merge tools require loading real blueprint assets — no fixture analog
+		"diff_asset", "prepare_merge",
 	};
 }
 

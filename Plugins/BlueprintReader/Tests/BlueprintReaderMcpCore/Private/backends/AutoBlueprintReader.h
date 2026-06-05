@@ -146,6 +146,10 @@ public:
 	void BeginBatch() override;
 	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 	nlohmann::json ShutdownDaemon() override;
+	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
+	                         std::string_view depth = "structural") override;
+	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,
+	                            std::string_view theirs, std::string_view target = "") override;
 	// Exec tool — forward to the active backend. Without this override the
 	// call would hit IBlueprintReader's throwing default ("not supported")
 	// even though commandlet/live implement it.

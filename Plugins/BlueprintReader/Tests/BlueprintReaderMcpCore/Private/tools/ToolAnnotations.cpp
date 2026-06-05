@@ -26,6 +26,8 @@ const std::set<std::string>& ReadOnlySet() {
 		"list_variables", "list_functions",
 		"get_project_metadata",
 		"bp_structural_diff",
+		"diff_asset",
+		"prepare_merge",
 		// --- Per-asset-type readers ------------------------------------
 		"list_data_tables", "read_data_table",
 		"list_materials", "read_material",

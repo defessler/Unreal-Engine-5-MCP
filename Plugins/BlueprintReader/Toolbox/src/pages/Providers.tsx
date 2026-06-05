@@ -7,6 +7,9 @@ import {
   getJsonProviderStatus,
   getTomlProviderStatus,
   type ProviderStatus,
+  loadUproject,
+  uprojectToPluginDir,
+  uprojectToExePath,
 } from '../lib/paths';
 
 interface ProviderState {
@@ -14,9 +17,9 @@ interface ProviderState {
 }
 
 export default function Providers() {
-  const [projectDir, setProjectDir] = useState('');
-  const [pluginDir, setPluginDir] = useState('');
-  const [exePath, setExePath] = useState('');
+  // Use the uproject from localStorage (set by Install page) so this page
+  // always has the correct paths even within the same session as Install.
+  const [uproject, setUproject] = useState(() => loadUproject());
   const [states, setStates] = useState<Record<string, ProviderState>>(
     Object.fromEntries(PROVIDERS.map((p) => [p.id, { status: 'loading' as Status }]))
   );
@@ -24,21 +27,31 @@ export default function Providers() {
   const [running, setRunning] = useState(false);
   const [assetsInstalled, setAssetsInstalled] = useState<boolean | null>(null);
 
+  // Always derived — never stale even if localStorage updated after mount
+  const projectDir = uproject ? uproject.replace(/[/\\][^/\\]+\.uproject$/, '') : '';
+  const pluginDir  = uprojectToPluginDir(uproject);
+  const exePath    = uprojectToExePath(uproject);
+
   const appendLog = useCallback((line: string) => {
     setLogs((prev) => [...prev, line]);
   }, []);
 
   useEffect(() => {
+    // Merge localStorage with whatever getPaths() returns from userData.
     bridge.getPaths().then(async (p) => {
-      setProjectDir(p.projectDir);
-      setPluginDir(p.pluginDir);
-      setExePath(p.exePath);
-      await refreshStatuses(p.projectDir, p.exePath);
-      checkAssetsInstalled(p.projectDir);
+      const saved = loadUproject() || p.uproject;
+      if (saved && saved !== uproject) setUproject(saved);
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!projectDir) return;
+    refreshStatuses(projectDir, exePath);
+    checkAssetsInstalled(projectDir);
+  }, [projectDir, exePath]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function refreshStatuses(dir: string, exe: string) {
+    if (!dir) return;
     const newStates: Record<string, ProviderState> = {};
     for (const provider of PROVIDERS) {
       const configPath = provider.configPath(dir);
@@ -55,6 +68,7 @@ export default function Providers() {
   }
 
   function checkAssetsInstalled(dir: string) {
+    if (!dir) return;
     bridge.readFile(`${dir}/AGENTS.md`).then((content) => {
       setAssetsInstalled(content !== null);
     });
@@ -97,6 +111,19 @@ export default function Providers() {
     bridge.openExternal(`file:///${path.replace(/\\/g, '/')}`);
   }
 
+  // Guard: if no project is configured yet, prompt the user.
+  if (!uproject) {
+    return (
+      <div className="p-6 max-w-2xl">
+        <h1 className="text-xl font-semibold text-white mb-1">AI Providers</h1>
+        <div className="mt-6 p-4 bg-ue-accent/10 border border-ue-accent/30 rounded text-sm text-gray-300">
+          No project configured yet. Go to the <strong className="text-white">Install</strong> tab,
+          select your <code className="text-gray-300">.uproject</code> file, then return here.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
@@ -116,7 +143,7 @@ export default function Providers() {
       <div className="grid grid-cols-1 gap-3 mb-8">
         {PROVIDERS.map((provider) => {
           const state = states[provider.id] ?? { status: 'loading' as Status };
-          const configPath = projectDir ? provider.configPath(projectDir) : '';
+          const configPath = provider.configPath(projectDir);
           return (
             <div
               key={provider.id}

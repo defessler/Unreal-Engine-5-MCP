@@ -54,6 +54,9 @@ const api = {
   isRunning(pid: number): Promise<boolean> {
     return ipcRenderer.invoke('is-running', pid);
   },
+  getAppVersion(): Promise<string> {
+    return ipcRenderer.invoke('get-app-version');
+  },
   saveProject(uprojectPath: string): Promise<void> {
     return ipcRenderer.invoke('save-project', uprojectPath);
   },

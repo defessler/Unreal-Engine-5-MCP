@@ -4357,4 +4357,24 @@ nlohmann::json SocketBlueprintReader::ShutdownDaemon() {
 	};
 }
 
+nlohmann::json SocketBlueprintReader::DiffAsset(
+	std::string_view a, std::string_view b, std::string_view depth) {
+	std::vector<std::string> args = {"-Op=DiffAsset",
+		"-A=" + std::string(a), "-B=" + std::string(b)};
+	if (!depth.empty() && depth != "structural")
+		args.push_back("-Depth=" + std::string(depth));
+	return RunOp(args);
+}
+
+nlohmann::json SocketBlueprintReader::PrepareMerge(
+	std::string_view base, std::string_view mine,
+	std::string_view theirs, std::string_view target) {
+	std::vector<std::string> args = {"-Op=PrepareMerge",
+		"-Base=" + std::string(base), "-Mine=" + std::string(mine),
+		"-Theirs=" + std::string(theirs)};
+	if (!target.empty())
+		args.push_back("-Target=" + std::string(target));
+	return RunOp(args);
+}
+
 }    // namespace bpr::backends

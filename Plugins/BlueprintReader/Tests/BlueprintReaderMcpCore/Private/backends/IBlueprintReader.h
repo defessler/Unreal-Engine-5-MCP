@@ -2828,6 +2828,31 @@ public:
 	virtual nlohmann::json ShutdownDaemon() {
 		return nlohmann::json{{"ok", true}, {"was_running", false}};
 	}
+
+	// ---- diff + merge analysis (read-only) ----------------------------------
+
+	// Structural diff between two Blueprint assets.
+	// depth: "structural" (variables/components/functions, fast) |
+	//        "topology"   (node-level graph diff, slower)
+	virtual nlohmann::json DiffAsset(
+		std::string_view assetA,
+		std::string_view assetB,
+		std::string_view depth = "structural")
+	{
+		throw BlueprintReaderError("diff_asset not supported by this backend");
+	}
+
+	// Compute base→mine and base→theirs diffs, identify conflicts, and return
+	// a structured merge context the AI can reason over and then apply using
+	// the existing write tools (add_variable, add_node, wire_pins, apply_ops).
+	virtual nlohmann::json PrepareMerge(
+		std::string_view base,
+		std::string_view mine,
+		std::string_view theirs,
+		std::string_view target = "")
+	{
+		throw BlueprintReaderError("prepare_merge not supported by this backend");
+	}
 };
 
 }    // namespace bpr::backends
