@@ -69,6 +69,9 @@ jobs:
         working-directory: Plugins/BlueprintReader/Toolbox
         run: npm install
 
+      - name: Install NSIS (required by electron-builder for Windows installer)
+        run: choco install nsis -y --no-progress
+
       - name: Build Toolbox (Electron + NSIS installer)
         working-directory: Plugins/BlueprintReader/Toolbox
         shell: pwsh
@@ -78,10 +81,10 @@ jobs:
           $setup = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
             -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $setup) {
-            Write-Warning "Toolbox installer not found — build may have skipped on this platform"
-          } else {
-            Write-Host "Toolbox installer: $($setup.FullName)"
+            Write-Error "Toolbox installer not found after build"
+            exit 1
           }
+          Write-Host "Toolbox installer: $($setup.FullName) ($([math]::Round($setup.Length/1MB,1)) MB)"
 
       # ── 3. Stage all release assets ────────────────────────────────────────
       - name: Stage release bundles
