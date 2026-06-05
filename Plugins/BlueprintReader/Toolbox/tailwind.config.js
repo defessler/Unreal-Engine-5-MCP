@@ -7,9 +7,11 @@ export default {
         ue: {
           dark: '#1a1a1a',
           panel: '#252525',
+          panel2: '#2d2d2d',
           border: '#3a3a3a',
-          accent: '#0080ff',
-          'accent-hover': '#3399ff',
+          accent: '#E87722',
+          'accent-hover': '#F59340',
+          title: '#1c1c1c',
         },
       },
     },

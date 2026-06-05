@@ -5,6 +5,7 @@ export interface PathInfo {
   pluginDir: string;
   exePath: string;
   engineDir: string;
+  uproject: string;
 }
 
 export interface StartServerOpts {
@@ -52,6 +53,18 @@ const api = {
   },
   isRunning(pid: number): Promise<boolean> {
     return ipcRenderer.invoke('is-running', pid);
+  },
+  minimizeWindow(): Promise<void> {
+    return ipcRenderer.invoke('minimize-window');
+  },
+  maximizeWindow(): Promise<void> {
+    return ipcRenderer.invoke('maximize-window');
+  },
+  closeWindow(): Promise<void> {
+    return ipcRenderer.invoke('close-window');
+  },
+  resolveEngine(uprojectPath: string): Promise<string> {
+    return ipcRenderer.invoke('resolve-engine', uprojectPath);
   },
 };
 

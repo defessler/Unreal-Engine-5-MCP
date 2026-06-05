@@ -4,6 +4,7 @@ import {
   ipcMain,
   dialog,
   shell,
+  Menu,
 } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -129,12 +130,16 @@ function getEngineDir(uprojectFile: string): string {
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  // Remove the native File/Edit/View/Window/Help menu bar entirely.
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1a1a1a',
+    frame: false,          // custom title bar in renderer
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -167,6 +172,20 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 // IPC handlers
 // ---------------------------------------------------------------------------
 
+// Window controls for the custom (frameless) title bar
+ipcMain.handle('minimize-window', () => mainWindow?.minimize());
+ipcMain.handle('maximize-window', () => {
+  if (mainWindow?.isMaximized()) mainWindow.restore();
+  else mainWindow?.maximize();
+});
+ipcMain.handle('close-window', () => mainWindow?.close());
+
+// Engine dir resolution from a .uproject path — used by Install page to
+// show the auto-detected engine without requiring a separate engine field.
+ipcMain.handle('resolve-engine', (_evt, uprojectPath: string) => {
+  return getEngineDir(uprojectPath);
+});
+
 ipcMain.handle('get-paths', () => {
   const projectDir = getProjectDir();
   const uproject = findUproject(projectDir);
@@ -175,6 +194,7 @@ ipcMain.handle('get-paths', () => {
     pluginDir: getPluginDir(projectDir),
     exePath: getExePath(projectDir),
     engineDir: getEngineDir(uproject),
+    uproject,
   };
 });
 

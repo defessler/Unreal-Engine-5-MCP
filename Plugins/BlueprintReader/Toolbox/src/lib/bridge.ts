@@ -13,6 +13,7 @@ function api(): ElectronAPI {
         pluginDir: 'C:\\Projects\\MyGame\\Plugins\\BlueprintReader',
         exePath: 'C:\\Projects\\MyGame\\Plugins\\BlueprintReader\\Binaries\\Win64\\BlueprintReaderMcp.exe',
         engineDir: 'C:\\Program Files\\Epic Games\\UE_5.8',
+        uproject: 'C:\\Projects\\MyGame\\MyGame.uproject',
       }),
       readFile: async () => null,
       writeFile: async () => undefined,
@@ -23,6 +24,10 @@ function api(): ElectronAPI {
       startServer: async () => 0,
       stopServer: async () => undefined,
       isRunning: async () => false,
+      minimizeWindow: async () => undefined,
+      maximizeWindow: async () => undefined,
+      closeWindow: async () => undefined,
+      resolveEngine: async () => '',
     };
   }
   return w.electronAPI;
@@ -39,4 +44,8 @@ export const bridge = {
   startServer: (opts: StartServerOpts) => api().startServer(opts),
   stopServer: (pid: number) => api().stopServer(pid),
   isRunning: (pid: number) => api().isRunning(pid),
+  minimizeWindow: () => api().minimizeWindow(),
+  maximizeWindow: () => api().maximizeWindow(),
+  closeWindow: () => api().closeWindow(),
+  resolveEngine: (uprojectPath: string) => api().resolveEngine(uprojectPath),
 };

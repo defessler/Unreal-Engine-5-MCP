@@ -17,7 +17,10 @@
   "build": {
     "appId": "com.defessler.blueprint-reader-toolbox",
     "productName": "BlueprintReader Toolbox",
-    "win": { "target": "nsis" },
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "artifactName": "BlueprintReaderToolbox.exe"
+    },
     "directories": { "output": "../Binaries/Toolbox" },
     "files": ["dist/**", "electron-dist/**", "package.json"],
     "extraMetadata": { "main": "electron-dist/main.js" }

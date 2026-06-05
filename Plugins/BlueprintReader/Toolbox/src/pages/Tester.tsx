@@ -296,7 +296,7 @@ export default function Tester() {
           ) : (
             categories.map((cat) => (
               <div key={cat}>
-                <div className="px-3 py-1.5 text-xs text-gray-600 uppercase tracking-wider bg-black/20 sticky top-0">
+                <div className="px-3 py-1.5 text-xs text-gray-500 uppercase tracking-wider bg-ue-panel sticky top-0 z-10 border-b border-ue-border/40">
                   {cat}
                 </div>
                 {tools
