@@ -69,19 +69,21 @@ jobs:
         working-directory: Plugins/BlueprintReader/Toolbox
         run: npm install
 
-      - name: Install NSIS (required by electron-builder for Windows installer)
-        run: choco install nsis -y --no-progress
-
       - name: Build Toolbox (Electron + NSIS installer)
         working-directory: Plugins/BlueprintReader/Toolbox
         shell: pwsh
         run: |
           npm run dist
-          # electron-builder writes to ../Binaries/Toolbox/ per electron-builder.config.json
+          # electron-builder bundles its own NSIS and writes to dist/ (inside Toolbox/).
+          # electron-builder.config.json sets output to ../Binaries/Toolbox/ so the .exe
+          # lands at Plugins/BlueprintReader/Binaries/Toolbox/<name> Setup <ver>.exe
+          # Filter *.exe (not *Setup*.exe — the filename has spaces and a version number).
           $setup = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
-            -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch '\.blockmap$' } |
+            Select-Object -First 1
           if (-not $setup) {
-            Write-Error "Toolbox installer not found after build"
+            Write-Error "Toolbox installer not found after build — check electron-builder output"
             exit 1
           }
           Write-Host "Toolbox installer: $($setup.FullName) ($([math]::Round($setup.Length/1MB,1)) MB)"
@@ -121,7 +123,9 @@ jobs:
           # ── Asset 2: Toolbox installer ─────────────────────────────────────
           $toolboxInstaller = Get-ChildItem `
             "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader\Binaries\Toolbox" `
-            -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch '\.blockmap$' } |
+            Select-Object -First 1
           if ($toolboxInstaller) {
             $toolboxDst = "BlueprintReader-$tag-toolbox-win64-setup.exe"
             Copy-Item $toolboxInstaller.FullName $toolboxDst
