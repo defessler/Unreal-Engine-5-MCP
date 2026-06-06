@@ -9,7 +9,9 @@ export default function Install() {
   const [engineDir, setEngineDir] = useState('');
   const [engineStatus, setEngineStatus] = useState<'idle' | 'resolving' | 'found' | 'missing'>('idle');
   const [mountType, setMountType] = useState<'copy' | 'symlink'>('copy');
-  const [buildServer, setBuildServer] = useState(true);
+  // Default OFF: the bundle ships a precompiled, engine-independent MCP server,
+  // so no build is needed. Ticking this rebuilds it from source (optional).
+  const [buildServer, setBuildServer] = useState(false);
   const [applyPatches, setApplyPatches] = useState(false);
   const [client, setClient] = useState('All');
   const [logs, setLogs] = useState<string[]>([]);
@@ -73,13 +75,29 @@ export default function Install() {
 
     const unsub = bridge.onScriptLog(appendLog);
 
+    const scriptPath = `${pluginDir}\\Scripts\\Install-Plugin.ps1`;
+    // The Toolbox configures an already-mounted plugin; it doesn't carry the
+    // plugin tree itself. If the script isn't there, the plugin folder hasn't
+    // been unzipped into <Project>/Plugins/ yet — say so instead of a bare
+    // non-zero exit code.
+    const present = await bridge.readFile(scriptPath);
+    if (present === null) {
+      appendLog(`[error] Install-Plugin.ps1 not found at ${scriptPath}`);
+      appendLog(`Unzip the BlueprintReader plugin into ${pluginDir} (its parent Plugins/ folder) first, then run Install again.`);
+      unsub();
+      setExitCode(1);
+      setRunning(false);
+      return;
+    }
+
     const args: string[] = ['-Client', client, '-ProjectFile', uproject];
     if (engineDir) args.push('-EngineDir', engineDir);
     if (mountType === 'symlink') args.push('-Symlink');
-    if (applyPatches) args.push('-ApplyEnginePatches');
+    // Engine patches only apply to a from-source build; guard on buildServer so
+    // a stale applyPatches flag can't mutate the engine when the user opted out.
+    if (buildServer && applyPatches) args.push('-ApplyEnginePatches');
     if (!buildServer) args.push('-SkipBuild');
 
-    const scriptPath = `${pluginDir}\\Scripts\\Install-Plugin.ps1`;
     const code = await bridge.runScript(scriptPath, args);
 
     unsub();
@@ -98,7 +116,7 @@ export default function Install() {
     <div className="p-6 max-w-2xl">
       <h1 className="text-xl font-semibold text-white mb-1">Install Plugin</h1>
       <p className="text-gray-500 text-sm mb-6">
-        Mount BlueprintReader into your project, build the MCP server, and configure AI clients.
+        Mount BlueprintReader into your project and configure AI clients. The MCP server ships precompiled.
       </p>
 
       <div className="space-y-5">
@@ -167,7 +185,7 @@ export default function Install() {
               <input type="radio" name="mountType" value="symlink" checked={mountType === 'symlink'} onChange={() => setMountType('symlink')} className="mt-0.5 accent-ue-accent" />
               <div>
                 <div className="text-sm text-gray-200">Symlink</div>
-                <div className="text-xs text-gray-500">Directory junction back to the Toolbox's bundled plugin. Updates take effect immediately without re-copying.</div>
+                <div className="text-xs text-gray-500">Directory junction from your project to the unzipped plugin folder elsewhere on disk. Updates to that folder take effect immediately without re-copying.</div>
               </div>
             </label>
           </div>
@@ -193,34 +211,39 @@ export default function Install() {
 
         {/* Options */}
         <div className="space-y-4">
+          <div className="text-xs text-green-400/90 bg-green-400/5 border border-green-400/20 rounded px-3 py-2">
+            ✓ The release plugin ZIP ships a <strong>precompiled</strong>, engine-independent MCP server — by default no compilation is needed. Make sure the BlueprintReader plugin folder is already in <code>&lt;Project&gt;/Plugins/</code> before installing (the Toolbox configures the mounted plugin; it doesn't download it). The editor plugin module compiles automatically the first time you open your project in Unreal.
+          </div>
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
               checked={buildServer}
-              onChange={(e) => setBuildServer(e.target.checked)}
+              onChange={(e) => { const v = e.target.checked; setBuildServer(v); if (!v) setApplyPatches(false); }}
               className="mt-0.5 accent-ue-accent"
             />
             <div>
-              <div className="text-sm text-gray-200">Build MCP server</div>
+              <div className="text-sm text-gray-200">Rebuild MCP server from source <span className="text-gray-500 font-normal">(optional)</span></div>
               <div className="text-xs text-gray-500 mt-0.5">
-                Compiles <code className="text-gray-400">BlueprintReaderMcp.exe</code> using CMake + MSVC — no Unreal Engine installation needed. Required on first install and after server-side updates. Takes ~2 min cold, ~10 s incremental.
+                Off by default — the bundled <code className="text-gray-400">BlueprintReaderMcp.exe</code> is used as-is. Tick only to rebuild from source (e.g. after editing server code). Auto-picks CMake + MSVC on an installed/Launcher engine or UBT on a source engine — no separate prebuild step. ~2 min cold, ~10 s incremental.
               </div>
             </div>
           </label>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={applyPatches}
-              onChange={(e) => setApplyPatches(e.target.checked)}
-              className="mt-0.5 accent-ue-accent"
-            />
-            <div>
-              <div className="text-sm text-gray-200">Apply engine patches</div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                Patches three <code className="text-gray-400">.Build.cs</code> files in the engine's source tree to fix include-path resolution for the plugin's editor module. Only needed for <strong className="text-gray-300">source-built engines</strong> — skip for Epic Games Launcher installs. Safe to re-run.
+          {buildServer && (
+            <label className="flex items-start gap-3 cursor-pointer pl-7">
+              <input
+                type="checkbox"
+                checked={applyPatches}
+                onChange={(e) => setApplyPatches(e.target.checked)}
+                className="mt-0.5 accent-ue-accent"
+              />
+              <div>
+                <div className="text-sm text-gray-200">Apply engine patches</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Patches three <code className="text-gray-400">.Build.cs</code> files in the engine's source tree to fix include-path resolution. Only needed when building against a <strong className="text-gray-300">source-built engine</strong> — skip for Epic Games Launcher installs. Safe to re-run.
+                </div>
               </div>
-            </div>
-          </label>
+            </label>
+          )}
         </div>
 
         {/* Run */}

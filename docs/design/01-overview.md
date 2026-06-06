@@ -30,15 +30,17 @@ Plugins/BlueprintReader/
 
 Both halves ship together as one UE plugin. The MCP server lives
 under `Tests/` (only path UBT auto-scans for plugin Program
-`Target.cs` files) and builds with the rest of the plugin via the
-same UBT pipeline — no separate CMake step. The plugin's `.uplugin`
-declares a `PreBuildSteps` hook that invokes UBT for
-`BlueprintReaderMcp` before any consuming target's own build runs, so
-`Build.bat LyraEditor …` builds the editor module *and* the MCP
-server exe in one invocation. `Build.bat BlueprintReaderMcp …` builds
-the server in isolation when iterating on server-only changes; the
-convenience wrapper `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`
-covers both Program targets (server + doctest exe) in one shot.
+`Target.cs` files). It is engine-independent
+(`bCompileAgainstEngine=false`, vendored json/fmt/doctest), so it is
+**decoupled from the editor build**: it ships precompiled in release
+bundles and is otherwise built on demand. `Build.bat LyraEditor …`
+builds only the editor module; `Build.bat BlueprintReaderMcp …` builds
+the server in isolation, and the convenience wrapper
+`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1` covers both
+Program targets (server + doctest exe) in one shot (auto-picking UBT on
+a source engine or an engine-free CMake build on an installed engine).
+(Earlier versions auto-built the server via a now-removed `.uplugin`
+`PreBuildSteps` hook on every editor compile.)
 
 ### Editor plugin — `BlueprintReaderEditor`
 

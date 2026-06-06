@@ -108,9 +108,10 @@ Two fields earn their keep:
   needs the asset registry pre-warmed, bump to `PostEngineInit`.
 
 For comparison the production `.uplugin` lives at
-`Plugins/BlueprintReader/BlueprintReader.uplugin` and adds a second
-Runtime module (an empty stub for now) plus a `PreBuildSteps` hook that
-also builds the MCP server. You don't need either yet.
+`Plugins/BlueprintReader/BlueprintReader.uplugin` and adds a stub Runtime
+module (`BPRoundtripModule`). You don't need it yet. The MCP server is a
+separate, engine-independent UBT Program target that ships precompiled — it
+is not built by the plugin's editor build.
 
 ## BlueprintReaderEditor.Build.cs
 

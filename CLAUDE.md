@@ -151,22 +151,25 @@ UE setup — useful for iterating on the MCP server itself.
 
 ## Build
 
-The MCP server is now a UE Program target — it builds via UBT
-alongside the rest of the plugin. The plugin's `.uplugin` carries a
-`PreBuildSteps` hook (see `Plugins/BlueprintReader/Scripts/PreBuildHook.ps1`)
-that invokes UBT for `BlueprintReaderMcp` before any consuming target's
-own build runs, so the first command below builds both the editor
-module *and* the server in one invocation. The doctest binary remains
-explicit (heavier, less often needed):
+The MCP server is a UE Program target, but it is **engine-independent**
+(`bCompileAgainstEngine=false`) and is **not coupled to the editor
+build**. It ships **precompiled** in release bundles (built engine-free
+via CMake in CI) and is otherwise built **on demand** — by
+`Build-MCPServer.ps1`, the Toolbox's "Rebuild MCP server" option, or the
+explicit command below. (Earlier versions auto-built it via a `.uplugin`
+`PreBuildSteps` hook; that hook + `Scripts/PreBuildHook.ps1` were removed
+— building the server during every editor compile was wasteful and the
+server doesn't need the engine.) Building the editor target therefore
+builds **only the editor module**; build the server separately:
 
 ```bat
-:: Editor (plugin DLLs) + MCP server exe (via plugin PreBuildStep):
+:: Editor module / plugin DLLs (does NOT build the MCP server anymore):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   LyraEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 
-:: MCP server exe in isolation (e.g. when iterating on server-only changes):
+:: MCP server exe (build separately — or use the prebuilt one from a release):
 "D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
   BlueprintReaderMcp Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
@@ -178,9 +181,6 @@ explicit (heavier, less often needed):
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
 ```
-
-Set `BP_READER_SKIP_PREBUILD=1` in the build environment to skip the
-MCP server side and rebuild just the editor module.
 
 Or both Program targets at once via the wrapper script:
 
@@ -256,11 +256,11 @@ replacement).
   `LyraEditor-Cmd.exe`, so launch `<Engine>/Binaries/Win64/UnrealEditor-Cmd.exe`
   with the `.uproject`. (`LyraEditor.Target.cs` is part of the untracked
   local build host, so this is host config, not a tracked change.)
-  The MCP server auto-build is handled inside the plugin via
-  `BlueprintReader.uplugin`'s `PreBuildSteps` block (which invokes
-  `Plugins/BlueprintReader/Scripts/PreBuildHook.ps1`). No project-side
-  wiring needed — drop the plugin into another `.uproject` and the
-  editor build pulls the server along.
+  The MCP server is **not** built by the editor target (the old
+  `PreBuildSteps` auto-build hook was removed) — it ships precompiled and
+  is built on demand via `Build-MCPServer.ps1` / the Toolbox. Dropping the
+  plugin into another `.uproject` only builds the editor module; bring the
+  prebuilt server exe along (release bundles do) or build it separately.
 - Three engine `.Build.cs` patches (see README.md) for project-target
   builds to resolve `PrivateIncludePaths` correctly. These live in the
   sibling engine checkout, are not tracked here, and must be re-applied

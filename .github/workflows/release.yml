@@ -1,20 +1,18 @@
 name: Release
 
-# Builds and publishes three release assets on every v* tag push:
+# Builds and publishes two release assets on every v* tag push:
 #
 #   1. BlueprintReader-vX.Y.Z-plugin.zip
 #      Complete plugin bundle: the entire Plugins/BlueprintReader/ tree with the
-#      prebuilt server exe already in Binaries/Win64/. Drop the folder into
-#      <Project>/Plugins/BlueprintReader/ and run Setup-Plugin.bat — done.
+#      prebuilt, engine-independent server exe already in Binaries/Win64/. Drop the
+#      folder into <Project>/Plugins/BlueprintReader/ and run Setup-Plugin.bat — done.
 #
-#   2. BlueprintReader-vX.Y.Z-toolbox-win64-setup.exe
-#      Electron GUI installer (Install / Providers / Tester / Update panels).
-#      Built from Plugins/BlueprintReader/Toolbox/ via electron-builder + NSIS.
+#   2. BlueprintReader-vX.Y.Z-toolbox-win64.exe
+#      Portable Electron GUI (Install / Providers / Settings / Tester / Update) built
+#      from Plugins/BlueprintReader/Toolbox/ via electron-builder (portable target,
+#      no installer). Double-click to run.
 #
-#   3. BlueprintReaderMcp-vX.Y.Z-win64.zip  (backward-compat server-only bundle)
-#      Just the exe + fixtures — for users who only need the server binary.
-#
-# workflow_dispatch: builds all three and uploads as workflow artifacts (no Release).
+# workflow_dispatch: builds both and uploads as workflow artifacts (no Release).
 
 on:
   push:
@@ -105,13 +103,16 @@ jobs:
           $pluginSrc  = "$env:GITHUB_WORKSPACE\Plugins\BlueprintReader"
           $pluginStage = "plugin-stage\BlueprintReader"
           New-Item -ItemType Directory -Force $pluginStage | Out-Null
+          # Exclude the dev-only test exe (~12.5 MB) + transpile-dump scratch so
+          # the bundle stays lean — only BlueprintReaderMcp.exe is ever launched.
           & robocopy $pluginSrc $pluginStage /MIR /NFL /NDL /NJH /NJS /NP `
             /XD "Intermediate" `
             /XD "$pluginSrc\Binaries\Toolbox" `
+            /XD "$pluginSrc\Binaries\Win64\transpile-dump" `
             /XD "$pluginSrc\Toolbox\node_modules" `
             /XD "$pluginSrc\Toolbox\dist" `
             /XD "$pluginSrc\Toolbox\electron-dist" `
-            /XF "*.pdb" "*.ilk" "*.exp" "*.lib" | Out-Null
+            /XF "BlueprintReaderMcpTests.exe" "*.pdb" "*.ilk" "*.exp" "*.lib" | Out-Null
           # robocopy exit 0-7 = success; 8+ = error.
           # Reset LASTEXITCODE: robocopy exits 1 ("files copied") which
           # GitHub Actions pwsh would otherwise interpret as a step failure.
