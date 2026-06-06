@@ -321,17 +321,14 @@ line. We pay no compatibility cost for shipping it on every call.
 ## Distribution
 
 The whole thing ships as one unit: the UE plugin's directory tree
-includes the MCP server sources, and the plugin's
-`PreBuildSteps.Win64` builds the server as part of the UE build:
-
-```json
-// BlueprintReader.uplugin (excerpt)
-"PreBuildSteps": {
-  "Win64": [
-    "powershell.exe -ExecutionPolicy Bypass -File \"$(PluginDir)/Scripts/Build-MCPServer.ps1\" -ProjectDir \"$(ProjectDir)\" -PluginDir \"$(PluginDir)\""
-  ]
-}
-```
+includes the MCP server sources, and release bundles ship the server
+exe **precompiled** under `Binaries/Win64/`. The server is
+engine-independent, so it is decoupled from the UE build — it is built
+on demand (not as a side effect of compiling the editor) via
+`Build-MCPServer.ps1` or the Toolbox. (An earlier design auto-built it
+through a `.uplugin` `PreBuildSteps.Win64` hook on every editor compile;
+that was removed because rebuilding an engine-independent exe on every UE
+build was wasteful.)
 
 `Build-MCPServer.ps1`:
 

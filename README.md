@@ -219,15 +219,19 @@ The repo ships the plugin; you supply a UE 5.8 project to host it.
 1. **Mount the plugin.** Copy (or symlink) `Plugins/BlueprintReader/`
    into your UE 5.8 project's `Plugins/` folder. Lyra is a convenient
    host, but any UE 5.8 project works.
-2. **Build the editor target once.** The plugin's `PreBuildSteps` hook
-   builds `BlueprintReaderMcp.exe` alongside the editor module in the
-   same invocation:
+2. **Get the MCP server exe.** Release plugin bundles already include a
+   precompiled `BlueprintReaderMcp.exe` (engine-independent) — nothing to
+   build. From a repo clone, build it once; `Build-MCPServer.ps1` auto-picks
+   UBT on a source engine or the engine-free CMake fallback on an
+   installed/Launcher engine:
 
    ```pwsh
-   "<Engine>\Engine\Build\BatchFiles\Build.bat" `
-     <YourEditor> Win64 Development `
-     -project="<Absolute>\YourProject.uproject" -waitmutex
+   .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
+     -EngineDir "<Engine>" -ProjectFile "<Absolute>\YourProject.uproject"
    ```
+
+   The editor plugin module (the DLLs the live/commandlet backends load)
+   compiles automatically the first time you open your project in Unreal.
 
 3. **Point your MCP client at the exe.** Use
    `<YourProject>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe` — it
@@ -242,19 +246,22 @@ Smoke test: `list_blueprints /Game` should return your project's BPs.
 
 ### 1. Build the MCP server
 
-> **Prefer not to build?** Each tagged release attaches a prebuilt
-> `BlueprintReaderMcp-<tag>-win64.zip` (Win64). The server is pure C++20 and
+> **Prefer not to build?** Each tagged release attaches a full plugin
+> bundle (`BlueprintReader-<tag>-plugin.zip`) with `BlueprintReaderMcp.exe`
+> already precompiled under `Binaries/Win64/`, plus a one-click
+> `BlueprintReader-<tag>-toolbox-win64.exe` GUI. The server is pure C++20 and
 > engine-version-independent, so the prebuilt exe drives any UE 5.x editor the
-> same as a locally-built one. Download it from the
+> same as a locally-built one. Download from the
 > [Releases page](https://github.com/defessler/Unreal-Engine-5-MCP/releases),
-> unzip, and skip to step 2 / *Configure your MCP client* below. Run
-> `BlueprintReaderMcp.exe --version` to confirm the build. (The bundled
-> `fixtures/` give you the mock backend with no UE install; point
+> unzip the plugin into your project's `Plugins/`, and skip to *Configure your
+> MCP client* below. Run `BlueprintReaderMcp.exe --version` to confirm. (The
+> bundled `fixtures/` give you the mock backend with no UE install; point
 > `BP_READER_PROJECT` at a `.uproject` for live work.)
 
-The MCP server is now a UE Program target built via UBT (same pipeline
-as the rest of the plugin — UBA-friendly, no separate CMake toolchain).
-You need an Unreal Engine source build to compile it.
+The MCP server is a UE Program target, but it's engine-independent.
+`Build-MCPServer.ps1` builds it and auto-picks the toolchain: UBT on a
+source engine, or an engine-free CMake + MSVC fallback on an
+installed/Launcher engine (UBT refuses Program targets there).
 
 ```pwsh
 # From a project that has BlueprintReader in its Plugins/:
@@ -524,15 +531,15 @@ Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Plugins/B
 Build.bat LyraEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
-The plugin's `BlueprintReader.uplugin` declares a `PreBuildSteps` hook
-that invokes UBT for `BlueprintReaderMcp` before every editor build,
-so `Build.bat LyraEditor ...` pulls the server along automatically
-— drop the plugin into any project and the convenience just works
-without touching the project's `Target.cs`. The test exe is *not*
-pulled in (heavier, less often needed); use
-`Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1 -Targets Tests`
-to build it. Set `BP_READER_SKIP_PREBUILD=1` in the build environment
-to disable the auto-build entirely.
+The MCP server is **engine-independent and decoupled from the editor
+build** — building the editor target builds *only* the editor module, not
+the server. Build the server on demand with `Build-MCPServer.ps1` (it
+auto-picks UBT on a source engine or the CMake fallback on an
+installed/Launcher engine), use the Toolbox's "Rebuild MCP server" option,
+or just take the precompiled exe that ships in release plugin bundles.
+(Earlier versions auto-built the server via a `.uplugin` `PreBuildSteps`
+hook on every editor compile; that hook was removed — it was wasteful and
+the server doesn't need the engine.)
 
 ## Working with non-UE5_MCP projects (Lyra)
 

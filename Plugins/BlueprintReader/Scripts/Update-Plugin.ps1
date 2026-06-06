@@ -122,10 +122,14 @@ try {
     }
 
     # ---- Phase 2: deploy + configure (NO build) ----------------------------
-    # Install-Plugin.ps1 -SkipBuild does the mount (robocopy /MIR, which excludes
-    # Binaries/Intermediate/.git so the built server survives) then writes the
-    # client config, deploys the Claude/AGENTS assets, and runs doctor. Running
-    # the downloaded copy means the latest configure logic is used too.
+    # Install-Plugin.ps1 -SkipBuild does the mount (two-pass robocopy: a /MIR
+    # mirror that holds Binaries\Win64 out of the purge, then an additive copy of
+    # the precompiled server payload only when the source carries one). The source
+    # archive downloaded in Phase 1 has no Binaries/ (gitignored), so the existing
+    # installed BlueprintReaderMcp.exe + fixtures are preserved across the update.
+    # Phase 3 below then refreshes the exe from a matching prebuilt release if one
+    # exists. It also writes the client config, deploys Claude/AGENTS assets, and
+    # runs doctor. Running the downloaded copy means the latest logic is used too.
     $projectDir = (Resolve-Path (Split-Path -Parent $ProjectFile)).Path
     $destPlugin = Join-Path $projectDir 'Plugins\BlueprintReader'
     if ((Test-Path -LiteralPath $destPlugin) -and
@@ -174,7 +178,8 @@ try {
         try {
             $base     = ($Repo -replace '\.git/?$', '').TrimEnd('/')
             $apiUrl   = "https://api.github.com/repos/$($base -replace 'https://github.com/','')/releases/tags/$tag"
-            # Try direct tag lookup; fall back to /releases/latest
+            # Try direct tag lookup; fall back to /releases/latest (e.g. a -Ref
+            # main update where no v<version> tag exists yet).
             try {
                 $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
                 $resp  = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing `
@@ -183,10 +188,24 @@ try {
                 $ProgressPreference = $oldPref
                 $release = $resp.Content | ConvertFrom-Json
             } catch {
-                $release = $null
+                try {
+                    $latestUrl = "https://api.github.com/repos/$($base -replace 'https://github.com/','')/releases/latest"
+                    $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+                    $resp = Invoke-WebRequest -Uri $latestUrl -UseBasicParsing `
+                                -Headers @{'User-Agent'='bp-reader-update/1.0'} `
+                                -MaximumRedirection 3 -TimeoutSec 8 -ErrorAction Stop
+                    $ProgressPreference = $oldPref
+                    $release = $resp.Content | ConvertFrom-Json
+                } catch {
+                    $release = $null
+                }
             }
             if ($release -and $release.assets) {
-                $asset = $release.assets | Where-Object { $_.name -like '*win64*.zip' } | Select-Object -First 1
+                # The published plugin bundle (BlueprintReader-<tag>-plugin.zip)
+                # carries Binaries/Win64/BlueprintReaderMcp.exe; the recursive
+                # search below extracts it. Also accept a future server-only
+                # *win64*.zip if one is ever published.
+                $asset = $release.assets | Where-Object { $_.name -like '*-plugin.zip' -or $_.name -like '*win64*.zip' } | Select-Object -First 1
                 if ($asset) {
                     Write-Host "[BlueprintReader/Update] Downloading prebuilt exe from $tag ..."
                     $zipTmp = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-prebuilt-$([guid]::NewGuid().ToString('N').Substring(0,8)).zip"

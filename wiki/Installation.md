@@ -20,7 +20,7 @@ skip the plugin entirely — useful for smoke-testing the server.
 | Component              | Required for | Notes                                                   |
 |------------------------|--------------|---------------------------------------------------------|
 | Windows 10/11, x64     | Everything   | Windows-only today (`CreateProcessW`).                  |
-| Visual Studio 2022 (MSVC) | Building the server | "Desktop development with C++" (for the CMake build) **or** "Game development with C++" (for the UBT build), plus a Win10/11 SDK. |
+| Visual Studio 2022 (MSVC) | **Re**building the server or editor module (skip if using the precompiled release exe) | "Desktop development with C++" (for the CMake build) **or** "Game development with C++" (for the UBT build), plus a Win10/11 SDK. |
 | A UE 5.8 install — **source _or_ Launcher/installed** | The `commandlet` + `live` backends (working real `.uasset` files) | **Not needed for the mock backend** (fixture-only server testing). A *source* engine builds everything through UBT (editor module + MCP server). A *Launcher / installed* engine works too: the editor module still builds via UBT, and the MCP server builds engine-free via the [CMake fallback](#installed--launcher-engine-build-the-mcp-server-with-cmake). |
 | Disk: ~120 GB *(source engine)* / a few GB *(installed engine)* | Per engine choice | A source build pulls ~70 GB of UE source via `Setup.bat`; an installed engine needs only the Launcher download + the build output. |
 
@@ -29,6 +29,15 @@ deps (nlohmann_json, fmt, doctest) are vendored under
 `Plugins/BlueprintReader/Tests/ThirdParty/` — see [the manifest there](https://github.com/defessler/Unreal-Engine-5-MCP/tree/main/Plugins/BlueprintReader/Tests/ThirdParty).
 
 ## 1. Build the MCP server
+
+> **Prefer not to build?** Release plugin bundles ship `BlueprintReaderMcp.exe`
+> precompiled under `Binaries/Win64/` — the server is pure C++20 and
+> engine-version-independent, so the prebuilt exe drives any UE 5.x editor the
+> same as a locally-built one. Unzip the plugin into your project's `Plugins/`
+> and **skip to [step 4](#4-wire-it-into-your-ai-client)** (the bundled
+> `fixtures/` also give you the mock backend with no UE install). Build from
+> source only if you're working from a clone or want the test suite — the rest
+> of this section covers that.
 
 The MCP server is a UE Program target. **On a source-built engine**, UBT
 builds it alongside the rest of the plugin (UBA cache, ninja, etc.) — use
@@ -197,18 +206,14 @@ The MCP server lives as two independent UE Program targets:
 - `BlueprintReaderMcp` → `Binaries\Win64\BlueprintReaderMcp.exe`
 - `BlueprintReaderMcpTests` → `Binaries\Win64\BlueprintReaderMcpTests.exe`
 
-The plugin's `BlueprintReader.uplugin` carries a `PreBuildSteps` hook
-that invokes UBT for `BlueprintReaderMcp` before the editor build
-runs, so the command above builds both halves in one invocation —
-you'll see a `[BlueprintReader/PreBuild] building BlueprintReaderMcp
-…` line followed by the editor compile. Drop the plugin into any
-`.uproject` and you get this for free; no project-side wiring needed.
-
-To opt out and rebuild just the editor module, set
-`BP_READER_SKIP_PREBUILD=1` in the build environment. To build the
-server in isolation (or to also build the test exe, which is not
-pulled in automatically), invoke UBT directly per target or use the
-wrapper:
+The MCP server is engine-independent and is **not** built by the editor
+target — building the editor compiles only the editor module. Release
+plugin bundles ship `BlueprintReaderMcp.exe` precompiled, so usually there's
+nothing to build. Otherwise build it on demand with the wrapper below (it
+auto-picks UBT on a source engine or the engine-free CMake fallback on an
+installed/Launcher engine), or use the Toolbox's "Rebuild MCP server"
+option. (Earlier versions auto-built the server via a `.uplugin`
+`PreBuildSteps` hook on every editor compile; that hook was removed.)
 
 ```powershell
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `

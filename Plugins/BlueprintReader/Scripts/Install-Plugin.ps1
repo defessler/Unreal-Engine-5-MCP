@@ -68,14 +68,57 @@ if ($pluginSrc -ieq $destResolved) {
     Write-Host "$tag Symlinked plugin -> $dest"
 } else {
     New-Item -ItemType Directory -Force $dest | Out-Null
-    # Mirror the plugin minus build artifacts / VCS. robocopy exit codes 0-7
-    # are success; 8+ is a real failure.
-    & robocopy $pluginSrc $dest /MIR /XD `
-        (Join-Path $pluginSrc 'Binaries') (Join-Path $pluginSrc 'Intermediate') (Join-Path $pluginSrc '.git') `
+    # Two-pass mount so a /MIR mirror never PURGES an already-installed
+    # precompiled server when the SOURCE lacks it. (The Update/Setup-from-source
+    # path downloads the GitHub *source* archive, which has no Binaries/ — it's
+    # gitignored — so a single /MIR that included Binaries\Win64 would delete the
+    # user's working BlueprintReaderMcp.exe + fixtures and defeat the no-build
+    # default.) robocopy exit codes 0-7 are success; 8+ is a real failure.
+    #
+    # Pass 1: mirror the tree but leave the whole Binaries tree alone. We exclude
+    #   it by BOTH paths on purpose: the SOURCE path stops Pass 1 from copying in
+    #   the source's Binaries (so source editor DLLs / the test exe never leak in
+    #   — Pass 2 copies just the server payload), and the DEST path stops /MIR
+    #   from PURGING the dest's existing Binaries when the source lacks one (the
+    #   Update-from-source case: the GitHub source archive has no Binaries/ — it's
+    #   gitignored — so without the dest-path exclusion /MIR would delete the
+    #   user's working exe + fixtures + locally-built editor DLLs). robocopy /XD
+    #   only protects a dest dir from purge when matched by its DEST path.
+    & robocopy $pluginSrc $dest /MIR `
+        /XD (Join-Path $pluginSrc 'Binaries') (Join-Path $dest 'Binaries') `
+            (Join-Path $pluginSrc 'Intermediate') (Join-Path $pluginSrc '.git') `
         /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "$tag robocopy failed (exit $LASTEXITCODE)" }
+    # Pass 2: additively copy the precompiled server payload from source IF it
+    #   carries one (a release plugin ZIP does; a source archive does not — then
+    #   the dest's existing exe is left untouched). NO /MIR = no purge. Exclude
+    #   engine/machine-specific editor binaries, the dev-only test exe, and the
+    #   transpile-dump scratch dir so the install stays lean.
+    $srcBin = Join-Path $pluginSrc 'Binaries\Win64'
+    if (Test-Path -LiteralPath $srcBin) {
+        & robocopy $srcBin (Join-Path $dest 'Binaries\Win64') /E `
+            /XD "transpile-dump" `
+            /XF "UnrealEditor-*.dll" "BlueprintReaderMcpTests.exe" "*.pdb" "*.modules" "*.lib" "*.exp" "*.ilk" `
+            /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "$tag robocopy (server payload) failed (exit $LASTEXITCODE)" }
+    }
     $global:LASTEXITCODE = 0
     Write-Host "$tag Copied plugin -> $dest"
+}
+
+# ---- 1b. Clear stale hook-era UBT PreBuild caches ---------------------------
+# Older plugin versions shipped a .uplugin PreBuildSteps hook (PreBuildHook.ps1,
+# now removed) that UBT cached as Intermediate/Build/**/PreBuild-N.bat. A stale
+# one still invokes the deleted hook and fails the next editor build (exit 127).
+# Drop any that reference the old hook so UBT re-emits a hook-free action graph.
+$imBuild = Join-Path $projectDir 'Intermediate\Build'
+if (Test-Path $imBuild) {
+    Get-ChildItem -LiteralPath $imBuild -Recurse -Filter 'PreBuild-*.bat' -ErrorAction SilentlyContinue |
+        Where-Object { (Get-Content -Raw -LiteralPath $_.FullName -ErrorAction SilentlyContinue) -match 'PreBuildHook' } |
+        ForEach-Object {
+            Write-Host "$tag Removing stale hook-era PreBuild cache: $($_.FullName)"
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
 }
 
 # ---- 2. (optional) engine patches - source engines only --------------------

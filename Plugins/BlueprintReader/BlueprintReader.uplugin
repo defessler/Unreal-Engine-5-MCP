@@ -56,10 +56,5 @@
 			"Name": "LevelSequenceEditor",
 			"Enabled": true
 		}
-	],
-	"PreBuildSteps": {
-		"Win64": [
-			"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$(PluginDir)/Scripts/PreBuildHook.ps1\" -EngineDir \"$(EngineDir)\" -ProjectFile \"$(ProjectFile)\" -TargetName \"$(TargetName)\" -Configuration \"$(TargetConfiguration)\" -PluginDir \"$(PluginDir)\""
-		]
-	}
+	]
 }

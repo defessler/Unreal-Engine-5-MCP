@@ -5,12 +5,17 @@
 # (Plugins/BlueprintReader/Tests/BlueprintReaderMcp/) so it builds with
 # the rest of the unreal pipeline (UBA, ninja, etc.).
 #
-# The plugin's .uplugin DOES declare a PreBuildSteps hook (Scripts/PreBuildHook.ps1)
-# that invokes this script during a consuming editor target's build, so the
-# server is rebuilt alongside the editor module automatically. You can also
-# run it standalone (opt-in) when iterating on server-only changes. On an
-# installed / Launcher engine UBT refuses Program targets - use the CMake
-# fallback (Saved/build-mcp-cmake.ps1) instead.
+# The MCP server is engine-independent, so it is NOT coupled to the editor
+# build. Release bundles ship it precompiled (built engine-free via CMake in
+# CI) and the Toolbox / Install-Plugin.ps1 invoke this script on demand only
+# when the user opts to (re)build from source. Run it standalone when iterating
+# on server-only changes. On an installed / Launcher engine UBT refuses Program
+# targets - this script auto-falls back to the CMake build in that case.
+# (Older plugin versions auto-ran this via a .uplugin PreBuildSteps hook; that
+# hook + PreBuildHook.ps1 were removed. A stale UBT PreBuild-N.bat from a
+# hook-era build invokes the DELETED PreBuildHook.ps1 directly, not this script,
+# so the legacy no-op path below does NOT cover it — Install-Plugin.ps1 clears
+# those stale caches instead, or regenerate project files once after upgrading.)
 #
 # Usage:
 #   .\Build-MCPServer.ps1 -EngineDir "D:\Path\To\UnrealEngine"
@@ -21,17 +26,14 @@
 #
 # Exits non-zero on any UBT failure.
 #
-# Legacy-call no-op path: if invoked with the old -ProjectDir / -PluginDir
-# parameters (the pre-UBT PreBuildStep contract), the script logs a
-# deprecation notice and exits 0. UBT caches PreBuild invocations in
-# Intermediate/Build/<TargetCfg>/PreBuild-N.bat -- when a user updates
-# the plugin without regenerating project files, those cached scripts
-# still call this with old args. Failing there with "unknown parameter"
-# blocks the editor build for no good reason; accepting + no-op'ing
-# clears the way until UBT regenerates the cache on the next solution
-# refresh. The current PreBuildStep (PreBuildHook.ps1) calls this script
-# with the new -EngineDir / -ProjectFile API, so once the cache regenerates
-# this legacy path stops being hit.
+# Legacy-call no-op path: older plugin versions declared a .uplugin
+# PreBuildSteps hook that invoked this script with -ProjectDir / -PluginDir
+# args, cached by UBT in Intermediate/Build/<TargetCfg>/PreBuild-N.bat. That
+# hook has been removed, but a user upgrading from such a version can still
+# have a stale cached PreBuild-N.bat that calls this with the old args until
+# UBT regenerates the cache on the next solution refresh. Failing there with
+# "unknown parameter" would block the editor build for no good reason; accept
+# + no-op those calls so the build isn't blocked.
 
 [CmdletBinding()]
 param(
@@ -42,11 +44,10 @@ param(
     [ValidateSet("All","Mcp","Tests")]
     [string]$Targets = "All",
     [string]$ExtraArgs = "",
-    # Legacy parameters from the pre-UBT PreBuildStep contract. The hook
-    # was later re-added as PreBuildHook.ps1 (which calls this script with
-    # the new -EngineDir / -ProjectFile API), but cached UBT PreBuild-N.bat
-    # scripts can still invoke this with these old args until UBT
-    # regenerates them. Accepted as no-op; see the header comment.
+    # Legacy parameters from the old .uplugin PreBuildStep contract (now
+    # removed). A user upgrading from a version that still had the hook can
+    # have a cached UBT PreBuild-N.bat that invokes this with these old args
+    # until UBT regenerates the cache. Accepted as no-op; see the header.
     [string]$ProjectDir,
     [string]$PluginDir,
     # Catches any other legacy/extra params without erroring.

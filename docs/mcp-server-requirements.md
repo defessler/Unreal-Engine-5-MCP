@@ -101,8 +101,10 @@ Categories: `read`, `write` (asset-mutating), `live_only` (PIE/viewport/editor-s
 - `LyraEditor.Target.cs`: `BuildSettingsVersion.V6`, `TargetBuildEnvironment.Unique`;
   launch `LyraEditor-Cmd.exe` (not `UnrealEditor-Cmd.exe`). [established]
 - Three engine `.Build.cs` patches re-applied after a fresh engine clone. [established]
-- On this machine: `-NoUba -MaxParallelActions=4`. `BP_READER_SKIP_PREBUILD=1` when the
-  running MCP exe locks its relink. [established]
+- On this machine: `-NoUba -MaxParallelActions=4`. The MCP server is built only on demand
+  (`Build-MCPServer.ps1` / Toolbox "Rebuild MCP server") or shipped precompiled — the editor
+  compile no longer auto-builds it. If a running MCP exe holds its relink (LNK1104), stop the
+  server first or build/verify via the test exe. [established]
 - **Adding/extending a tool** — the checklist: commandlet (`EOp` + `ParseOp` + dispatch
   + `RunFooOp`); `IBlueprintReader` virtual; `MockBlueprintReader`; **every** backend +
   decorator override (spot-check `grep -c`); `BlueprintTools.cpp` registration with
