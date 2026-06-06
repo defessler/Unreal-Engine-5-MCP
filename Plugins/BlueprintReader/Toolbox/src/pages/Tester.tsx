@@ -124,6 +124,7 @@ export default function Tester() {
   const [serverPort, setServerPort] = useState(randomPort());
   const [serverStatus, setServerStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped');
   const [serverError, setServerError] = useState('');
+  const [killing, setKilling] = useState(false);
   const [engineDir, setEngineDir] = useState('');
   const [projectDir, setProjectDir] = useState('');
   const [exePath, setExePath] = useState('');
@@ -210,6 +211,18 @@ export default function Tester() {
   async function stopServer() {
     if (serverPid !== null) { await bridge.stopServer(serverPid); setServerPid(null); setServerStatus('stopped'); }
     sseRef.current?.close(); sseRef.current = null; clientRef.current = null;
+  }
+
+  // Terminate any leftover BlueprintReaderMcp.exe + BPR editor daemons (orphan
+  // recovery — e.g. after a client crashed without closing its server).
+  async function killMcps() {
+    setKilling(true);
+    const res = await bridge.killMcpServers();
+    sseRef.current?.close(); sseRef.current = null; clientRef.current = null;
+    setServerPid(null); setServerStatus('stopped');
+    if (res.ok) setServerError(`Stopped ${res.count ?? 0} MCP process(es).`);
+    else setServerError(res.error ?? 'kill failed');
+    setKilling(false);
   }
 
   function startSse(port: number) {
@@ -361,6 +374,14 @@ export default function Tester() {
             )}
           </div>
           {serverError && <div className="mt-1 text-xs text-red-400 break-all">{serverError}</div>}
+          <button
+            onClick={killMcps}
+            disabled={killing}
+            title="Terminate any leftover BlueprintReaderMcp.exe processes and BPR editor daemons (orphan recovery)"
+            className="mt-2 w-full px-2 py-1 bg-ue-panel border border-ue-border rounded text-xs text-gray-400 hover:text-red-400 hover:border-red-500/40 disabled:opacity-50"
+          >
+            {killing ? 'Killing…' : '⦸ Kill all BlueprintReader MCP processes'}
+          </button>
         </div>
 
         {/* Search */}
@@ -481,7 +502,7 @@ export default function Tester() {
                   {result ? (
                     showRaw
                       ? <pre className="text-xs text-gray-300 whitespace-pre-wrap break-all">{resultRaw}</pre>
-                      : <div className="text-xs font-mono"><JsonViewer data={result} /></div>
+                      : <div className="select-text text-xs font-mono"><JsonViewer data={result} /></div>
                   ) : (
                     <div className="text-gray-600 text-sm">Press Send to run the tool.</div>
                   )}
@@ -489,7 +510,7 @@ export default function Tester() {
               </div>
               {sseEvents.length > 0 && (
                 <div className="border-t border-ue-border p-3">
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-2">SSE Events</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-2 select-text">SSE Events</div>
                   <div className="max-h-20 overflow-auto space-y-0.5">
                     {sseEvents.map((ev, i) => <div key={i} className="text-xs text-gray-400 font-mono truncate">{ev}</div>)}
                   </div>

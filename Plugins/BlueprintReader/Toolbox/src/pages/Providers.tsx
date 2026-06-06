@@ -6,6 +6,7 @@ import {
   PROVIDERS,
   getJsonProviderStatus,
   getTomlProviderStatus,
+  mergeServerEntry,
   type ProviderStatus,
   type EnvPaths,
   loadUproject,
@@ -95,20 +96,27 @@ export default function Providers() {
     const unsub = bridge.onScriptLog(appendLog);
     const provider = PROVIDERS.find((p) => p.id === providerId)!;
 
-    if (provider.buildConfig) {
-      // Toolbox writes the config directly (provider not in the exe's --client list)
+    if (provider.serverEntry) {
+      // Toolbox writes this provider's config directly, MERGING our entry under
+      // configKey so sibling MCP servers in a shared/global file are preserved.
       const configPath = provider.configPath(projectDir, envPaths);
-      const content = provider.buildConfig(exePath);
       try {
-        await bridge.writeFile(configPath, content);
-        appendLog(`[ok] Written to ${configPath}`);
+        const existing = await bridge.readFile(configPath);
+        const merged = mergeServerEntry(existing, provider.configKey, provider.serverEntry(exePath));
+        await bridge.writeFile(configPath, merged);
+        appendLog(`[ok] Configured ${provider.label} → ${configPath}`);
       } catch (e) {
         appendLog(`[error] ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
-      const clientFlag = SCRIPT_CLIENT_MAP[providerId] ?? providerId;
       const scriptPath = `${pluginDir}\\Scripts\\Generate-ClientConfig.ps1`;
-      await bridge.runScript(scriptPath, ['-Client', clientFlag]);
+      const present = await bridge.readFile(scriptPath);
+      if (present === null) {
+        appendLog(`[error] ${scriptPath} not found — install the plugin into this project first (Install tab).`);
+      } else {
+        const clientFlag = SCRIPT_CLIENT_MAP[providerId] ?? providerId;
+        await bridge.runScript(scriptPath, ['-Client', clientFlag]);
+      }
     }
 
     unsub();
@@ -126,9 +134,12 @@ export default function Providers() {
     setLogs([]);
     setRunning(true);
     const unsub = bridge.onScriptLog(appendLog);
-    const scriptPath = `${pluginDir}\\Scripts\\Install-ClaudeAssets.ps1`;
-    await bridge.runScript(scriptPath, ['-ProjectRoot', projectDir]);
+    // Works whether or not the plugin is already mounted: the IPC runs the
+    // in-project Install-ClaudeAssets.ps1 if present, else downloads the latest
+    // release and runs the extracted copy.
+    const res = await bridge.deployAssets({ projectDir });
     unsub();
+    if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
     setRunning(false);
     checkAssetsInstalled();
   }
@@ -264,7 +275,11 @@ export default function Providers() {
           <div>
             <h2 className="text-base font-medium text-white mb-0.5">Skills & Agents</h2>
             <p className="text-gray-500 text-xs">
-              Deploys AGENTS.md, Claude Code skills, and agent configs to your project root so all AI clients discover what the MCP server exposes.
+              Each AI client reads its guidance from a different file, so one deploy writes them all:
+              <code className="text-gray-400"> AGENTS.md</code> (the cross-agent standard — Codex, Cursor, Gemini, Aider, Jules),
+              <code className="text-gray-400"> .github/copilot-instructions.md</code> (GitHub Copilot, incl. the JetBrains/Rider plugin),
+              and <code className="text-gray-400"> .claude/skills</code> + <code className="text-gray-400">.claude/agents</code> (Claude Code).
+              Existing content in those files is section-merged, not overwritten.
             </p>
           </div>
           <div className="flex items-center gap-3">

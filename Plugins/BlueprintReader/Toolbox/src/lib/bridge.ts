@@ -1,12 +1,14 @@
 import type {
   ElectronAPI, PathInfo, StartServerOpts, OpenDialogOpts,
   LatestRelease, InstallFromReleaseOpts, InstallResult, SelfUpdateResult,
+  DeployResult, KillResult,
 } from '../../electron/preload';
 
 // Re-export types for use in components
 export type {
   PathInfo, StartServerOpts, OpenDialogOpts,
   LatestRelease, InstallFromReleaseOpts, InstallResult, SelfUpdateResult,
+  DeployResult, KillResult,
 };
 
 function api(): ElectronAPI {
@@ -40,6 +42,8 @@ function api(): ElectronAPI {
       getLatestRelease: async () => ({ ok: true, tag: 'v0.0.0', hasPlugin: true, hasToolbox: true }),
       installPluginFromRelease: async () => ({ ok: true, code: 0, tag: 'v0.0.0' }),
       selfUpdateToolbox: async () => ({ ok: false, error: 'dev stub' }),
+      deployAssets: async () => ({ ok: true, code: 0 }),
+      killMcpServers: async () => ({ ok: true, count: 0 }),
     };
   }
   return w.electronAPI;
@@ -66,4 +70,6 @@ export const bridge = {
   getLatestRelease: () => api().getLatestRelease(),
   installPluginFromRelease: (opts: InstallFromReleaseOpts) => api().installPluginFromRelease(opts),
   selfUpdateToolbox: () => api().selfUpdateToolbox(),
+  deployAssets: (opts: { projectDir: string }) => api().deployAssets(opts),
+  killMcpServers: () => api().killMcpServers(),
 };

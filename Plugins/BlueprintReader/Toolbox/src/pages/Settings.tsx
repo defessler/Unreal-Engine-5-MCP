@@ -4,20 +4,11 @@ interface EnvFlag {
   key: string;
   label: string;
   default: string;
-  type: 'bool' | 'string' | 'number' | 'select' | 'editorargs';
+  type: 'bool' | 'string' | 'number' | 'select';
   options?: string[];
   description: string;
   group: string;
 }
-
-// Known editor arg flags and whether they're mutually exclusive with others
-const EDITOR_ARGS: { flag: string; label: string; desc: string; mutex?: string[] }[] = [
-  { flag: '-EnableAllPlugins',        label: 'Enable all plugins',           desc: 'Prevents plugin startup failures when some plugins are missing or incompatible.' },
-  { flag: '-SkipBuildToolVersionChecks', label: 'Skip build tool version checks', desc: 'Skips UBT version mismatch warnings on startup. Useful with older toolchains.' },
-  { flag: '-nosplash',                label: 'No splash screen',             desc: 'Suppresses the UE splash screen on commandlet startup.' },
-  { flag: '-nullrhi',                 label: 'Null RHI (no GPU)',             desc: 'Runs without a graphics device. Required for headless/server environments. Cannot be used alongside -game.', mutex: ['-game'] },
-  { flag: '-game',                    label: 'Game mode',                    desc: 'Runs in game mode instead of editor mode. Cannot be combined with -nullrhi.', mutex: ['-nullrhi'] },
-];
 
 const FLAGS: EnvFlag[] = [
   // ── Backend ───────────────────────────────────────────────────────────────
@@ -56,8 +47,8 @@ const FLAGS: EnvFlag[] = [
     options: ['Development', 'DebugGame', 'Debug', 'Test', 'Shipping'],
     description: 'Which UnrealEditor-Cmd[-Config].exe the daemon launches. Must match the config your plugin DLL was built with.',
     group: 'Backend' },
-  { key: 'BP_READER_EDITOR_ARGS', label: 'Extra editor args', default: '', type: 'editorargs',
-    description: 'Additional command-line arguments for UnrealEditor-Cmd.exe.',
+  { key: 'BP_READER_EDITOR_ARGS', label: 'Extra editor args', default: '', type: 'string',
+    description: 'Advanced: extra command-line args appended to UnrealEditor-Cmd.exe (space-separated). The daemon already sets the flags it needs (e.g. -nullrhi); leave blank unless you know you need something specific.',
     group: 'Backend' },
   { key: 'BP_READER_PLUGIN_DENYLIST', label: 'Plugin denylist', default: '', type: 'string',
     description: 'Comma-separated plugin names to disable on commandlet launch. Use for plugins that crash on init (e.g. DLSS).',
@@ -115,68 +106,6 @@ const FLAGS: EnvFlag[] = [
 ];
 
 const GROUPS = ['Backend', 'Permissions', 'Tools', 'Performance', 'HTTP transport'];
-
-function EditorArgsField({
-  value, onChange,
-}: { value: string; onChange: (v: string) => void }) {
-  // Parse current value into selected flags + free-text remainder
-  const selected = new Set(
-    EDITOR_ARGS.map((a) => a.flag).filter((f) => value.split(/\s+/).includes(f))
-  );
-  const extra = value.split(/\s+/).filter((t) => t && !EDITOR_ARGS.some((a) => a.flag === t)).join(' ');
-
-  function toggle(flag: string, mutex?: string[]) {
-    const parts = new Set(value.split(/\s+/).filter(Boolean));
-    if (parts.has(flag)) {
-      parts.delete(flag);
-    } else {
-      parts.add(flag);
-      // Remove mutually exclusive flags
-      mutex?.forEach((m) => parts.delete(m));
-    }
-    onChange(Array.from(parts).join(' '));
-  }
-
-  return (
-    <div className="space-y-2">
-      {EDITOR_ARGS.map((a) => {
-        const isChecked = selected.has(a.flag);
-        const isMutexBlocked = !isChecked && a.mutex?.some((m) => selected.has(m));
-        return (
-          <label key={a.flag} className={`flex items-start gap-2 cursor-pointer ${isMutexBlocked ? 'opacity-40' : ''}`}>
-            <input
-              type="checkbox"
-              checked={isChecked}
-              disabled={!!isMutexBlocked}
-              onChange={() => toggle(a.flag, a.mutex)}
-              className="mt-0.5 accent-ue-accent"
-            />
-            <div>
-              <div className="text-xs text-gray-200 font-mono">{a.flag}</div>
-              <div className="text-xs text-gray-500">{a.desc}</div>
-            </div>
-          </label>
-        );
-      })}
-      <div>
-        <div className="text-xs text-gray-500 mb-1">Additional flags</div>
-        <input
-          value={extra}
-          onChange={(e) => {
-            const parts = new Set(value.split(/\s+/).filter((t) => EDITOR_ARGS.some((a) => a.flag === t)));
-            if (e.target.value.trim()) parts.add(e.target.value.trim());
-            onChange(Array.from(parts).join(' ') + (e.target.value.trim() ? '' : ''));
-            // Just update the free-text portion while preserving checkbox state
-            const checkboxPart = Array.from(selected).join(' ');
-            onChange((checkboxPart ? checkboxPart + ' ' : '') + e.target.value);
-          }}
-          placeholder="e.g. -unattended -nosound"
-          className="w-full bg-ue-dark border border-ue-border rounded px-2 py-1.5 text-xs text-gray-200 font-mono focus:border-ue-accent outline-none"
-        />
-      </div>
-    </div>
-  );
-}
 
 export default function Settings() {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -289,8 +218,7 @@ export default function Settings() {
                     <p className="text-xs text-gray-400 leading-relaxed">{flag.description}</p>
                   </div>
 
-                  {flag.type !== 'editorargs' && (
-                    <div className="flex-shrink-0 w-48">
+                  <div className="flex-shrink-0 w-48">
                       {flag.type === 'bool' ? (
                         <div className="space-y-1">
                           <select
@@ -333,17 +261,7 @@ export default function Settings() {
                         </div>
                       )}
                     </div>
-                  )}
                 </div>
-
-                {flag.type === 'editorargs' && (
-                  <div className="mt-3">
-                    <EditorArgsField
-                      value={values[flag.key] ?? flag.default}
-                      onChange={(v) => set(flag.key, v)}
-                    />
-                  </div>
-                )}
               </div>
             );
           })}

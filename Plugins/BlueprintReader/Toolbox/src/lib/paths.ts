@@ -15,9 +15,11 @@ export interface ProviderConfig {
   configPath: (projectDir: string, env: EnvPaths) => string;
   configKey: string[];
   format: 'json' | 'toml' | 'manual';
-  // When set, the Toolbox writes this content directly instead of calling the script.
-  // Used for providers not yet supported by BlueprintReaderMcp.exe config --client=X.
-  buildConfig?: (exePath: string) => string;
+  // When set, the Toolbox writes this provider's config itself (instead of
+  // calling Generate-ClientConfig.ps1) by MERGING this entry under configKey
+  // into the existing file — so sibling MCP servers in a shared/global config
+  // are preserved. Returns just the bp-reader server entry object.
+  serverEntry?: (exePath: string) => Record<string, unknown>;
 }
 
 export const PROVIDERS: ProviderConfig[] = [
@@ -96,29 +98,50 @@ export const PROVIDERS: ProviderConfig[] = [
     configKey: ['mcpServers', 'bp-reader'],
     format: 'json',
     // gh copilot uses "type": "local" instead of "type": "stdio"
-    buildConfig: (exePath) => JSON.stringify({
-      mcpServers: {
-        'bp-reader': {
-          type: 'local',
-          command: exePath,
-          args: [],
-          env: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
-        },
-      },
-    }, null, 2),
+    serverEntry: (exePath) => ({
+      type: 'local',
+      command: exePath,
+      args: [],
+      env: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
+    }),
   },
 
-  // ── Manual (no file-based config — must be set in the IDE's settings UI) ─
   {
     id: 'JetBrains',
-    label: 'JetBrains IDEs (Rider / IntelliJ)',
-    description: 'JetBrains AI plugin uses a GUI-only config — go to Settings → Tools → AI Assistant → Model Context Protocol (MCP)',
-    scope: 'manual',
-    configPath: () => '',
-    configKey: [],
-    format: 'manual',
+    label: 'JetBrains Copilot (Rider / IntelliJ)',
+    description: 'GitHub Copilot plugin for JetBrains — global config at %APPDATA%\\github-copilot\\intellij\\mcp.json (uses the "servers" key + "type":"stdio", like VS Code Copilot)',
+    scope: 'global',
+    configPath: (_, env) => `${env.appData}\\github-copilot\\intellij\\mcp.json`,
+    configKey: ['servers', 'bp-reader'],
+    format: 'json',
+    serverEntry: (exePath) => ({
+      type: 'stdio',
+      command: exePath,
+      args: [],
+      env: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
+    }),
   },
 ];
+
+// Merge a server entry under configKey into an existing JSON config file's text
+// (preserving sibling servers). Returns the new file text. Used by providers
+// with a serverEntry so a shared/global config isn't clobbered.
+export function mergeServerEntry(
+  existing: string | null,
+  keys: string[],
+  entry: Record<string, unknown>,
+): string {
+  let root: Record<string, unknown> = {};
+  if (existing) { try { root = JSON.parse(existing) as Record<string, unknown>; } catch { root = {}; } }
+  let cur: Record<string, unknown> = root;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {};
+    cur = cur[k] as Record<string, unknown>;
+  }
+  cur[keys[keys.length - 1]] = entry;
+  return JSON.stringify(root, null, 2);
+}
 
 export type ProviderStatus = 'configured' | 'stale' | 'missing';
 

@@ -158,10 +158,42 @@ function getEngineDir(uprojectFile: string): string {
 // ---------------------------------------------------------------------------
 
 let mainWindow: BrowserWindow | null = null;
+let splash: BrowserWindow | null = null;
+
+// Tiny frameless splash shown instantly while Chromium + the renderer warm up,
+// so the user sees branding immediately instead of waiting on a blank screen.
+function createSplash() {
+  splash = new BrowserWindow({
+    width: 380, height: 220,
+    frame: false, transparent: false, resizable: false, movable: false,
+    alwaysOnTop: true, skipTaskbar: true, show: true,
+    backgroundColor: '#1a1a1a',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  const html = `<!doctype html><meta charset="utf-8"><style>
+    html,body{margin:0;height:100%;background:#1a1a1a;color:#e5e5e5;
+      font-family:-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;user-select:none}
+    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px}
+    .logo{width:44px;height:44px}
+    .title{font-size:14px;letter-spacing:.04em;color:#bdbdbd}
+    .sub{font-size:11px;color:#7a7a7a}
+    .bar{width:160px;height:3px;border-radius:3px;background:#2d2d2d;overflow:hidden}
+    .bar>i{display:block;height:100%;width:40%;background:#E87722;border-radius:3px;animation:slide 1.1s ease-in-out infinite}
+    @keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+  </style><div class="wrap">
+    <svg class="logo" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="3" fill="#E87722"/><path d="M4 8 L8 4 L12 8 L8 12 Z" fill="#fff"/></svg>
+    <div class="title">BlueprintReader Toolbox</div>
+    <div class="bar"><i></i></div>
+    <div class="sub">Starting up…</div>
+  </div>`;
+  splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  splash.on('closed', () => { splash = null; });
+}
 
 function createWindow() {
   // Remove the native File/Edit/View/Window/Help menu bar entirely.
   Menu.setApplicationMenu(null);
+  createSplash();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -170,12 +202,20 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#1a1a1a',
     frame: false,          // custom title bar in renderer
+    show: false,           // reveal on ready-to-show to avoid a blank-window flash
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
     title: 'BlueprintReader Toolbox',
+  });
+
+  // Show the real window only once the renderer has painted its first frame,
+  // then dismiss the splash. Cuts perceived startup to "splash → app".
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    if (splash && !splash.isDestroyed()) splash.close();
   });
 
   if (isDev) {
@@ -187,6 +227,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (splash && !splash.isDestroyed()) { splash.close(); }
     // Clean up any spawned servers
     for (const [, proc] of serverProcesses) {
       try { proc.kill(); } catch { /* ignore */ }
@@ -560,6 +601,76 @@ ipcMain.handle('self-update-toolbox', async () => {
     logLine(`[error] ${msg}`);
     return { ok: false, error: msg };
   }
+});
+
+// Deploy the AI-assistant assets (AGENTS.md, .github/copilot-instructions.md,
+// Claude skills/agents) into a project. Runs the in-project Install-ClaudeAssets.ps1
+// if the plugin is already mounted; otherwise downloads the latest release and
+// runs the extracted copy — so "Deploy Assets" works even before install.
+ipcMain.handle('deploy-assets', async (_evt, opts: { projectDir: string }) => {
+  const projectDir = opts?.projectDir;
+  if (!projectDir) return { ok: false, error: 'No project configured — set one on the Install tab first.' };
+  const inProject = path.join(projectDir, 'Plugins', 'BlueprintReader', 'Scripts', 'Install-ClaudeAssets.ps1');
+  if (fs.existsSync(inProject)) {
+    const code = await runPwsh(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', inProject, '-ProjectRoot', projectDir]);
+    return { ok: code === 0, code };
+  }
+  let tmp = '';
+  try {
+    logLine('Plugin not mounted here — fetching assets from the latest release ...');
+    const rel = await fetchLatestRelease();
+    const asset = rel.assets.find(a => /-plugin\.zip$/i.test(a.name));
+    if (!asset) throw new Error(`No -plugin.zip asset in release ${rel.tag}.`);
+    tmp = path.join(app.getPath('temp'), `bpr-assets-${Date.now()}`);
+    fs.mkdirSync(tmp, { recursive: true });
+    const zip = path.join(tmp, asset.name);
+    await downloadFile(asset.url, zip, 'plugin', { size: asset.size, digest: asset.digest });
+    const extract = path.join(tmp, 'x');
+    const ec = await runPwsh(['-NoProfile', '-Command',
+      `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${extract.replace(/'/g, "''")}' -Force`]);
+    if (ec !== 0) throw new Error('extraction failed.');
+    const pluginRoot = findPluginRoot(extract);
+    if (!pluginRoot) throw new Error('BlueprintReader.uplugin not found in the archive.');
+    const script = path.join(pluginRoot, 'Scripts', 'Install-ClaudeAssets.ps1');
+    if (!fs.existsSync(script)) throw new Error('Install-ClaudeAssets.ps1 missing from the archive.');
+    const code = await runPwsh(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ProjectRoot', projectDir]);
+    return { ok: code === 0, code };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logLine(`[error] ${msg}`);
+    return { ok: false, error: msg };
+  } finally {
+    if (tmp) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
+  }
+});
+
+// Kill any orphaned BlueprintReader MCP processes: every BlueprintReaderMcp.exe,
+// plus any UnrealEditor-Cmd.exe running the BPR daemon (-run=BPR) — but NOT a
+// normal editor. Returns how many were terminated.
+ipcMain.handle('kill-mcp-servers', () => {
+  // Also drop our own tracked handles so the Tester UI reflects the kill.
+  for (const [pid, proc] of serverProcesses) { try { proc.kill(); } catch { /* ignore */ } serverProcesses.delete(pid); }
+  const ps = [
+    '$n = 0',
+    '$mcp = Get-CimInstance Win32_Process -Filter "Name=\'BlueprintReaderMcp.exe\'" -ErrorAction SilentlyContinue',
+    'foreach ($p in $mcp) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {} }',
+    '$d = Get-CimInstance Win32_Process -Filter "Name=\'UnrealEditor-Cmd.exe\'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "-run=BPR" }',
+    'foreach ($p in $d) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {} }',
+    'Write-Output "BPRKILLED=$n"',
+  ].join('; ');
+  return new Promise((resolve) => {
+    let out = '';
+    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
+    p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+    p.stderr.on('data', (d: Buffer) => logLine(d.toString('utf8')));
+    p.on('exit', () => {
+      const m = out.match(/BPRKILLED=(\d+)/);
+      const count = m ? parseInt(m[1], 10) : 0;
+      logLine(`Stopped ${count} BlueprintReader MCP process(es).`);
+      resolve({ ok: true, count });
+    });
+    p.on('error', (e) => { logLine(`[error] ${e.message}`); resolve({ ok: false, error: e.message }); });
+  });
 });
 
 // Script runner — streams stdout via 'script-log' event, resolves with exit code

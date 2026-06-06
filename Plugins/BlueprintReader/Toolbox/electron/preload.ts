@@ -39,6 +39,8 @@ export interface InstallFromReleaseOpts {
 
 export interface InstallResult { ok: boolean; code?: number; tag?: string; error?: string; }
 export interface SelfUpdateResult { ok: boolean; tag?: string; upToDate?: boolean; error?: string; }
+export interface DeployResult { ok: boolean; code?: number; error?: string; }
+export interface KillResult { ok: boolean; count?: number; error?: string; }
 
 const api = {
   getPaths(): Promise<PathInfo> {
@@ -102,6 +104,12 @@ const api = {
   },
   selfUpdateToolbox(): Promise<SelfUpdateResult> {
     return ipcRenderer.invoke('self-update-toolbox');
+  },
+  deployAssets(opts: { projectDir: string }): Promise<DeployResult> {
+    return ipcRenderer.invoke('deploy-assets', opts);
+  },
+  killMcpServers(): Promise<KillResult> {
+    return ipcRenderer.invoke('kill-mcp-servers');
   },
 };
 
