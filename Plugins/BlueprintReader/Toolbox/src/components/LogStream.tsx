@@ -15,7 +15,7 @@ export default function LogStream({ lines, maxHeight = '200px' }: LogStreamProps
   if (lines.length === 0) {
     return (
       <div
-        className="bg-black/40 border border-ue-border rounded p-3 text-gray-600 text-xs overflow-auto"
+        className="select-text bg-black/40 border border-ue-border rounded p-3 text-gray-600 text-xs overflow-auto"
         style={{ maxHeight }}
       >
         (output will appear here)
@@ -25,7 +25,7 @@ export default function LogStream({ lines, maxHeight = '200px' }: LogStreamProps
 
   return (
     <div
-      className="bg-black/40 border border-ue-border rounded p-3 text-xs overflow-auto"
+      className="select-text bg-black/40 border border-ue-border rounded p-3 text-xs overflow-auto"
       style={{ maxHeight }}
     >
       {lines.map((line, i) => {

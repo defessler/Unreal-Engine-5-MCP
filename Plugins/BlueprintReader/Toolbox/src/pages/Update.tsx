@@ -145,7 +145,7 @@ export default function Update() {
             )}
             <button
               onClick={updatePlugin}
-              disabled={running || !uproject || !latestTag}
+              disabled={running || !uproject || !latestTag || (!!pluginVersion && !pluginOutdated)}
               className="px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 rounded text-sm font-medium text-white"
             >
               {pluginVersion ? 'Update plugin' : 'Install plugin'}
