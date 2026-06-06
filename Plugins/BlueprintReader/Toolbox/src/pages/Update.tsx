@@ -2,148 +2,172 @@ import { useState, useEffect, useCallback } from 'react';
 import { bridge } from '../lib/bridge';
 import LogStream from '../components/LogStream';
 import StatusBadge from '../components/StatusBadge';
+import { loadUproject, uprojectToPluginDir } from '../lib/paths';
 
-interface UpdateCache {
-  checked_iso?: string;
-  latest_tag?: string;
-  current?: string;
-  update_available?: boolean;
+const REPO_RELEASES = 'https://github.com/defessler/Unreal-Engine-5-MCP/releases';
+
+// >0 if a is newer than b, <0 if older, 0 equal. Strips a leading 'v' and any
+// pre-release suffix. Used so we only offer/apply a strictly-newer release.
+function cmpVersion(a?: string | null, b?: string | null): number {
+  const parse = (s?: string | null) => (s ?? '').replace(/^v/, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+  const pa = parse(a), pb = parse(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
 }
 
 export default function Update() {
-  const [projectDir, setProjectDir] = useState('');
-  const [pluginDir, setPluginDir] = useState('');
-  const [cache, setCache] = useState<UpdateCache | null>(null);
+  const [uproject, setUproject] = useState(() => loadUproject());
+  const [toolboxVersion, setToolboxVersion] = useState('');
+  const [pluginVersion, setPluginVersion] = useState<string | null>(null);
+  const [latestTag, setLatestTag] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
-  const [checkedAt, setCheckedAt] = useState('');
 
-  const appendLog = useCallback((line: string) => {
-    setLogs((prev) => [...prev, line]);
+  const appendLog = useCallback((line: string) => setLogs((p) => [...p, line]), []);
+
+  const pluginDir = uprojectToPluginDir(uproject);
+
+  // Installed plugin version from the mounted .uplugin VersionName.
+  const readPluginVersion = useCallback(async (dir: string) => {
+    if (!dir) { setPluginVersion(null); return; }
+    const up = await bridge.readFile(`${dir}\\BlueprintReader.uplugin`);
+    if (up) { try { setPluginVersion(JSON.parse(up).VersionName ?? null); } catch { setPluginVersion(null); } }
+    else setPluginVersion(null);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setChecking(true);
+    setToolboxVersion(await bridge.getAppVersion());
+    const rel = await bridge.getLatestRelease();
+    if (rel.ok && rel.tag) setLatestTag(rel.tag);
+    setChecking(false);
   }, []);
 
   useEffect(() => {
-    bridge.getPaths().then(async (p) => {
-      setProjectDir(p.projectDir);
-      setPluginDir(p.pluginDir);
-      const cachePath = `${p.projectDir}\\Saved\\bp-reader-update.json`;
-      const content = await bridge.readFile(cachePath);
-      if (content) {
-        try {
-          const c = JSON.parse(content) as UpdateCache;
-          setCache(c);
-          if (c.checked_iso) {
-            setCheckedAt(new Date(c.checked_iso).toLocaleString());
-          }
-        } catch {
-          // ignore malformed cache
-        }
-      }
+    bridge.getPaths().then((p) => {
+      const saved = loadUproject() || p.uproject;
+      if (saved && saved !== uproject) setUproject(saved);
     });
-  }, []);
+    refresh();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function checkNow() {
-    setLogs([]);
-    setRunning(true);
+  // Re-read the plugin version whenever the resolved project changes — the
+  // mount-time getPaths() resolves uproject asynchronously, after refresh ran
+  // with an empty pluginDir, so this catches the real installed version.
+  useEffect(() => { readPluginVersion(pluginDir); }, [pluginDir, readPluginVersion]);
+
+  async function updateToolbox() {
+    setLogs([]); setRunning(true);
     const unsub = bridge.onScriptLog(appendLog);
-    const scriptPath = `${pluginDir}\\Scripts\\Check-Update.ps1`;
-    await bridge.runScript(scriptPath, []);
+    const res = await bridge.selfUpdateToolbox();
     unsub();
-    setRunning(false);
-
-    // Reload cache
-    const cachePath = `${projectDir}\\Saved\\bp-reader-update.json`;
-    const content = await bridge.readFile(cachePath);
-    if (content) {
-      try {
-        const c = JSON.parse(content) as UpdateCache;
-        setCache(c);
-        if (c.checked_iso) setCheckedAt(new Date(c.checked_iso).toLocaleString());
-      } catch {
-        // ignore
-      }
-    }
+    if (!res.ok) { appendLog(`[error] ${res.error ?? 'self-update failed'}`); setRunning(false); }
+    else if (res.upToDate) { appendLog('Toolbox is already up to date.'); setRunning(false); }
+    else { appendLog('Toolbox update downloaded — restarting to apply…'); }
+    // On success (!upToDate) keep running=true: the app quits + relaunches in a
+    // moment; leaving the button disabled stops a second click from spawning a
+    // competing swap helper during the ~900ms quit window.
   }
 
-  async function runUpdate() {
-    setLogs([]);
-    setRunning(true);
+  async function updatePlugin() {
+    if (!uproject) { appendLog('[error] No project configured — set one on the Install tab first.'); return; }
+    setLogs([]); setRunning(true);
     const unsub = bridge.onScriptLog(appendLog);
-    const scriptPath = `${pluginDir}\\Scripts\\Update-Plugin.ps1`;
-    await bridge.runScript(scriptPath, []);
+    const res = await bridge.installPluginFromRelease({ uproject, client: 'All' });
     unsub();
+    if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
     setRunning(false);
-    await checkNow();
+    await refresh();
+    await readPluginVersion(pluginDir);
   }
 
-  const repoUrl = 'https://github.com/defessler/Unreal-Engine-5-MCP/releases';
+  const toolboxOutdated = !!latestTag && cmpVersion(latestTag, toolboxVersion) > 0;
+  const pluginOutdated = !!latestTag && !!pluginVersion && cmpVersion(latestTag, pluginVersion) > 0;
 
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-white mb-1">Update</h1>
-      <p className="text-gray-500 text-sm mb-6">Check for and install plugin updates.</p>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-semibold text-white">Update</h1>
+        <button
+          onClick={refresh}
+          disabled={checking || running}
+          className="px-3 py-1.5 bg-ue-panel border border-ue-border rounded text-xs hover:bg-white/10 disabled:opacity-50 text-gray-300"
+        >
+          {checking ? 'Checking…' : 'Check for updates'}
+        </button>
+      </div>
+      <p className="text-gray-500 text-sm mb-6">Keep the Toolbox and the plugin up to date — both pull from the latest GitHub release.</p>
 
-      <div className="bg-ue-panel border border-ue-border rounded p-5 mb-6">
-        <div className="grid grid-cols-2 gap-4 mb-4">
+      {/* Toolbox self-update */}
+      <div className="bg-ue-panel border border-ue-border rounded p-5 mb-4">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-xs text-gray-500 mb-1">Current version</div>
-            <div className="text-sm text-white font-medium">{cache?.current ?? '—'}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Latest release</div>
-            <div className="flex items-center gap-2">
-              <div className="text-sm text-white font-medium">{cache?.latest_tag ?? '—'}</div>
-              {cache?.update_available !== undefined && (
-                <StatusBadge
-                  status={cache.update_available ? 'stale' : 'configured'}
-                  label={cache.update_available ? 'Update available' : 'Up to date'}
-                />
-              )}
+            <div className="text-sm font-medium text-white mb-1">Toolbox app</div>
+            <div className="text-xs text-gray-500">
+              Installed <span className="text-gray-300">v{toolboxVersion || '—'}</span>
+              {latestTag && <> · Latest <span className="text-gray-300">{latestTag}</span></>}
             </div>
           </div>
-        </div>
-
-        {checkedAt && (
-          <div className="text-xs text-gray-600">Last checked: {checkedAt}</div>
-        )}
-
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={checkNow}
-            disabled={running}
-            className="px-4 py-2 bg-ue-panel border border-ue-border rounded text-sm hover:bg-white/10 disabled:opacity-50"
-          >
-            {running ? 'Checking…' : 'Check Now'}
-          </button>
-          {cache?.update_available && (
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {latestTag && (
+              <StatusBadge status={toolboxOutdated ? 'stale' : 'configured'} label={toolboxOutdated ? 'Update available' : 'Up to date'} />
+            )}
             <button
-              onClick={runUpdate}
-              disabled={running}
-              className="px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-50 rounded text-sm font-medium text-white"
+              onClick={updateToolbox}
+              disabled={running || !toolboxOutdated}
+              className="px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 rounded text-sm font-medium text-white"
             >
-              Update
+              Update Toolbox
             </button>
-          )}
-          <button
-            onClick={() => bridge.openExternal(repoUrl)}
-            className="px-4 py-2 bg-ue-panel border border-ue-border rounded text-sm hover:bg-white/10 ml-auto"
-          >
-            View releases ↗
-          </button>
+          </div>
         </div>
+        <div className="text-xs text-gray-600 mt-2">Downloads the new portable exe, then restarts to apply.</div>
+      </div>
+
+      {/* Plugin update */}
+      <div className="bg-ue-panel border border-ue-border rounded p-5 mb-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium text-white mb-1">BlueprintReader plugin</div>
+            <div className="text-xs text-gray-500">
+              {uproject
+                ? <>Installed <span className="text-gray-300">{pluginVersion ? `v${pluginVersion}` : 'not installed'}</span>{latestTag && <> · Latest <span className="text-gray-300">{latestTag}</span></>}</>
+                : 'No project configured — set one on the Install tab.'}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {latestTag && pluginVersion && (
+              <StatusBadge status={pluginOutdated ? 'stale' : 'configured'} label={pluginOutdated ? 'Update available' : 'Up to date'} />
+            )}
+            <button
+              onClick={updatePlugin}
+              disabled={running || !uproject || !latestTag}
+              className="px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 rounded text-sm font-medium text-white"
+            >
+              {pluginVersion ? 'Update plugin' : 'Install plugin'}
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-gray-600 mt-2">Re-downloads the latest release and re-mounts it — your local build is preserved; client configs are refreshed for all supported clients.</div>
       </div>
 
       {logs.length > 0 && (
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Output</label>
+        <div className="mb-4">
+          <label className="block text-xs text-gray-500 mb-1">Output</label>
           <LogStream lines={logs} maxHeight="240px" />
         </div>
       )}
 
-      <div className="mt-6 p-4 bg-yellow-400/5 border border-yellow-400/20 rounded text-xs text-yellow-400/80">
-        Note: Update-Plugin.ps1 downloads the latest source but does <strong>not</strong> rebuild the MCP server exe.
-        After updating, rebuild from the Install page if server sources changed.
-      </div>
+      <button
+        onClick={() => bridge.openExternal(REPO_RELEASES)}
+        className="text-xs text-gray-500 hover:text-gray-300"
+      >
+        View all releases ↗
+      </button>
     </div>
   );
 }
