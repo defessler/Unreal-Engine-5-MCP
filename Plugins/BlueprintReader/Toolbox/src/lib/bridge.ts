@@ -1,7 +1,13 @@
-import type { ElectronAPI, PathInfo, StartServerOpts, OpenDialogOpts } from '../../electron/preload';
+import type {
+  ElectronAPI, PathInfo, StartServerOpts, OpenDialogOpts,
+  LatestRelease, InstallFromReleaseOpts, InstallResult, SelfUpdateResult,
+} from '../../electron/preload';
 
 // Re-export types for use in components
-export type { PathInfo, StartServerOpts, OpenDialogOpts };
+export type {
+  PathInfo, StartServerOpts, OpenDialogOpts,
+  LatestRelease, InstallFromReleaseOpts, InstallResult, SelfUpdateResult,
+};
 
 function api(): ElectronAPI {
   const w = window as unknown as { electronAPI: ElectronAPI };
@@ -31,6 +37,9 @@ function api(): ElectronAPI {
       maximizeWindow: async () => undefined,
       closeWindow: async () => undefined,
       resolveEngine: async () => '',
+      getLatestRelease: async () => ({ ok: true, tag: 'v0.0.0', hasPlugin: true, hasToolbox: true }),
+      installPluginFromRelease: async () => ({ ok: true, code: 0, tag: 'v0.0.0' }),
+      selfUpdateToolbox: async () => ({ ok: false, error: 'dev stub' }),
     };
   }
   return w.electronAPI;
@@ -54,4 +63,7 @@ export const bridge = {
   maximizeWindow: () => api().maximizeWindow(),
   closeWindow: () => api().closeWindow(),
   resolveEngine: (uprojectPath: string) => api().resolveEngine(uprojectPath),
+  getLatestRelease: () => api().getLatestRelease(),
+  installPluginFromRelease: (opts: InstallFromReleaseOpts) => api().installPluginFromRelease(opts),
+  selfUpdateToolbox: () => api().selfUpdateToolbox(),
 };

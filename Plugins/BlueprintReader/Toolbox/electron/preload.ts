@@ -21,6 +21,25 @@ export interface OpenDialogOpts {
   properties?: Array<'openFile' | 'openDirectory'>;
 }
 
+export interface LatestRelease {
+  ok: boolean;
+  tag?: string;
+  hasPlugin?: boolean;
+  hasToolbox?: boolean;
+  error?: string;
+}
+
+export interface InstallFromReleaseOpts {
+  uproject: string;
+  client?: string;
+  build?: boolean;
+  engineDir?: string;
+  applyPatches?: boolean;
+}
+
+export interface InstallResult { ok: boolean; code?: number; tag?: string; error?: string; }
+export interface SelfUpdateResult { ok: boolean; tag?: string; upToDate?: boolean; error?: string; }
+
 const api = {
   getPaths(): Promise<PathInfo> {
     return ipcRenderer.invoke('get-paths');
@@ -74,6 +93,15 @@ const api = {
   },
   resolveEngine(uprojectPath: string): Promise<string> {
     return ipcRenderer.invoke('resolve-engine', uprojectPath);
+  },
+  getLatestRelease(): Promise<LatestRelease> {
+    return ipcRenderer.invoke('get-latest-release');
+  },
+  installPluginFromRelease(opts: InstallFromReleaseOpts): Promise<InstallResult> {
+    return ipcRenderer.invoke('install-plugin-from-release', opts);
+  },
+  selfUpdateToolbox(): Promise<SelfUpdateResult> {
+    return ipcRenderer.invoke('self-update-toolbox');
   },
 };
 

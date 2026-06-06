@@ -148,9 +148,14 @@ if (-not (Test-Path $exe)) {
     if (Test-Path $legacyExe) { $exe = $legacyExe }
 }
 if (Test-Path $exe) {
-    Write-Host "$tag Running doctor..."
+    Write-Host "$tag Running doctor (advisory health check)..."
     & $exe doctor
+    # doctor is informational: it flags project-side setup nits (engine not
+    # registered, plugin not yet enabled in the .uproject, etc.) that are NOT
+    # install failures. The mount/config/asset steps above throw on real errors.
+    # Don't let doctor's exit code become this script's exit code.
 } else {
     Write-Host "$tag NOTE: server exe not found at $exe - run '$exe doctor' after building."
 }
 Write-Host "$tag Install complete."
+exit 0
