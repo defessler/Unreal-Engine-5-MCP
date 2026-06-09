@@ -169,72 +169,27 @@ jobs:
             DataTables, AnimBPs, Niagara, Sequencer, and more — without requiring any
             C++ or editor scripting knowledge.
 
-            ## What's new in v0.4.0
+            ## Highlights
 
-            ### Toolbox — desktop GUI for setup and testing
-            A new Electron app ships alongside the plugin. It provides a guided
-            installer, an AI-provider configuration screen for every supported client
-            (Claude Desktop, VS Code, Cursor, Windsurf, Gemini CLI, Codex), and a
-            live MCP tester where you can call any of the 252 tools interactively and
-            inspect the JSON response. No terminal required for initial setup.
+            A standalone MCP server + a two-module UE editor plugin that give AI
+            coding assistants deep read/write access to a running Unreal Engine
+            project — Blueprints, Materials, DataTables, AnimBPs, Niagara, Sequencer,
+            and more — plus a desktop **Toolbox** GUI for one-click install, AI-client
+            configuration, and live tool testing.
 
-            ### Blueprint recreation at diff=0
-            Two new tools — `clone_graph` and `implement_interface` — round out the
-            write surface. Combined with the existing node/pin/connection authoring
-            tools, the server can now reproduce any Blueprint from scratch with zero
-            structural residuals: correct wiring topology, macro sub-graphs, composite
-            graphs, custom event parameters, interface override signatures, self-context
-            calls, and object-valued TMaps. Verified against a full corpus of real
-            Lyra Blueprints.
+            - **Toolbox GUI** — guided installer, provider configuration for every
+              supported client (Claude, Copilot/VS Code, Cursor, Windsurf, Gemini,
+              Codex, JetBrains), and an interactive MCP tester.
+            - **Blueprint authoring at diff=0** — the read/write tool surface can
+              reproduce any Blueprint from scratch with zero structural residuals.
+            - **UE 5.8 + installed-engine support** — an engine-free CMake fallback
+              builds the standalone server/tests on Launcher installs.
+            - **MCP 2025-11-25 + typed output schemas** — `structuredContent`
+              responses with a full `output_schema` per tool.
+            - **`auto` backend** — routes to a live editor over TCP or a headless
+              commandlet per call, with transparent reconnect.
 
-            ### UE 5.8 support and installed-engine fallback
-            The plugin and MCP server now build and run against Unreal Engine 5.8,
-            including binary/Launcher installs. Because installed engines refuse to
-            build UE Program targets, the MCP server and test suite now have a CMake
-            fallback that builds them as standalone executables using only the system
-            MSVC toolchain — no engine required. The `Setup-Plugin.bat` installer
-            detects this automatically and runs the CMake build on first use.
-
-            ### MCP protocol 2025-11-25 + typed output schemas
-            The server now speaks MCP protocol `2025-11-25` with `structuredContent`
-            responses, meaning AI clients receive tool outputs as structured JSON
-            objects rather than opaque text. Every one of the 252 tools now declares
-            a full `output_schema` — clients can validate, display, and reason over
-            the response shape without parsing strings.
-
-            ### Auto-backend reliability
-            The `auto` backend (default) probes whether the editor is running on each
-            call and routes to the live TCP socket or a headless commandlet accordingly.
-            This release fixes the two main reliability gaps: stale cached sockets
-            after an editor restart now reconnect transparently, and the spawned daemon
-            is cleanly released when switching to a live editor session mid-run.
-
-            ### New and improved tools
-            - **`read_actor_instance`** — reads any UObject or OFPA per-actor-instance
-              override directly (real property values, not just class defaults).
-            - **`find_asset` pagination** — large asset registries no longer error;
-              results paginate with a configurable page size.
-            - **Daemon spawn retry** — transient editor-startup failures are retried
-              automatically rather than propagating immediately to the caller.
-            - **Did-you-mean hints** — unknown `fields` projections, `category`
-              filters, and `add_node` kind names now suggest the closest valid value.
-            - **Progress streaming** — long-running operations (`apply_ops`, graph
-              reads) emit granular MCP progress notifications so clients show real-time
-              status rather than a silent wait.
-
-            ### Broader AI client support
-            The config writer now generates ready-to-paste snippets for **Cursor**,
-            **Windsurf**, **VS Code**, **Gemini CLI**, and **OpenAI Codex** in addition
-            to the existing Claude Desktop / Claude Code targets. The plugin also ships
-            a portable `AGENTS.md` that Copilot, Cursor, and other tool-aware clients
-            pick up automatically to learn what the MCP server exposes.
-
-            ### Governance and diagnostics
-            A new allow/block regex layer lets you restrict which Blueprint paths and
-            tool names the server will act on — useful for locking down shared
-            environments. `BlueprintReaderMcp.exe doctor` now checks engine
-            compatibility, server staleness, and `.mcp.json` correctness and reports
-            actionable fixes.
+            The per-release changelog is generated automatically below.
 
             ---
 
