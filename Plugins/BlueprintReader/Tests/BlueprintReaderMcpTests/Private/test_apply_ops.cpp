@@ -12,6 +12,8 @@
 #include "backends/IBlueprintReader.h"
 #include "backends/MockBlueprintReader.h"
 #include "tools/ApplyOps.h"
+#include "tools/BlueprintTools.h"
+#include "tools/ToolRegistry.h"
 #include "jsonrpc/CallContext.h"
 #include "jsonrpc/Server.h"
 
@@ -224,9 +226,14 @@ public:
 		{
 			++endBatchSkipCalls;
 		}
+		if (rollback)
+		{
+			++endBatchRollbackCalls;
+		}
 		return endBatchAck;
 	}
 	int endBatchSkipCalls = 0;
+	int endBatchRollbackCalls = 0;
 	nlohmann::json endBatchAck = nlohmann::json::object();
 
 private:
@@ -282,13 +289,20 @@ TEST_CASE("apply_ops emits one notifications/progress per op (PARITY-1 granular 
 
 	auto notifs = server.TakePendingNotifications();
 	int progress = 0;
+	double lastProgress = -1.0, lastTotal = -1.0;
 	for (const auto& n : notifs) {
 		if (n.value("method", std::string{}) == "notifications/progress" &&
 			n["params"].value("progressToken", json()) == json("ops-prog")) {
 			++progress;
+			lastProgress = n["params"].value("progress", -1.0);
+			lastTotal    = n["params"].value("total", -1.0);
 		}
 	}
 	CHECK(progress == 3);  // one emit before each op
+	// #259: the numeric progress is 1-based and must actually reach `total`
+	// on the final op (it used to stop at 2/3).
+	CHECK(lastTotal == 3.0);
+	CHECK(lastProgress == 3.0);
 }
 
 TEST_CASE("apply_ops: named slot resolves through wire_pins") {
@@ -669,7 +683,7 @@ TEST_CASE("apply_ops: on_failure=skip flushes EndBatch with skipCompile=true on 
 	CHECK(r.endBatchSkipCalls == 1);  // <-- skip path was taken
 }
 
-TEST_CASE("apply_ops: on_failure=compile (default) flushes EndBatch with skipCompile=false on failure") {
+TEST_CASE("apply_ops: explicit on_failure=compile flushes EndBatch with skipCompile=false on failure") {
 	FakeWritableReader r;
 	r.failOnWrite = true;
 	json ops = json::array({
@@ -677,10 +691,58 @@ TEST_CASE("apply_ops: on_failure=compile (default) flushes EndBatch with skipCom
 			 {"asset_path","/Game/AI/BP_Enemy"},
 			 {"name","NewVar"}, {"type","float"}},
 	});
+	// Explicit "compile" is still honored (UX-P4c back-compat) — only the
+	// *default* changed (it now couples to `atomic`).
 	CHECK_THROWS(bpr::tools::RunOps(r, ops, /*atomic=*/true, "compile"));
 	CHECK(r.beginBatchCalls == 1);
 	CHECK(r.endBatchCalls   == 1);
-	CHECK(r.endBatchSkipCalls == 0);  // <-- did NOT skip
+	CHECK(r.endBatchSkipCalls == 0);      // did NOT skip
+	CHECK(r.endBatchRollbackCalls == 0);  // did NOT roll back
+}
+
+// UX-P4c: the apply_ops registry handler couples the on_failure default to
+// `atomic` — atomic:true (the default) is now truly all-or-nothing. These two
+// cases exercise the handler's default-selection (not RunOps directly, which
+// keeps its own "compile" default and is reached only with an explicit flag).
+TEST_CASE("apply_ops: atomic:true default rolls back the whole batch on mid-batch failure (UX-P4c)") {
+	FakeWritableReader r;
+	r.failOnWrite = true;
+	bpr::tools::ToolRegistry registry;
+	bpr::tools::RegisterBlueprintTools(registry, r);
+	const auto* fn = registry.Find("apply_ops");
+	REQUIRE(fn != nullptr);
+	json args = {{"ops", json::array({
+		json{{"op","add_variable"},
+			 {"asset_path","/Game/AI/BP_Enemy"},
+			 {"name","NewVar"}, {"type","float"}},
+	})}};
+	// No `atomic` (defaults true), no `on_failure` → the handler must select
+	// rollback so nothing partial reaches disk.
+	CHECK_THROWS((*fn)(args));
+	CHECK(r.beginBatchCalls == 1);
+	CHECK(r.endBatchCalls   == 1);
+	CHECK(r.endBatchRollbackCalls == 1);  // <-- rolled back by default
+	CHECK(r.endBatchSkipCalls == 0);
+}
+
+TEST_CASE("apply_ops: atomic:false default keeps compile (save what landed) (UX-P4c)") {
+	FakeWritableReader r;
+	r.failOnWrite = true;
+	bpr::tools::ToolRegistry registry;
+	bpr::tools::RegisterBlueprintTools(registry, r);
+	const auto* fn = registry.Find("apply_ops");
+	REQUIRE(fn != nullptr);
+	json args = {
+		{"atomic", false},
+		{"ops", json::array({
+			json{{"op","add_variable"},
+				 {"asset_path","/Game/AI/BP_Enemy"},
+				 {"name","NewVar"}, {"type","float"}},
+		})}};
+	// atomic:false opts into continuing past failures — default stays compile.
+	(void)(*fn)(args);
+	CHECK(r.endBatchRollbackCalls == 0);
+	CHECK(r.endBatchSkipCalls == 0);
 }
 
 TEST_CASE("apply_ops: on_failure=skip on success path still uses skipCompile=false") {

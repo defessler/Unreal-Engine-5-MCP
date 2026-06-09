@@ -280,8 +280,20 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string path = OptString(args, "path", "/Game");
 			auto ctl = ParseResponseControls(args);
 			auto items = reader.ListBlueprints(path);
+			const bool sparse = items.size() <= 1;
 			nlohmann::json body = items;
-			return ListResponse(std::move(body), ctl);
+			auto resp = ListResponse(std::move(body), ctl);
+			// UX-P4i: list_blueprints matches by content PATH (prefix), not by
+			// name. A wrong subpath or a bare name yields 0-1 rows and looks
+			// like "no Blueprints" — nudge toward find_asset (fuzzy name/path
+			// search) so the caller doesn't conclude the BP doesn't exist.
+			if (sparse && resp.is_object()) {
+				resp["_hint"] =
+					"list_blueprints matches by content PATH prefix (e.g. "
+					"/Game/AI). For a name search (e.g. \"BP_Hero\" anywhere), "
+					"use find_asset.";
+			}
+			return resp;
 		});
 	}
 

@@ -87,6 +87,19 @@ TEST_CASE("list_blueprints: default sort is natural (backend order preserved)") 
 	CHECK(rows.size() > 0);
 }
 
+TEST_CASE("list_blueprints: sparse result attaches a find_asset hint (UX-P4i)") {
+	Fixture f;
+	// A path that matches nothing returns 0 rows — the hint must point the
+	// caller at find_asset (name/fuzzy search) instead of looking like "no BPs".
+	auto empty = f.Call("list_blueprints", json{{"path", "/Game/NoSuchSubpath"}});
+	REQUIRE(empty.is_object());
+	REQUIRE(empty.contains("_hint"));
+	CHECK(empty["_hint"].get<std::string>().find("find_asset") != std::string::npos);
+	// A populated query (all fixtures under /Game) must NOT carry the hint.
+	auto many = f.Call("list_blueprints", json{{"path", "/Game"}});
+	CHECK_FALSE(many.contains("_hint"));
+}
+
 TEST_CASE("list_blueprints: sort=path returns entries sorted by asset_path") {
 	Fixture f;
 	auto out = f.Call("list_blueprints", json{{"path", "/Game"}, {"sort", "path"}});

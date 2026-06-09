@@ -782,8 +782,10 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	if (!ops.is_array()) {
 		throw std::invalid_argument(R"(RunOps requires "ops" to be an array)");
 	}
-	// Resolve on_failure once. Unknown values fall back to "compile" with
-	// a clear error so misspellings don't silently change behavior.
+	// Resolve on_failure once. Unknown values throw a clear error so
+	// misspellings don't silently change behavior. (The default is chosen
+	// upstream in the apply_ops handler — atomic:true ⇒ rollback, else
+	// compile — so RunOps no longer advertises a single "default" here.)
 	bool skipOnFailure    = false;
 	bool rollbackOnFailure = false;
 	if (onFailure == "compile" || onFailure.empty()) {
@@ -798,7 +800,7 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 		rollbackOnFailure = true;
 	} else {
 		throw std::invalid_argument(fmt::format(
-			R"(unknown on_failure value "{}" -- supported: "compile" (default) | "skip" | "rollback")",
+			R"(unknown on_failure value "{}" -- supported: "compile" | "skip" | "rollback")",
 			onFailure));
 	}
 
@@ -885,11 +887,14 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 			// PARITY-1: granular progress for batch writes — emit before each
 			// op so a client driving a long apply_ops sees steady advancement.
 			// No-op when the client sent no progressToken (per CallContext).
+			// The numeric progress is 1-based (i+1) to match the human message
+			// and to actually reach `total` on the final op — emitting `i`
+			// (0-based) never reached N/N (#259).
 			if (auto* ctx = bpr::jsonrpc::CallContext::Current()) {
 				const std::string opName =
 					(op.contains("op") && op["op"].is_string())
 						? op["op"].get<std::string>() : "op";
-				ctx->EmitProgress(static_cast<double>(i),
+				ctx->EmitProgress(static_cast<double>(i + 1),
 								  static_cast<double>(ops.size()),
 								  fmt::format("apply_ops {}/{}: {}", i + 1, ops.size(), opName));
 			}
@@ -1070,7 +1075,10 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 							{"enum", nlohmann::json::array({"compile","skip","rollback"})},
 							{"description",
 							 "What EndBatch does after a mid-batch failure. "
-							 "\"compile\" (default): best-effort -- compile + save "
+							 "Default depends on `atomic`: atomic:true => "
+							 "\"rollback\" (truly all-or-nothing); atomic:false => "
+							 "\"compile\" (save what landed). Set explicitly to "
+							 "override. \"compile\": best-effort -- compile + save "
 							 "what landed before the failure. \"skip\": don't "
 							 "compile, don't save -- nothing reaches disk (in-memory "
 							 "state stays dirty until restart). \"rollback\": cancel "
@@ -1087,7 +1095,17 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 				R"(apply_ops requires "ops" to be an array)");
 		}
 		bool atomic = args.value("atomic", true);
-		std::string onFailure = args.value("on_failure", std::string{"compile"});
+		// UX-P4c: couple the on_failure default to `atomic` so atomic:true is
+		// truly all-or-nothing. When on_failure is left unset, atomic:true =>
+		// "rollback" (cancel the FScopedTransaction, reverting every in-memory
+		// mutation to the exact pre-batch state) and atomic:false => "compile"
+		// (you opted into continuing past failures, so save what landed). An
+		// explicit on_failure always wins — full back-compat for callers that
+		// relied on the old best-effort partial-save default.
+		std::string onFailure =
+			(args.contains("on_failure") && args["on_failure"].is_string())
+				? args["on_failure"].get<std::string>()
+				: (atomic ? std::string{"rollback"} : std::string{"compile"});
 		return RunOps(reader, *opsIt, atomic, onFailure);
 	});
 

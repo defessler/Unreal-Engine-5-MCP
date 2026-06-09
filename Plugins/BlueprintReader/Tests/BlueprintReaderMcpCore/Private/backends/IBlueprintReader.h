@@ -637,6 +637,9 @@ public:
 		std::string eventName;
 		std::string handlerFunction;
 		bool bound = false;
+		// UX-P4b: when bound=false, why (widget/delegate/event-graph missing);
+		// when bound=true, optionally how it was satisfied (e.g. already_existed).
+		std::string reason;
 	};
 	virtual BindWidgetEventResult BindWidgetEvent(
 		std::string_view assetPath, std::string_view widgetName,

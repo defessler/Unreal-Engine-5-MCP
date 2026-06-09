@@ -87,10 +87,11 @@ useful for inspection or pasting into an `apply_ops` batch.
       "from_node": "$getHealth", "from_pin": "Health",
       "to_node":   "$branch",    "to_pin":   "Condition" }
   ],
-  "atomic": true,
-  "on_failure": "compile"
+  "atomic": true
 }
 ```
+*(With `atomic: true` and no explicit `on_failure`, this batch is all-or-nothing:
+any failing op reverts the whole batch to the pre-call state.)*
 
 ### Named slots
 Any `add_node` op may carry an `id`. Subsequent ops reference the
@@ -100,10 +101,19 @@ minted GUID via `"$<id>"` or `{"ref":"<id>"}` in any node-id field.
 - `atomic: true` (default) — first failure stops the batch.
 - `atomic: false` — continue past failures; failed ops appear as
   `{ok:false, error:"..."}` in `results`.
-- `on_failure: "compile"` (default) — best-effort: compile + save what
-  landed before the failure.
-- `on_failure: "skip"` — discard pending compile + save. In-memory
-  daemon state stays dirty until restart.
+- **`on_failure` defaults to match `atomic`** (so `atomic:true` is truly
+  all-or-nothing):
+  - `atomic: true` ⇒ default **`rollback`** — the whole batch is reverted to
+    the exact pre-batch state on any failure; nothing partial reaches disk.
+  - `atomic: false` ⇒ default `compile` — save what landed (you opted into a
+    partial result).
+- Set `on_failure` explicitly to override the default:
+  - `"compile"` — best-effort: compile + save what landed before the failure
+    (a *partial* mutation).
+  - `"skip"` — discard pending compile + save; nothing reaches disk (in-memory
+    daemon state stays dirty until restart).
+  - `"rollback"` — cancel the transaction; revert all in-memory mutations to
+    the pre-batch state.
 
 ### Cascade on failed slots
 When a slot-binding op fails in a non-atomic batch, every downstream
@@ -179,7 +189,8 @@ Common patterns:
 - **"Asset not found"** — usually a path typo. Surfaces as the
   `AssetNotFound` class.
 
-If a partial batch landed (`atomic: false` or
-`on_failure: "compile"` with mid-batch failure), either finish with a
-follow-up `apply_ops`, or `delete_function`/`delete_variable` to roll
-back manually.
+A partial batch only lands now if you opted into it — `atomic: false`, or an
+explicit `on_failure: "compile"`/`"skip"`. The default `atomic: true` path
+rolls back automatically (nothing partial reaches disk), so no manual cleanup
+is needed. If you did opt into a partial result, either finish with a follow-up
+`apply_ops`, or `delete_function`/`delete_variable` to undo manually.

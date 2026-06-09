@@ -1,3 +1,4 @@
+<!-- blueprintreader:start -->
 # AGENTS.md — BlueprintReader MCP
 
 Guidance for any AI agent (Claude, Copilot, Codex/GPT, Cursor, Aider, …)
@@ -72,7 +73,9 @@ typed reader (`read_material`, `read_data_asset`, …) or `read_actor_instance`.
 Default backend is `auto`: each call routes to a live editor (~ms) or a
 commandlet **daemon** (~seconds cold-start, then ms). So **don't minimize call
 count** — a 20-step refactor is sub-second after the first call. Batch with
-`apply_ops` for *atomicity* (one compile + one save), not for latency.
+`apply_ops` for *atomicity* — `atomic:true` (the default) is all-or-nothing:
+any failing op rolls the whole batch back to the pre-call state (one compile +
+one save on success), so you never get a half-edited graph.
 
 ## Don't
 
@@ -116,3 +119,4 @@ new skills or changed tool descriptions.
   I/O shapes, env vars (README), and the wiki (Tool-Reference, BPIR,
   Configuration, Usage, Troubleshooting):
   <https://github.com/defessler/Unreal-Engine-5-MCP>.
+<!-- blueprintreader:end -->

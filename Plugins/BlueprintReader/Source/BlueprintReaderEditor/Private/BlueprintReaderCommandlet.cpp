@@ -156,6 +156,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallArrayFunction.h"   // array library funcs need the wildcard-aware node
 #include "K2Node_GetSubsystem.h"        // add_node Kind=GetSubsystem
+#include "K2Node_ComponentBoundEvent.h" // bind_widget_event (UX-P4b)
 #include "Subsystems/Subsystem.h"       // USubsystem base for the GetSubsystem type check
 #include "K2Node_Composite.h"
 #include "K2Node_CustomEvent.h"
@@ -187,6 +188,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "PackageTools.h"   // UX-P4c: reload-from-disk rollback (headless-safe)
 #include "Logging/TokenizedMessage.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
@@ -1072,19 +1074,99 @@ namespace
 
 	UEdGraphNode* FindNodeByGuid(UEdGraph* Graph, const FString& Guid)
 	{
-		FGuid Parsed;
-		if (!FGuid::Parse(Guid, Parsed))
+		if (!Graph)
 		{
 			return nullptr;
 		}
-		for (UEdGraphNode* N : Graph->Nodes)
+		// Exact GUID match — the common, fast path.
+		FGuid Parsed;
+		if (FGuid::Parse(Guid, Parsed))
 		{
-			if (N && N->NodeGuid == Parsed)
+			for (UEdGraphNode* N : Graph->Nodes)
 			{
-				return N;
+				if (N && N->NodeGuid == Parsed)
+				{
+					return N;
+				}
+			}
+			return nullptr;
+		}
+		// UX-P4d: not a full GUID — accept an unambiguous hex PREFIX so a
+		// caller can splice into a pre-existing node with an 8-char prefix
+		// instead of the full 32-hex form. Require hex-only + >= 8 chars to
+		// avoid accidental collisions, and NEVER auto-pick on ambiguity. This
+		// is attempted only AFTER exact parse fails, so existing full-GUID
+		// callers are unaffected. (Placeholders like "D7C34F94-XXXX" contain
+		// non-hex chars and correctly fall through to nullptr.)
+		const FString Hex = Guid.Replace(TEXT("-"), TEXT(""));
+		if (Hex.Len() < 8)
+		{
+			return nullptr;
+		}
+		for (TCHAR C : Hex)
+		{
+			if (!FChar::IsHexDigit(C))
+			{
+				return nullptr;
 			}
 		}
-		return nullptr;
+		UEdGraphNode* Match = nullptr;
+		int32 Count = 0;
+		for (UEdGraphNode* N : Graph->Nodes)
+		{
+			if (!N)
+			{
+				continue;
+			}
+			if (N->NodeGuid.ToString(EGuidFormats::Digits).StartsWith(Hex, ESearchCase::IgnoreCase))
+			{
+				++Count;
+				Match = N;
+			}
+		}
+		return (Count == 1) ? Match : nullptr;
+	}
+
+	// UX-P4d: build a diagnostic message when a node ref can't be resolved —
+	// names the offending ref, says whether it was an ambiguous prefix, and
+	// lists a few real node GUIDs so the caller can correct it. (The op index
+	// is added separately by the apply_ops atomic wrapper.)
+	FString NodeRefError(UEdGraph* Graph, const FString& Spec, const TCHAR* FieldLabel)
+	{
+		const FString GraphName = Graph ? Graph->GetName() : FString(TEXT("?"));
+		const FString Hex = Spec.Replace(TEXT("-"), TEXT(""));
+		int32 PrefixMatches = 0;
+		TArray<FString> Sample;
+		if (Graph)
+		{
+			for (UEdGraphNode* N : Graph->Nodes)
+			{
+				if (!N)
+				{
+					continue;
+				}
+				const FString Digits = N->NodeGuid.ToString(EGuidFormats::Digits);
+				if (!Hex.IsEmpty() && Digits.StartsWith(Hex, ESearchCase::IgnoreCase))
+				{
+					++PrefixMatches;
+				}
+				if (Sample.Num() < 6)
+				{
+					Sample.Add(N->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
+				}
+			}
+		}
+		if (PrefixMatches > 1)
+		{
+			return FString::Printf(
+				TEXT("%s node ref '%s' is ambiguous: %d nodes in graph '%s' match that prefix ")
+				TEXT("— use a longer or full GUID. Known node GUIDs: %s"),
+				FieldLabel, *Spec, PrefixMatches, *GraphName, *FString::Join(Sample, TEXT(", ")));
+		}
+		return FString::Printf(
+			TEXT("%s node ref '%s' not found in graph '%s' — need a full 32-hex GUID or an ")
+			TEXT("unambiguous hex prefix (not a placeholder like '...-XXXX'). Known node GUIDs: %s"),
+			FieldLabel, *Spec, *GraphName, *FString::Join(Sample, TEXT(", ")));
 	}
 
 	// Forward decls — these are defined later in the file but referenced
@@ -1096,6 +1178,11 @@ namespace
 	int32 EmitError(const FString& OutputPath, bool bPretty,
 					int32 Code, const FString& ErrorMsg);
 	bool BuildPinTypeFromFlags(const FString& Params, FEdGraphPinType& Out);
+	// UX-P4h: VariableGet/VariableSet ops call this (defined near the function-
+	// entry helpers further down); HasUserDefinedPinNamed is likewise defined
+	// later but referenced from ClassifyNonMemberVarRef.
+	FString ClassifyNonMemberVarRef(UBlueprint* BP, UEdGraph* Graph, const FString& VarName);
+	bool HasUserDefinedPinNamed(UK2Node_EditablePinBase* Node, FName PinName);
 
 	// Severity → wire string, matching what the MCP server's tool-result
 	// envelope expects. (UE 5.7 removed CriticalError from the enum.)
@@ -1338,28 +1425,55 @@ namespace
 		const bool bSkipCompile = FParse::Param(*Params, TEXT("Skip"));
 		const bool bRollback    = FParse::Param(*Params, TEXT("Rollback"));
 
-		// H1: close the FScopedTransaction opened in BeginBatch.
-		// Cancel on rollback (undoes all in-memory mutations); end normally otherwise
-		// (the compile + save below commits them to disk).
+		// Close the FScopedTransaction opened in BeginBatch. CancelTransaction
+		// reverts in-memory mutations in a full editor, but it is a NO-OP in the
+		// -nullrhi headless daemon (no functional undo buffer), so it cannot be
+		// relied on alone — the reload-from-disk pass below is the real inverse.
 		if (IsValid(GEditor))
 		{
-			if (bRollback)
+			if (bRollback) { GEditor->CancelTransaction(0); }
+			else           { GEditor->EndTransaction(); }
+		}
+
+		// UX-P4c: TRUE rollback that works headless. The batch deferred EVERY
+		// save (MaybeCompileAndSave only marked BPs pending — nothing reached
+		// disk), so each touched package on disk still holds the exact pre-batch
+		// state. Reload those packages from disk to discard the batch's in-memory
+		// mutations entirely — the reliable inverse CancelTransaction can't
+		// provide in the daemon. This also clears the dirty flag, so a later
+		// save_all can no longer persist the abandoned partial state. (A BP
+		// created brand-new inside the batch has no pre-batch state to restore
+		// to, so it is skipped — new-asset rollback is out of scope here.)
+		int32 RolledBack = 0;
+		if (bRollback)
+		{
+			TArray<UPackage*> ToReload;
+			for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
 			{
-				// CancelTransaction undoes every Modify() call since BeginTransaction.
-				GEditor->CancelTransaction(0);
+				UBlueprint* BP = Weak.Get();
+				if (!IsValid(BP)) { continue; }
+				UPackage* Pkg = BP->GetOutermost();
+				if (Pkg && FPackageName::DoesPackageExist(Pkg->GetName()))
+				{
+					ToReload.AddUnique(Pkg);
+				}
 			}
-			else
+			if (ToReload.Num() > 0)
 			{
-				GEditor->EndTransaction();
+				FText ReloadErr;
+				UPackageTools::ReloadPackages(ToReload, ReloadErr,
+					EReloadPackagesInteractionMode::AssumePositive);
 			}
+			RolledBack = ToReload.Num();
 		}
 
 		TArray<TSharedPtr<FJsonValue>> Recompiled;
 		TArray<TSharedPtr<FJsonValue>> AllDiagnostics;
 		int32 Failures = 0;
 		int32 Errors = 0, Warnings = 0;
-		// bRollback: the CancelTransaction above already reverted in-memory state;
-		// skip the compile + save loop entirely (there is nothing to save).
+		// bRollback: the reload above already restored the pre-batch state;
+		// skip the compile + save loop entirely (there is nothing to save, and
+		// the Pending weak ptrs are now stale after the reload).
 		const bool bSkipCompileAll = bSkipCompile || bRollback;
 		for (TWeakObjectPtr<UBlueprint>& Weak : Pending)
 		{
@@ -1415,6 +1529,9 @@ namespace
 		Obj->SetArrayField(TEXT("diagnostics"), AllDiagnostics);
 		Obj->SetNumberField(TEXT("error_count"),   Errors);
 		Obj->SetNumberField(TEXT("warning_count"), Warnings);
+		// UX-P4c: how many packages were reloaded-from-disk to revert the batch
+		// (0 unless -Rollback). Lets callers/tests confirm a real rollback ran.
+		Obj->SetNumberField(TEXT("rolled_back"), RolledBack);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -1782,7 +1899,8 @@ namespace
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
 		if (!IsValid(Node))
 		{
-			return 4;
+			return EmitError(OutputPath, bPretty, 4,
+				NodeRefError(Graph, NodeId, TEXT("SetPinDefault:")));
 		}
 		UEdGraphPin* Pin = FindPinByIdOrName(Node, PinSpec);
 		if (!Pin)
@@ -1963,6 +2081,34 @@ namespace
 		                       // IncludeClean is reserved for a future "save
 		                       // every loaded package" path via FEditorFileUtils.
 
+		// UX-P4i: only USER-saveable packages count. Engine `/Script/*` code
+		// packages (PKG_CompiledIn, no .uasset on disk) and the transient
+		// package can be flagged dirty but can NEVER be saved to disk — so
+		// reporting them in failed_assets makes save_all look like it failed
+		// when it didn't. Exclude them from both the dirty census and the
+		// failure list.
+		auto IsUserSaveable = [](UPackage* Pkg) -> bool
+		{
+			if (!IsValid(Pkg))
+			{
+				return false;
+			}
+			if (Pkg->HasAnyPackageFlags(PKG_CompiledIn))
+			{
+				return false;  // /Script/* and other compiled-in code packages
+			}
+			if (Pkg == GetTransientPackage() || Pkg->HasAnyFlags(RF_Transient))
+			{
+				return false;
+			}
+			const FString Name = Pkg->GetName();
+			if (Name.StartsWith(TEXT("/Script/")) || Name == TEXT("/Engine/Transient"))
+			{
+				return false;
+			}
+			return true;
+		};
+
 		// Capture dirty packages BEFORE the save so we can report what we
 		// touched. Walk the loaded-packages set; UE doesn't expose a "list
 		// dirty packages" helper directly.
@@ -1970,7 +2116,7 @@ namespace
 		for (TObjectIterator<UPackage> It; It; ++It)
 		{
 			UPackage* Pkg = *It;
-			if (Pkg && Pkg->IsDirty())
+			if (Pkg && Pkg->IsDirty() && IsUserSaveable(Pkg))
 			{
 				DirtyBefore.Add(Pkg);
 			}
@@ -2004,6 +2150,10 @@ namespace
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetNumberField(TEXT("saved_count"), SavedCount);
+		// nothing_to_save distinguishes a benign no-op ("no user-saveable
+		// package was dirty") from "0 saved because writes failed"
+		// (failed_assets would be non-empty in the latter).
+		Obj->SetBoolField(TEXT("nothing_to_save"), DirtyBefore.Num() == 0);
 		Obj->SetArrayField(TEXT("failed_assets"), FailedJson);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
@@ -4457,59 +4607,108 @@ namespace
 		FParse::Value(*Params, TEXT("Event="),   EventName);
 		FParse::Value(*Params, TEXT("Handler="), Handler);
 
+		// UX-P4b: emit a JSON result whose `bound`/`ok` reflect REALITY — the
+		// old op faked bound:true without ever creating a node. We only report
+		// bound:true after confirming a UK2Node_ComponentBoundEvent exists.
+		auto Emit = [&](bool bBound, const FString& Reason) -> int32
+		{
+			auto Obj = MakeShared<FJsonObject>();
+			Obj->SetBoolField(TEXT("ok"), bBound);
+			Obj->SetStringField(TEXT("asset_path"),       AssetPath);
+			Obj->SetStringField(TEXT("widget_name"),      WidgetName);
+			Obj->SetStringField(TEXT("event_name"),       EventName);
+			Obj->SetStringField(TEXT("handler_function"), Handler);
+			Obj->SetBoolField(TEXT("bound"),              bBound);
+			if (!Reason.IsEmpty())
+			{
+				Obj->SetStringField(TEXT("reason"), Reason);
+			}
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		};
+
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
 		if (!WBP || !WBP->WidgetTree)
 		{
-			return 4;
+			return EmitError(OutputPath, bPretty, 4,
+				FString::Printf(TEXT("widget blueprint '%s' not found"), *AssetPath));
 		}
 
-		// Binding here = creating a function with the right signature and
-		// hooking up the widget's delegate. UMG editor does this with
-		// FWidgetBlueprintEditorUtils — we fake the easier case (custom
-		// event with the handler's name added to the event graph) so the
-		// agent has a stub to fill in. The full delegate-rebind dance
-		// requires the property name of the multicast delegate on the
-		// widget, which depends on the event.
-		bool bBound = false;
-		if (UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName)))
+		UWidget* W = WBP->WidgetTree->FindWidget(FName(*WidgetName));
+		if (!W)
 		{
-			// Find the multicast delegate property by event name.
-			FString DelegatePropName = EventName; // e.g. "OnClicked"
-			if (FMulticastDelegateProperty* DP =
-				FindFProperty<FMulticastDelegateProperty>(W->GetClass(), *DelegatePropName))
-			{
-				// Create or reuse a function on the BP with the handler name.
-				UEdGraph* EventGraph = FBlueprintEditorUtils::FindEventGraph(WBP);
-				if (IsValid(EventGraph))
-				{
-					// Best-effort scaffolding — actual delegate binding at
-					// runtime requires either pre-construct binding or
-					// MD_BindWidget metadata, which is out of scope for this
-					// op. We log and report bound=true so the agent can
-					// continue building out the BP graph; the user wires the
-					// delegate by writing the function and using
-					// "Bind Event to ..." in the editor.
-					bBound = true;
-					UE_LOG(LogBlueprintReader, Display,
-						TEXT("BindWidgetEvent: scaffolded handler '%s' for '%s.%s' "
-						     "(complete binding by adding the handler function "
-						     "manually or via add_function + apply_ops)."),
-						*Handler, *WidgetName, *EventName);
-				}
-				(void)DP;
-			}
+			return Emit(false,
+				FString::Printf(TEXT("widget '%s' not found in '%s'"), *WidgetName, *AssetPath));
 		}
 
-		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+		// The event must be a multicast delegate on the widget's class.
+		FMulticastDelegateProperty* DP =
+			FindFProperty<FMulticastDelegateProperty>(W->GetClass(), FName(*EventName));
+		if (!DP)
+		{
+			return Emit(false, FString::Printf(
+				TEXT("event '%s' is not a multicast delegate on %s — read the widget's "
+				     "events to find the right delegate property name"),
+				*EventName, *W->GetClass()->GetName()));
+		}
 
-		auto Obj = MakeShared<FJsonObject>();
-		Obj->SetBoolField(TEXT("ok"), bBound);
-		Obj->SetStringField(TEXT("asset_path"),       AssetPath);
-		Obj->SetStringField(TEXT("widget_name"),      WidgetName);
-		Obj->SetStringField(TEXT("event_name"),       EventName);
-		Obj->SetStringField(TEXT("handler_function"), Handler);
-		Obj->SetBoolField(TEXT("bound"),              bBound);
-		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		// The bound-event node references the widget via a generated-class
+		// FObjectProperty, which only exists when the widget is exposed as a
+		// variable. Auto-promote (matching the UMG editor's "Bind Event" UX) +
+		// recompile so the property exists before we bind.
+		if (!W->bIsVariable)
+		{
+			W->bIsVariable = true;
+			// Structural (not just "modified") so the compiler regenerates the
+			// widget's variable property on the generated class — a plain
+			// MarkBlueprintAsModified leaves GeneratedClass without the new
+			// FObjectProperty, so the bind below can't find a ComponentProperty.
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WBP);
+			FKismetEditorUtilities::CompileBlueprint(
+				WBP, EBlueprintCompileOptions::SkipGarbageCollection);
+		}
+		FObjectProperty* ComponentProperty =
+			FindFProperty<FObjectProperty>(WBP->GeneratedClass, FName(*WidgetName));
+		if (!ComponentProperty && WBP->SkeletonGeneratedClass)
+		{
+			ComponentProperty =
+				FindFProperty<FObjectProperty>(WBP->SkeletonGeneratedClass, FName(*WidgetName));
+		}
+		if (!ComponentProperty)
+		{
+			return Emit(false, FString::Printf(
+				TEXT("widget '%s' could not be exposed as a variable to bind against"),
+				*WidgetName));
+		}
+
+		// Idempotent: reuse an existing bound event for this widget+event.
+		const UK2Node_ComponentBoundEvent* Existing =
+			FKismetEditorUtilities::FindBoundEventForComponent(
+				WBP, FName(*EventName), FName(*WidgetName));
+		const bool bAlreadyExisted = (Existing != nullptr);
+		if (!Existing)
+		{
+			FKismetEditorUtilities::CreateNewBoundEventForComponent(
+				W, FName(*EventName), WBP, ComponentProperty);
+			Existing = FKismetEditorUtilities::FindBoundEventForComponent(
+				WBP, FName(*EventName), FName(*WidgetName));
+		}
+
+		if (!Existing)
+		{
+			return Emit(false, TEXT("failed to create the component-bound event node"));
+		}
+
+		// Persist so find_node / read_blueprint / get_graph see the node WITHOUT
+		// a separate compile_widget_blueprint call. A failed save means the bind
+		// is NOT durable (a fresh read won't see it), so report it honestly as
+		// not-ok rather than claiming success — the node exists only in memory.
+		if (!CompileAndSaveBlueprint(WBP))
+		{
+			return Emit(false, TEXT("event bound in memory but compile/save failed "
+				"— not persisted; check the asset isn't read-only / checked out "
+				"elsewhere, then retry"));
+		}
+		return Emit(true, bAlreadyExisted ? TEXT("already bound (idempotent)") : FString());
 	}
 
 	int32 RunCompileWidgetBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
@@ -10711,8 +10910,8 @@ namespace
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
 		if (!IsValid(Node))
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("SetNodePosition: node %s not found in %s"), *NodeId, *GraphName);
-			return 4;
+			return EmitError(OutputPath, bPretty, 4,
+				NodeRefError(Graph, NodeId, TEXT("SetNodePosition:")));
 		}
 		Node->Modify();
 		Node->NodePosX = X;
@@ -11304,8 +11503,8 @@ namespace
 		UEdGraphNode* Node = FindNodeByGuid(Graph, NodeId);
 		if (!IsValid(Node))
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("DeleteNode: node %s not found in %s"), *NodeId, *GraphName);
-			return 4;
+			return EmitError(OutputPath, bPretty, 4,
+				NodeRefError(Graph, NodeId, TEXT("DeleteNode:")));
 		}
 
 		// Break links + remove from graph. FBlueprintEditorUtils::RemoveNode
@@ -11415,6 +11614,16 @@ namespace
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableGet requires -Variable="));
 				return 1;
 			}
+			// UX-P4h: a Self get (no -VariableClass=) of a function input/local
+			// silently mis-binds — return an actionable message instead.
+			if (VarClass.IsEmpty())
+			{
+				const FString Hint = ClassifyNonMemberVarRef(BP, Graph, VarName);
+				if (!Hint.IsEmpty())
+				{
+					return EmitError(OutputPath, bPretty, 4, Hint);
+				}
+			}
 			UK2Node_VariableGet* Get = NewObject<UK2Node_VariableGet>(Graph);
 			// -VariableClass= binds the reference to a member on ANOTHER class
 			// (an external get, e.g. a property on a subsystem/request reached
@@ -11438,6 +11647,16 @@ namespace
 			{
 				UE_LOG(LogBlueprintReader, Error, TEXT("AddNode VariableSet requires -Variable="));
 				return 1;
+			}
+			// UX-P4h: same guard as VariableGet — a Self set of a function
+			// input/local mis-binds; return an actionable message instead.
+			if (VarClass.IsEmpty())
+			{
+				const FString Hint = ClassifyNonMemberVarRef(BP, Graph, VarName);
+				if (!Hint.IsEmpty())
+				{
+					return EmitError(OutputPath, bPretty, 4, Hint);
+				}
 			}
 			UK2Node_VariableSet* Set = NewObject<UK2Node_VariableSet>(Graph);
 			UClass* MemberClass = VarClass.IsEmpty() ? nullptr : ResolveClass(VarClass);
@@ -12013,8 +12232,11 @@ namespace
 		UEdGraphNode* ToNode   = FindNodeByGuid(Graph, ToNodeId);
 		if (!FromNode || !ToNode)
 		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("WirePins: from/to node not found"));
-			return 4;
+			// UX-P4d: name WHICH ref failed (from vs to) + the op index (added
+			// by apply_ops) so the caller doesn't have to guess.
+			return EmitError(OutputPath, bPretty, 4,
+				NodeRefError(Graph, !FromNode ? FromNodeId : ToNodeId,
+					!FromNode ? TEXT("WirePins from_node") : TEXT("WirePins to_node")));
 		}
 		UEdGraphPin* FromPin = FindPinByIdOrName(FromNode, FromPinSpec);
 		UEdGraphPin* ToPin   = FindPinByIdOrName(ToNode,   ToPinSpec);
@@ -12150,6 +12372,58 @@ namespace
 			}
 		}
 		return nullptr;
+	}
+
+	// UX-P4h: a Self-scope VariableGet/VariableSet binds via SetSelfMember,
+	// which only resolves MEMBER variables. If the caller passed a function
+	// INPUT parameter or a function LOCAL variable name, the node silently
+	// mis-binds to a non-existent member (a broken, dangling node). Detect
+	// that and return a specific, actionable message instead of a generic
+	// NotFound. Returns empty when the name IS a member (this BP or an
+	// inherited one) or can't be classified — callers then keep the existing
+	// behavior (which legitimately covers adding a get before the member
+	// exists yet).
+	FString ClassifyNonMemberVarRef(UBlueprint* BP, UEdGraph* Graph, const FString& VarName)
+	{
+		if (!IsValid(BP) || !IsValid(Graph) || VarName.IsEmpty())
+		{
+			return FString();
+		}
+		const FName VarFName(*VarName);
+		// Declared on this BP, or inherited from the generated/parent class?
+		if (FBlueprintEditorUtils::FindNewVariableIndex(BP, VarFName) != INDEX_NONE)
+		{
+			return FString();
+		}
+		if ((BP->GeneratedClass && FindFProperty<FProperty>(BP->GeneratedClass, VarFName)) ||
+			(BP->ParentClass && FindFProperty<FProperty>(BP->ParentClass, VarFName)))
+		{
+			return FString();
+		}
+		// Not a member — is it a function input or local on THIS graph?
+		if (UK2Node_FunctionEntry* Entry = FindFunctionEntry(Graph))
+		{
+			if (HasUserDefinedPinNamed(Entry, VarFName))
+			{
+				return FString::Printf(
+					TEXT("'%s' is a function INPUT parameter on graph '%s', not a member ")
+					TEXT("variable. Wire from the function-entry node's '%s' output pin instead ")
+					TEXT("of a VariableGet/VariableSet (get_graph lists the entry node + its pins)."),
+					*VarName, *Graph->GetName(), *VarName);
+			}
+			const bool bIsLocal = Entry->LocalVariables.ContainsByPredicate(
+				[&](const FBPVariableDescription& L) { return L.VarName == VarFName; });
+			if (bIsLocal)
+			{
+				return FString::Printf(
+					TEXT("'%s' is a function LOCAL variable on graph '%s', not a member ")
+					TEXT("variable. add_node VariableGet/VariableSet binds member variables ")
+					TEXT("only; wire the local via apply_ops/get_graph, or promote it to a "
+					"member variable."),
+					*VarName, *Graph->GetName());
+			}
+		}
+		return FString();  // genuinely unknown — keep prior behavior
 	}
 
 	UK2Node_FunctionResult* FindOrCreateFunctionResult(UEdGraph* Graph)

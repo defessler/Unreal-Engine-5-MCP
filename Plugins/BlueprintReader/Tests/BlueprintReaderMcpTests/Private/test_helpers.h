@@ -66,4 +66,24 @@ inline nlohmann::json& AsResults(nlohmann::json& body) {
 	return body;
 }
 
+// UX-P4e: object-returning tools now carry the full payload exactly once —
+// in `structuredContent` — while content[0].text holds only a short pointer
+// note. Tests that want the tool's JSON payload from a raw MCP result envelope
+// should use this: it prefers structuredContent and falls back to the text
+// block (array results / older shapes). For an error envelope the text is a
+// plain human-readable string (not JSON), so we only parse when the text is
+// actually valid JSON — otherwise we return it as a string rather than letting
+// json::parse throw at the call site.
+inline nlohmann::json PayloadOf(const nlohmann::json& result) {
+	if (result.is_object() && result.contains("structuredContent")) {
+		return result.at("structuredContent");
+	}
+	const std::string text =
+		result.at("content").at(0).at("text").template get<std::string>();
+	if (nlohmann::json::accept(text)) {
+		return nlohmann::json::parse(text);
+	}
+	return nlohmann::json(text);
+}
+
 }    // namespace bpr::test

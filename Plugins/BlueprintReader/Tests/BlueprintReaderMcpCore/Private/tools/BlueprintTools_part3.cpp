@@ -393,14 +393,21 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string e     = RequireString(args, "event_name");
 			std::string h     = RequireString(args, "handler_function");
 			auto r = reader.BindWidgetEvent(asset, w, e, h);
-			return nlohmann::json{
-				{"ok", true},
+			// UX-P4b: ok reflects whether the bind actually happened — the old
+			// hardcoded ok:true masked the commandlet's honest bound:false and
+			// reported phantom success when no node was created.
+			nlohmann::json out{
+				{"ok",               r.bound},
 				{"asset_path",       r.assetPath},
 				{"widget_name",      r.widgetName},
 				{"event_name",       r.eventName},
 				{"handler_function", r.handlerFunction},
 				{"bound",            r.bound},
 			};
+			if (!r.reason.empty()) {
+				out["reason"] = r.reason;
+			}
+			return out;
 		});
 	}
 

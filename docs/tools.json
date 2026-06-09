@@ -9198,7 +9198,7 @@
           "type": "boolean"
         },
         "on_failure": {
-          "description": "What EndBatch does after a mid-batch failure. \"compile\" (default): best-effort -- compile + save what landed before the failure. \"skip\": don't compile, don't save -- nothing reaches disk (in-memory state stays dirty until restart). \"rollback\": cancel the FScopedTransaction to revert all in-memory mutations to the exact pre-batch state -- the BP is left as it was before apply_ops was called.",
+          "description": "What EndBatch does after a mid-batch failure. Default depends on `atomic`: atomic:true => \"rollback\" (truly all-or-nothing); atomic:false => \"compile\" (save what landed). Set explicitly to override. \"compile\": best-effort -- compile + save what landed before the failure. \"skip\": don't compile, don't save -- nothing reaches disk (in-memory state stays dirty until restart). \"rollback\": cancel the FScopedTransaction to revert all in-memory mutations to the exact pre-batch state -- the BP is left as it was before apply_ops was called.",
           "enum": [
             "compile",
             "skip",
