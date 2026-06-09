@@ -142,10 +142,22 @@ function saveProject(uprojectPath: string): void {
   try {
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
     fs.writeFileSync(savedProjectFilePath(), JSON.stringify({ uproject: uprojectPath }), 'utf8');
+    _projectDirCache = null; // TBX-P8: project changed — invalidate the cache
   } catch { /* ignore write errors */ }
 }
 
+// TBX-P8: get-paths is called on every page mount + refresh; the dir-walk below
+// is pure disk I/O that doesn't change within a session unless the user re-picks
+// a project (which clears this via saveProject). Cache it.
+let _projectDirCache: string | null = null;
+
 function getProjectDir(): string {
+  if (_projectDirCache !== null) return _projectDirCache;
+  _projectDirCache = computeProjectDir();
+  return _projectDirCache;
+}
+
+function computeProjectDir(): string {
   // 1. CLI arg --project-dir=<path>
   const argPrefix = '--project-dir=';
   for (const arg of process.argv) {
@@ -186,10 +198,19 @@ function getPluginDir(projectDir: string): string {
 
 function getExePath(projectDir: string): string {
   const pluginBin = path.join(projectDir, 'Plugins', 'BlueprintReader', 'Binaries', 'Win64', 'BlueprintReaderMcp.exe');
-  if (fs.existsSync(pluginBin)) return pluginBin;
   const legacyBin = path.join(projectDir, 'Binaries', 'Win64', 'BlueprintReaderMcp.exe');
-  if (fs.existsSync(legacyBin)) return legacyBin;
-  return pluginBin; // return the expected path even if not built yet
+  const pe = fs.existsSync(pluginBin);
+  const le = fs.existsSync(legacyBin);
+  // TBX-P8: when both the plugin-local and legacy exe exist, prefer the NEWER
+  // build by mtime so we never launch a stale legacy copy (the stale-exe class).
+  if (pe && le) {
+    try {
+      return fs.statSync(legacyBin).mtimeMs > fs.statSync(pluginBin).mtimeMs ? legacyBin : pluginBin;
+    } catch { return pluginBin; }
+  }
+  if (pe) return pluginBin;
+  if (le) return legacyBin;
+  return pluginBin; // expected path even if not built yet
 }
 
 function regQuery(key: string, name: string): string | null {

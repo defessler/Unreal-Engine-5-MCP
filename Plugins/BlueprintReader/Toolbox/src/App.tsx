@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Sidebar from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
 import Install from './pages/Install';
 import Providers from './pages/Providers';
 import Settings from './pages/Settings';
@@ -28,18 +29,21 @@ function TitleBar() {
       >
         <button
           onClick={() => bridge.minimizeWindow()}
+          aria-label="Minimize window" title="Minimize"
           className="w-11 h-8 flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-white/10 transition-colors"
         >
           <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5" rx="0.75"/></svg>
         </button>
         <button
           onClick={() => bridge.maximizeWindow()}
+          aria-label="Maximize window" title="Maximize"
           className="w-11 h-8 flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-white/10 transition-colors"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="0.6" y="0.6" width="8.8" height="8.8" rx="0.5"/></svg>
         </button>
         <button
           onClick={() => bridge.closeWindow()}
+          aria-label="Close window" title="Close"
           className="w-11 h-8 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-600 transition-colors"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.4"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>
@@ -58,11 +62,15 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar current={page} onNav={setPage} />
         <main className="flex-1 overflow-auto bg-ue-dark">
-          {page === 'install' && <Install />}
-          {page === 'providers' && <Providers />}
-          {page === 'settings' && <Settings />}
-          {page === 'tester' && <Tester />}
-          {page === 'update' && <Update />}
+          {/* Remount the boundary per page so dismissing an error on one page
+              doesn't suppress a real error on the next (P1). */}
+          <ErrorBoundary key={page}>
+            {page === 'install' && <Install />}
+            {page === 'providers' && <Providers />}
+            {page === 'settings' && <Settings />}
+            {page === 'tester' && <Tester />}
+            {page === 'update' && <Update />}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
