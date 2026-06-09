@@ -1306,7 +1306,11 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 ### Polish / a11y / maintainability (P3)
 
 ### TBX-P1 — accessibility gaps across the app {#tbx-p1}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (core, uncommitted, 2026-06-09) · **Effort:** M
+- *Added an `ErrorBoundary` (per-page `key` remount) so a render throw no longer
+  white-screens the app, and `aria-label`/`title` on the icon-only window
+  controls. Residual (deferred): full `role=tablist`/arrow-key nav on the
+  sidebar + badge-vocabulary stabilization — lower-value a11y polish.*
 - No error boundary (`App.tsx` — any render throw white-screens the app),
   icon-only window controls with no `aria-label`/`title` (`App.tsx:29-46`), nav +
   group switchers lack `role=tablist`/`aria-current`/arrow-key nav (`Sidebar.tsx`,
@@ -1318,7 +1322,13 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
   everyone.
 
 ### TBX-P2 — `Tester.tsx` is a 781-line god-component {#tbx-p2}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (core, uncommitted, 2026-06-09) · **Effort:** M
+- *Extracted the pure arg helpers (`resolveTemplate`/`coerceArgs`/`validateArgs`/
+  `isValidJsonOfType` + their schema types) into a React-free, unit-testable
+  `src/lib/tool-args.ts`. Residual (deferred): the full component split into
+  `useMcpServer`/`useToolCall` hooks + `BatchPanel`/`ArgForm`/`ToolRow` files —
+  a large mechanical refactor with real regression risk and no runtime test
+  harness; the testable-helpers extraction captured most of the value.*
 - Server lifecycle, SSE, single-call, batch, history, and three sub-components in
   one file. Fix: extract `useMcpServer`/`useToolCall` hooks, split
   `BatchPanel`/`ArgForm`/`ToolRow`, move `resolveTemplate`/`coerceArgs` to a
@@ -1327,7 +1337,11 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** the helpers become testable and the file maintainable.
 
 ### TBX-P3 — Tester UX depth: history, export, batch editing {#tbx-p3}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (core, uncommitted, 2026-06-09) · **Effort:** M
+- *History now persists across sessions (localStorage, cap 50), the keep-20/show-8
+  mismatch is fixed (shows all up to the cap with a count), and an Export (JSON
+  download) + Clear were added. Residual (deferred): batch step reorder/insert with
+  index-stable `{{N}}` refs — a larger batch-editor feature.*
 - `Tester.tsx:271,289-333,428`. History cap mismatch (keeps 20, shows 8) and not
   persisted; no result/pipeline export; batch steps can only append/remove (no
   reorder/insert/re-run), and `{{N}}` refs break silently when an earlier step is
@@ -1336,7 +1350,10 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** quality-of-life for the core testing loop.
 
 ### TBX-P4 — engine-dir "select below" points at a control that doesn't exist {#tbx-p4}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Fixed the copy: the "missing" engine note now reads "only needed if you tick
+  'Rebuild MCP server from source' below" — accurate, since the default
+  precompiled install needs no engine. No phantom affordance.*
 - `Install.tsx:81,150-165`. When the engine isn't detected the copy says "select it
   below," but there's no engine-dir input/Browse unless "Rebuild from source" is
   ticked. Fix: add a Browse field shown when `engineStatus==='missing'`, or fix the
@@ -1344,28 +1361,42 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** the UI references an affordance that isn't there.
 
 ### TBX-P5 — fetch-error states not surfaced on Update/Providers refresh {#tbx-p5}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Update's `refresh` now try/catches the release check and surfaces a "Couldn't
+  check for updates: …" banner (network/rate-limit reason) instead of silently
+  nulling the tag. (Providers' refresh is pure local-fs reads — no silent network
+  failure to surface there.)*
 - `Update.tsx:42-48` (a `getLatestRelease` failure silently nulls the tag and
   disables both buttons with no "why"), Providers refresh similarly. Fix: surface
   the network/rate-limit error.
 - **Why:** "why can't I update?" with no message is a dead end.
 
 ### TBX-P6 — `electron/tsconfig.json` lacks `noEmitOnError`/`sourceMap` {#tbx-p6}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Added `noEmitOnError:true` + `sourceMap:true` and bumped `target`/`lib` to
+  ES2022 (matches the runtime features used). A type error now blocks the main.js
+  emit, so a broken main process can't be packaged. Full build verified.*
 - A type error still emits `main.js`, so a broken main process can be packaged; no
   source maps for packaged-crash diagnosis. Fix: add `noEmitOnError:true` +
   `sourceMap:true` (consider `lib: ES2022` to match the runtime features used).
 - **Why:** stops shipping a main process that didn't type-check.
 
 ### TBX-P7 — `tools.json` force-cast with no runtime drift check {#tbx-p7}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *A light runtime guard at the cast site logs a loud `console.error` if the
+  generated catalog isn't an array of `{name, input_schema}` — so a `Dump-Tools.ps1`
+  schema drift fails visibly instead of silently corrupting the Tester.*
 - `Tester.tsx:98` (`as unknown as ToolDescriptor[]`). The catalog is regenerated by
   `Dump-Tools.ps1`; if its schema drifts the UI breaks silently. Fix: a light
   runtime validation or a generated `.d.ts`.
 - **Why:** catalog drift should fail loudly, not corrupt the Tester.
 
 ### TBX-P8 — misc correctness nits {#tbx-p8}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *`getExePath` prefers the newer of the plugin/legacy exe by mtime (no stale
+  launch); `getProjectDir` caches the dir-walk (invalidated on project re-pick);
+  `resolveEngine` is debounced (350 ms) + sequence-tagged so keystrokes don't
+  storm IPC or land out-of-order.*
 - `getExePath` (`main.ts:83-89`) can pick a stale binary when both plugin + legacy
   exist (no mtime/version check — ties to the stale-exe class in
   [[project_mcp_exe_locked_during_session]]); `getProjectDir` (`44-70`) re-walks 6

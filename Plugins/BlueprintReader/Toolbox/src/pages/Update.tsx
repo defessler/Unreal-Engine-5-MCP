@@ -18,6 +18,7 @@ export default function Update() {
   const [pluginVersion, setPluginVersion] = useState<string | null>(null);
   const [latestTag, setLatestTag] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
 
@@ -41,8 +42,15 @@ export default function Update() {
   const refresh = useCallback(async () => {
     setChecking(true);
     setToolboxVersion(await bridge.getAppVersion());
-    const rel = await bridge.getLatestRelease();
-    if (rel.ok && rel.tag) setLatestTag(rel.tag);
+    // TBX-P5: a failed release check used to silently null the tag and disable
+    // both buttons with no reason shown. Surface the network/rate-limit error.
+    try {
+      const rel = await bridge.getLatestRelease();
+      if (rel.ok && rel.tag) { setLatestTag(rel.tag); setRefreshError(''); }
+      else { setRefreshError((rel as { error?: string }).error ?? 'Could not reach GitHub (offline or rate-limited).'); }
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : 'Could not reach GitHub.');
+    }
     setChecking(false);
   }, []);
 
@@ -100,6 +108,12 @@ export default function Update() {
         </button>
       </div>
       <p className="text-gray-500 text-sm mb-6">Keep the Toolbox and the plugin up to date — both pull from the latest GitHub release.</p>
+
+      {refreshError && (
+        <div className="mb-4 text-xs text-amber-400 bg-amber-400/5 border border-amber-400/20 rounded px-3 py-2" role="alert">
+          Couldn’t check for updates: {refreshError}
+        </div>
+      )}
 
       {/* Toolbox self-update */}
       <div className="bg-ue-panel border border-ue-border rounded p-5 mb-4">

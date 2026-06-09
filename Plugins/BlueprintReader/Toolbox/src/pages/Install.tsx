@@ -46,16 +46,32 @@ export default function Install() {
     setLogs((prev) => [...prev, line]);
   }, []);
 
+  // TBX-P8: typing in the project field fired resolveEngine on every keystroke —
+  // an IPC storm whose out-of-order replies could clobber the field. Sequence-tag
+  // each resolve (ignore stale replies) and debounce the keystroke path.
+  const resolveSeq = useRef(0);
+  const resolveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (resolveTimer.current) clearTimeout(resolveTimer.current); }, []);
+
+  function scheduleResolve(uprojectPath: string) {
+    if (resolveTimer.current) clearTimeout(resolveTimer.current);
+    resolveTimer.current = setTimeout(() => { resolveEngine(uprojectPath); }, 350);
+  }
+
   async function resolveEngine(uprojectPath: string) {
+    const seq = ++resolveSeq.current;
     if (!uprojectPath) { setEngineDir(''); setEngineStatus('idle'); setUprojectExists(null); return; }
     // F5: confirm the file is a .uproject that exists. Uses a dedicated boolean
     // IPC (not the allowlist-gated read-file), so a first pick on a drive the
     // allowlist doesn't yet include (project root not persisted) still validates.
-    setUprojectExists(await bridge.uprojectExists(uprojectPath));
+    const exists = await bridge.uprojectExists(uprojectPath);
+    if (seq !== resolveSeq.current) return;  // a newer resolve superseded this one
+    setUprojectExists(exists);
     storeUproject(uprojectPath);
     bridge.saveProject(uprojectPath);
     setEngineStatus('resolving');
     const dir = await bridge.resolveEngine(uprojectPath);
+    if (seq !== resolveSeq.current) return;
     if (dir) { setEngineDir(dir); setEngineStatus('found'); }
     else { setEngineDir(''); setEngineStatus('missing'); }
   }
@@ -93,7 +109,7 @@ export default function Install() {
   const engineLabel = () => {
     if (engineStatus === 'resolving') return <span className="text-xs text-yellow-400">Detecting engine…</span>;
     if (engineStatus === 'found') return <span className="text-xs text-green-400">✓ {engineDir}</span>;
-    if (engineStatus === 'missing') return <span className="text-xs text-amber-400">Engine not detected — select it below</span>;
+    if (engineStatus === 'missing') return <span className="text-xs text-amber-400">Engine not auto-detected — only needed if you tick “Rebuild MCP server from source” below</span>;
     return null;
   };
 
@@ -112,7 +128,7 @@ export default function Install() {
             <input
               className="flex-1 bg-black/40 border border-ue-border rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-ue-accent"
               value={uproject}
-              onChange={async (e) => { setUproject(e.target.value); await resolveEngine(e.target.value); }}
+              onChange={(e) => { setUproject(e.target.value); scheduleResolve(e.target.value); }}
               placeholder="C:\Projects\MyGame\MyGame.uproject"
             />
             <button
