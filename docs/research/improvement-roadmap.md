@@ -1128,7 +1128,13 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** install/update happily run against a path that can't work.
 
 ### TBX-F6 — MCP client has no timeout/cancel, no reconnect; shared id counter; init race {#tbx-f6}
-- **Status:** ☐ Open (Batch 2b — the Tester/client sub-group) · **Effort:** M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** M
+- *`mcp-client.ts` rewrite: per-request `AbortController` with a default 30 s
+  timeout + external cancel signal + `cancelAll()`; `initialize` de-raced via a
+  cached in-flight promise (cleared on failure to allow retry); `nextId` moved to
+  an instance field; a `request()` wrapper transparently `reset()`s + re-inits
+  once on a lost/expired session (incl. HTTP 404). Tester wires a Cancel button
+  (replaces Send while in-flight) and `cancelAll()` on stop/kill. tsc clean.*
 - `mcp-client.ts`: `fetch` with no `AbortController` (`50-54`) so a wedged daemon
   hangs the spinner forever; `reset()` defined but never called + no re-handshake
   on session loss (`29,100-103`); module-global `nextId` shared across instances
@@ -1139,7 +1145,12 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
   than hang.
 
 ### TBX-F7 — `ensureClient` can't reconnect and leaks orphan mock servers {#tbx-f7}
-- **Status:** ☐ Open (Batch 2b — pairs with TBX-F6) · **Effort:** M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** M
+- *`ensureClient` reconnects to the known `serverPort` when `serverPid` is set
+  (no second server, no forced re-Start); the mock auto-spawn is guarded on
+  `serverPid === null`; the liveness poll now requires 3 consecutive misses
+  before nulling the ref, so a single transient probe can't trigger an orphan
+  spawn. tsc clean.*
 - `Tester.tsx:177-188`. Non-mock backends throw "click Start" instead of rebuilding
   the client for the known port; the mock path spawns a **new** server every time
   the liveness poll (`160-167`) nulls the ref (which a single transient probe can

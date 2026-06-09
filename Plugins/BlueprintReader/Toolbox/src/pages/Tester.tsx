@@ -197,9 +197,15 @@ export default function Tester() {
 
   useEffect(() => {
     if (serverPid === null) return;
+    // TBX-F7: require a few consecutive misses before declaring the server gone.
+    // A single transient probe failure shouldn't null the client ref — that made
+    // ensureClient spawn a brand-new mock server (an orphan) on the next call.
+    let misses = 0;
     const interval = setInterval(async () => {
-      const running = await bridge.isRunning(serverPid);
-      if (!running) { setServerStatus('stopped'); setServerPid(null); clientRef.current = null; }
+      let running = false;
+      try { running = await bridge.isRunning(serverPid); } catch { running = false; }
+      if (running) { misses = 0; return; }
+      if (++misses >= 3) { setServerStatus('stopped'); setServerPid(null); clientRef.current = null; }
     }, 2000);
     return () => clearInterval(interval);
   }, [serverPid]);
@@ -214,6 +220,16 @@ export default function Tester() {
 
   async function ensureClient(): Promise<McpClient> {
     if (clientRef.current) return clientRef.current;
+    // TBX-F7: a server is already running (we have its pid + port) but the client
+    // ref was dropped (a liveness blip or navigation). Reconnect to the known port
+    // rather than spawning a second server / forcing another Start click.
+    if (serverPid !== null) {
+      const c = new McpClient(serverPort);
+      clientRef.current = c;
+      return c;
+    }
+    // Only auto-spawn a mock server when none is running (guarded on serverPid so
+    // a transient null ref can't leak orphan mock servers).
     if (backend === 'mock') {
       const port = randomPort();
       const pid = await bridge.startServer({ backend: 'mock', port, env: readSettingsEnv() });
@@ -224,6 +240,9 @@ export default function Tester() {
     }
     throw new Error('Server not running — click Start first.');
   }
+
+  // TBX-F6: abort any in-flight request (timeout/cancel live in McpClient).
+  function cancelInFlight() { clientRef.current?.cancelAll(); }
 
   async function startServer() {
     setServerStatus('starting'); setServerError('');
@@ -247,6 +266,7 @@ export default function Tester() {
   }
 
   async function stopServer() {
+    clientRef.current?.cancelAll();
     if (serverPid !== null) { await bridge.stopServer(serverPid); setServerPid(null); setServerStatus('stopped'); }
     sseRef.current?.close(); sseRef.current = null; clientRef.current = null;
   }
@@ -255,6 +275,7 @@ export default function Tester() {
   // recovery — e.g. after a client crashed without closing its server).
   async function killMcps() {
     setKilling(true);
+    clientRef.current?.cancelAll();
     const res = await bridge.killMcpServers();
     sseRef.current?.close(); sseRef.current = null; clientRef.current = null;
     setServerPid(null); setServerStatus('stopped');
@@ -533,11 +554,18 @@ export default function Tester() {
                       {selectedTool.description.replace(/^\[.*?\]\s*/, '')}
                     </div>
                   </div>
-                  <button onClick={sendCall}
-                    disabled={sending || (backend !== 'mock' && serverStatus !== 'running')}
-                    className="flex-shrink-0 px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-50 rounded text-sm font-medium text-white">
-                    {sending ? 'Sending…' : 'Send'}
-                  </button>
+                  {sending ? (
+                    <button onClick={cancelInFlight}
+                      className="flex-shrink-0 px-4 py-2 bg-red-600/80 hover:bg-red-600 rounded text-sm font-medium text-white">
+                      Cancel
+                    </button>
+                  ) : (
+                    <button onClick={sendCall}
+                      disabled={backend !== 'mock' && serverStatus !== 'running'}
+                      className="flex-shrink-0 px-4 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-50 rounded text-sm font-medium text-white">
+                      Send
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="flex-1 overflow-auto flex">
