@@ -84,6 +84,9 @@ const api = {
   saveProject(uprojectPath: string): Promise<void> {
     return ipcRenderer.invoke('save-project', uprojectPath);
   },
+  uprojectExists(uprojectPath: string): Promise<boolean> {
+    return ipcRenderer.invoke('uproject-exists', uprojectPath);
+  },
   minimizeWindow(): Promise<void> {
     return ipcRenderer.invoke('minimize-window');
   },

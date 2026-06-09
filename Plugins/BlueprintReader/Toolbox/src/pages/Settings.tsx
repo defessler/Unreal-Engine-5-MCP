@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { loadEnvOverrides, saveEnvOverrides } from '../lib/settings';
 
 interface EnvFlag {
   key: string;
@@ -113,8 +114,7 @@ export default function Settings() {
   const [activeGroup, setActiveGroup] = useState('Backend');
 
   useEffect(() => {
-    const stored = localStorage.getItem('bpr-env-overrides');
-    if (stored) setValues(JSON.parse(stored));
+    setValues(loadEnvOverrides());  // guarded parse (TBX-R9) via the shared store
   }, []);
 
   const set = (key: string, val: string) => {
@@ -143,7 +143,7 @@ export default function Settings() {
       if (v !== '' && v !== (flag?.default ?? '')) cleaned[k] = v;
     }
     setValues(cleaned);
-    localStorage.setItem('bpr-env-overrides', JSON.stringify(cleaned));
+    saveEnvOverrides(cleaned);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -268,7 +268,9 @@ export default function Settings() {
         </div>
 
         <p className="mt-6 text-xs text-gray-600">
-          Settings are stored locally. Use "Copy env block" to paste the JSON snippet into your .mcp.json or AI client config.
+          Saved settings are written into each MCP client's config the next time you
+          (re)configure it on the <span className="text-gray-400">Providers</span> tab.
+          "Copy env block" gives you the same JSON to paste manually.
         </p>
       </div>
     </div>

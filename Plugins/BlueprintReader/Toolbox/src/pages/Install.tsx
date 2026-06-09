@@ -16,6 +16,10 @@ export default function Install() {
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
+  // TBX-F5: validate the .uproject (extension + on-disk existence) so install
+  // can't run against a path that can't work.
+  const [uprojectExists, setUprojectExists] = useState<boolean | null>(null);
+  const uprojectValid = uproject.toLowerCase().endsWith('.uproject') && uprojectExists === true;
 
   useEffect(() => {
     bridge.getPaths().then(async (p) => {
@@ -36,7 +40,11 @@ export default function Install() {
   }, []);
 
   async function resolveEngine(uprojectPath: string) {
-    if (!uprojectPath) { setEngineDir(''); setEngineStatus('idle'); return; }
+    if (!uprojectPath) { setEngineDir(''); setEngineStatus('idle'); setUprojectExists(null); return; }
+    // F5: confirm the file is a .uproject that exists. Uses a dedicated boolean
+    // IPC (not the allowlist-gated read-file), so a first pick on a drive the
+    // allowlist doesn't yet include (project root not persisted) still validates.
+    setUprojectExists(await bridge.uprojectExists(uprojectPath));
     storeUproject(uprojectPath);
     bridge.saveProject(uprojectPath);
     setEngineStatus('resolving');
@@ -108,6 +116,13 @@ export default function Install() {
             </button>
           </div>
           <div className="mt-1.5 min-h-[18px] text-xs">{engineLabel()}</div>
+          {uproject && !uprojectValid && (
+            <div className="mt-1 text-xs text-red-400">
+              {!uproject.toLowerCase().endsWith('.uproject')
+                ? 'Path must end in .uproject'
+                : uprojectExists === false ? 'File not found at that path' : 'Checking…'}
+            </div>
+          )}
         </div>
 
         {/* AI clients */}
@@ -168,7 +183,7 @@ export default function Install() {
         {/* Run */}
         <button
           onClick={runInstall}
-          disabled={running || !uproject}
+          disabled={running || !uprojectValid}
           className="px-6 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold text-white transition-colors"
         >
           {running ? 'Installing…' : 'Download & Install Plugin'}

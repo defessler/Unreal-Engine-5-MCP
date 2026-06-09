@@ -15,11 +15,30 @@ export interface ProviderConfig {
   configPath: (projectDir: string, env: EnvPaths) => string;
   configKey: string[];
   format: 'json' | 'toml' | 'manual';
-  // When set, the Toolbox writes this provider's config itself (instead of
-  // calling Generate-ClientConfig.ps1) by MERGING this entry under configKey
-  // into the existing file — so sibling MCP servers in a shared/global config
-  // are preserved. Returns just the bp-reader server entry object.
-  serverEntry?: (exePath: string) => Record<string, unknown>;
+  // The server-entry "type" field this client expects (omitted for the plain
+  // mcpServers clients). VS Code / JetBrains Copilot use "stdio"; gh copilot
+  // uses "local".
+  serverType?: 'stdio' | 'local';
+  // Client-specific baseline env merged UNDER the user's Settings overrides
+  // (which win). The Toolbox writes every JSON provider's config itself by
+  // merging {type?, command, args, env} under configKey (preserving siblings),
+  // injecting the Settings env block so the Settings page's Save actually
+  // applies (TBX-F1).
+  baseEnv?: Record<string, string>;
+}
+
+// Build the bp-reader server entry for a JSON provider: the exe command + the
+// merged env (client baseline first, the user's Settings overrides on top).
+export function buildServerEntry(
+  provider: ProviderConfig, exePath: string, settingsEnv: Record<string, string>,
+): Record<string, unknown> {
+  const env = { ...(provider.baseEnv ?? {}), ...settingsEnv };
+  return {
+    ...(provider.serverType ? { type: provider.serverType } : {}),
+    command: exePath,
+    args: [],
+    ...(Object.keys(env).length ? { env } : {}),
+  };
 }
 
 export const PROVIDERS: ProviderConfig[] = [
@@ -50,6 +69,7 @@ export const PROVIDERS: ProviderConfig[] = [
     configPath: (d) => `${d}\\.vscode\\mcp.json`,
     configKey: ['servers', 'bp-reader'],
     format: 'json',
+    serverType: 'stdio',
   },
 
   // ── Global/user-scoped (written to %APPDATA% or %USERPROFILE%) ──────────
@@ -97,13 +117,8 @@ export const PROVIDERS: ProviderConfig[] = [
     configPath: (_, env) => `${env.userProfile}\\.copilot\\mcp-config.json`,
     configKey: ['mcpServers', 'bp-reader'],
     format: 'json',
-    // gh copilot uses "type": "local" instead of "type": "stdio"
-    serverEntry: (exePath) => ({
-      type: 'local',
-      command: exePath,
-      args: [],
-      env: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
-    }),
+    serverType: 'local',  // gh copilot uses "type": "local" instead of "stdio"
+    baseEnv: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
   },
 
   {
@@ -114,12 +129,8 @@ export const PROVIDERS: ProviderConfig[] = [
     configPath: (_, env) => `${env.appData}\\github-copilot\\intellij\\mcp.json`,
     configKey: ['servers', 'bp-reader'],
     format: 'json',
-    serverEntry: (exePath) => ({
-      type: 'stdio',
-      command: exePath,
-      args: [],
-      env: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
-    }),
+    serverType: 'stdio',
+    baseEnv: { BP_READER_PREWARM: '1', BP_READER_EDITOR_ARGS: '-EnableAllPlugins' },
   },
 ];
 
