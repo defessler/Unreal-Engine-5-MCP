@@ -1,5 +1,6 @@
 #include "BlueprintReaderCmdletServer.h"
 
+#include "BlueprintReaderLiveServer.h"   // UX-P4a: GameThreadHeartbeatAgeMs()
 #include "DaemonProgress.h"
 #include "Async/Async.h"
 #include "Common/TcpListener.h"
@@ -137,6 +138,22 @@ public:
 			}
 			FString Type;
 			Msg->TryGetStringField(TEXT("type"), Type);
+
+			// UX-P4a: answer a health/ping frame INLINE on this worker thread
+			// (no game-thread dispatch) so it returns even when the daemon's game
+			// thread is wedged. Reads only the lock-free heartbeat atomic.
+			if (Type == TEXT("health") || Type == TEXT("ping"))
+			{
+				int32 HealthId = 0;
+				Msg->TryGetNumberField(TEXT("id"), HealthId);
+				const int64 AgeMs = BlueprintReader::GameThreadHeartbeatAgeMs();
+				SendRaw(FString::Printf(
+					TEXT("{\"type\":\"health\",\"id\":%d,\"game_thread_age_ms\":%lld,\"pid\":%u}\n"),
+					HealthId, static_cast<long long>(AgeMs),
+					FPlatformProcess::GetCurrentProcessId()));
+				continue;
+			}
+
 			if (Type != TEXT("op"))
 			{
 				SendFrame(MakeError(0, FString::Printf(

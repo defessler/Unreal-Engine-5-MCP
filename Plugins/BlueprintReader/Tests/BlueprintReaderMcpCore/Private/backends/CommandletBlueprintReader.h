@@ -425,6 +425,12 @@ public:
 	// can release the project lock without restarting the MCP server.
 	// The next tool call auto-respawns via the existing fallback path.
 	nlohmann::json ShutdownDaemon() override;
+
+	// UX-P4a: in daemon mode, delegate to the daemon socket's worker-thread
+	// liveness probe; in one-shot mode there's no persistent editor between
+	// calls, so report a process-level "healthy" with an explanatory note.
+	HealthResult HealthCheck() override;
+
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
 	                         std::string_view depth = "structural") override;
 	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,

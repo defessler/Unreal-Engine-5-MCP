@@ -267,14 +267,40 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
 > bind cleanly.
 
 ### UX-P4a — distinguish a debugger-paused / halted editor from an unreachable one {#ux-p4a}
-- **Status:** ☐ Open (deferred from the 2026-06-08 batch — its own focused PR) · **Effort:** M · **Source:** 2026-06-07 live-session feedback
-- *Deferred deliberately: needs an off-game-thread health channel in the
-  LiveServer + a careful AsyncTask-detach for the bounded-write-ack path + a
-  `HealthCheck()` method across the full backend chain, and is essentially
-  unverifiable without a real paused editor. Investigation captured the full
-  design (LiveServer ping frame + game-thread heartbeat + `SO_RCVTIMEO` on the
-  socket backend + Auto pause-classification). Keep separate from the shipped
-  batch.*
+- **Status:** ✅ Done (2026-06-09) · **Effort:** M · **Source:** 2026-06-07 live-session feedback
+- *Shipped as an ON-DEMAND health channel (a new `health_check` tool — tool
+  count 260→261), deliberately NOT an auto-abort on the op path:*
+  - **Editor side:** a game-thread heartbeat (`FTSTicker` @0.1s + per-op bump in
+    `RunOneOpFromLiveServer`, `FThreadSafeCounter64` ms) + a `{"type":"health"}`
+    frame answered INLINE on the connection WORKER thread (no game-thread
+    dispatch) by both the LiveServer and the CmdletServer — so it returns even
+    while the game thread is wedged, reporting `game_thread_age_ms`.
+  - **Server side:** `HealthResult` + `HealthCheck()` through the whole backend
+    chain (Mock synthetic-healthy; Socket = own short-lived connection with
+    select-gated 5s reads, classifying healthy/paused/unreachable at a 2s age
+    threshold; Commandlet probes an already-attached daemon only — never spawns
+    one for a probe; Auto forwards; Caching never caches it; ReadOnly passes
+    through). Registered as `health_check` (core category) with an output_schema.
+  - **What was deliberately dropped:** an op-path recv timeout that auto-threw a
+    classified error. A 4-lens adversarial review found it regressed long silent
+    live ops (BuildLighting/Cook/Package run >120s with zero frames on the live
+    transport, which had an UNBOUNDED recv before) and a busy game thread is
+    indistinguishable from a paused one to a heartbeat — so the auto-abort would
+    both kill legitimate ops and mislabel them "paused". The on-demand probe
+    delivers the roadmap's "distinct error from a timeout": when a call hangs,
+    `health_check` answers `paused` vs `unreachable` in milliseconds. The
+    bounded-write `{ok:true, recompile:"pending"}` ack is likewise deferred (it
+    needs a heap-state AsyncTask detach on the editor side; the current
+    stack-capture lifetime contract makes a naive detach dangle).
+  - **Verified:** mock suite 863/0 (incl. a new health_check case); 8 tool-count
+    asserts + the protocol hash rebaselined; editor module compiled clean on
+    UE 5.8 (UBT, all APIs version-neutral — no guards needed); **live-verified**
+    against a real `-nullrhi` daemon: raw health frame (idle age=88ms → op →
+    age=4ms, Saved/health-smoke.ps1) AND the full `health_check` tool through
+    `BlueprintReaderMcp.exe` live backend (`state:"healthy"`, 2ms). The
+    debugger-PAUSED branch itself can't be triggered headlessly — mechanism
+    proven (a stalled game thread can't advance the ticker), classification
+    threshold untested against a real breakpoint.*
 - On the `live` backend, when the editor's game thread is halted (a debugger
   breakpoint, a modal dialog, or a long synchronous task), **every** subsequent
   call — reads included — returns a generic `MCP error -32001: Request timed
@@ -1507,6 +1533,15 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-09** — **UX-P4a SHIPPED** (post-v0.7.0): on-demand health channel —
+  game-thread heartbeat (FTSTicker + per-op bump) + worker-thread `health` frame
+  in BOTH the LiveServer and CmdletServer + `HealthCheck()` through the full
+  backend chain + a new `health_check` tool (260→261, hash rebaselined). A 4-lens
+  adversarial review killed the op-path auto-abort variant (false-stall on long
+  silent live ops; busy≈paused to a heartbeat) — the probe is on-demand only.
+  Mock 863/0; editor module compiles on UE 5.8; live-verified (raw frame +
+  full tool through the live backend, `Saved/health-smoke.ps1`). Bounded-write
+  `recompile:"pending"` ack deferred (needs heap-state AsyncTask detach).
 - **2026-06-08** — **Toolbox Batch 2 SHIPPED** (uncommitted): TBX-F1/F2/F3/F4/F5/
   F8/F9 done; F6/F7 (MCP-client robustness) split out to **Batch 2b**. F1 = Settings
   Save actually applies (shared store + `serverType`/`baseEnv` refactor + all JSON

@@ -529,6 +529,13 @@ IBlueprintReader::ProjectMetadata
 AutoBlueprintReader::GetProjectMetadata() {
 	FORWARD(GetProjectMetadata);
 }
+IBlueprintReader::HealthResult
+AutoBlueprintReader::HealthCheck() {
+	// UX-P4a: forwards the explicit health_check tool to the active backend
+	// (live editor or commandlet daemon), which answers on its WORKER thread —
+	// so it returns even while the editor's game thread is wedged.
+	FORWARD(HealthCheck);
+}
 IBlueprintReader::AssetRegistryListResult
 AutoBlueprintReader::ListAssets(std::string_view path, bool recursive) {
 	FORWARD(ListAssets, path, recursive);

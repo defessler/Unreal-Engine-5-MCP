@@ -349,6 +349,8 @@ public:
 	// is the whole reason this mode exists ("let me work in the editor
 	// without daemon contention").
 	nlohmann::json ShutdownDaemon() override;
+	// UX-P4a: health is a read — pass through, never Reject().
+	HealthResult HealthCheck() override;
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
 	                         std::string_view depth = "structural") override;
 	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,

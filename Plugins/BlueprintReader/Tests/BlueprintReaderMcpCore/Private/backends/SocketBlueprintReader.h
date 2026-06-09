@@ -49,7 +49,7 @@ public:
 		int         port = 0;            // 0 → throw at construct time
 		std::string token;               // required (auth)
 		std::chrono::seconds connectTimeout{5};
-		std::chrono::seconds opTimeout{60};
+		std::chrono::seconds opTimeout{60};   // reserved; the op recv is intentionally unbounded (see RunOp)
 
 		// Optional path to `<Project>/Saved/bp-reader-live.json`. When
 		// set, the reader will re-read this file on connect failure
@@ -409,6 +409,13 @@ public:
 	// independently of the MCP server's lifetime). Returns
 	// {ok:true, was_running:false}.
 	nlohmann::json ShutdownDaemon() override;
+
+	// UX-P4a: liveness probe answered on the editor's WORKER thread (no game-
+	// thread dispatch) over a short-lived dedicated connection, so it returns a
+	// fast, distinct answer even when the game thread is wedged. Classifies
+	// healthy / paused / unreachable from the editor's game_thread_age_ms.
+	HealthResult HealthCheck() override;
+
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
 	                         std::string_view depth = "structural") override;
 	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,

@@ -314,6 +314,25 @@ bool SocketStillAlive(SocketType s) {
 	// rc  < 0: select error → treat as stale (reconnect).
 	return rc == 0;
 }
+
+// UX-P4a: block up to `timeout` seconds for the socket to become readable.
+// Returns true if a frame is on the way, false on timeout (nothing arrived) or
+// select error. Used to BOUND a recv so a wedged editor game thread (which sends
+// no frame at all) can't hang the worker forever — distinct from the {0,0} poll
+// in SocketStillAlive, which only peeks.
+bool WaitReadable(SocketType s, long timeoutSeconds) {
+	if (s == kInvalidSocket) {
+		return false;
+	}
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(s, &rfds);
+	timeval tv{};
+	tv.tv_sec = timeoutSeconds;
+	tv.tv_usec = 0;
+	const int rc = ::select(static_cast<int>(s) + 1, &rfds, nullptr, nullptr, &tv);
+	return rc > 0;
+}
 }    // namespace socket_blueprint_reader_detail2
 using namespace socket_blueprint_reader_detail2;
 
@@ -466,6 +485,14 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	for (;;) {
 	std::string response;
 	try {
+		// NOTE (UX-P4a): we deliberately do NOT bound this recv with a per-op
+		// timeout. A long live op (BuildLighting / Cook / Package / big SaveAll)
+		// can run for minutes on the game thread emitting no frame at all over the
+		// live transport, and a busy game thread is indistinguishable from a paused
+		// one to a heartbeat — so auto-aborting here would both kill legitimate
+		// long ops and misclassify them as "paused". Liveness is instead probed
+		// on demand via the health_check tool (a separate worker-thread connection
+		// that answers even while the game thread is wedged).
 		response = RecvLine(s, buf);
 	} catch (...) {
 		Disconnect();
@@ -548,6 +575,114 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	}
 	return *jit;
 	}  // for (;;) — terminal result/error frame returns/throws above
+}
+
+// UX-P4a: probe editor liveness over a SEPARATE short-lived connection (never
+// the op socket_), so it works even while an op is wedged inside RunOp holding
+// mu_. The editor answers the {"type":"health"} frame on its WORKER thread with
+// no game-thread dispatch — so a fast, distinct answer comes back even when the
+// game thread is halted. We classify from the editor's reported game_thread_age.
+IBlueprintReader::HealthResult SocketBlueprintReader::HealthCheck() {
+	HealthResult r;
+
+	// Snapshot connection params under a brief lock — never hold mu_ across the
+	// network I/O below, or a health probe would deadlock behind a wedged op.
+	std::string host, token;
+	int port;
+	{
+		std::lock_guard lock(mu_);
+		host = cfg_.host;
+		port = cfg_.port;
+		token = cfg_.token;
+	}
+
+	auto unreachable = [&](const std::string& why, bool authed) -> HealthResult {
+		r.reachable = authed;                 // did the PROCESS accept + auth us?
+		r.gameThreadResponsive = false;
+		r.gameThreadAgeMs = -1;
+		r.state = "unreachable";
+		r.note = why;
+		return r;
+	};
+
+	ScopedSocket sock(ConnectOnce(host, port));
+	if (!sock) {
+		return unreachable(fmt::format(
+			"connect to {}:{} failed — editor not running, or its port isn't "
+			"published in Saved/bp-reader-live.json", host, port), /*authed=*/false);
+	}
+
+	constexpr long kHealthTimeoutSec = 5;
+	std::string buf;
+	try {
+		// Minimal handshake: hello → auth → auth_ok (the LiveServer requires auth
+		// before it processes any frame, health included).
+		if (!WaitReadable(sock.s, kHealthTimeoutSec)) {
+			return unreachable("no hello frame from the editor within 5s", false);
+		}
+		const std::string hello = RecvLine(sock.s, buf);
+		const auto hj = nlohmann::json::parse(hello, nullptr, false);
+		if (!hj.is_object() || hj.value("type", "") != "hello") {
+			return unreachable(fmt::format("expected a hello frame, got: {}", hello), false);
+		}
+
+		const nlohmann::json authMsg = { {"type", "auth"}, {"token", token} };
+		const std::string authLine = authMsg.dump() + "\n";
+		SendAll(sock.s, authLine.data(), authLine.size());
+		if (!WaitReadable(sock.s, kHealthTimeoutSec)) {
+			return unreachable("no auth response from the editor within 5s", false);
+		}
+		const std::string authResp = RecvLine(sock.s, buf);
+		const auto aj = nlohmann::json::parse(authResp, nullptr, false);
+		if (!aj.is_object() || aj.value("type", "") != "auth_ok") {
+			return unreachable(fmt::format("auth rejected: {}", authResp), false);
+		}
+
+		// Authed → the editor PROCESS is up. Send the worker-thread health frame.
+		const nlohmann::json healthFrame = { {"type", "health"}, {"id", 0} };
+		const std::string healthLine = healthFrame.dump() + "\n";
+		SendAll(sock.s, healthLine.data(), healthLine.size());
+
+		// The health frame is answered WITHOUT a game-thread dispatch. If even
+		// that doesn't come back, the process is wedged below the worker thread →
+		// effectively unreachable (but we got far enough to know it's authed).
+		if (!WaitReadable(sock.s, kHealthTimeoutSec)) {
+			r.reachable = true;
+			r.gameThreadResponsive = false;
+			r.gameThreadAgeMs = -1;
+			r.state = "unreachable";
+			r.note = "editor authed but its worker thread did not answer a health "
+					 "frame within 5s (process wedged below the connection layer)";
+			return r;
+		}
+		const std::string resp = RecvLine(sock.s, buf);
+		const auto j = nlohmann::json::parse(resp, nullptr, false);
+		r.reachable = true;
+		r.gameThreadAgeMs = j.is_object()
+			? j.value("game_thread_age_ms", static_cast<long long>(-1))
+			: -1;
+
+		// The idle heartbeat ticks every ~0.1s, so a HEALTHY game thread's age is
+		// well under a second; a paused/halted/busy game thread can't run the
+		// ticker, so its age grows unbounded. 2s cleanly separates the two.
+		constexpr long long kPausedThresholdMs = 2000;
+		if (r.gameThreadAgeMs >= 0 && r.gameThreadAgeMs < kPausedThresholdMs) {
+			r.gameThreadResponsive = true;
+			r.state = "healthy";
+		} else {
+			r.gameThreadResponsive = false;
+			r.state = "paused";
+			r.note = fmt::format(
+				"editor reachable but its game thread last advanced {}ms ago — "
+				"paused at a debugger breakpoint, blocked on a modal dialog, or "
+				"busy in a long synchronous task",
+				r.gameThreadAgeMs);
+		}
+		return r;
+	} catch (const std::exception& e) {
+		return unreachable(fmt::format("health probe transport error: {}", e.what()), false);
+	}
+	// ScopedSocket closes the transient connection on scope exit.
 }
 
 // ----- read tools --------------------------------------------------------

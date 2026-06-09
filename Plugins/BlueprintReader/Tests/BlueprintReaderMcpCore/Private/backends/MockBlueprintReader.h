@@ -86,6 +86,11 @@ public:
 	// in UnsupportedTools() so the catalog hides it under the mock.
 	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 
+	// UX-P4a: the mock backend has no editor game thread, so health is always a
+	// synthetic-healthy result (age 0). It IS supported (returns, never throws) —
+	// do NOT add it to UnsupportedTools().
+	HealthResult HealthCheck() override;
+
 	// Capability advertisement — the mock backend has no editor and no
 	// asset registry, so a long tail of tools the catalog otherwise
 	// advertises just throws "not supported by this backend" when

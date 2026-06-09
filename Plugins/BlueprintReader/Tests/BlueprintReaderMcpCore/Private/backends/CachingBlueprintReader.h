@@ -378,6 +378,9 @@ public:
 	void BeginBatch() override;
 	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 	nlohmann::json ShutdownDaemon() override;
+	// UX-P4a: never cache health — a stale "healthy" would mask a just-paused
+	// game thread, defeating the probe. Always pass through for a fresh answer.
+	HealthResult HealthCheck() override;
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
 	                         std::string_view depth = "structural") override;
 	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,

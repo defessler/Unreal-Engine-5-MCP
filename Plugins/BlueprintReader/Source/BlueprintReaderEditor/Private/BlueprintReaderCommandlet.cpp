@@ -13282,6 +13282,10 @@ namespace BlueprintReader
     // Forward decl of the anon-ns helper, hoisted to the same namespace
     // as our bridge so name lookup picks it up.
     int32 RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params);
+    // UX-P4a: defined in BlueprintReaderLiveServer.cpp. Forward-declared here
+    // (rather than #including the header into this very large TU) so the per-op
+    // heartbeat bump resolves.
+    void BumpGameThreadHeartbeat();
 }    // namespace BlueprintReader
 namespace
 {
@@ -13289,6 +13293,10 @@ int32 RunOneOp(const FString& Params);  // forward decl from earlier defn
 }
 int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString& Params)
 {
+    // UX-P4a: this runs on the game thread, so advancing the heartbeat here gives
+    // per-op freshness on top of the idle FTSTicker — a steady stream of ops keeps
+    // the heartbeat current even if the ticker were ever starved.
+    BlueprintReader::BumpGameThreadHeartbeat();
     // Pin the current connection id for the duration of this dispatch.
     // BatchDeferFlag()/BatchPending() — and any future per-session state
     // — read this id to look up their context in the registry. Restored

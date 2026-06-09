@@ -58,6 +58,12 @@ TUniquePtr<FLiveServer> GLiveServer;
 // process and has no need for the counter to be per-server-instance.
 FThreadSafeCounter64 GLiveNextConnectionId;
 
+// UX-P4a: "ms-since-epoch the game thread last advanced." Bumped on the game
+// thread (an FTSTicker registered at module startup + each op); read lock-free
+// from a connection worker thread to answer a health frame even while the game
+// thread is wedged. FThreadSafeCounter64 is atomic on both sides. 0 = never bumped.
+FThreadSafeCounter64 GLastGameThreadHeartbeatMs;
+
 // Per-connection state — owned by the worker FRunnable for its lifetime.
 class FLiveConnectionRunnable : public FRunnable
 {
@@ -136,6 +142,24 @@ public:
 			}
 			FString Type;
 			Msg->TryGetStringField(TEXT("type"), Type);
+
+			// UX-P4a: a health/ping frame is answered INLINE on THIS worker
+			// thread — no AsyncTask(GameThread) dispatch — so it returns even when
+			// the game thread is wedged (debugger breakpoint, modal dialog, long
+			// sync task). We only read the lock-free heartbeat atomic; we must NOT
+			// touch any UObject or the game thread from here.
+			if (Type == TEXT("health") || Type == TEXT("ping"))
+			{
+				int32 HealthId = 0;
+				Msg->TryGetNumberField(TEXT("id"), HealthId);
+				const int64 AgeMs = GameThreadHeartbeatAgeMs();
+				SendRaw(FString::Printf(
+					TEXT("{\"type\":\"health\",\"id\":%d,\"game_thread_age_ms\":%lld,\"pid\":%u}\n"),
+					HealthId, static_cast<long long>(AgeMs),
+					FPlatformProcess::GetCurrentProcessId()));
+				continue;
+			}
+
 			if (Type != TEXT("op"))
 			{
 				SendFrame(MakeError(0, FString::Printf(
@@ -743,6 +767,25 @@ FLiveServer* GetLiveServer()
 		GLiveServer = MakeUnique<FLiveServer>();
 	}
 	return GLiveServer.Get();
+}
+
+// UX-P4a: game-thread heartbeat. Bump from the game thread; read from any
+// thread. FThreadSafeCounter64::Set/GetValue are atomic, so no lock is needed.
+void BumpGameThreadHeartbeat()
+{
+	const int64 NowMs = FDateTime::UtcNow().GetTicks() / ETimespan::TicksPerMillisecond;
+	GLastGameThreadHeartbeatMs.Set(NowMs);
+}
+
+int64 GameThreadHeartbeatAgeMs()
+{
+	const int64 LastMs = GLastGameThreadHeartbeatMs.GetValue();
+	if (LastMs <= 0)
+	{
+		return -1;    // the game thread hasn't advanced the heartbeat yet
+	}
+	const int64 NowMs = FDateTime::UtcNow().GetTicks() / ETimespan::TicksPerMillisecond;
+	return FMath::Max<int64>(0, NowMs - LastMs);
 }
 
 }    // namespace BlueprintReader
