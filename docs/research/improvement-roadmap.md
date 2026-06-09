@@ -1183,7 +1183,11 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 ### Robustness (P2)
 
 ### TBX-R1 — spawned child processes are untracked and orphan on quit {#tbx-r1}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** M
+- *`trackChild` registers every transient spawn (install/extract/script/kill); the
+  window-close handler + a new `cancel-operation` IPC tear down the whole tree via
+  `taskkill /T /F`. Cancel also aborts the in-flight download fetch (tracked
+  AbortControllers), and Install shows a Cancel button while running.*
 - `main.ts:432-440` (`runPwsh`), `661-674` (`kill-mcp`), `677-699` (`run-script`).
   Only `start-server` PIDs are killed on window close; install/extract/script
   children (and any UE build they spawn) orphan — and can hold locks on the very
@@ -1193,7 +1197,11 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** orphaned PowerShell/build processes wedge the next operation.
 
 ### TBX-R2 — downloads aren't atomic; partial files leak; no retries {#tbx-r2}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** M
+- *Each attempt streams to `${dest}.part`, verified (size + sha256) before an
+  atomic rename into place; the `.part` is always unlinked on failure. Bounded
+  backoff retries honor `Retry-After`; 5xx/429/stall/short-read are retriable, a
+  digest mismatch is not. (Range-resume left as a future optimization.)*
 - `main.ts:385-430`. `downloadFile` streams straight to the final path; the
   stall-watchdog abort leaves a partial file (cleanup only runs on size/hash
   mismatch), contradicting the "partials removed" comment. Single-shot — no retry
@@ -1203,7 +1211,13 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** a flaky network leaves junk or fails a multi-MB install with no recovery.
 
 ### TBX-R3 — `start-server` leaks the full env and force-enables write mode {#tbx-r3}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Dropped the hardcoded `BP_READER_READ_ONLY:'0'` (restores read-only-by-default;
+  write mode is now an explicit `BP_READER_ALLOW_WRITE=1` via Settings). Env is
+  forwarded as a denylist (drops token/secret/credential keys) rather than an
+  allowlist — an allowlist would starve the commandlet-spawned editor of the
+  system env it inherits (review H1). Resolve only if the process is still alive
+  after 500 ms; reject on spawn error.*
 - `main.ts:704-738`. Blanket-spreads `process.env` + renderer `opts.env` into the
   child, and hardcodes `BP_READER_READ_ONLY:'0'` — silently defeating the project's
   read-only-by-default invariant. The 500 ms warmup resolves the PID even if the
@@ -1212,7 +1226,10 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** a server the Toolbox started shouldn't silently be in write mode.
 
 ### TBX-R4 — `kill-mcp-servers` has a machine-wide blast radius {#tbx-r4}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Scoped by default to this project's server exe (`ExecutablePath -ieq`) + a BPR
+  daemon whose command line `.Contains()` this project dir; `{global:true}` opts
+  into the machine-wide sweep. Tracked PIDs are always dropped first.*
 - `main.ts:650-674`. Force-kills **every** `BlueprintReaderMcp.exe` on the machine
   (matches the known friction note in [[project_client_feedback_2026_05_29]]),
   including other projects/users or a CI run. Fix: default to tracked PIDs; make
@@ -1220,7 +1237,10 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** one project's Toolbox shouldn't kill another's server.
 
 ### TBX-R5 — self-update `.bak` restore can permanently break the app {#tbx-r5}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *swap.ps1 deletes the `.bak` only after a verified swap **and** relaunch — the
+  new exe is launched `-PassThru`, slept 2 s, and checked `-not HasExited` before
+  the backup is discarded; the restore path keeps the backup.*
 - `main.ts:563-576`. The `.bak` is deleted unconditionally after the relaunch
   attempt — including on the restore path — and a failed restore (still-locked exe)
   can leave a partially-overwritten exe with no usable backup. Fix: only delete
@@ -1229,7 +1249,10 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** a bad self-update should be recoverable, not bricking.
 
 ### TBX-R6 — synchronous fs in IPC handlers blocks the main process {#tbx-r6}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *read-file/write-file use `fs.promises`; write-file is atomic (sibling temp →
+  rename, unique per write). The stale-temp sweep is async + deferred off the
+  launch critical path (runs after `createWindow`).*
 - `main.ts:302-313` (read/write), `242-251` (startup temp-sweep runs a recursive
   `rmSync` before the window is created). Sync I/O freezes all IPC + window
   responsiveness on slow drives or large dirs. Fix: use `fs.promises`; defer the
@@ -1237,7 +1260,11 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** the UI shouldn't stutter or delay launch on disk I/O.
 
 ### TBX-R7 — large-payload rendering janks (JsonViewer / raw / LogStream) {#tbx-r7}
-- **Status:** ☐ Open · **Effort:** M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** M
+- *JsonViewer caps children per level ("show more") + truncates long strings +
+  lazy-renders deep/collapsed nodes; LogStream caps the rendered tail (500 lines)
+  and only auto-scrolls (instant, the container not the page) when pinned to the
+  bottom; Tester stringifies `resultRaw` lazily — only when the Raw view is open.*
 - `JsonViewer.tsx:8-98` (a component+`useState` per node, no cap/virtualization),
   `Tester.tsx:139` (`resultRaw` eagerly stringifies every result), `LogStream.tsx:
   11-39` (renders unbounded lines, smooth-scrolls on every append, hijacking
@@ -1247,7 +1274,12 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** large BP/graph results and verbose build logs are the common case.
 
 ### TBX-R8 — provider status detection has false positives {#tbx-r8}
-- **Status:** ☐ Open · **Effort:** S–M
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S–M
+- *`getTomlProviderStatus` now slices the bp-reader table and compares its
+  `command` to the exe (→ 'stale' on mismatch, slash-normalized for TOML's
+  escaped backslashes) instead of a bare header match; the assets check probes
+  AGENTS.md + copilot-instructions + a Claude skill (all must be present). The
+  JetBrains dup/dead-assignment was already resolved (single entry, distinct path).*
 - `Providers.tsx:78-91`, `paths.ts:179-185`. TOML (Codex) reports "Configured" on a
   bare section-header match even when pointing at a stale exe (JSON correctly
   detects "stale"); the assets check only probes `AGENTS.md`; JetBrains has a dead
@@ -1257,7 +1289,12 @@ Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
 - **Why:** a green "Configured" badge that points at a stale/missing exe misleads.
 
 ### TBX-R9 — setState-after-unmount, unguarded `JSON.parse`, SSE not cleaned up {#tbx-r9}
-- **Status:** ☐ Open · **Effort:** S
+- **Status:** ✅ Done (uncommitted, 2026-06-09) · **Effort:** S
+- *Install/Providers/Update gained a `mountedRef` guard on `appendLog` + an
+  unmount effect that unsubscribes the `onScriptLog` listener; Tester closes the
+  SSE `EventSource` + aborts in-flight requests on unmount. (The corrupt-storage
+  `JSON.parse` white-screen was already covered by Batch 2's guarded
+  `loadEnvOverrides`; Update/Tester parses are already try/caught.)*
 - `Install/Providers/Update` (`onScriptLog` unsub not tied to a cleanup → setState
   on an unmounted component when navigating mid-op), `Settings.tsx:116-118`
   (unguarded `JSON.parse(localStorage)` white-screens the page on corrupt storage),

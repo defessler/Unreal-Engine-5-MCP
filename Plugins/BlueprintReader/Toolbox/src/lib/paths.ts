@@ -187,12 +187,23 @@ export function getJsonProviderStatus(
   return 'configured';
 }
 
-export function getTomlProviderStatus(content: string | null): ProviderStatus {
+// TBX-R8: don't report "configured" on a bare section-header match — compare the
+// section's `command` against the current exe so a stale path reads as 'stale'
+// (parity with the JSON detector). No TOML lib here, so we slice the bp-reader
+// table and regex its command value. Backslashes in a TOML basic string are
+// escaped (\\); collapse repeated slashes on both sides before comparing.
+export function getTomlProviderStatus(content: string | null, exePath?: string): ProviderStatus {
   if (!content) return 'missing';
-  if (content.includes('[mcp_servers.bp-reader]') || content.includes('["mcp_servers"]["bp-reader"]')) {
-    return 'configured';
-  }
-  return 'missing';
+  const m = content.search(/\[mcp_servers\.bp-reader\]|\["mcp_servers"\]\["bp-reader"\]/);
+  if (m < 0) return 'missing';
+  if (!exePath) return 'configured'; // nothing to compare against
+  const rest = content.slice(m);
+  const next = rest.slice(1).search(/\n\s*\[/);  // start of the next table
+  const section = next >= 0 ? rest.slice(0, next + 1) : rest;
+  const cmd = section.match(/(?:^|\n)\s*command\s*=\s*["']([^"']+)["']/);
+  if (!cmd) return 'configured'; // section present, no command line to judge
+  const norm = (s: string) => s.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase();
+  return norm(cmd[1]) === norm(exePath) ? 'configured' : 'stale';
 }
 
 export function normalizePathForCompare(p: string): string {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { bridge } from '../lib/bridge';
 import { McpClient, type ToolCallResult } from '../lib/mcp-client';
 import JsonViewer from '../components/JsonViewer';
@@ -174,8 +174,13 @@ export default function Tester() {
   const [args, setArgs] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<ToolCallResult | null>(null);
-  const [resultRaw, setResultRaw] = useState('');
   const [showRaw, setShowRaw] = useState(false);
+  // TBX-R7: stringify the raw JSON lazily — only when the Raw view is shown — so
+  // a multi-MB result doesn't eagerly serialize (and re-serialize) on every call.
+  const resultRaw = useMemo(
+    () => (result && showRaw ? JSON.stringify(result, null, 2) : ''),
+    [result, showRaw],
+  );
 
   // Batch mode state
   const [batchSteps, setBatchSteps] = useState<BatchStep[]>([]);
@@ -193,6 +198,13 @@ export default function Tester() {
       setProjectDir(p.projectDir);
       setExePath(p.exePath);
     });
+  }, []);
+
+  // TBX-R9: tear down the SSE EventSource + abort in-flight requests on unmount
+  // so navigating away mid-session doesn't leak an open connection.
+  useEffect(() => () => {
+    sseRef.current?.close(); sseRef.current = null;
+    clientRef.current?.cancelAll(); clientRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -318,7 +330,7 @@ export default function Tester() {
       setExpandedStep(step.id);
       return;
     }
-    setSelectedTool(tool); setArgs({}); setResult(null); setResultRaw('');
+    setSelectedTool(tool); setArgs({}); setResult(null);
   }
 
   async function sendCall() {
@@ -329,17 +341,16 @@ export default function Tester() {
     if (errors.length) {
       const msg = 'Fix these before sending:\n• ' + errors.join('\n• ');
       setResult({ content: [{ type: 'text', text: msg }], isError: true });
-      setResultRaw('');
       return;
     }
     setSending(true); setResult(null);
     try {
       const { result: r, elapsed } = await executeCall(selectedTool.name, args);
-      setResult(r); setResultRaw(JSON.stringify(r, null, 2));
+      setResult(r);
       setHistory(prev => [{ tool: selectedTool.name, args, result: r, elapsed, ts: Date.now() }, ...prev.slice(0, 19)]);
     } catch (e) {
       const err: ToolCallResult = { content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }], isError: true };
-      setResult(err); setResultRaw(JSON.stringify(err, null, 2));
+      setResult(err);
     } finally {
       setSending(false);
     }
@@ -347,10 +358,14 @@ export default function Tester() {
 
   function loadHistory(entry: HistoryEntry) {
     const tool = tools.find(t => t.name === entry.tool);
-    if (tool) { setSelectedTool(tool); setArgs(entry.args); setResult(entry.result); setResultRaw(JSON.stringify(entry.result, null, 2)); }
+    if (tool) { setSelectedTool(tool); setArgs(entry.args); setResult(entry.result); }
   }
 
-  const copyResult = useCallback(() => { navigator.clipboard.writeText(resultRaw); }, [resultRaw]);
+  // Stringify on demand (not from the lazy resultRaw, which is empty unless the
+  // Raw view is open) so Copy works regardless of which view is shown.
+  const copyResult = useCallback(() => {
+    navigator.clipboard.writeText(result ? JSON.stringify(result, null, 2) : '');
+  }, [result]);
 
   // ── Batch mode ──────────────────────────────────────────────────────────
 
