@@ -370,21 +370,30 @@ void RegisterHandlersImpl(jr::Server& server,
 					return jr::Response::Ok(std::move(env));
 				}
 			}
-			// Default path: dump the canonical JSON as a text block for
-			// back-compat, and — per MCP 2025-06-18 — ALSO surface it as
-			// `structuredContent` when the result is a JSON object, so
-			// structured-content-aware clients consume it directly instead of
-			// re-parsing the text. (A tool advertising an object-typed
+			// Default path. UX-P4e: when the result is a JSON OBJECT, the
+			// FULL payload is carried exactly once — as `structuredContent`
+			// (the canonical, spec-typed channel) — and content[0].text holds
+			// only a short pointer note. Emitting the full JSON in BOTH fields
+			// (the previous behavior) meant a client that concatenates the two
+			// when spilling a large result to a temp file got two back-to-back
+			// JSON documents, which a strict parser (PowerShell ConvertFrom-Json)
+			// rejects. With a single full copy, any downstream spill yields one
+			// valid JSON document. Structured-content-aware clients already read
+			// structuredContent directly; text-only clients get the note and can
+			// widen via structuredContent. (A tool advertising an object-typed
 			// outputSchema SHOULD return a matching structuredContent.)
 			// Array-shaped results stay text-only: structuredContent is
-			// spec-typed as an object, so emitting an array there would fail
-			// strict client validation. Passes arbitrary object shapes through
-			// unchanged — decompile raw-BPIR, transpile dual-shape, etc.
+			// spec-typed as an object, so an array there would fail strict
+			// client validation — those keep the full dump in the text block.
+			if (toolResult.is_object()) {
+				nlohmann::json env = MakeToolTextContent(
+					"structured result returned (see structuredContent)",
+					/*isError=*/false, std::move(meta));
+				env["structuredContent"] = std::move(toolResult);
+				return jr::Response::Ok(std::move(env));
+			}
 			nlohmann::json env = MakeToolTextContent(toolResult.dump(2),
 				/*isError=*/false, std::move(meta));
-			if (toolResult.is_object()) {
-				env["structuredContent"] = std::move(toolResult);
-			}
 			return jr::Response::Ok(std::move(env));
 		} catch (const std::exception& e) {
 			// Enrich the error envelope with the call args so the agent

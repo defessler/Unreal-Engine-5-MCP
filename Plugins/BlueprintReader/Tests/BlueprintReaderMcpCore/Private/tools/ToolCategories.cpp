@@ -83,6 +83,10 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"list_gameplay_tags", "read_ability_set",
 			"list_anim_blueprints", "read_anim_blueprint",
 			"find_class", "get_class_info",
+			// Diff / merge (read-only structural comparison) — UX-P4g:
+			// these ship fully wired but were in NO category, so progressive
+			// disclosure hid them (callable only via call_tool by exact name).
+			"diff_asset", "prepare_merge", "bp_structural_diff",
 			"list_node_kinds", "list_pin_categories",
 			"read_output_log", "get_cvar", "get_stats",
 			"get_selected_actors",
@@ -137,6 +141,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"list_blueprints",
 			"move_asset", "delete_asset",
 			"create_folder",
+			"diff_asset", "prepare_merge", "bp_structural_diff",
 			"get_project_metadata",
 			"save_all",
 			"get_referencers", "get_dependencies",

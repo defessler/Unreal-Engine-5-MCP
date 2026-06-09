@@ -44,6 +44,11 @@ param(
     [ValidateSet("All","Mcp","Tests")]
     [string]$Targets = "All",
     [string]$ExtraArgs = "",
+    # Skip the up-to-date gate and rebuild unconditionally. By default the
+    # script only invokes the toolchain when a Tests/ source is newer than the
+    # built exe - so running it against an unchanged tree (e.g. the live MCP
+    # server is holding the exe) is a no-op instead of a failed relink.
+    [switch]$Force,
     # Legacy parameters from the old .uplugin PreBuildStep contract (now
     # removed). A user upgrading from a version that still had the hook can
     # have a cached UBT PreBuild-N.bat that invokes this with these old args
@@ -121,6 +126,119 @@ if ($ProjectDir -or $PluginDir -or -not $EngineDir -or -not $ProjectFile) {
     }
     # No legacy args either; user invoked the new API without required params.
     throw "$tag -EngineDir and -ProjectFile are required for normal invocation."
+}
+
+# ---- Up-to-date gate -------------------------------------------------------
+# Only invoke the build toolchain when a source is actually newer than the
+# built exe. The MCP server + tests are engine-independent and depend ONLY on
+# Tests/ sources, so "is a build needed?" is a pure Tests/ vs Binaries/ mtime
+# compare. This matters most when the server is RUNNING: the live MCP process
+# holds an exclusive lock on the exe, so a needless relink fails with LNK1104
+# and forces a terminal restart for nothing. Skipping the build entirely when
+# nothing changed avoids that. -Force overrides the gate.
+$pluginBinDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'Binaries\Win64'
+$projBinDir   = Join-Path (Split-Path -Parent $ProjectFile) 'Binaries\Win64'
+$testsSrcDir  = Join-Path (Split-Path -Parent $PSScriptRoot) 'Tests'
+
+$targetExes = @()
+if ($Targets -in @("All","Mcp"))   { $targetExes += "BlueprintReaderMcp" }
+if ($Targets -in @("All","Tests")) { $targetExes += "BlueprintReaderMcpTests" }
+
+function Get-NewestSourceTimeUtc {
+    param([string]$Dir)
+    $exts = '.cpp','.cc','.cxx','.c','.h','.hpp','.inl','.cs','.txt'
+    $newest = [DateTime]::MinValue
+    if (-not (Test-Path $Dir)) { return $newest }
+    Get-ChildItem -LiteralPath $Dir -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            ($exts -contains $_.Extension.ToLower()) -and
+            ($_.FullName -notmatch '\\(Binaries|Intermediate)\\')
+        } | ForEach-Object {
+            if ($_.LastWriteTimeUtc -gt $newest) { $newest = $_.LastWriteTimeUtc }
+        }
+    return $newest
+}
+
+function Test-TargetStale {
+    param([string]$Target, [DateTime]$NewestSrcUtc)
+    # Built-artifact time = newest of the plugin-mirrored exe and the UBT
+    # project-Binaries exe (either is a valid "last good build").
+    $exeTimes = @()
+    foreach ($dir in @($pluginBinDir, $projBinDir)) {
+        $exe = Join-Path $dir "$Target.exe"
+        if (Test-Path $exe) { $exeTimes += (Get-Item $exe).LastWriteTimeUtc }
+    }
+    if ($exeTimes.Count -eq 0) { return $true }          # never built
+    $builtUtc = ($exeTimes | Sort-Object)[-1]
+    return ($NewestSrcUtc -gt $builtUtc)
+}
+
+function Test-ExeLocked {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $fs = [System.IO.File]::Open($Path, 'Open', 'ReadWrite', 'None')
+        $fs.Close(); $fs.Dispose()
+        return $false
+    } catch { return $true }
+}
+
+function Stop-LockingServer {
+    param([string]$ExePath)
+    # Force-kill any process running THIS exact exe (it would block the relink /
+    # the mirror copy). Match on the full image path so we only ever kill the
+    # server built from this tree, never an unrelated same-named process. Then
+    # poll for the OS to release the handle. Returns $true once the file is free.
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($ExePath)
+    Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object {
+        try { $_.Path -and ($_.Path -ieq $ExePath) } catch { $false }
+    } | ForEach-Object {
+        Write-Host "$tag Force-closing running MCP server (PID $($_.Id)) holding $name.exe..."
+        try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch {
+            Write-Host "$tag   could not kill PID $($_.Id): $($_.Exception.Message)"
+        }
+    }
+    for ($i = 0; $i -lt 20; $i++) {           # up to ~5s for the handle to drop
+        if (-not (Test-ExeLocked $ExePath)) { return $true }
+        Start-Sleep -Milliseconds 250
+    }
+    return -not (Test-ExeLocked $ExePath)
+}
+
+if (-not $Force) {
+    $newestSrc = Get-NewestSourceTimeUtc -Dir $testsSrcDir
+    $stale = @($targetExes | Where-Object { Test-TargetStale -Target $_ -NewestSrcUtc $newestSrc })
+    if ($stale.Count -eq 0) {
+        Write-Host "$tag MCP server is up to date (no Tests/ source newer than the built exe) - skipping build."
+        Write-Host "$tag Pass -Force to rebuild anyway."
+        return
+    }
+    if ($stale.Count -lt $targetExes.Count) {
+        $skipped = $targetExes | Where-Object { $stale -notcontains $_ }
+        Write-Host "$tag Up to date, skipping: $($skipped -join ', ')"
+    }
+    Write-Host "$tag Build needed for: $($stale -join ', ')"
+    # Narrow the build to just the stale target(s) for the UBT path below.
+    $Targets = if (($stale -contains "BlueprintReaderMcp") -and ($stale -contains "BlueprintReaderMcpTests")) { "All" }
+               elseif ($stale -contains "BlueprintReaderMcp") { "Mcp" } else { "Tests" }
+}
+
+# A rebuild is needed - if the running MCP server is holding the exe, the relink
+# (UBT to project Binaries, or the mirror Copy-Item to plugin Binaries) would die
+# with LNK1104 / "file in use". Force-close the running server and proceed rather
+# than failing the build. (We only reach here when a source is genuinely newer
+# than the exe, so killing the server to relink is the intended trade.)
+foreach ($t in $targetExes) {
+    foreach ($dir in @($pluginBinDir, $projBinDir)) {
+        $exe = Join-Path $dir "$t.exe"
+        if (Test-ExeLocked $exe) {
+            if (-not (Stop-LockingServer -ExePath $exe)) {
+                throw "$tag $t.exe is still locked after force-closing the MCP server - " +
+                      "another process (debugger, AV scan, or a client respawning it) is holding it. Free it and retry."
+            }
+            Write-Host "$tag Freed $t.exe - continuing the build."
+        }
+    }
 }
 
 # INSTALL-M2: an installed/Launcher engine rejects UE Program targets

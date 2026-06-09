@@ -194,7 +194,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(callResult["isError"] == false);
 	REQUIRE(callResult["content"].is_array());
 	REQUIRE(callResult["content"].size() == 1);
-	auto inner = json::parse(callResult["content"][0]["text"].get<std::string>());
+	auto inner = test::PayloadOf(callResult);
 	auto& innerRows = AsResults(inner);
 	REQUIRE(innerRows.is_array());
 	CHECK(innerRows.size() == 7); // 7 fixtures all under /Game
@@ -263,14 +263,20 @@ TEST_CASE("tools/call attaches structuredContent for object-returning tools (def
 
 	auto& result = frames[1]["result"];
 	CHECK(result["isError"] == false);
-	// Back-compat: the text content block is still emitted...
-	REQUIRE(result["content"].is_array());
-	REQUIRE(result["content"].size() == 1);
-	auto fromText = json::parse(result["content"][0]["text"].get<std::string>());
-	// ...and structuredContent mirrors it for object results (UX-P1a).
+	// UX-P4e: object results carry the FULL payload exactly once, in
+	// structuredContent (UX-P1a) — content[0].text is now a short pointer
+	// note, NOT a second full JSON copy. This guarantees a client that
+	// concatenates both fields (spilling to a temp file) gets ONE valid JSON
+	// document instead of two.
 	REQUIRE(result.contains("structuredContent"));
 	CHECK(result["structuredContent"].is_object());
-	CHECK(result["structuredContent"] == fromText);
+	REQUIRE(result["content"].is_array());
+	REQUIRE(result["content"].size() == 1);
+	auto note = result["content"][0]["text"].get<std::string>();
+	CHECK(note.find("structuredContent") != std::string::npos);
+	// The note must NOT itself be a full JSON copy of the payload.
+	CHECK(note.size() < 200);
+	CHECK_FALSE(json::accept(note));
 }
 
 TEST_CASE("tools/call surfaces unknown tool as MCP error envelope, not JSON-RPC error") {
@@ -398,7 +404,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	};
 	auto r1 = server.Dispatch(req1);
 	REQUIRE(r1.has_value());
-	auto inner1 = json::parse((*r1)["result"]["content"][0]["text"].get<std::string>());
+	auto inner1 = test::PayloadOf((*r1)["result"]);
 	REQUIRE(inner1.contains("toolsets"));
 	REQUIRE(inner1["toolsets"].is_array());
 	CHECK(inner1["toolsets"].size() >= 20);  // we have ~26 categories
@@ -415,7 +421,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	};
 	auto r2 = server.Dispatch(req2);
 	REQUIRE(r2.has_value());
-	auto inner2 = json::parse((*r2)["result"]["content"][0]["text"].get<std::string>());
+	auto inner2 = test::PayloadOf((*r2)["result"]);
 	CHECK(inner2["name"] == "cpp");
 	REQUIRE(inner2["tools"].is_array());
 	CHECK(inner2["tools"].size() == 7);
@@ -441,7 +447,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	};
 	auto r3 = server.Dispatch(req3);
 	REQUIRE(r3.has_value());
-	auto inner3 = json::parse((*r3)["result"]["content"][0]["text"].get<std::string>());
+	auto inner3 = test::PayloadOf((*r3)["result"]);
 	auto& inner3Rows = AsResults(inner3);
 	REQUIRE(inner3Rows.is_array());
 	CHECK(inner3Rows.size() == 7);  // same 7 fixtures the direct-call test checks

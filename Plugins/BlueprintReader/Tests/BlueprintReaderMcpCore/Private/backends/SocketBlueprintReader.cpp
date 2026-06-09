@@ -3571,6 +3571,7 @@ SocketBlueprintReader::BindWidgetEvent(std::string_view assetPath,
 	if (j.is_object())
 	{
 		out.bound = j.value("bound", false);
+		out.reason = j.value("reason", std::string{});  // UX-P4b
 	}
 	return out;
 }

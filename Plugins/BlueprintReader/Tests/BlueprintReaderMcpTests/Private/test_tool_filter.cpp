@@ -185,6 +185,14 @@ TEST_CASE("Workflow preset shapes contain the expected anchor tools") {
 	CHECK(contains(ExpandCategory("widget-design"), "compile_widget_blueprint"));
 	CHECK(contains(ExpandCategory("gameplay-tuning"), "set_variable_default"));
 	CHECK(contains(ExpandCategory("gameplay-tuning"), "pie_start"));
+	// UX-P4g: the diff/merge tools ship fully wired but were in NO category,
+	// so progressive disclosure hid them. They now live under read (+ assets).
+	CHECK(contains(ExpandCategory("read"), "diff_asset"));
+	CHECK(contains(ExpandCategory("read"), "bp_structural_diff"));
+	CHECK(contains(ExpandCategory("read"), "prepare_merge"));
+	CHECK(contains(ExpandCategory("assets"), "diff_asset"));
+	CHECK(contains(ExpandCategory("assets"), "prepare_merge"));
+	CHECK(contains(ExpandCategory("assets"), "bp_structural_diff"));
 }
 
 TEST_CASE("ToolCategories: known + unknown lookups") {
