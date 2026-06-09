@@ -5,15 +5,82 @@ import {
   dialog,
   shell,
   Menu,
+  session,
 } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
-import { spawn, execSync, ChildProcess } from 'child_process';
+import { spawn, execFileSync, ChildProcess } from 'child_process';
+import { fileURLToPath } from 'node:url';
 
 const isDev = !app.isPackaged;
+
+// ---------------------------------------------------------------------------
+// Security helpers (Batch 1a hardening)
+// ---------------------------------------------------------------------------
+
+// Resolve the realpath of `p`'s deepest EXISTING ancestor, then re-append the
+// non-existent tail — so any symlink/junction in the path is followed BEFORE
+// the under-root test. Without this, isPathUnder is a pure-string check that a
+// junction planted inside an allowed root would defeat (it would validate the
+// spelled path, not the real target).
+function realResolve(p: string): string {
+  let cur = path.resolve(p);
+  const tail: string[] = [];
+  for (let i = 0; i < 64 && !fs.existsSync(cur); i++) {
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    tail.unshift(path.basename(cur));
+    cur = parent;
+  }
+  try { cur = fs.realpathSync.native(cur); } catch { /* keep resolved */ }
+  return tail.length ? path.join(cur, ...tail) : cur;
+}
+
+// True if `child`'s real target is inside one of `parents` (prevents `..`
+// traversal AND symlink/junction escape out of an allowed root).
+function isPathUnder(child: string, parents: string[]): boolean {
+  const resolved = realResolve(child);
+  if (resolved.includes('\0')) return false;
+  return parents.some((parent) => {
+    let root: string;
+    try { root = fs.realpathSync.native(path.resolve(parent)); }
+    catch { root = path.resolve(parent); }
+    const rel = path.relative(root, resolved);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  });
+}
+
+// Roots the renderer is allowed to read/write through the file IPCs: the user's
+// home (client MCP configs live in ~/.claude.json, ~/.cursor, ~/.codeium, …),
+// the configured project tree, and the OS temp dir. Blocks reads/writes of
+// arbitrary system files (e.g. C:\Windows\…, registry-run drop targets).
+function allowedFileRoots(): string[] {
+  const roots = [app.getPath('home'), app.getPath('appData'), app.getPath('temp')];
+  const proj = getProjectDir();
+  if (proj) roots.push(proj);
+  return roots.filter(Boolean);
+}
+
+// Secret / persistence subpaths under home that are NEVER legit MCP-config
+// targets — denied even though they fall under the allowed home root (the broad
+// home grant is needed for the dotfile configs, so deny the known-sensitive
+// pockets explicitly).
+function deniedRoots(): string[] {
+  const home = app.getPath('home');
+  return [
+    path.join(home, '.ssh'), path.join(home, '.aws'), path.join(home, '.gnupg'),
+    path.join(home, '.config', 'gh'),
+    path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'),
+  ];
+}
+
+// A path the file IPCs may touch: under an allowed root AND not under a denied one.
+function fileAccessAllowed(p: string): boolean {
+  return isPathUnder(p, allowedFileRoots()) && !isPathUnder(p, deniedRoots());
+}
 
 // ---------------------------------------------------------------------------
 // Path inference
@@ -90,7 +157,12 @@ function getExePath(projectDir: string): string {
 
 function regQuery(key: string, name: string): string | null {
   try {
-    const out = execSync(`reg query "${key}" /v "${name}" 2>nul`, { encoding: 'utf8', timeout: 3000 });
+    // execFile (no shell): `reg` receives key/name as literal argv elements, so
+    // a crafted EngineAssociation in a .uproject (e.g. `" & calc & "`) can't
+    // break out and run commands. stderr is swallowed via stdio:'pipe' + catch.
+    const out = execFileSync('reg', ['query', key, '/v', name], {
+      encoding: 'utf8', timeout: 3000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+    });
     const match = out.match(/REG_SZ\s+(.+)/);
     return match ? match[1].trim() : null;
   } catch {
@@ -121,8 +193,10 @@ function getEngineDir(uprojectFile: string): string {
         const p = regQuery(`HKCU\\Software\\Epic Games\\Unreal Engine\\Builds`, variant);
         if (p && fs.existsSync(p)) return p;
       }
-    } else {
-      // Version string -> HKLM
+    } else if (/^[0-9]+\.[0-9]+(\.[0-9]+)?$/.test(assoc)) {
+      // Version string (e.g. "5.8") -> HKLM. Strict pattern so a junk/hostile
+      // EngineAssociation can't be used to build a registry path or `UE_<x>`
+      // scan dir (belt-and-suspenders alongside the execFile change).
       for (const base of [
         `HKLM\\SOFTWARE\\EpicGames\\Unreal Engine\\${assoc}`,
         `HKLM\\SOFTWARE\\WOW6432Node\\EpicGames\\Unreal Engine\\${assoc}`,
@@ -211,6 +285,22 @@ function createWindow() {
     title: 'BlueprintReader Toolbox',
   });
 
+  // Navigation lockdown (TBX-S5): deny window.open / target=_blank (route
+  // http(s) to the OS browser instead), and block any attempt to navigate the
+  // privileged renderer away from its own origin — a navigated-away page would
+  // retain the preload bridge. SPA routing uses the history API (no navigation
+  // event), so this never fires for normal in-app routing.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  const guardNavigation = (e: Electron.Event, url: string) => {
+    const ok = isDev ? url.startsWith('http://localhost:5173') : url.startsWith('file://');
+    if (!ok) e.preventDefault();
+  };
+  mainWindow.webContents.on('will-navigate', guardNavigation);
+  mainWindow.webContents.on('will-redirect', guardNavigation);
+
   // Show the real window only once the renderer has painted its first frame,
   // then dismiss the splash. Cuts perceived startup to "splash → app".
   mainWindow.once('ready-to-show', () => {
@@ -250,7 +340,23 @@ function sweepStaleTempDirs() {
   } catch { /* ignore */ }
 }
 
-app.whenReady().then(() => { sweepStaleTempDirs(); createWindow(); });
+// Content-Security-Policy for the packaged app (defense-in-depth alongside
+// contextIsolation). Skipped in dev — Vite's HMR needs ws: + inline/eval. The
+// renderer only talks to 'self' (the bundle) and the local MCP server over HTTP.
+function installCsp() {
+  if (isDev) return;
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+    cb({ responseHeaders: {
+      ...details.responseHeaders,
+      'Content-Security-Policy': [
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+        "script-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*",
+      ],
+    } });
+  });
+}
+
+app.whenReady().then(() => { installCsp(); sweepStaleTempDirs(); createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
@@ -281,7 +387,21 @@ ipcMain.handle('resolve-engine', (_evt, uprojectPath: string) => {
 // Persist the user-chosen .uproject so all pages can resolve pluginDir
 // correctly even when the portable exe is run outside the project tree.
 ipcMain.handle('save-project', (_evt, uprojectPath: string) => {
-  saveProject(uprojectPath);
+  // Only persist a real .uproject — stops the renderer relocating the project
+  // root (which feeds the run-script / file allowlists) to an arbitrary dir.
+  if (typeof uprojectPath === 'string'
+      && uprojectPath.toLowerCase().endsWith('.uproject')
+      && fs.existsSync(uprojectPath)) {
+    saveProject(uprojectPath);
+  }
+});
+
+// A read-only existence boolean for a .uproject — leaks nothing, so it's exempt
+// from the read-file allowlist. The Install page validates the picked project
+// with this BEFORE the project root is persisted (so it works for a first pick
+// on a drive the allowlist doesn't yet include).
+ipcMain.handle('uproject-exists', (_evt, p: string) => {
+  return typeof p === 'string' && p.toLowerCase().endsWith('.uproject') && fs.existsSync(p);
 });
 
 ipcMain.handle('get-paths', () => {
@@ -300,6 +420,7 @@ ipcMain.handle('get-paths', () => {
 });
 
 ipcMain.handle('read-file', async (_evt, filePath: string) => {
+  if (!fileAccessAllowed(filePath)) return null;
   try {
     return fs.readFileSync(filePath, 'utf8');
   } catch {
@@ -308,6 +429,9 @@ ipcMain.handle('read-file', async (_evt, filePath: string) => {
 });
 
 ipcMain.handle('write-file', async (_evt, filePath: string, content: string) => {
+  if (!fileAccessAllowed(filePath)) {
+    throw new Error(`refused to write outside allowed roots: ${filePath}`);
+  }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, 'utf8');
 });
@@ -329,7 +453,19 @@ ipcMain.handle('open-file-dialog', async (_evt, opts: {
 });
 
 ipcMain.handle('open-external', async (_evt, url: string) => {
-  await shell.openExternal(url);
+  // Only ever hand http(s) URLs to the OS browser — never smb:/javascript:/etc.,
+  // which shell.openExternal would otherwise launch (local-exe / SMB-creds risk).
+  // The 'Open config file' button passes a file:// URL: open it via shell.openPath
+  // (not openExternal), and only if it's a path the app is already allowed to read.
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'https:' || u.protocol === 'http:') {
+      await shell.openExternal(url);
+    } else if (u.protocol === 'file:') {
+      const p = fileURLToPath(url);
+      if (fileAccessAllowed(p)) await shell.openPath(p);
+    }
+  } catch { /* malformed URL — ignore */ }
 });
 
 // ---------------------------------------------------------------------------
@@ -350,15 +486,35 @@ function logLine(msg: string) {
   mainWindow?.webContents.send('script-log', msg.endsWith('\n') ? msg : msg + '\n');
 }
 
-// Compare dot-separated numeric versions. >0 if a newer than b, <0 if older, 0 equal.
-// Strips a leading 'v' and any pre-release suffix. Used so self-update never
-// applies a same-or-older release (downgrade guard).
+// Semver-aware compare: >0 if a newer than b, <0 older, 0 equal. Compares the
+// numeric core, THEN pre-release (a version WITH a pre-release ranks BELOW the
+// same core without one — so v0.6.0 > v0.6.0-rc2); build metadata (+…) is
+// ignored. The old version stripped the whole `-suffix`, making v0.6.0-rc2 ==
+// v0.6.0 and hiding real updates / risking a wrong downgrade (TBX-F8).
 function cmpVersion(a: string, b: string): number {
-  const parse = (s: string) => (s ?? '').replace(/^v/, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
-  const pa = parse(a), pb = parse(b);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+  const split = (s: string) => {
+    const clean = (s ?? '').trim().replace(/^v/i, '').split('+')[0];  // drop build meta
+    const [core, pre = ''] = clean.split('-');
+    return { core: core.split('.').map(n => parseInt(n, 10) || 0), pre };
+  };
+  const A = split(a), B = split(b);
+  for (let i = 0; i < Math.max(A.core.length, B.core.length); i++) {
+    const d = (A.core[i] ?? 0) - (B.core[i] ?? 0);
     if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  if (!A.pre && !B.pre) return 0;
+  if (!A.pre) return 1;   // a is a release, b is a pre-release of the same core
+  if (!B.pre) return -1;
+  const pa = A.pre.split('.'), pb = B.pre.split('.');
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i], y = pb[i];
+    if (x === undefined) return -1;   // shorter pre-release set ranks lower
+    if (y === undefined) return 1;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) { const d = parseInt(x, 10) - parseInt(y, 10); if (d) return d > 0 ? 1 : -1; }
+    else if (nx) return -1;           // numeric identifiers rank below alphanumeric
+    else if (ny) return 1;
+    else if (x !== y) return x < y ? -1 : 1;
   }
   return 0;
 }
@@ -439,6 +595,30 @@ function runPwsh(args: string[]): Promise<number> {
   });
 }
 
+// Expand a .zip with a STATIC PowerShell command — the zip/dest paths are passed
+// via environment variables, NOT interpolated into a `-Command` string, so a
+// path containing PowerShell metacharacters can't inject. (Windows PowerShell
+// 5.1, always present; `powershell.exe` not `pwsh.exe`.)
+function expandArchive(zip: string, dest: string): Promise<number> {
+  return new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-Command',
+      'Expand-Archive -LiteralPath $env:BPR_ZIP -DestinationPath $env:BPR_DEST -Force'],
+      { windowsHide: true, env: { ...process.env, BPR_ZIP: zip, BPR_DEST: dest } });
+    p.stdout.on('data', (d: Buffer) => logLine(d.toString('utf8')));
+    p.stderr.on('data', (d: Buffer) => logLine(d.toString('utf8')));
+    p.on('exit', (c) => resolve(c ?? 0));
+    p.on('error', (e) => { logLine(`[error] ${e.message}`); resolve(1); });
+  });
+}
+
+// The MCP client ids Install-Plugin.ps1's -Client ValidateSet accepts — and
+// exactly what the Install page's <select> sends (PascalCase). Anything else is
+// rejected before it can become a script argument. (Must match Install.tsx +
+// the script's ValidateSet, or per-client install silently breaks.)
+const ALLOWED_CLIENTS = new Set([
+  'All', 'ClaudeCode', 'Cursor', 'VSCode', 'Rider', 'Gemini', 'Codex',
+]);
+
 // Find the dir containing BlueprintReader.uplugin inside an extracted archive.
 function findPluginRoot(dir: string): string | null {
   const stack = [dir];
@@ -475,12 +655,19 @@ ipcMain.handle('install-plugin-from-release', async (_evt, opts: {
   if (!opts.uproject || !fs.existsSync(opts.uproject)) {
     return { ok: false, error: 'Pick a valid .uproject first.' };
   }
+  // Validate the client against the known set BEFORE it becomes a script arg —
+  // a value like '-SomethingElse' or 'All; …' can't smuggle extra parameters.
+  const client = opts.client ?? 'All';
+  if (!ALLOWED_CLIENTS.has(client)) {
+    return { ok: false, error: `Unknown client '${client}'. Allowed: ${[...ALLOWED_CLIENTS].join(', ')}.` };
+  }
   let tmp = '';
   try {
     logLine('Checking GitHub for the latest release ...');
     const rel = await fetchLatestRelease();
     const asset = rel.assets.find(a => /-plugin\.zip$/i.test(a.name));
     if (!asset) throw new Error(`No -plugin.zip asset in release ${rel.tag}.`);
+    if (!asset.digest) throw new Error('Release asset has no integrity digest — refusing to install an unverified download.');
     tmp = path.join(app.getPath('temp'), `bpr-dl-${Date.now()}`);
     fs.mkdirSync(tmp, { recursive: true });
     const zip = path.join(tmp, asset.name);
@@ -488,8 +675,7 @@ ipcMain.handle('install-plugin-from-release', async (_evt, opts: {
     await downloadFile(asset.url, zip, 'plugin', { size: asset.size, digest: asset.digest });
     const extract = path.join(tmp, 'x');
     logLine('Extracting ...');
-    const ec = await runPwsh(['-NoProfile', '-Command',
-      `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${extract.replace(/'/g, "''")}' -Force`]);
+    const ec = await expandArchive(zip, extract);
     if (ec !== 0) throw new Error('extraction failed.');
     const pluginRoot = findPluginRoot(extract);
     if (!pluginRoot) throw new Error('BlueprintReader.uplugin not found in the downloaded archive.');
@@ -497,7 +683,7 @@ ipcMain.handle('install-plugin-from-release', async (_evt, opts: {
     if (!fs.existsSync(installScript)) throw new Error('Install-Plugin.ps1 missing from the archive.');
 
     const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', installScript,
-      '-ProjectFile', opts.uproject, '-Client', opts.client ?? 'All', '-Force'];
+      '-ProjectFile', opts.uproject, '-Client', client, '-Force'];
     if (opts.build) {
       if (opts.engineDir) args.push('-EngineDir', opts.engineDir);
       if (opts.applyPatches) args.push('-ApplyEnginePatches');
@@ -536,6 +722,13 @@ ipcMain.handle('self-update-toolbox', async () => {
     }
     const asset = rel.assets.find(a => /-toolbox-win64\.exe$/i.test(a.name));
     if (!asset) throw new Error(`No -toolbox-win64.exe asset in release ${rel.tag}.`);
+    // Refuse to download-and-EXECUTE a binary with no integrity digest. The
+    // sha256 is weak (it shares the GitHub-API trust channel) but "no check at
+    // all" is the real hole — a missing digest must hard-fail, not silently skip
+    // verification. (Full fix = Authenticode signing, tracked as TBX-S1 1b.)
+    if (!asset.digest) {
+      throw new Error('Release asset has no integrity digest — refusing to self-update an unverified binary.');
+    }
     tmp = path.join(app.getPath('temp'), `bpr-tbup-${Date.now()}`);
     fs.mkdirSync(tmp, { recursive: true });
     const newExe = path.join(tmp, asset.name);
@@ -621,13 +814,13 @@ ipcMain.handle('deploy-assets', async (_evt, opts: { projectDir: string }) => {
     const rel = await fetchLatestRelease();
     const asset = rel.assets.find(a => /-plugin\.zip$/i.test(a.name));
     if (!asset) throw new Error(`No -plugin.zip asset in release ${rel.tag}.`);
+    if (!asset.digest) throw new Error('Release asset has no integrity digest — refusing to install an unverified download.');
     tmp = path.join(app.getPath('temp'), `bpr-assets-${Date.now()}`);
     fs.mkdirSync(tmp, { recursive: true });
     const zip = path.join(tmp, asset.name);
     await downloadFile(asset.url, zip, 'plugin', { size: asset.size, digest: asset.digest });
     const extract = path.join(tmp, 'x');
-    const ec = await runPwsh(['-NoProfile', '-Command',
-      `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${extract.replace(/'/g, "''")}' -Force`]);
+    const ec = await expandArchive(zip, extract);
     if (ec !== 0) throw new Error('extraction failed.');
     const pluginRoot = findPluginRoot(extract);
     if (!pluginRoot) throw new Error('BlueprintReader.uplugin not found in the archive.');
@@ -676,6 +869,18 @@ ipcMain.handle('kill-mcp-servers', () => {
 // Script runner — streams stdout via 'script-log' event, resolves with exit code
 ipcMain.handle('run-script', (_evt, script: string, args: string[]) => {
   return new Promise<number>((resolve) => {
+    // The ONLY script the renderer legitimately runs is the plugin's
+    // Scripts/Generate-ClientConfig.ps1, so constrain to that dir (realpath-
+    // checked, so a junction can't escape it). Release-extracted scripts run via
+    // the dedicated install/deploy IPCs (runPwsh), not through here.
+    const projectDir = getProjectDir();
+    const scriptsDir = projectDir ? path.join(getPluginDir(projectDir), 'Scripts') : '';
+    if (!scriptsDir || !script.toLowerCase().endsWith('.ps1') || !isPathUnder(script, [scriptsDir])) {
+      mainWindow?.webContents.send('script-log',
+        `[error] refused to run a script outside the plugin Scripts dir: ${script}\n`);
+      resolve(1);
+      return;
+    }
     const proc = spawn('pwsh.exe', [
       '-NoProfile',
       '-ExecutionPolicy', 'Bypass',

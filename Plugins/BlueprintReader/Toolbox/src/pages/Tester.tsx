@@ -87,9 +87,47 @@ function coerceArgs(
     const t = Array.isArray(prop?.type) ? prop.type[0] : prop?.type;
     if (t === 'boolean') out[k] = resolved === 'true';
     else if (t === 'integer' || t === 'number') out[k] = Number(resolved);
+    else if (t === 'array' || t === 'object') {
+      // TBX-F2: array/object args are typed as JSON in the form — parse them so
+      // tools like apply_ops (ops[]) are actually callable (was sent as a string).
+      try { out[k] = JSON.parse(resolved); } catch { out[k] = resolved; }
+    }
     else out[k] = resolved;
   }
   return out;
+}
+
+// TBX-F2: does `v` parse as JSON of the given schema type? (red-border signal)
+function isValidJsonOfType(v: string, t?: string): boolean {
+  try {
+    const p = JSON.parse(v);
+    if (t === 'array') return Array.isArray(p);
+    if (t === 'object') return typeof p === 'object' && p !== null && !Array.isArray(p);
+    return true;
+  } catch { return false; }
+}
+
+// TBX-F3: validate raw form args against the tool's input schema BEFORE sending —
+// required fields present, numbers numeric, enums in range, array/object valid
+// JSON. Returns human-readable errors (empty = OK).
+function validateArgs(
+  rawArgs: Record<string, string>,
+  schema: ToolDescriptor['input_schema'],
+): string[] {
+  const props = schema.properties ?? {};
+  const errors: string[] = [];
+  for (const req of schema.required ?? []) {
+    if (!rawArgs[req] || rawArgs[req].trim() === '') errors.push(`"${req}" is required`);
+  }
+  for (const [k, v] of Object.entries(rawArgs)) {
+    if (v == null || v.trim() === '' || v.includes('{{')) continue;  // skip empty / template refs
+    const prop = props[k];
+    const t = Array.isArray(prop?.type) ? prop!.type.filter(x => x !== 'null')[0] : prop?.type;
+    if ((t === 'integer' || t === 'number') && Number.isNaN(Number(v))) errors.push(`"${k}" must be a number`);
+    if (prop?.enum && !prop.enum.includes(v)) errors.push(`"${k}" must be one of: ${prop.enum.join(', ')}`);
+    if ((t === 'array' || t === 'object') && !isValidJsonOfType(v, t)) errors.push(`"${k}" must be a valid JSON ${t}`);
+  }
+  return errors;
 }
 
 let _stepIdCounter = 0;
@@ -264,6 +302,15 @@ export default function Tester() {
 
   async function sendCall() {
     if (!selectedTool) return;
+    // TBX-F3: validate against the schema before sending — clearer than a
+    // confusing server-side error after a round-trip.
+    const errors = validateArgs(args, selectedTool.input_schema);
+    if (errors.length) {
+      const msg = 'Fix these before sending:\n• ' + errors.join('\n• ');
+      setResult({ content: [{ type: 'text', text: msg }], isError: true });
+      setResultRaw('');
+      return;
+    }
     setSending(true); setResult(null);
     try {
       const { result: r, elapsed } = await executeCall(selectedTool.name, args);
@@ -313,6 +360,19 @@ export default function Tester() {
       const step = batchSteps[i];
       updateStep(step.id, { status: 'running' });
       setExpandedStep(step.id);
+      // TBX-F3: validate this step too (single mode already does). validateArgs
+      // skips {{ template refs, which resolve at run time, so they're not flagged.
+      const stepTool = tools.find(t => t.name === step.toolName);
+      const stepErrors = stepTool ? validateArgs(step.args, stepTool.input_schema) : [];
+      if (stepErrors.length) {
+        const err: ToolCallResult = {
+          content: [{ type: 'text', text: 'Invalid args:\n• ' + stepErrors.join('\n• ') }],
+          isError: true,
+        };
+        collectedResults[i] = err;
+        updateStep(step.id, { status: 'error', result: err });
+        break;
+      }
       try {
         const { result: r, elapsed } = await executeCall(step.toolName, step.args, collectedResults);
         collectedResults[i] = r;
@@ -397,12 +457,19 @@ export default function Tester() {
         {/* Tool list */}
         <div className="flex-1 overflow-auto">
           {search ? (
-            filteredTools.slice(0, 50).map(tool => (
-              <ToolRow key={tool.name} tool={tool}
-                selected={mode === 'single' && selectedTool?.name === tool.name}
-                batchMode={mode === 'batch'}
-                onSelect={handleToolClick} />
-            ))
+            // TBX-F4: render ALL matches (was silently capped at 50, hiding
+            // results) + show the count so nothing is lost without a signal.
+            <>
+              {filteredTools.map(tool => (
+                <ToolRow key={tool.name} tool={tool}
+                  selected={mode === 'single' && selectedTool?.name === tool.name}
+                  batchMode={mode === 'batch'}
+                  onSelect={handleToolClick} />
+              ))}
+              <div className="px-3 py-2 text-[11px] text-gray-500 border-t border-ue-border/40">
+                {filteredTools.length} match{filteredTools.length === 1 ? '' : 'es'}
+              </div>
+            </>
           ) : (
             categories.map(cat => (
               <div key={cat}>
@@ -603,6 +670,15 @@ function ArgForm({
                 <option value="true">true</option>
                 <option value="false">false</option>
               </select>
+            ) : (type === 'array' || type === 'object') ? (
+              // TBX-F2: JSON editor for array/object args (e.g. apply_ops "ops"),
+              // which were previously un-enterable. Red border on invalid JSON.
+              <textarea value={rawValue} onChange={e => onChange(key, e.target.value)}
+                rows={3} spellCheck={false}
+                placeholder={type === 'array' ? '[ … ]  JSON array' : '{ … }  JSON object'}
+                className={`w-full font-mono bg-black/40 border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-ue-accent placeholder-gray-700 ${
+                  rawValue && !isValidJsonOfType(rawValue, type) ? 'border-red-500/60' : 'border-ue-border'
+                }`} />
             ) : (
               <input value={rawValue} onChange={e => onChange(key, e.target.value)}
                 placeholder={stepIndex !== undefined && stepIndex > 0

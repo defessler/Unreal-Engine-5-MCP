@@ -62,6 +62,10 @@ one (UX-P1a) closes a Q1 *and* a Q2 gap in a single change.
 | [UX-P0b](#ux-p0b) | S | ✅ #250 | `enable_tool_category` with a misspelled category silently no-ops; did-you-mean error |
 | [PARITY-2](#parity-2) | S | ✅ #250 | Bump default protocol to `2025-11-25` (we're on `2025-06-18`; Epic ships `2025-11-25`) |
 | [TRANS-P1a](#trans-p1a) | S–M | ☐ Open | Implement *or honestly disable* `Mode::Compilable` — currently promised but a no-op |
+| [UX-P4b](#ux-p4b) | M | ✅ impl | `bind_widget_event` now emits a real `K2Node_ComponentBoundEvent` (or honest `bound:false`+reason) — false success fixed, live-verified |
+| [UX-P4e](#ux-p4e) | S | ✅ impl | Single full payload in `structuredContent` (short text note) — no more doubled JSON in a spilled temp file |
+| [TBX-S1](#tbx-s1) | M | ◑ 1a done | Self-update now hard-fails when the digest is absent (no more skippable check); Authenticode signing (1b) still open |
+| [TBX-F1](#tbx-f1) | M | ✅ done | Toolbox Settings "Save" now writes the env block into each provider's config (was dead `localStorage`) |
 
 ---
 
@@ -148,8 +152,12 @@ Reference: Epic plugin at
 
 **Verdict: already in very good shape.** All 8 items from the 2026-05-29 client
 feedback are closed; progressive disclosure, the orientation ladder, response
-shaping, and did-you-mean are mature; onboarding docs are current. Remaining
-items are refinements, with two genuine silent-failure traps (P0).
+shaping, and did-you-mean are mature; onboarding docs are current. The
+2026-06-07 live-session feedback added a fresh batch (UX-P4a–i) — mostly
+refinements, but with **two genuine correctness traps**: `bind_widget_event`
+reporting false success (UX-P4b) and `apply_ops atomic:true` not rolling back on
+a mid-batch op failure (UX-P4c) — plus the older silent-failure `fields`/category
+typo traps (UX-P0a/b, now closed).
 
 ### UX-P0a — `fields` typo projects nothing, silently {#ux-p0a}
 - **Status:** ✅ Done (PR #250, 2026-06-02) · **Effort:** S
@@ -235,6 +243,259 @@ items are refinements, with two genuine silent-failure traps (P0).
   `op=-Op=Function` glitch).*
 - **Why:** spaces are common in UE function names; a whole BP was un-editable, and
   the generic code-4 gave callers no signal it was a name-resolution miss.
+
+### 2026-06-07 live-session feedback (UX-P4*)
+
+From a real `live`-backend session driving a running editor (widget BPs +
+data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
+
+> **Implementation status (2026-06-08, uncommitted).** P4b, P4c, P4d, P4e, P4g,
+> P4h, and P4i(a/c) are **implemented + verified** (mock suite 862/0; P4b/P4c/
+> P4d/P4h/P4i-a additionally **live-verified** against the real `-nullrhi` Lyra
+> daemon via `Saved/uxp4-live.ps1`). **P4f** needed no code (already fixed in
+> #210 — the reporter ran a stale build). **Corrections from investigation:**
+> P4g was *not* a doc-rename (both diff tools ship; the real gap was category
+> membership — fixed in `ToolCategories.cpp`); P4e was *not* a server-side spill
+> writer (it was dual-emission in `Mcp.cpp`). **Deferred:** P4a (paused-editor
+> health signal — complex live-infra, kept its own item) and P4i-b (`add_widget`
+> insert-at-index — lowest value, full-chain cost). P4d's optional server-side
+> pre-flight was also deferred since P4c's rollback already prevents the
+> partial-commit a bad ref would cause. Known limitation surfaced live: P4b's
+> auto-promote of a *freshly-added non-variable* widget can't regenerate the
+> generated-class property mid-op (a UMG compile-timing quirk) — it returns an
+> honest `bound:false`+reason, never a false success; already-variable widgets
+> bind cleanly.
+
+### UX-P4a — distinguish a debugger-paused / halted editor from an unreachable one {#ux-p4a}
+- **Status:** ☐ Open (deferred from the 2026-06-08 batch — its own focused PR) · **Effort:** M · **Source:** 2026-06-07 live-session feedback
+- *Deferred deliberately: needs an off-game-thread health channel in the
+  LiveServer + a careful AsyncTask-detach for the bounded-write-ack path + a
+  `HealthCheck()` method across the full backend chain, and is essentially
+  unverifiable without a real paused editor. Investigation captured the full
+  design (LiveServer ping frame + game-thread heartbeat + `SO_RCVTIMEO` on the
+  socket backend + Auto pause-classification). Keep separate from the shipped
+  batch.*
+- On the `live` backend, when the editor's game thread is halted (a debugger
+  breakpoint, a modal dialog, or a long synchronous task), **every** subsequent
+  call — reads included — returns a generic `MCP error -32001: Request timed
+  out`. There is no health signal to tell "editor paused/halted" from "editor
+  hung/unreachable," and no tool-side recovery. A write in flight (a post-
+  `add_variable` recompile) half-succeeds: the variable applies but the
+  recompile-ack hangs, so the caller gets no usable acknowledgement.
+- Add a liveness/health probe the host can answer even when the game thread is
+  stopped (e.g. a socket-level ping handled off the game thread, or a status the
+  LiveServer reports when a known pause flag is set), surfaced as a *distinct*
+  error from a timeout. Pair with a bounded write timeout that returns
+  `{ok:true, recompile:"pending"}` instead of blocking indefinitely.
+- **Why:** a single game-thread pause silently wedged a whole `live` session with
+  no way to diagnose it; the false "timeout" cost ~an hour. Cross-cuts the
+  off-game-thread daemon watchdog (v0.2.0 H3) — same "is the editor actually
+  alive?" question on the live/socket path.
+
+### UX-P4b — `bind_widget_event` reports success but emits no node {#ux-p4b}
+- **Status:** ✅ Implemented (uncommitted, 2026-06-08) · **Effort:** M · **Source:** 2026-06-07 live-session feedback
+- *Shipped: `RunBindWidgetEventOp` now spawns a real `K2Node_ComponentBoundEvent`
+  via `FKismetEditorUtilities::CreateNewBoundEventForComponent` (+ idempotent
+  `FindBoundEventForComponent` reuse) and compiles+saves, OR returns `bound:false`
+  with a concrete `reason`; the MCP handler's `ok` now reflects `r.bound` (was
+  hardcoded `true`) and surfaces `reason`. Live-verified: honest `bound:false`+
+  reason on a missing widget (the false-success bug is gone). Known limit: a
+  freshly-`add_widget`'d non-variable widget can't be auto-promoted mid-op (UMG
+  compile-timing) — honest `bound:false`, never phantom success. PART B (new
+  `add_node` ComponentBoundEvent/AddDelegate/CreateDelegate kinds) deferred as a
+  fallback, not needed for the core fix.*
+- `bind_widget_event(<listview>, OnItemSelectionChanged → handler)` returned
+  `{ok:true, bound:true}`, but no `K2Node_ComponentBoundEvent` and no handler
+  function ever materialized — `find_node`, `read_blueprint(functions)`, and a
+  full `get_graph(EventGraph)` all showed nothing, before and after an explicit
+  `compile_widget_blueprint`. Confirmed twice. This is the worst failure mode: a
+  write tool claiming success while doing nothing.
+- Make `bind_widget_event` actually create the component-bound event node (and
+  its handler graph) or return `bound:false` with a reason. Compounding gap:
+  there is **no `add_node` kind** for a component-bound event or for delegate
+  binding (`AddDelegate`/`CreateDelegate`), so there is no graph-level fallback —
+  add those kinds (and to `list_node_kinds`). File: `BlueprintTools.cpp`
+  (`bind_widget_event` handler) + the widget write path in the commandlet.
+- **Why:** false success is the most damaging tool behavior — it forces a silent
+  hand-off and erodes trust in every other write tool. **Verify on current
+  `main` first** — confirm the tool still claims success with no node before
+  building the fix (stale-build caveat, see [[live-verify-server-batches]]).
+
+### UX-P4c — `apply_ops atomic:true` does not roll back (stop-and-save) {#ux-p4c}
+- **Status:** ✅ Implemented + LIVE-VERIFIED (reload-from-disk rollback; uncommitted, 2026-06-08) · **Effort:** S–M · **Cross-cuts:** v0.2.0 H1 · **Source:** 2026-06-07 live-session feedback
+- *Two parts. (1) Default-selection: the `apply_ops` registry handler couples the
+  `on_failure` default to `atomic` — unset + `atomic:true` ⇒ `rollback`, else
+  `compile`; explicit `on_failure` always wins. Mock-verified. (2) A REAL rollback
+  that works headless — see below.*
+- **The mechanism: reload-from-disk, not `CancelTransaction`.** First-pass testing
+  exposed that `GEditor->CancelTransaction(0)` is a **no-op in the `-nullrhi`
+  headless daemon** (no functional undo buffer): a batched mutation survived in
+  memory and a later `save_all` persisted it. (My first "live-verified" was a false
+  pass — the test read a non-existent `.json.variables` field.) Real fix in
+  `RunEndBatchOp`: because the batch DEFERS every save (`MaybeCompileAndSave` only
+  marks BPs pending — nothing reaches disk), each touched package on disk still
+  holds the exact pre-batch state, so on `-Rollback` we **reload those packages
+  from disk** (`UPackageTools::ReloadPackages`, `AssumePositive`) — discarding ALL
+  in-memory mutations and clearing the dirty flag. `EndBatch` now returns
+  `rolled_back: N`. **Live-verified on the real daemon** (`Saved/uxp4-rollback.ps1`,
+  5/5): a batch adding 2 vars + a node rolled back to the exact pre-batch var set
+  AND graph node count; `save_all` could not resurrect the changes; a commit batch
+  (no `-Rollback`) still persists. CancelTransaction is kept as a best-effort for a
+  full GUI editor. Out of scope: rollback of a BP **created** brand-new in the batch
+  (no pre-batch disk state — skipped).
+- With `atomic:true` (default), a batch aborts at the first failing op — but the
+  default `on_failure:"compile"` still compiles **and SAVES** whatever landed
+  before the failure. A 30-op splice that failed at op[11] left new nodes added
+  and some rewires applied, with the rest unwired + orphan nodes — a broken
+  intermediate graph needing manual reconciliation. "Atomic" implies
+  all-or-nothing; the actual behavior is "stop-and-keep."
+- v0.2.0 **H1 shipped a real `FScopedTransaction` rollback** (live-verified diff=0
+  to pre-batch state) — so this may already be fixed on `main`, OR H1's rollback
+  doesn't fire on a *mid-batch op failure* when `on_failure:"compile"` runs.
+  **Verify against current `main`**: reproduce a mid-batch op failure with the
+  defaults; if it still partial-saves, make `atomic:true` truly roll back (wrap
+  the whole batch in the transaction, undo on any op failure regardless of
+  `on_failure`), or rename / clearly document the partial-commit semantics + the
+  default `on_failure` so callers don't assume rollback.
+- **Why:** silent partial mutation of a live graph is dangerous and contradicts
+  the tool's name; callers reasonably trust "atomic."
+
+### UX-P4d — splice refs require full GUIDs; one bad ref aborts the batch with a generic error {#ux-p4d}
+- **Status:** ✅ Implemented (uncommitted, 2026-06-08; pre-flight deferred) · **Effort:** M · **Cross-cuts:** UX-P3a, UX-P4c · **Source:** 2026-06-07 live-session feedback
+- *Shipped: `FindNodeByGuid` now accepts an unambiguous hex PREFIX (≥8 chars,
+  exact-parse first, never auto-picks on ambiguity), and the four ref-resolving
+  ops (`wire_pins`/`set_node_position`/`delete_node`/`set_pin_default`) emit a
+  rich `EmitError` naming the offending ref + listing real node GUIDs (op index
+  already added by apply_ops). Live-verified: 8-char prefix resolves a node; a
+  `...-XXXX` placeholder returns a named error. The optional server-side
+  pre-flight (3) was deferred — UX-P4c's rollback now reverts the partial commit
+  a bad ref would otherwise cause, removing the urgency.*
+- `apply_ops` `$slot` aliases only reference nodes created earlier in the *same*
+  batch; wiring into pre-existing nodes needs full 36-char GUIDs. Using 8-char
+  prefixes or `-XXXX` placeholders yields `NotFound (code=4)` with a generic
+  message ("asset, graph, node, pin, class … missing") that names neither the
+  offending ref, nor the op index, nor that the GUID was malformed. Each miss
+  costs a round-trip (re-dump the function, brace-scan for full GUIDs, rebuild);
+  combined with UX-P4c, a typo'd GUID also half-applies the batch.
+- (1) Accept unambiguous short-prefix node refs (resolve a prefix that matches
+  exactly one node in scope). (2) Name the offending ref + op index in the error.
+  (3) **Pre-flight validate all refs before mutating anything** (a dry resolve
+  pass) — this also removes the partial-commit trigger from UX-P4c for the common
+  bad-ref case. Cross-cuts `preview_ops` (which should already do (3)). Files:
+  the ref-resolution path in `BlueprintTools.cpp` + the commandlet.
+- **Why:** the GUID-extraction tax dominates splice workflows; a named, pre-flight
+  error turns a multi-round-trip debugging loop into one clear message.
+
+### UX-P4e — large-output temp spill file contains the JSON twice {#ux-p4e}
+- **Status:** ✅ Implemented (uncommitted, 2026-06-08) · **Effort:** S · **Source:** 2026-06-07 live-session feedback
+- *Root cause corrected: NOT a server-side spill writer (none exists) — it was
+  dual emission in `Mcp.cpp` (full payload in BOTH `content[0].text` pretty AND
+  `structuredContent` compact); the MCP client concatenated both when spilling.
+  Fix (per maintainer's choice): for object results the full payload goes ONCE in
+  `structuredContent` and `content[0].text` is a short pointer note → any
+  downstream concatenation yields a single valid JSON document. Mock-verified
+  (rewrote the structuredContent test + a `PayloadOf` test helper; 862/0).*
+- When `get_graph` / `get_function` / `describe_toolset` exceed the inline read
+  cap and auto-spill to a temp file, the file contains the payload **twice** — a
+  pretty-printed object followed by a compact duplicate — so `ConvertFrom-Json`
+  fails with "Additional text encountered after finished reading JSON content."
+  Every large read then needs a brace-depth scan to extract the first object.
+- Write the spill payload exactly once, as a single valid JSON document.
+  (**Distinct from PERF-1**, which removed the *daemon-internal* temp file via the
+  `__MEM__` pointer — this is the **client-facing inline-cap spill file** written
+  by the MCP server's response-control path that emits the `saved_to` temp path.)
+- **Why:** a recurring parse-breaking tax on essentially every whole-graph dump;
+  cheap to fix.
+
+### UX-P4f — tool-exposure model contradicts AGENTS.md ("full surface, no gating") {#ux-p4f}
+- **Status:** ✅ Already fixed (#210, 2026-06-01; report was a stale build) · **Effort:** S–M · **Cross-cuts:** [[ai-discoverability-token-research]] · **Source:** 2026-06-07 live-session feedback
+- *Investigation confirmed: the false "full surface, no gating" claim + the "don't
+  invent find_asset" warning were removed in commit `4cef6cf1` (#210); all three
+  AI docs now correctly describe progressive disclosure. The reporter ran a
+  pre-#210 build. No code/doc change required; optional "Pick the right tool"
+  table annotation left as a nice-to-have.*
+- AGENTS.md claims the full tool surface is exposed on every `tools/list` with no
+  category gating and no `enable_tool_category` step. In practice several tools
+  (`find_asset`, `read_widget_blueprint`, `read_data_asset`, `list_functions`,
+  `add_widget`, `set_widget_property`, `bind_widget_event`,
+  `compile_widget_blueprint`) were **not** directly callable as `<prefix>-<name>`
+  and had to be dispatched through `call_tool` or discovered via
+  `list_toolsets`/`describe_toolset`. Direct `find_asset` returned "Tool
+  'find_asset' does not exist," yet `call_tool name=find_asset` worked — and
+  AGENTS.md separately warns "do not invent … find_asset" as if it doesn't exist.
+- Reconcile AGENTS.md (and SKILL / copilot-instructions) with the **actual**
+  progressive-disclosure exposure model: the default `tools/list` is the curated
+  core (~39 tools) + `call_tool`, and the rest are reached via `call_tool` /
+  category widening. Document that accurately (the "behind `call_tool`" reality +
+  the discovery ladder), or flatten so every tool is directly callable.
+- **Why:** the docs describe an exposure model the server doesn't have; agents
+  waste calls discovering that a "missing" tool works behind `call_tool`. Ties
+  into the known AGENTS.md/SKILL "full surface" false-claim audit item.
+
+### UX-P4g — `bp_structural_diff` is documented but the server ships `diff_asset` {#ux-p4g}
+- **Status:** ✅ Implemented (uncommitted, 2026-06-08; premise corrected) · **Effort:** S · **Cross-cuts:** TRANS-leverage · **Source:** 2026-06-07 live-session feedback
+- *Premise was wrong: BOTH `bp_structural_diff` AND `diff_asset`+`prepare_merge`
+  ship and are fully wired; no AI doc references a wrong name. The REAL gap: all
+  three diff tools were in NO progressive-disclosure category, so the default
+  `tools/list` hid them (reachable only via `call_tool` by exact name). Fix: added
+  them to the `read` (+ `assets`) categories in `ToolCategories.cpp` so they
+  surface via `list_toolsets`/`enable_tool_category`. Mock-verified (category
+  membership test). Tool count unchanged.*
+- AGENTS.md lists `bp_structural_diff` among the read tools, but the running
+  server's read toolset has no such tool (verified by enumerating all read-tool
+  names) — the diff capability ships as **`diff_asset` + `prepare_merge`**
+  (commits `e8c85174`, `6beef8f9`). A client needing a before/after for a
+  changelist found no callable `bp_structural_diff` and fell back to current-state
+  reads + "inferred" notes.
+- Reconcile the docs to the real tool names (rename the AGENTS.md references to
+  `diff_asset`, or add a `bp_structural_diff` alias), and confirm `diff_asset`
+  covers the documented use (two asset paths and/or depot-rev vs workspace). The
+  TRANS-leverage round-trip-oracle note (§3) should also point at `diff_asset`.
+- **Why:** a documented tool that isn't callable is a dead end; the capability
+  exists under a different name.
+
+### UX-P4h — `VariableGet` on a function param/local fails with a generic NotFound {#ux-p4h}
+- **Status:** ✅ Implemented (uncommitted, 2026-06-08) · **Effort:** S · **Cross-cuts:** UX-P3a · **Source:** 2026-06-07 live-session feedback
+- *Shipped: `ClassifyNonMemberVarRef` helper detects when a Self-scope
+  VariableGet/VariableSet name is actually a function INPUT param or LOCAL (vs a
+  member, incl. inherited) and returns a specific actionable message via
+  `EmitError` ("'X' is a function INPUT parameter … wire from the entry node's
+  output pin"). Live-verified on a real function input; member-var gets still
+  succeed.*
+- `VariableGet` for a function **input parameter** (or a local) fails with a
+  generic `NotFound` — `VariableGet` resolves member variables only. Reasonable,
+  but the caller learns it by failure; the workaround is to route the function
+  entry node's output pins.
+- Detect the case (the name matches a function input/local, not a member) and
+  return a specific message: "X is a function input/local — use the entry node's
+  output pin, not VariableGet." File: the `add_node`/VariableGet resolution in
+  `BlueprintTools.cpp` + the commandlet.
+- **Why:** a clear error turns a learn-by-failure round-trip into a one-line fix.
+
+### UX-P4i — minor lossy / confusing outputs {#ux-p4i}
+- **Status:** ✅ a+c implemented (uncommitted, 2026-06-08); b deferred · **Effort:** S · **Source:** 2026-06-07 live-session feedback
+- *Shipped: (a) `save_all` filters un-saveable packages (`/Script/*`, transient,
+  `PKG_CompiledIn`) from `failed_assets` + adds `nothing_to_save` — live-verified
+  no `/Script` noise. (c) `list_blueprints` attaches a `_hint` pointing at
+  `find_asset` when a path query returns ≤1 rows — mock-verified. (b)
+  `add_widget` insert-at-index DEFERRED (full backend-chain cost for a cosmetic
+  child-position feature; the client noted theirs "landed correctly" anyway).*
+- Three small honesty/affordance nits from the same session:
+  - **`save_all` reports `saved_count:0` with `failed_assets:[/Script/*]`** that
+    looks like a failure but isn't — the assets were already persisted by the
+    preceding compile, and the listed "failures" are engine **script packages**
+    (`/Script/SlateCore`, …) that can never be saved. Filter `/Script/*` (and
+    other unsaveable transient packages) out of `failed_assets`, and make the
+    count distinguish "nothing needed saving" from "0 saved due to errors."
+  - **`add_widget` only appends as the last child** of the parent — no
+    insert-at-index / child-position control. Add an optional `index` (or
+    `before`/`after` sibling) arg to the widget-add path.
+  - **`list_blueprints` is path-literal, not name-fuzzy** — a wrong subpath
+    returns few/zero results with no hint to use `find_asset` for name search. A
+    one-line "use find_asset for fuzzy/name search" hint when a list returns 0–1
+    results would help.
+- **Why:** none are blocking, but each cost a moment of "is this broken?"; the
+  `save_all` one in particular reads as a failure on every call.
 
 ---
 
@@ -417,6 +678,23 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   current build model.
 - **Why:** misleads maintainers/consumers about how the build works.
 
+### INSTALL-6 — up-to-date gate in `Build-MCPServer.ps1` {#install-6}
+- **Status:** ✅ Done (2026-06-09) · **Effort:** S
+- *Added a staleness gate at the single build chokepoint (`Build-MCPServer.ps1`,
+  which every path — the Toolbox install-with-build → `Install-Plugin.ps1`, the
+  `.bat` wrapper, direct calls — flows through). Before invoking UBT/CMake it
+  compares the newest `Tests/` source mtime against the built exe (server +
+  tests are engine-independent and depend ONLY on `Tests/`), and **skips the
+  build entirely when nothing is newer** — narrowing to just the stale target(s)
+  when only one changed. `-Force` overrides. When a rebuild **is** needed but the
+  exe is locked by the running MCP server, it now **fails fast with an actionable
+  message** ("stop the server / kill-MCPs, then rebuild") instead of a cryptic
+  `LNK1104` that forced a terminal restart. Verified: up-to-date → clean skip;
+  stale+locked → actionable throw.*
+- **Why:** a user "choosing to build" against an unchanged tree while the server
+  is running hit a needless relink that failed on the locked exe — costing a
+  terminal restart for no reason. See [[project_mcp_exe_locked_during_session]].
+
 ### INSTALL-M1 — one-shot `Install-Plugin.ps1`
 - **Status:** ✅ Done (PR #261, 2026-06-02) · **Effort:** M
 - *Shipped `Scripts/Install-Plugin.ps1`: mounts the plugin (copy or `-Symlink`,
@@ -512,6 +790,25 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   release workflows now run the exes from the plugin Binaries dir.*
 - **Why:** lets a consumer pull the latest plugin + reconfigure without a rebuild,
   and makes the plugin folder a complete, drop-in bundle.
+
+### TEST-1 — exercise the render/interactive surface against a real active editor {#test-1}
+- **Status:** ☐ Open (research + plan done) · **Effort:** M–L · **Design:** [`live-gui-testing.md`](live-gui-testing.md)
+- The `-nullrhi` commandlet daemon can't exercise the ~30 render/interactive
+  tools (`take_screenshot`/`take_viewport_screenshot`/`set_camera_transform`/
+  `set_show_flag`/`build_lighting`/`pie_start`/selection/`open_asset_editor`) —
+  they gate on `FApp::CanEverRender()`==false and honestly report
+  `captured/started:false`. **Fidelity bar (maintainer):** the test must match
+  how each tool responds when a person is *actively* using the editor. Plan: two
+  tracks — **A** render-capable headless daemon (`-AllowCommandletRendering`;
+  cheap, CI-safe, but only faithful for non-viewport captures), **B** a real GUI
+  editor (`UnrealEditor.exe -unattended -RenderOffScreen`, `live` backend, map
+  loaded + active viewport) for the active-editor-state-dependent group + PIE.
+  The wedging startup modal was just a missing `-unattended` flag. Code: extend
+  `test_tool_smoke_live.cpp` (pick `SocketBlueprintReader` for `live`; gate render
+  tools behind `BP_READER_SMOKE_RENDER`/`_PIE`), add `start-render-daemon.ps1`.
+  Phase-0 spike (local) settles which tools each track can faithfully cover.
+- **Why:** ~30 tools currently have only registration-level coverage; this is the
+  only way to validate they respond correctly to real interactive use.
 
 ---
 
@@ -654,10 +951,597 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 
 ---
 
+## 9. Toolbox (Electron install / configure / test GUI)
+
+**Verdict (2026-06-08 three-auditor audit): feature-complete at v0.6.0, but
+carries ~31 distinct improvements** — the most serious cluster is the install/
+self-update path, which downloads and *executes* binaries. The Electron main
+process (`Toolbox/electron/main.ts`, 757 lines) treats the renderer as fully
+trusted and exposes broad IPC primitives; today the renderer only loads local
+bundled content, so most "XSS→RCE" chains are defense-in-depth — **except** the
+ones reachable through a user-editable `.uproject` or the network, which are
+genuinely exploitable and ranked P0. Below P0, the highest-value items are the
+*half-built* features that look finished but do nothing (Settings "Save", Tester
+array-arg input). Files live under `Plugins/BlueprintReader/Toolbox/`. None of
+these are in code yet — this section is the tracked backlog. **A research-driven
+flesh-out pass (2026-06-08) added recommended approaches + best-practice grounding —
+see [Toolbox research notes](#toolbox-research-notes-2026-06-08) at the end of this
+section; treat the per-item file:line refs as audit pointers and the research notes
+as the recommended designs.**
+
+Maps to the standalone audit memo [[project_toolbox_audit]]. ID prefixes:
+**S**ecurity (P0) · **F**unctional/half-built (P1) · **R**obustness (P2) ·
+**P**olish/a11y/maintainability (P3).
+
+### Security (P0 — the app downloads and executes binaries)
+
+### TBX-S1 — self-update runs an unsigned exe with an optional, skippable integrity check {#tbx-s1}
+- **Status:** ◑ 1a shipped (uncommitted, 2026-06-08); 1b (signing) open · **Effort:** M
+- *1a: self-update + plugin-install now **hard-fail when the release asset has no
+  `digest`** (the "no integrity check at all" hole is closed). 1b — Authenticode
+  signing (Azure Trusted Signing) + `Get-AuthenticodeSignature` verify-before-
+  execute — remains open (needs a cert/CI infra). The sha256 still shares the
+  GitHub-API trust channel (by design, documented), so 1b is the real authenticity
+  fix.*
+- `main.ts:523-604` (swap+relaunch), digest at `399,418-424`. The downloaded
+  `-toolbox-win64.exe` is swapped in and **executed** with only a SHA256 `digest`
+  that comes from the *same* GitHub API response as the URL, and `digest` is
+  `optional` — if the release asset has no digest, integrity is **never checked**
+  (only a size check). A tampered release or a MITM on the API/CDN auto-executes
+  an arbitrary exe. Fix: verify Authenticode/publisher before the swap (or ship a
+  detached signature against a pinned key); at minimum **refuse to self-update
+  when `digest` is absent**. Pair with `electron-builder` code-signing config.
+- **Why:** the Toolbox ships to other users; auto-executing an unverified binary
+  is the single highest-severity issue in the app.
+
+### TBX-S2 — shell injection via `.uproject` EngineAssociation in a `reg query` {#tbx-s2}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S
+- *`execFileSync('reg', ['query', key, '/v', name], {shell:false})` (no cmd.exe) +
+  a strict `^[0-9]+\.[0-9]+(\.[0-9]+)?$` regex on `EngineAssociation` before it's
+  used. typecheck-clean; review-confirmed the injection is closed.*
+- `main.ts:116-132` (`getEngineDir`). The non-GUID branch interpolates
+  `EngineAssociation` (read from a user-editable / possibly-untrusted `.uproject`)
+  straight into `reg query "HKLM\…\${assoc}"` via `execSync` (a `cmd.exe` shell).
+  A value like `" & calc & "` breaks out and runs arbitrary commands. The GUID
+  branch already regex-validates; the version branch does not. Fix: validate
+  `assoc` against a strict version/GUID pattern, and prefer spawning `reg.exe`
+  with an argv array (no shell) or a native registry module.
+- **Why:** opening a crafted project should never be able to execute code.
+
+### TBX-S3 — PowerShell argument injection in install / extract {#tbx-s3}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S/M
+- *`Expand-Archive` is now a STATIC `-Command` with the zip/dest passed via env
+  vars (no path interpolation); `-Client` is validated against `ALLOWED_CLIENTS`
+  ({All,ClaudeCode,Cursor,VSCode,Rider,Gemini,Codex} — matched to the caller +
+  the script's ValidateSet after the review caught a casing regression). Avoided
+  the extract-zip dep by using the env-var approach.*
+- `main.ts:491-500` (Expand-Archive `-Command` string-building), `615,629-636`
+  (install-script args). `opts.client`/`opts.uproject`/`opts.engineDir` flow from
+  the renderer into `pwsh -File <script> -Client <…> -ProjectFile <…>` unvalidated;
+  a `client` value starting with `-` or containing metacharacters injects extra
+  parameters, and the `Expand-Archive -Command` form only escapes single quotes.
+  Fix: validate `client` against the known enum, reject args beginning with `-`,
+  confirm paths exist, and prefer `-File` invocation (or a Node unzip lib) over
+  `-Command` string-building.
+- **Why:** turns a malformed input into parameter/command injection on the host.
+
+### TBX-S4 — `run-script` / `read-file` / `write-file` are unconstrained primitives {#tbx-s4}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** M
+- *`run-script` constrained to `.ps1` under the plugin `Scripts/` dir;
+  `read-file`/`write-file` to allowed roots (home/appData/temp/project) minus a
+  sensitive denylist (~/.ssh, ~/.aws, ~/.gnupg, ~/.config/gh, Startup). All checks
+  go through a **realpath-aware** `isPathUnder` (the review's symlink/junction
+  bypass), and `save-project` now validates a real `.uproject` (closes the
+  renderer-relocates-root chain). Defense-in-depth — renderer loads only local
+  bundled content today.*
+- `main.ts:677-699` (`run-script` spawns `pwsh -File <any path> <any args>`),
+  `302-313` (arbitrary-path read/write). The renderer can run any `.ps1` from any
+  path and read/write anywhere on disk. Fix: constrain `run-script` to an
+  allowlist of known script names resolved under the plugin's `Scripts/` dir
+  (reject `..`, absolute paths outside the subtree, non-`.ps1`); scope
+  `read-file`/`write-file` to project/plugin subtrees; treat the renderer as a
+  semi-trusted boundary and validate every IPC input.
+- **Why:** these primitives grant the renderer arbitrary local code/file power,
+  defeating `contextIsolation`.
+
+### TBX-S5 — navigation/window lockdown, `openExternal` scheme check, CSP, signing {#tbx-s5}
+- **Status:** ✅ Done except signing (uncommitted, 2026-06-08) · **Effort:** M
+- *`setWindowOpenHandler(deny)` (http(s)→OS browser) + `will-navigate`/`will-redirect`
+  guard; `openExternal` restricted to http(s) (file:// "Open config file" preserved
+  via a constrained `shell.openPath`, per the review regression); prod-only CSP
+  (`default-src 'self'` + loopback `connect-src` for the Tester). asar + code-signing
+  fold into TBX-S1 1b.*
+- `main.ts:193-236` (no `setWindowOpenHandler`/`will-navigate` guard), `331-333`
+  (`shell.openExternal(url)` with no scheme check — `file:`/UNC/`javascript:` all
+  pass), no CSP on the main window, and `electron-builder.config.json` has no
+  `asar`/code-signing. Fix: `setWindowOpenHandler(() => ({action:'deny'}))` +
+  a `will-navigate`/`will-redirect` guard, whitelist `http(s):` in `openExternal`,
+  set a strict CSP, enable asar + signing.
+- **Why:** defense-in-depth so a future remote-content or supply-chain slip can't
+  reach the privileged preload bridge.
+
+### Functional / half-built (P1 — look finished, do nothing)
+
+### TBX-F1 — Settings "Save" writes to dead `localStorage` that nothing reads back {#tbx-f1}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** M
+- *Shared `src/lib/settings.ts` store (guarded parse — also closes R9); `paths.ts`
+  replaced per-provider `serverEntry()` with `serverType`/`baseEnv` + a
+  `buildServerEntry` helper; `Providers.tsx` now writes EVERY JSON provider via
+  the sibling-preserving merge, injecting the Settings env (+ a pinned
+  `BP_READER_PROJECT`, restoring the old script's behavior — review catch).
+  Settings footer explains it applies on (re)configure. Codex (TOML) stays on the
+  script (env-injection there is a noted follow-up). Review-verified the per-client
+  shapes (configKey/type/args) all match the prior script output.*
+- `Settings.tsx:115-149`. The page edits ~30 env flags and "Save," but Save only
+  writes `localStorage('bpr-env-overrides')` — **nothing reads that key back** into
+  any provider config or `.mcp.json`. The only way to use the values is to "Copy
+  env block" and paste manually. Fix: wire Save to write the env block into the
+  configured provider configs (Providers already knows how to merge), or relabel
+  it a local draft and lead with Copy.
+- **Why:** the most likely user-confusion item — the page looks fully functional
+  but applies nothing.
+
+### TBX-F2 — Tester cannot input array/object arguments → `apply_ops` uncallable {#tbx-f2}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** M
+- *`ArgForm` renders a JSON `<textarea>` (red border on invalid) for array/object
+  props; `coerceArgs` JSON-parses them — so `apply_ops`/`compile_function` are
+  callable from the Tester. Hand-rolled (no rjsf), per the research.*
+- `Tester.tsx:561-626` (`ArgForm` renders only text/enum/boolean), `76-93`
+  (`coerceArgs`). The schema models `items`, but there's no UI for `array`/`object`
+  args, so `apply_ops` and the batch-write tools — *the project's core* — can't be
+  exercised from the Tester. Fix: render a JSON/array editor for `array`/`object`
+  properties (or a structured row-builder for `ops[]`), parse + validate before
+  send.
+- **Why:** the single biggest functional gap — the flagship tools are untestable
+  in the app built to test tools.
+
+### TBX-F3 — Tester sends with no argument validation {#tbx-f3}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S–M
+- *`validateArgs` (required/number/enum/valid-JSON) gates both single `sendCall`
+  AND the batch runner (review catch — batch was initially unguarded); blocks
+  with a clear message instead of a confusing round-trip error. Hand-rolled (no
+  ajv) — schemas are simple.*
+- `Tester.tsx:265-278`. `required` fields aren't enforced (only visually starred),
+  and `Number(resolved)` silently yields `NaN`. Fix: validate against the tool's
+  input schema (required/number/enum) and block Send with inline errors.
+- **Why:** turns confusing server-side failures into upfront, local guidance.
+
+### TBX-F4 — Tester search silently truncates at 50 results {#tbx-f4}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S
+- *Removed the `.slice(0,50)` (renders all matches) + a "N matches" count.
+  Virtualization (`react-virtual`) deferred as unneeded at ~250 filtered rows.*
+- `Tester.tsx:400` (`filteredTools.slice(0, 50)`). With ~250 tools, matches beyond
+  50 vanish with no "showing 50 of N." Fix: show the count and/or virtualize the
+  list.
+- **Why:** a search that hides matches sends users hunting for tools that are there.
+
+### TBX-F5 — no `.uproject` validation anywhere {#tbx-f5}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S
+- *Install validates extension + on-disk existence (via a dedicated
+  `uproject-exists` boolean IPC — NOT the allowlist-gated `read-file`, which the
+  review caught would wrongly fail a first off-home-drive pick), gates the button,
+  shows an inline error.*
+- `Install.tsx:97-102` (button enabled on any non-empty string), `Update.tsx:148`.
+  Failures surface deep in IPC. Fix: validate extension + existence (needs an
+  `existsSync`-style IPC the bridge lacks today), surface "Not a .uproject" / "File
+  not found" inline, and gate install when the project can't be confirmed.
+- **Why:** install/update happily run against a path that can't work.
+
+### TBX-F6 — MCP client has no timeout/cancel, no reconnect; shared id counter; init race {#tbx-f6}
+- **Status:** ☐ Open (Batch 2b — the Tester/client sub-group) · **Effort:** M
+- `mcp-client.ts`: `fetch` with no `AbortController` (`50-54`) so a wedged daemon
+  hangs the spinner forever; `reset()` defined but never called + no re-handshake
+  on session loss (`29,100-103`); module-global `nextId` shared across instances
+  (`4`); `initialize` race when two calls fire before the first resolves (`70-78`).
+  Fix: per-request timeout + a cancel button, cache the in-flight init promise,
+  move `nextId` to an instance field, re-init on session-not-found.
+- **Why:** the daemon is known-slow/flaky; the UI must time out and recover rather
+  than hang.
+
+### TBX-F7 — `ensureClient` can't reconnect and leaks orphan mock servers {#tbx-f7}
+- **Status:** ☐ Open (Batch 2b — pairs with TBX-F6) · **Effort:** M
+- `Tester.tsx:177-188`. Non-mock backends throw "click Start" instead of rebuilding
+  the client for the known port; the mock path spawns a **new** server every time
+  the liveness poll (`160-167`) nulls the ref (which a single transient probe can
+  trigger). Fix: reconnect to the known `serverPort` when `serverPid` is set; guard
+  mock auto-start on `serverPid`; add a failure-count threshold to the poll.
+- **Why:** orphan mock servers are exactly what `kill-mcp` exists to clean up.
+
+### TBX-F8 — `cmpVersion` ignores pre-release/build metadata → can hide updates {#tbx-f8}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S
+- *Semver-correct comparator (pre-release < release, numeric-not-lexical, build
+  metadata ignored) in shared `src/lib/semver.ts` (Update.tsx) + a matching copy
+  in `main.ts` (self-update guard). Review-verified the precedence cases.*
+- `Update.tsx:11-19` and `main.ts:356-364`. Both strip the `-` pre-release suffix,
+  so `v0.6.0-rc2` compares equal to `v0.6.0` — a real update is hidden or a
+  downgrade offered; non-semver tags collapse to `0.0.0`. Fix: a proper semver
+  comparator (pre-release < release); treat unparseable tags as "don't update."
+- **Why:** the update mechanism can silently fail to offer a newer build.
+
+### TBX-F9 — Providers "Configure All" clobbers per-provider logs {#tbx-f9}
+- **Status:** ✅ Done (uncommitted, 2026-06-08) · **Effort:** S
+- *Extracted `configureOne` (appends only); Configure All clears the log once,
+  prints a per-provider header, and ends with a `Configured N/M` tally.*
+- `Providers.tsx:93-131`. Each iteration calls `setLogs([])`, so only the last
+  provider's output survives; no per-provider pass/fail tally; `refreshStatuses`
+  runs N times. Also the script-branch (`118`) ignores the return code entirely.
+  Fix: clear logs once, append per-provider headers, capture each exit code, show
+  a tally, refresh once at the end.
+- **Why:** batch config gives the user no idea what happened to each provider.
+
+### Robustness (P2)
+
+### TBX-R1 — spawned child processes are untracked and orphan on quit {#tbx-r1}
+- **Status:** ☐ Open · **Effort:** M
+- `main.ts:432-440` (`runPwsh`), `661-674` (`kill-mcp`), `677-699` (`run-script`).
+  Only `start-server` PIDs are killed on window close; install/extract/script
+  children (and any UE build they spawn) orphan — and can hold locks on the very
+  plugin dir being swapped. No timeout on `runPwsh`/`run-script` and no cancel
+  path. Fix: track all children, kill the tree (`taskkill /T`) on quit; add
+  timeouts + a cancel IPC.
+- **Why:** orphaned PowerShell/build processes wedge the next operation.
+
+### TBX-R2 — downloads aren't atomic; partial files leak; no retries {#tbx-r2}
+- **Status:** ☐ Open · **Effort:** M
+- `main.ts:385-430`. `downloadFile` streams straight to the final path; the
+  stall-watchdog abort leaves a partial file (cleanup only runs on size/hash
+  mismatch), contradicting the "partials removed" comment. Single-shot — no retry
+  on transient 5xx/rate-limit. Fix: download to `.part`, rename after all checks;
+  always unlink leftovers in `catch`/`finally`; add bounded backoff retries
+  honoring `Retry-After` + Range-resume for the large exe/zip.
+- **Why:** a flaky network leaves junk or fails a multi-MB install with no recovery.
+
+### TBX-R3 — `start-server` leaks the full env and force-enables write mode {#tbx-r3}
+- **Status:** ☐ Open · **Effort:** S
+- `main.ts:704-738`. Blanket-spreads `process.env` + renderer `opts.env` into the
+  child, and hardcodes `BP_READER_READ_ONLY:'0'` — silently defeating the project's
+  read-only-by-default invariant. The 500 ms warmup resolves the PID even if the
+  process already crashed. Fix: whitelist forwarded env keys; make write-mode a
+  surfaced choice; check `exitCode === null` before resolving.
+- **Why:** a server the Toolbox started shouldn't silently be in write mode.
+
+### TBX-R4 — `kill-mcp-servers` has a machine-wide blast radius {#tbx-r4}
+- **Status:** ☐ Open · **Effort:** S
+- `main.ts:650-674`. Force-kills **every** `BlueprintReaderMcp.exe` on the machine
+  (matches the known friction note in [[project_client_feedback_2026_05_29]]),
+  including other projects/users or a CI run. Fix: default to tracked PIDs; make
+  the global sweep explicit opt-in; optionally match on working-dir/command-line.
+- **Why:** one project's Toolbox shouldn't kill another's server.
+
+### TBX-R5 — self-update `.bak` restore can permanently break the app {#tbx-r5}
+- **Status:** ☐ Open · **Effort:** S
+- `main.ts:563-576`. The `.bak` is deleted unconditionally after the relaunch
+  attempt — including on the restore path — and a failed restore (still-locked exe)
+  can leave a partially-overwritten exe with no usable backup. Fix: only delete
+  `.bak` after a verified-successful relaunch (confirm the new process/version);
+  keep it if the restore path was taken.
+- **Why:** a bad self-update should be recoverable, not bricking.
+
+### TBX-R6 — synchronous fs in IPC handlers blocks the main process {#tbx-r6}
+- **Status:** ☐ Open · **Effort:** S
+- `main.ts:302-313` (read/write), `242-251` (startup temp-sweep runs a recursive
+  `rmSync` before the window is created). Sync I/O freezes all IPC + window
+  responsiveness on slow drives or large dirs. Fix: use `fs.promises`; defer the
+  temp-sweep off the launch critical path; make config writes atomic (temp+rename).
+- **Why:** the UI shouldn't stutter or delay launch on disk I/O.
+
+### TBX-R7 — large-payload rendering janks (JsonViewer / raw / LogStream) {#tbx-r7}
+- **Status:** ☐ Open · **Effort:** M
+- `JsonViewer.tsx:8-98` (a component+`useState` per node, no cap/virtualization),
+  `Tester.tsx:139` (`resultRaw` eagerly stringifies every result), `LogStream.tsx:
+  11-39` (renders unbounded lines, smooth-scrolls on every append, hijacking
+  scroll). A big tool result or a chatty build freezes the renderer. Fix: per-level
+  item caps + "show more," string truncation, lazy child render; stringify raw
+  lazily; cap LogStream lines + instant scroll only when pinned to bottom.
+- **Why:** large BP/graph results and verbose build logs are the common case.
+
+### TBX-R8 — provider status detection has false positives {#tbx-r8}
+- **Status:** ☐ Open · **Effort:** S–M
+- `Providers.tsx:78-91`, `paths.ts:179-185`. TOML (Codex) reports "Configured" on a
+  bare section-header match even when pointing at a stale exe (JSON correctly
+  detects "stale"); the assets check only probes `AGENTS.md`; JetBrains has a dead
+  `'missing'` assignment + two overlapping entries. Fix: compare the configured
+  command against `exePath` for TOML too; check all asset targets; disambiguate the
+  JetBrains paths.
+- **Why:** a green "Configured" badge that points at a stale/missing exe misleads.
+
+### TBX-R9 — setState-after-unmount, unguarded `JSON.parse`, SSE not cleaned up {#tbx-r9}
+- **Status:** ☐ Open · **Effort:** S
+- `Install/Providers/Update` (`onScriptLog` unsub not tied to a cleanup → setState
+  on an unmounted component when navigating mid-op), `Settings.tsx:116-118`
+  (unguarded `JSON.parse(localStorage)` white-screens the page on corrupt storage),
+  `Tester.tsx:228` (no unmount cleanup for the SSE `EventSource`). Fix: tie unsub to
+  effect cleanup / mounted-ref, try/catch the parse, close the EventSource on
+  unmount.
+- **Why:** mid-operation navigation and corrupt storage shouldn't crash or leak.
+
+### Polish / a11y / maintainability (P3)
+
+### TBX-P1 — accessibility gaps across the app {#tbx-p1}
+- **Status:** ☐ Open · **Effort:** M
+- No error boundary (`App.tsx` — any render throw white-screens the app),
+  icon-only window controls with no `aria-label`/`title` (`App.tsx:29-46`), nav +
+  group switchers lack `role=tablist`/`aria-current`/arrow-key nav (`Sidebar.tsx`,
+  `Settings.tsx:167-176`), `StatusBadge` glyphs read literally and mean different
+  things per page (`StatusBadge.tsx` — "Configured" vs "Up to date" on the same
+  green). Fix: add an error boundary, accessible names, tablist semantics, and
+  stabilize the badge vocabulary.
+- **Why:** keyboard/SR users and crash-resilience; the badge ambiguity confuses
+  everyone.
+
+### TBX-P2 — `Tester.tsx` is a 781-line god-component {#tbx-p2}
+- **Status:** ☐ Open · **Effort:** M
+- Server lifecycle, SSE, single-call, batch, history, and three sub-components in
+  one file. Fix: extract `useMcpServer`/`useToolCall` hooks, split
+  `BatchPanel`/`ArgForm`/`ToolRow`, move `resolveTemplate`/`coerceArgs` to a
+  unit-testable `tool-args.ts`, dedupe `makeErrorResult`/`randomPort`/clipboard
+  helpers, memoize the per-render `readSettingsEnv()` (`340`).
+- **Why:** the helpers become testable and the file maintainable.
+
+### TBX-P3 — Tester UX depth: history, export, batch editing {#tbx-p3}
+- **Status:** ☐ Open · **Effort:** M
+- `Tester.tsx:271,289-333,428`. History cap mismatch (keeps 20, shows 8) and not
+  persisted; no result/pipeline export; batch steps can only append/remove (no
+  reorder/insert/re-run), and `{{N}}` refs break silently when an earlier step is
+  removed. Fix: persist history, add export, support batch reorder/insert with
+  index-stable refs.
+- **Why:** quality-of-life for the core testing loop.
+
+### TBX-P4 — engine-dir "select below" points at a control that doesn't exist {#tbx-p4}
+- **Status:** ☐ Open · **Effort:** S
+- `Install.tsx:81,150-165`. When the engine isn't detected the copy says "select it
+  below," but there's no engine-dir input/Browse unless "Rebuild from source" is
+  ticked. Fix: add a Browse field shown when `engineStatus==='missing'`, or fix the
+  copy.
+- **Why:** the UI references an affordance that isn't there.
+
+### TBX-P5 — fetch-error states not surfaced on Update/Providers refresh {#tbx-p5}
+- **Status:** ☐ Open · **Effort:** S
+- `Update.tsx:42-48` (a `getLatestRelease` failure silently nulls the tag and
+  disables both buttons with no "why"), Providers refresh similarly. Fix: surface
+  the network/rate-limit error.
+- **Why:** "why can't I update?" with no message is a dead end.
+
+### TBX-P6 — `electron/tsconfig.json` lacks `noEmitOnError`/`sourceMap` {#tbx-p6}
+- **Status:** ☐ Open · **Effort:** S
+- A type error still emits `main.js`, so a broken main process can be packaged; no
+  source maps for packaged-crash diagnosis. Fix: add `noEmitOnError:true` +
+  `sourceMap:true` (consider `lib: ES2022` to match the runtime features used).
+- **Why:** stops shipping a main process that didn't type-check.
+
+### TBX-P7 — `tools.json` force-cast with no runtime drift check {#tbx-p7}
+- **Status:** ☐ Open · **Effort:** S
+- `Tester.tsx:98` (`as unknown as ToolDescriptor[]`). The catalog is regenerated by
+  `Dump-Tools.ps1`; if its schema drifts the UI breaks silently. Fix: a light
+  runtime validation or a generated `.d.ts`.
+- **Why:** catalog drift should fail loudly, not corrupt the Tester.
+
+### TBX-P8 — misc correctness nits {#tbx-p8}
+- **Status:** ☐ Open · **Effort:** S
+- `getExePath` (`main.ts:83-89`) can pick a stale binary when both plugin + legacy
+  exist (no mtime/version check — ties to the stale-exe class in
+  [[project_mcp_exe_locked_during_session]]); `getProjectDir` (`44-70`) re-walks 6
+  dir levels synchronously on every `get-paths` call (no caching); `resolveEngine`
+  fires on every keystroke (`Install.tsx:100`, no debounce/sequence-guard → IPC
+  storm + stale results). Fix: prefer-newer/warn on dual exe, cache the project
+  dir, debounce + sequence-tag the engine resolve.
+- **Why:** small correctness/perf cleanups that each cost a moment of confusion.
+
+### Toolbox research notes (2026-06-08) — recommended approaches
+
+A 6-cluster research pass grounded these items in current (2025–2026) best
+practice + our actual catalog. **Recurring verdict: harden the lean in-house
+code; don't pull a heavy dependency** into a `package.json` that deliberately has
+zero runtime deps beyond react.
+
+- **Self-update (S1/R2/R5).** Do **not** adopt `electron-updater` — it doesn't
+  support the *portable* target at all (electron-builder #5378); switching to NSIS
+  would forfeit the double-click-no-install UX and still ship unsigned. Two tracks
+  instead: (A) **authenticity = code-signing** — a same-response SHA256 defends
+  against corruption, not tampering; the real fix is an Authenticode signature
+  verified against a thumbprint baked into the app. Cheapest publisher identity is
+  **Azure Trusted Signing** (~$10/mo, individual sign-up GA 2025) via
+  electron-builder `win.azureSignOptions` in CI. (B) **verify-before-execute** —
+  `Get-AuthenticodeSignature` gate in the swap helper. **Ship now (S, ~30 min):
+  refuse to self-update when `digest` is absent** — closes the "no integrity at
+  all" hole immediately. Atomic `.part`+rename and keep-`.bak`-until-verified are
+  hand-rolled (don't add `write-file-atomic` — it's for small config writes).
+- **IPC/process security (S2–S5).** No new runtime deps (one optional unzip lib).
+  S2: replace `execSync(string)` with `execFileSync('reg', [...], {shell:false})`
+  + an `assoc` allowlist regex. S3: drop PowerShell `Expand-Archive -Command`
+  string-building for **`extract-zip`** (already transitively present) + validate
+  every script arg. S4: `path.resolve` + allowlist under the plugin dir. S5:
+  `setWindowOpenHandler(deny)` + `will-navigate` guard + CSP via
+  `session.webRequest.onHeadersReceived` + electron-builder signing/asar.
+- **Tester arg form (F2/F3/F4).** **Extend the hand-rolled `ArgForm`; do not adopt
+  rjsf** — across 260 tools only 12 array/object props are under-specified (and
+  they're the high-value ones: `apply_ops.ops`, `compile_function.body/inputs`,
+  `set_actor_transform.*`), so a JSON/Monaco editor for `array`/`object` + **`ajv@8`**
+  client-validation beats rjsf's auto-render value prop. F4 search: delete
+  `.slice(0,50)` (one line) + **`@tanstack/react-virtual`** for the 260-row list.
+- **MCP client (F6/F7).** **Harden, don't adopt `@modelcontextprotocol/sdk`** — it
+  pulls `zod` + unused surface (resumability/OAuth/elicitation) and still doesn't
+  auto-reconnect on a 404. Add `AbortSignal.timeout(ms)` + Cancel, per-instance id
+  counter, cached in-flight init promise, and 404→clear-session-and-reinit
+  (~80–120 LOC, no deps).
+- **Settings apply (F1/R8).** Merge the env block into **each provider's server
+  entry `env` object / `[mcp_servers.bp-reader.env]` table** (where every MCP
+  client actually reads it) — do not invent a central env file the server can't
+  load. Persist the cleaned block to `<userData>/bpr-settings.json` via IPC (keep
+  localStorage as the editing draft). Plumbs through existing provider-write code.
+- **Rendering (R7) + Tester refactor (P2/P3).** **Harden `JsonViewer`/`LogStream`**
+  (item-cap + string-truncation + lazy-raw-stringify + pinned-scroll/line-cap, no
+  dep) — `@textea/json-viewer` needs Material-UI (multi-MB), and `react-json-view`
+  is unmaintained; only `react-json-view-lite` (zero-dep) is a clean fallback if
+  ever needed, but it forfeits the Tailwind theming and still renders expanded
+  children. Refactor (P2) + history/export/batch-reorder (P3) are independent.
+
+Effort revisions from the pass: TBX-S1 split (the digest-guard stopgap is **S**,
+the signing track is M); TBX-S3 revised **M→S/M** (extract-zip collapses the
+injection surface); the rest hold. None of the recommended fixes require adopting
+a framework-scale dependency.
+
+### Toolbox implementation plan (sequenced batches)
+
+Ordered by severity-and-leverage; each batch is independently shippable.
+**Verification bar:** the Electron app can't be run headlessly here, so each
+batch is verified by `npm run build` (vite + `tsc` typecheck, with
+`noEmitOnError` added in B4) plus targeted review — weaker than the C++ suite,
+stated honestly. No framework-scale deps; only the small, justified ones the
+research named (`extract-zip`, `ajv`, `@tanstack/react-virtual`).
+
+- **Batch 1 — Security (TBX-S1–S5), split:**
+  - **1a (ship now, no infra):** refuse self-update when `digest` absent (TBX-S1
+    stopgap); `execFileSync('reg',…,{shell:false})` + `assoc` allowlist (S2);
+    replace PowerShell `Expand-Archive -Command` with `extract-zip` + validate
+    every script arg / `client` enum (S3); `path.resolve` allowlist under the
+    plugin dir for `run-script`/`read-file`/`write-file` (S4);
+    `setWindowOpenHandler(deny)` + `will-navigate` guard + `openExternal` scheme
+    allowlist + CSP (S5). **Start here.**
+  - **1b (needs infra, deferred):** Azure Trusted Signing in CI + Authenticode
+    `Get-AuthenticodeSignature` verify-before-execute (TBX-S1 full). Tracked,
+    not blocking — needs an Azure account + signing cert.
+- **Batch 2 — Half-built functional (TBX-F1–F9):** Settings "Save" actually
+  writes the env block into each provider's server-entry `env` (F1/R8); Tester
+  array/object arg editor + `ajv` validation + un-truncate search w/
+  `react-virtual` (F2/F3/F4); `.uproject` existence/extension validation (F5);
+  MCP client `AbortSignal.timeout`+cancel+reconnect+per-instance id (F6/F7);
+  Providers "Configure All" per-item logs/tally (F9); semver-correct `cmpVersion`
+  (F8). These are what users notice most (pages that look done but aren't).
+- **Batch 3 — Robustness (TBX-R1–R9):** track+kill child procs on quit (R1);
+  atomic `.part`+rename downloads + backoff retries (R2); env-whitelist +
+  surfaced write-mode in `start-server` (R3); scope `kill-mcp` to tracked PIDs
+  (R4); keep `.bak` until verified relaunch (R5); async fs / defer temp-sweep
+  (R6); JsonViewer/LogStream caps + lazy raw (R7); provider-status exe match +
+  all-asset check (R8); unmount cleanup + guarded `JSON.parse` (R9).
+- **Batch 4 — Polish / a11y / maintainability (TBX-P1–P8):** error boundary +
+  aria + tablist/badge semantics (P1); Tester `useMcpServer`/`useToolCall`
+  extraction (P2); history persistence/export/batch-reorder (P3); engine-dir
+  field (P4); fetch-error surfacing (P5); `noEmitOnError`+sourceMap (P6);
+  `tools.json` runtime guard (P7); misc (P8).
+
+As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log line.
+
+---
+
 ## Revision log
 
 Newest first. One line per change to this file.
 
+- **2026-06-08** — **Toolbox Batch 2 SHIPPED** (uncommitted): TBX-F1/F2/F3/F4/F5/
+  F8/F9 done; F6/F7 (MCP-client robustness) split out to **Batch 2b**. F1 = Settings
+  Save actually applies (shared store + `serverType`/`baseEnv` refactor + all JSON
+  providers through the merge with env injected). F2/F3 = Tester array/object JSON
+  args + schema validation (single + batch). F4 = un-truncated search. F5 =
+  `.uproject` validation. F8 = semver `cmpVersion`. F9 = Configure All per-provider
+  logs. Renderer + electron `tsc` clean. **2-lens review caught + fixed: a HIGH
+  cross-batch regression (F5's existence-via-`read-file` hit the Batch-1a allowlist
+  → dedicated `uproject-exists` IPC), F3 not covering the batch path, and F1 losing
+  the `BP_READER_PROJECT` pin.** Review confirmed all 8 JSON provider config shapes
+  match the prior script output + F8 precedence correct.
+- **2026-06-08** — **Toolbox Batch 1a SHIPPED** (uncommitted): TBX-S2/S3/S4/S5
+  done + TBX-S1 1a (digest-guard). `electron/main.ts`: execFileSync(reg)+assoc
+  regex, env-var Expand-Archive + client allowlist, realpath-aware path allowlists
+  for run-script/read-file/write-file, nav/window lockdown + http(s) openExternal
+  + prod CSP, refuse-no-digest self-update. `tsc -p electron` clean. **Adversarial
+  review (2-lens workflow) caught + fixed: a critical regression (ALLOWED_CLIENTS
+  casing broke per-client install), a symlink/junction bypass (→ realpath), and a
+  file:// "Open config file" regression (→ shell.openPath).** 1b (Authenticode
+  signing) deferred (needs cert/CI). Verification bar: typecheck + review (the
+  Electron app can't run headlessly here).
+- **2026-06-08** — Added the Toolbox **implementation plan** (sequenced batches
+  1a/1b/2/3/4) to §9; starting Batch 1a (security hardening).
+- **2026-06-08** — **Server-side gap CLOSED + catalog regenerated.** After the
+  session's MCP server disconnected (unlocking the exe), rebuilt
+  `BlueprintReaderMcp.exe` (0.1.0+ae135040) and: (1) regenerated the tool catalog
+  via `Dump-Tools.ps1` — `-Check` now passes (my earlier hand-sync of
+  `tools.json` was 1 line off; now canonical); (2) drove the server-side fixes
+  through the REAL server → commandlet daemon on real data (`Saved/verify-server-
+  side.ps1`, 5/5): P4e single payload (`structuredContent` full + short text
+  note), P4g diff tools hidden by default (40) then discoverable after
+  `enable_tool_category(read)`, P4i-c `list_blueprints` find_asset hint, and A's
+  apply_ops progress reaching 3/3. These were mock-only before.
+- **2026-06-08** — Research: how to test the render/interactive surface against a
+  real **active** editor → [`live-gui-testing.md`](live-gui-testing.md) (new TEST-1
+  item). Key findings: the GUI "wedging modal" was a missing `-unattended` flag
+  (`FMessageDialog` auto-defaults under it); `-AllowCommandletRendering` flips
+  `CanEverRender()` true headless. **Fidelity caveat (per maintainer):** tests
+  must match how tools respond when a person is *actively* using the editor — so
+  viewport/selection/camera/PIE/open-editor tools need a real GUI editor (Track B,
+  `live` backend, map loaded + active viewport), NOT just a render-capable
+  commandlet (Track A, which lacks an active viewport/selection and is only a
+  partial measure).
+- **2026-06-08** — **UX-P4c FIXED for real (reload-from-disk).** Replaced the
+  headless-broken `CancelTransaction` rollback with reloading each touched
+  package from disk on `-Rollback` (`UPackageTools::ReloadPackages`,
+  `AssumePositive`) — valid because the batch defers all saves, so disk holds the
+  pre-batch state. `EndBatch` returns `rolled_back:N`. **Live-verified 5/5**
+  (`Saved/uxp4-rollback.ps1`): a batch of 2 vars + a node rolled back to the exact
+  pre-batch var set + graph node count, `save_all` couldn't resurrect it, and a
+  commit batch still persists. Editor module rebuilt exit 0; test exe unchanged
+  (862/0). UX-P4c now ✅.
+- **2026-06-08** — **CORRECTION: UX-P4c rollback is NOT live-verified.** A
+  re-run against the final build (per request) exposed that the earlier "P4c
+  rollback live-verified" claim was a false pass (test read a non-existent
+  `.json.variables` field). Corrected testing proved `EndBatch -Rollback` /
+  `CancelTransaction` is a no-op in the `-nullrhi` headless daemon — a batched
+  `AddVariable` survived in memory and `save_all` persisted it. P4c's default-
+  selection is mock-verified and correct; the underlying H1 rollback MECHANISM is
+  broken headless and needs a real fix (see UX-P4c). The OTHER live claims hold:
+  P4h/P4d/P4i-a/P4b-honesty used direct error-string/exit-code/field checks
+  (re-confirmed PASS on the final build), not the buggy field access.
+- **2026-06-08** — Post-review fixes (5-agent review of the UX-P4 diff). Real
+  findings addressed: PARITY-1 `EmitProgress` off-by-one (#259 comment — numeric
+  progress was 0-based `i`, never reached `total`; now `i+1`, test strengthened);
+  `bind_widget_event` returns `ok:false` when compile/save fails (not durable);
+  `bp_structural_diff` added to the `assets` category for parity with
+  `diff_asset`/`prepare_merge`; `RunOps` "unknown on_failure" error string dropped
+  the now-misleading `(default)`; `PayloadOf` test helper no longer throws on a
+  non-JSON error envelope. Dismissed as false-positive/intentional: the "const
+  pointer compile error" (it's `const T*`, reassignable — builds clean), the
+  `structuredContent` text-only tradeoff (UX-P4e, maintainer-chosen), and the
+  `BatchGuard` edge path (unreachable — the mid-batch catch applies rollback +
+  releases the guard). Multi-engine: the new UMG bind APIs are UE4-era stable +
+  use the project-wide FProperty system, so no version guard. Mock 862/0.
+- **2026-06-08** — Toolbox research pass: added [Toolbox research notes](#toolbox-research-notes-2026-06-08)
+  to §9 (6 clusters — self-update/signing, IPC security, Tester arg-form, MCP
+  client, Settings apply, rendering). Recurring verdict: harden the lean in-house
+  code, don't adopt framework-scale deps; concrete libs where worth it (Azure
+  Trusted Signing, extract-zip, ajv, @tanstack/react-virtual). TBX-S1 split (digest
+  stopgap = S); TBX-S3 M→S/M. See [[project_toolbox_audit]].
+- **2026-06-08** — **Implemented UX-P4b/c/d/e/g/h/i(a,c) (uncommitted).** Server-side
+  (mock 862/0): P4c (atomic⇒rollback default in `ApplyOps.cpp` + tests),
+  P4e (single payload via `structuredContent`, short text note, in `Mcp.cpp` +
+  `PayloadOf` test helper), P4g (3 diff tools added to read/assets categories),
+  P4i-c (`list_blueprints` find_asset `_hint`), P4b handler honesty (`ok`=`bound`
+  + `reason` field through the chain). Plugin-side (editor module rebuilt vs
+  installed UE 5.8; **live-verified** via `Saved/uxp4-live.ps1` + `uxp4-p4b*.ps1`):
+  P4b real `K2Node_ComponentBoundEvent`, P4d prefix refs + named errors in 4 ops,
+  P4h param/local guidance, P4i-a `save_all` `/Script` filter + `nothing_to_save`.
+  P4f closed as already-fixed (#210, stale-build report). Docs: bp-batches SKILL +
+  AGENTS atomicity; `docs/tools.json` on_failure description hand-synced (server
+  exe locked this session, can't run Dump-Tools — **regen the catalog on the next
+  clean server build**). Deferred: P4a (paused-editor health), P4d server pre-flight
+  (P4c rollback covers it), P4b PART-B node kinds, P4i-b add_widget index. Build
+  fix: stale UBT cache referenced a removed `PreBuild-1.bat` → dropped a no-op
+  there (gitignored intermediate). See [[project_client_feedback_2026_06_07]].
+- **2026-06-08** — Added **Section 9 (Toolbox)**: 31 items from the 2026-06-08
+  three-auditor audit of the Electron app (`Toolbox/`), prefixed TBX-S/F/R/P
+  (security/functional/robustness/polish). P0 security cluster (unsigned
+  self-update TBX-S1, `.uproject` shell/arg injection S2/S3, unconstrained IPC
+  primitives S4, nav/CSP/signing S5); P1 half-built (Settings Save dead F1, Tester
+  array-args F2). TBX-S1 + TBX-F1 promoted to the S-tier table. A research-driven
+  flesh-out pass is queued. See [[project_toolbox_audit]].
+- **2026-06-08** — Added UX-P4a–i from the 2026-06-07 live-session client
+  feedback (Section 2): debugger-paused-vs-unreachable health signal (P4a),
+  `bind_widget_event` false success + missing component-bound-event node kind
+  (P4b), `apply_ops atomic:true` non-rollback to verify against H1 (P4c),
+  short-ref + pre-flight validation + named-ref errors for splice batches (P4d),
+  doubled-JSON in the client-facing spill file (P4e), AGENTS.md exposure-model
+  mismatch (P4f), `bp_structural_diff`→`diff_asset` doc reconcile (P4g),
+  `VariableGet`-on-param error (P4h), and minor `save_all`/`add_widget`/
+  `list_blueprints` output nits (P4i). P4b + P4e promoted to the S-tier table.
+  Downstream-project specifics genericized to neutral UE placeholders.
 - **2026-06-02** — Initial roadmap created from the four-track research pass
   (Epic 5.8 parity, effectiveness/ease-of-use, transpiling, install/update).
   All items `☐ Open`.

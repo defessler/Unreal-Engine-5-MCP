@@ -3,19 +3,13 @@ import { bridge } from '../lib/bridge';
 import LogStream from '../components/LogStream';
 import StatusBadge from '../components/StatusBadge';
 import { loadUproject, uprojectToPluginDir } from '../lib/paths';
+import { cmpVersion as cmp } from '../lib/semver';
 
 const REPO_RELEASES = 'https://github.com/defessler/Unreal-Engine-5-MCP/releases';
 
-// >0 if a is newer than b, <0 if older, 0 equal. Strips a leading 'v' and any
-// pre-release suffix. Used so we only offer/apply a strictly-newer release.
+// Semver-aware (TBX-F8) — tolerates null/undefined like the old local copy.
 function cmpVersion(a?: string | null, b?: string | null): number {
-  const parse = (s?: string | null) => (s ?? '').replace(/^v/, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
-  const pa = parse(a), pb = parse(b);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d > 0 ? 1 : -1;
-  }
-  return 0;
+  return cmp(a ?? '', b ?? '');
 }
 
 export default function Update() {
