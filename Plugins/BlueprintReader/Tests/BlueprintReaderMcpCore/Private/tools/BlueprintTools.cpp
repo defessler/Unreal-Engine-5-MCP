@@ -3446,6 +3446,53 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		});
 	}
 
+	// ----- health_check ---------------------------------------------------
+	// UX-P4a liveness probe. Answered on the editor's WORKER thread (no game-
+	// thread dispatch), so it returns a fast, distinct answer even when the game
+	// thread is halted — letting a client tell "editor paused" from "editor gone"
+	// instead of waiting out a generic op timeout.
+	{
+		ToolDescriptor d;
+		d.name = "health_check";
+		d.description =
+			"[editor] Probe whether the live editor is responsive. Answered on "
+			"the editor's worker thread WITHOUT touching the game thread, so it "
+			"returns immediately even when the game thread is halted — "
+			"distinguishing a PAUSED editor (debugger breakpoint, modal dialog, "
+			"or long synchronous task: reachable but game thread stalled) from an "
+			"UNREACHABLE one (process gone / port not published). Returns "
+			"`state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, "
+			"`game_thread_responsive`, and `game_thread_age_ms` (how long since "
+			"the game thread last advanced; -1 = unknown, e.g. the commandlet "
+			"one-shot backend which has no persistent editor). Call this when a "
+			"normal tool call is hanging to learn whether to wait (paused) or "
+			"reconnect (unreachable).";
+		d.input_schema = {
+			{"type", "object"},
+			{"properties", nlohmann::json::object()},
+		};
+		d.output_schema = {
+			{"type", "object"},
+			{"properties", {
+				{"reachable", {{"type", "boolean"}}},
+				{"game_thread_responsive", {{"type", "boolean"}}},
+				{"game_thread_age_ms", {{"type", "integer"}}},
+				{"state", {{"type", "string"}}},
+				{"note", {{"type", "string"}}},
+			}},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
+			const auto h = reader.HealthCheck();
+			return nlohmann::json{
+				{"reachable", h.reachable},
+				{"game_thread_responsive", h.gameThreadResponsive},
+				{"game_thread_age_ms", h.gameThreadAgeMs},
+				{"state", h.state},
+				{"note", h.note},
+			};
+		});
+	}
+
 	// ----- run_python_script ----------------------------------------------
 	// Code-as-universal-tool capability (inspired by Epic AIAssistant's
 	// ExecPythonCommandEx surface). Gated server-side by

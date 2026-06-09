@@ -2856,6 +2856,24 @@ public:
 	{
 		throw BlueprintReaderError("prepare_merge not supported by this backend");
 	}
+
+	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER
+	// THREAD even when the game thread is halted — so a paused editor is a
+	// distinct, fast answer instead of a generic op timeout. `state` is one of
+	// "healthy" | "paused" | "unreachable"; `game_thread_age_ms` is how long
+	// since the editor's game thread last advanced its heartbeat (-1 = unknown,
+	// e.g. the commandlet/process-level backends that have no game-thread probe).
+	struct HealthResult {
+		bool reachable = false;             // could we talk to the backend at all
+		bool gameThreadResponsive = false;  // worker answered AND the heartbeat is fresh
+		long long gameThreadAgeMs = -1;     // now - last game-thread heartbeat; -1 = unknown
+		std::string state;                  // "healthy" | "paused" | "unreachable"
+		std::string note;                   // optional human-readable detail
+	};
+	virtual HealthResult HealthCheck()
+	{
+		throw BlueprintReaderError("HealthCheck not supported by this backend");
+	}
 };
 
 }    // namespace bpr::backends

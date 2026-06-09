@@ -332,6 +332,18 @@ nlohmann::json MockBlueprintReader::ReadActorInstance(std::string_view) {
 		"(needs a UObject world that mock fixtures don't provide)");
 }
 
+// UX-P4a: the mock has no editor game thread to stall, so health is a stable
+// synthetic-healthy result (fixture-deterministic — age is always 0).
+IBlueprintReader::HealthResult MockBlueprintReader::HealthCheck() {
+	HealthResult r;
+	r.reachable = true;
+	r.gameThreadResponsive = true;
+	r.gameThreadAgeMs = 0;
+	r.state = "healthy";
+	r.note = "mock backend (no live editor)";
+	return r;
+}
+
 std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 	// Tools the mock backend doesn't implement and would otherwise
 	// throw "not supported by this backend" for. Main.cpp deny-filters

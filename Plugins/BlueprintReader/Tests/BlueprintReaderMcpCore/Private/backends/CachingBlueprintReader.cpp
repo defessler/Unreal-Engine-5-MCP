@@ -511,6 +511,11 @@ CachingBlueprintReader::GetProjectMetadata() {
 	return inner_->GetProjectMetadata();
 }
 
+IBlueprintReader::HealthResult
+CachingBlueprintReader::HealthCheck() {
+	return inner_->HealthCheck();  // never cached — must always probe fresh
+}
+
 IBlueprintReader::SaveAllResult
 CachingBlueprintReader::SaveAll(bool dirtyOnly) {
 	// SaveAll doesn't change in-memory asset state, just persists it —

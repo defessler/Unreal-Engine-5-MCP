@@ -34,13 +34,24 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 260 tools with input schemas") {
+TEST_CASE("ToolRegistry exposes 261 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 260);
+	CHECK(spec.size() == 261);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
+}
+
+// UX-P4a: the mock backend has no live editor game thread, so health_check is a
+// stable synthetic-healthy answer (and must NOT throw "not supported").
+TEST_CASE("health_check: mock backend reports synthetic-healthy") {
+	Fixture f;
+	const auto r = f.Call("health_check", json::object());
+	CHECK(r["reachable"] == true);
+	CHECK(r["game_thread_responsive"] == true);
+	CHECK(r["game_thread_age_ms"] == 0);
+	CHECK(r["state"] == "healthy");
 }
 
 TEST_CASE("ValidateToolName accepts spec-compliant names, rejects others") {

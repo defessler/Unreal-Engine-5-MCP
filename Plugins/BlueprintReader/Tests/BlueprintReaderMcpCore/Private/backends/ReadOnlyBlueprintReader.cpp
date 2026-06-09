@@ -198,6 +198,11 @@ ReadOnlyBlueprintReader::GetProjectMetadata() {
 	return inner_->GetProjectMetadata();
 }
 
+IBlueprintReader::HealthResult
+ReadOnlyBlueprintReader::HealthCheck() {
+	return inner_->HealthCheck();  // a read — pass through
+}
+
 IBlueprintReader::SaveAllResult ReadOnlyBlueprintReader::SaveAll(bool) {
 	Reject("save_all");
 }

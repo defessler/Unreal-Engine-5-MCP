@@ -127,4 +127,15 @@ private:
 // for its lifetime; tests + other code can reach it via this if needed.
 FLiveServer* GetLiveServer();
 
+// UX-P4a: game-thread liveness heartbeat for the live/daemon health channel.
+// BumpGameThreadHeartbeat() runs ON THE GAME THREAD (an FTSTicker registered at
+// module startup, which fires even when the editor is idle, plus each op via
+// RunOneOpFromLiveServer). GameThreadHeartbeatAgeMs() is read lock-free from a
+// connection WORKER thread to answer a {"type":"health"} frame even while the
+// game thread is wedged (debugger breakpoint / modal / long sync task) — a
+// large age is the "paused" signal. Returns ms since the last bump, or -1 if
+// the game thread has never advanced the heartbeat yet.
+void BumpGameThreadHeartbeat();
+int64 GameThreadHeartbeatAgeMs();
+
 }    // namespace BlueprintReader

@@ -2479,6 +2479,35 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable).",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "health_check",
+    "output_schema": {
+      "properties": {
+        "game_thread_age_ms": {
+          "type": "integer"
+        },
+        "game_thread_responsive": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Execute an Unreal Python script in the live editor. Wrapped in a single undo transaction so mutations are reversible. **Gated:** the MCP server's process env must include `BP_READER_ALLOW_PYTHON=1`. Off by default — arbitrary Python has full access to the `unreal.*` API and bypasses the curated tool surface. When disabled, returns `{ok: false, error: 'python_disabled', hint: ...}`. Returns the captured stdout/stderr in `log[]` plus the script's command result. For curated authoring, prefer the named BP/asset/material/widget tools.",
     "input_schema": {
       "properties": {

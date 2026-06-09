@@ -5110,6 +5110,51 @@ nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
 #endif    // defined(_WIN32)
 }
 
+// UX-P4a: liveness probe. In daemon mode, attach to the daemon and delegate to
+// its socket's worker-thread health probe (the real paused-vs-unreachable
+// signal). In one-shot mode there is no persistent editor between calls — each
+// op spawns a fresh editor — so report a process-level "healthy" with a note
+// instead of pretending to probe a game thread that doesn't exist yet.
+IBlueprintReader::HealthResult CommandletBlueprintReader::HealthCheck() {
+	if (cfg_.useDaemon) {
+		// Probe an ALREADY-attached daemon only — never spawn one just to answer a
+		// health probe (EnsureDaemonAttached() would launch a full headless editor,
+		// a surprising side effect for a diagnostic). Hold daemonMutex_ so the
+		// daemon can't be torn down under us during the brief probe.
+		std::lock_guard<std::mutex> lock(daemonMutex_);
+		if (socket_) {
+			try {
+				return socket_->HealthCheck();
+			} catch (const std::exception& e) {
+				HealthResult r;
+				r.reachable = false;
+				r.gameThreadResponsive = false;
+				r.gameThreadAgeMs = -1;
+				r.state = "unreachable";
+				r.note = fmt::format("commandlet daemon not reachable: {}", e.what());
+				return r;
+			}
+		}
+		HealthResult r;
+		r.reachable = false;
+		r.gameThreadResponsive = false;
+		r.gameThreadAgeMs = -1;
+		r.state = "unreachable";
+		r.note = "commandlet daemon mode: no daemon attached yet (a tool call would "
+				 "spawn/attach one) — not spawning an editor just to probe health";
+		return r;
+	}
+	HealthResult r;
+	r.reachable = true;
+	r.gameThreadResponsive = true;
+	r.gameThreadAgeMs = -1;
+	r.state = "healthy";
+	r.note = "commandlet one-shot backend: no persistent editor between calls "
+			 "(each op spawns a fresh editor); set BP_READER_DAEMON=1 for a "
+			 "game-thread liveness signal";
+	return r;
+}
+
 nlohmann::json CommandletBlueprintReader::DiffAsset(
 	std::string_view a, std::string_view b, std::string_view depth) {
 	std::vector<std::wstring> args = {L"-Op=DiffAsset",

@@ -146,6 +146,7 @@ public:
 	void BeginBatch() override;
 	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
 	nlohmann::json ShutdownDaemon() override;
+	HealthResult HealthCheck() override;  // UX-P4a — forwards to live/commandlet
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,
 	                         std::string_view depth = "structural") override;
 	nlohmann::json PrepareMerge(std::string_view base, std::string_view mine,

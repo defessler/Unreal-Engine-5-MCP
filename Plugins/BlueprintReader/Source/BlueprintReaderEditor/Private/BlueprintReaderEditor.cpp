@@ -1,7 +1,11 @@
 #include "BlueprintReaderEditor.h"
 #include "BlueprintReaderLiveServer.h"
 #include "BlueprintReaderLogSink.h"
+#include "Containers/Ticker.h"            // UX-P4a: FTSTicker game-thread heartbeat
 #include "Modules/ModuleManager.h"
+
+// UX-P4a: handle for the game-thread heartbeat ticker, removed on shutdown.
+static FTSTicker::FDelegateHandle GHeartbeatTickerHandle;
 
 void FBlueprintReaderEditorModule::StartupModule()
 {
@@ -14,10 +18,32 @@ void FBlueprintReaderEditorModule::StartupModule()
 	// is set → editor module behaves exactly as before. The MCP server's
 	// commandlet daemon backend is unaffected either way.
 	BlueprintReader::GetLiveServer()->Start();
+
+	// UX-P4a: advance the game-thread heartbeat ~10x/sec so the live health
+	// channel can tell an idle-but-alive editor (fresh heartbeat) from a wedged
+	// one (stale). The core ticker is pumped on the GAME THREAD by the editor's
+	// main loop (and by the daemon's explicit Tick() pump), so this fires even
+	// with zero MCP connections — and CANNOT fire while the game thread is halted,
+	// which is exactly the "paused" signal the worker-thread probe reads. Return
+	// true to stay registered.
+	GHeartbeatTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda([](float /*DeltaTime*/) -> bool
+		{
+			BlueprintReader::BumpGameThreadHeartbeat();
+			return true;
+		}),
+		0.1f);
+	// Seed an initial value so a probe in the first 100ms reads "fresh", not -1.
+	BlueprintReader::BumpGameThreadHeartbeat();
 }
 
 void FBlueprintReaderEditorModule::ShutdownModule()
 {
+	if (GHeartbeatTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(GHeartbeatTickerHandle);
+		GHeartbeatTickerHandle.Reset();
+	}
 	if (BlueprintReader::FLiveServer* S = BlueprintReader::GetLiveServer())
 	{
 		S->Stop();

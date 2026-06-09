@@ -63,6 +63,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"list_node_kinds",
 			"list_pin_categories",
 			"get_editor_state",
+			"health_check",
 			"shutdown_daemon",
 		}},
 
