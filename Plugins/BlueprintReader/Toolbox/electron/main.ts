@@ -18,6 +18,43 @@ import { fileURLToPath } from 'node:url';
 const isDev = !app.isPackaged;
 
 // ---------------------------------------------------------------------------
+// Child-process tracking (TBX-R1)
+// ---------------------------------------------------------------------------
+// Every transient child we spawn (installs, extraction, scripts, kill sweeps) is
+// registered here so the window-close handler can tear down the whole tree —
+// orphaned PowerShell/build processes otherwise keep locks on the very plugin
+// dir a later op tries to swap. A `cancel-operation` IPC kills them on demand.
+const transientChildren = new Set<ChildProcess>();
+
+function trackChild<T extends ChildProcess>(p: T): T {
+  transientChildren.add(p);
+  p.once('exit', () => transientChildren.delete(p));
+  return p;
+}
+
+// taskkill /T kills the whole process tree (a build spawns UBT/cl/link children
+// that node's proc.kill() would orphan); /F forces it. Best-effort + detached.
+function killTree(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    spawn('taskkill', ['/PID', String(pid), '/T', '/F'],
+      { windowsHide: true, stdio: 'ignore', detached: true }).unref();
+  } catch { /* ignore */ }
+}
+
+function killAllTransient(): void {
+  for (const p of transientChildren) killTree(p.pid);
+  transientChildren.clear();
+}
+
+// In-flight download fetches — so cancel-operation can abort the download phase
+// (the longest part of an install/update), not just child processes (R1/M1).
+const activeDownloads = new Set<AbortController>();
+
+// Monotonic suffix so two same-path atomic writes can't collide on the temp name.
+let writeSeq = 0;
+
+// ---------------------------------------------------------------------------
 // Security helpers (Batch 1a hardening)
 // ---------------------------------------------------------------------------
 
@@ -318,10 +355,13 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     if (splash && !splash.isDestroyed()) { splash.close(); }
-    // Clean up any spawned servers
+    // Clean up any spawned servers + tear down every transient child tree (R1)
+    // so an in-flight install/build can't orphan PowerShell/UBT/cl processes
+    // that keep locks on the plugin dir.
     for (const [, proc] of serverProcesses) {
       try { proc.kill(); } catch { /* ignore */ }
     }
+    killAllTransient();
   });
 }
 
@@ -329,12 +369,15 @@ function createWindow() {
 // intentionally can't delete its own dir before quitting (the detached helper
 // still needs it), and a killed install could orphan one too. A dir a fresh
 // helper still holds is simply skipped and retried next launch.
-function sweepStaleTempDirs() {
+// TBX-R6: async + run off the launch critical path (a recursive rm of a large
+// stale dir on a slow drive otherwise delayed the first window).
+async function sweepStaleTempDirs() {
   try {
     const tmpRoot = app.getPath('temp');
-    for (const name of fs.readdirSync(tmpRoot)) {
-      if (/^bpr-(tbup|dl)-/.test(name)) {
-        try { fs.rmSync(path.join(tmpRoot, name), { recursive: true, force: true }); } catch { /* in use; next time */ }
+    const names = await fs.promises.readdir(tmpRoot);
+    for (const name of names) {
+      if (/^bpr-(tbup|dl|assets)-/.test(name)) {
+        try { await fs.promises.rm(path.join(tmpRoot, name), { recursive: true, force: true }); } catch { /* in use; next time */ }
       }
     }
   } catch { /* ignore */ }
@@ -356,7 +399,7 @@ function installCsp() {
   });
 }
 
-app.whenReady().then(() => { installCsp(); sweepStaleTempDirs(); createWindow(); });
+app.whenReady().then(() => { installCsp(); createWindow(); void sweepStaleTempDirs(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
@@ -419,10 +462,11 @@ ipcMain.handle('get-paths', () => {
   };
 });
 
+// TBX-R6: async fs so a slow drive can't freeze all IPC / the window.
 ipcMain.handle('read-file', async (_evt, filePath: string) => {
   if (!fileAccessAllowed(filePath)) return null;
   try {
-    return fs.readFileSync(filePath, 'utf8');
+    return await fs.promises.readFile(filePath, 'utf8');
   } catch {
     return null;
   }
@@ -432,8 +476,17 @@ ipcMain.handle('write-file', async (_evt, filePath: string, content: string) => 
   if (!fileAccessAllowed(filePath)) {
     throw new Error(`refused to write outside allowed roots: ${filePath}`);
   }
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, 'utf8');
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  // Atomic write: a crash/lock mid-write can't leave a half-written config —
+  // write a sibling temp, then rename over the target (libuv rename replaces).
+  const tmp = `${filePath}.tmp-${process.pid}-${writeSeq++}`;
+  try {
+    await fs.promises.writeFile(tmp, content, 'utf8');
+    await fs.promises.rename(tmp, filePath);
+  } catch (e) {
+    await fs.promises.rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
 });
 
 ipcMain.handle('open-file-dialog', async (_evt, opts: {
@@ -538,19 +591,36 @@ async function fetchLatestRelease(): Promise<ReleaseInfo> {
 // stream pipeline so a write error (disk full, AV lock, perms) rejects cleanly —
 // the caller's try/catch turns it into {ok:false,error} instead of crashing the
 // main process — and partial files are removed so a retry can't reuse them.
-async function downloadFile(
-  url: string, destPath: string, label: string,
+class DownloadError extends Error {
+  constructor(message: string, readonly retriable: boolean, readonly retryAfterMs?: number) {
+    super(message);
+  }
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// One download attempt → writes to `partPath` (a temp sibling), verifies size +
+// optional sha256. Throws a DownloadError tagged retriable for transient faults.
+async function downloadOnce(
+  url: string, partPath: string, label: string,
   expected?: { size?: number; digest?: string },
 ): Promise<void> {
   const ctrl = new AbortController();
+  activeDownloads.add(ctrl);
   let stall: NodeJS.Timeout | undefined;
   const STALL_MS = 60000;
-  const arm = () => { if (stall) clearTimeout(stall); stall = setTimeout(() => ctrl.abort(), STALL_MS); };
+  let stalled = false;
+  const arm = () => { if (stall) clearTimeout(stall); stall = setTimeout(() => { stalled = true; ctrl.abort(); }, STALL_MS); };
   arm();
   let got = 0, lastPct = -1;
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'bp-reader-toolbox' }, redirect: 'follow', signal: ctrl.signal });
-    if (!res.ok || !res.body) throw new Error(`download of ${label} failed: HTTP ${res.status}`);
+    if (!res.ok || !res.body) {
+      // 5xx / 408 / 429 are transient; honor Retry-After when present.
+      const retriable = res.status >= 500 || res.status === 408 || res.status === 429;
+      const ra = Number(res.headers.get('retry-after'));
+      throw new DownloadError(`download of ${label} failed: HTTP ${res.status}`, retriable, Number.isFinite(ra) ? ra * 1000 : undefined);
+    }
     const total = Number(res.headers.get('content-length') ?? 0);
     const hash = expected?.digest ? crypto.createHash('sha256') : null;
     const progress = new Transform({
@@ -564,30 +634,63 @@ async function downloadFile(
     });
     // Readable.fromWeb converts the WHATWG body; pipeline wires error handling +
     // destroys all streams (releases the fd) on any failure.
-    await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), progress, fs.createWriteStream(destPath));
+    await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), progress, fs.createWriteStream(partPath));
 
     const wantSize = expected?.size || total;
     if (wantSize && got !== wantSize) {
-      try { fs.rmSync(destPath, { force: true }); } catch { /* ignore */ }
-      throw new Error(`${label} download incomplete: ${got}/${wantSize} bytes (connection dropped?)`);
+      // A short read is a dropped connection — retriable.
+      throw new DownloadError(`${label} download incomplete: ${got}/${wantSize} bytes (connection dropped?)`, true);
     }
     if (hash && expected?.digest) {
       const want = expected.digest.replace(/^sha256:/i, '').toLowerCase();
-      const gotHash = hash.digest('hex');
-      if (gotHash !== want) {
-        try { fs.rmSync(destPath, { force: true }); } catch { /* ignore */ }
-        throw new Error(`${label} integrity check failed (sha256 mismatch — corrupt download)`);
+      if (hash.digest('hex') !== want) {
+        // A complete-but-wrong file won't fix on retry — fail hard.
+        throw new DownloadError(`${label} integrity check failed (sha256 mismatch — corrupt download)`, false);
       }
     }
     logLine(`  ${label}: downloaded ${(got / 1048576).toFixed(1)} MB`);
+  } catch (e) {
+    if (stalled) throw new DownloadError(`${label} download stalled (no data for ${STALL_MS / 1000}s)`, true);
+    throw e;
   } finally {
     if (stall) clearTimeout(stall);
+    activeDownloads.delete(ctrl);
   }
+}
+
+// Atomic, retrying download: each attempt streams to `${destPath}.part`; only a
+// fully verified file is renamed into place, so a partial never masquerades as
+// a finished download (R2). Leftover `.part` files are always removed. Transient
+// failures (5xx/429/stall/short-read) get bounded backoff retries.
+async function downloadFile(
+  url: string, destPath: string, label: string,
+  expected?: { size?: number; digest?: string },
+): Promise<void> {
+  const partPath = `${destPath}.part`;
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await downloadOnce(url, partPath, label, expected);
+      try { fs.rmSync(destPath, { force: true }); } catch { /* ignore */ }
+      fs.renameSync(partPath, destPath);  // atomic publish
+      return;
+    } catch (e) {
+      lastErr = e;
+      try { fs.rmSync(partPath, { force: true }); } catch { /* ignore */ }
+      const retriable = e instanceof DownloadError ? e.retriable : true; // network/abort errors aren't DownloadError
+      if (!retriable || attempt >= MAX_ATTEMPTS) break;
+      const backoff = (e instanceof DownloadError && e.retryAfterMs) ? e.retryAfterMs : 1000 * 2 ** (attempt - 1);
+      logLine(`  ${label}: attempt ${attempt} failed — retrying in ${Math.round(backoff / 1000)}s ...`);
+      await sleep(backoff);
+    }
+  }
+  throw lastErr;
 }
 
 function runPwsh(args: string[]): Promise<number> {
   return new Promise((resolve) => {
-    const p = spawn('pwsh.exe', args, { windowsHide: true });
+    const p = trackChild(spawn('pwsh.exe', args, { windowsHide: true }));
     p.stdout.on('data', (d: Buffer) => logLine(d.toString('utf8')));
     p.stderr.on('data', (d: Buffer) => logLine(d.toString('utf8')));
     p.on('exit', (c) => resolve(c ?? 0));
@@ -601,9 +704,9 @@ function runPwsh(args: string[]): Promise<number> {
 // 5.1, always present; `powershell.exe` not `pwsh.exe`.)
 function expandArchive(zip: string, dest: string): Promise<number> {
   return new Promise((resolve) => {
-    const p = spawn('powershell.exe', ['-NoProfile', '-Command',
+    const p = trackChild(spawn('powershell.exe', ['-NoProfile', '-Command',
       'Expand-Archive -LiteralPath $env:BPR_ZIP -DestinationPath $env:BPR_DEST -Force'],
-      { windowsHide: true, env: { ...process.env, BPR_ZIP: zip, BPR_DEST: dest } });
+      { windowsHide: true, env: { ...process.env, BPR_ZIP: zip, BPR_DEST: dest } }));
     p.stdout.on('data', (d: Buffer) => logLine(d.toString('utf8')));
     p.stderr.on('data', (d: Buffer) => logLine(d.toString('utf8')));
     p.on('exit', (c) => resolve(c ?? 0));
@@ -760,12 +863,22 @@ ipcMain.handle('self-update-toolbox', async () => {
       '  try { Copy-Item -LiteralPath $NewExe -Destination $CurExe -Force -ErrorAction Stop; $copied = $true; break }',
       '  catch { Start-Sleep -Milliseconds 250 }',
       '}',
-      'if (-not $copied) {',
+      '$relaunched = $false',
+      'if ($copied) {',
+      '  Log "swapped ok"',
+      '  try { $proc = Start-Process -FilePath $CurExe -PassThru; Start-Sleep -Seconds 2; if ($proc -and -not $proc.HasExited) { $relaunched = $true } else { Log "new exe exited within 2s of launch" } } catch { Log "relaunch of new exe failed: $_" }',
+      '  if (-not $relaunched -and (Test-Path $bak)) {',
+      '    Log "new exe would not launch; restoring original from backup"',
+      '    try { Copy-Item -LiteralPath $bak -Destination $CurExe -Force; Start-Process -FilePath $CurExe } catch { Log "restore failed: $_" }',
+      '  }',
+      '} else {',
       '  Log "swap failed after 60s (exe locked); restoring original"',
-      '  if (Test-Path $bak) { try { Copy-Item -LiteralPath $bak -Destination $CurExe -Force } catch {} }',
-      '} else { Log "swapped ok" }',
-      'try { Start-Process -FilePath $CurExe } catch { Log "relaunch failed: $_" }',
-      'Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue',
+      '  if (Test-Path $bak) { try { Copy-Item -LiteralPath $bak -Destination $CurExe -Force } catch { Log "restore copy failed: $_" } }',
+      '  try { Start-Process -FilePath $CurExe } catch { Log "relaunch original failed: $_" }',
+      '}',
+      '# R5: only discard the backup after a verified swap+relaunch of the NEW exe;',
+      '# otherwise keep it so a half-overwritten exe stays recoverable.',
+      'if ($copied -and $relaunched) { Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue } else { Log "keeping backup at $bak" }',
       'Remove-Item -LiteralPath (Split-Path -Parent $NewExe) -Recurse -Force -ErrorAction SilentlyContinue',
     ].join('\n'), 'utf8');
 
@@ -840,20 +953,36 @@ ipcMain.handle('deploy-assets', async (_evt, opts: { projectDir: string }) => {
 // Kill any orphaned BlueprintReader MCP processes: every BlueprintReaderMcp.exe,
 // plus any UnrealEditor-Cmd.exe running the BPR daemon (-run=BPR) — but NOT a
 // normal editor. Returns how many were terminated.
-ipcMain.handle('kill-mcp-servers', () => {
-  // Also drop our own tracked handles so the Tester UI reflects the kill.
+// TBX-R4: scoped by default to THIS project's server exe (+ a BPR daemon whose
+// command line references this project) so one project's Toolbox can't kill
+// another project's / a CI run's server. `global:true` is the explicit opt-in
+// for a machine-wide sweep (every BlueprintReaderMcp.exe).
+ipcMain.handle('kill-mcp-servers', (_evt, opts?: { global?: boolean }) => {
+  const global = opts?.global === true;
+  // Always drop our own tracked handles so the Tester UI reflects the kill.
   for (const [pid, proc] of serverProcesses) { try { proc.kill(); } catch { /* ignore */ } serverProcesses.delete(pid); }
+  const projectDir = getProjectDir();
+  const exePath = projectDir ? getExePath(projectDir) : '';
+  // When scoped, match the MCP server on its exact ExecutablePath and the BPR
+  // daemon on a command line that references this project dir.
+  const mcpFilter = global || !exePath
+    ? '$mcp = Get-CimInstance Win32_Process -Filter "Name=\'BlueprintReaderMcp.exe\'" -ErrorAction SilentlyContinue'
+    : '$mcp = Get-CimInstance Win32_Process -Filter "Name=\'BlueprintReaderMcp.exe\'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -ieq $env:BPR_EXE }';
+  const daemonFilter = global || !projectDir
+    ? '$d = Get-CimInstance Win32_Process -Filter "Name=\'UnrealEditor-Cmd.exe\'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "-run=BPR" }'
+    : '$d = Get-CimInstance Win32_Process -Filter "Name=\'UnrealEditor-Cmd.exe\'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "-run=BPR" -and $_.CommandLine.Contains($env:BPR_PROJDIR) }';
   const ps = [
     '$n = 0',
-    '$mcp = Get-CimInstance Win32_Process -Filter "Name=\'BlueprintReaderMcp.exe\'" -ErrorAction SilentlyContinue',
+    mcpFilter,
     'foreach ($p in $mcp) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {} }',
-    '$d = Get-CimInstance Win32_Process -Filter "Name=\'UnrealEditor-Cmd.exe\'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "-run=BPR" }',
+    daemonFilter,
     'foreach ($p in $d) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {} }',
     'Write-Output "BPRKILLED=$n"',
   ].join('; ');
   return new Promise((resolve) => {
     let out = '';
-    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
+    const p = trackChild(spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+      { windowsHide: true, env: { ...process.env, BPR_EXE: exePath, BPR_PROJDIR: projectDir } }));
     p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
     p.stderr.on('data', (d: Buffer) => logLine(d.toString('utf8')));
     p.on('exit', () => {
@@ -881,12 +1010,12 @@ ipcMain.handle('run-script', (_evt, script: string, args: string[]) => {
       resolve(1);
       return;
     }
-    const proc = spawn('pwsh.exe', [
+    const proc = trackChild(spawn('pwsh.exe', [
       '-NoProfile',
       '-ExecutionPolicy', 'Bypass',
       '-File', script,
       ...args,
-    ], { windowsHide: true });
+    ], { windowsHide: true }));
 
     const sendLog = (data: Buffer) => {
       const text = data.toString('utf8');
@@ -906,6 +1035,22 @@ ipcMain.handle('run-script', (_evt, script: string, args: string[]) => {
 // Server lifecycle
 const serverProcesses = new Map<number, ChildProcess>();
 
+// TBX-R3: forward the env as a DENYLIST, not an allowlist. The commandlet
+// backend's server spawns UnrealEditor-Cmd.exe, which inherits the server's env
+// verbatim — UE + Windows DLL loading rely on the full system env (ProgramData,
+// ProgramFiles*, USERNAME, COMPUTERNAME, …), so a tight allowlist would break a
+// real editor launch. We drop only obviously-sensitive keys (tokens/secrets/
+// credentials the server never needs); the renderer's BP_READER_* is layered on.
+const SENSITIVE_ENV_RE = /token|secret|passwo?rd|passwd|api[_-]?key|access[_-]?key|client[_-]?secret|credential|auth/i;
+
+// TBX-R1: cancel in-flight transient operations (install/extract/script/kill)
+// by tearing down their process trees. The server lifecycle is separate.
+ipcMain.handle('cancel-operation', () => {
+  for (const c of activeDownloads) c.abort();
+  activeDownloads.clear();
+  killAllTransient();
+});
+
 ipcMain.handle('start-server', (_evt, opts: {
   backend: string;
   port: number;
@@ -920,15 +1065,27 @@ ipcMain.handle('start-server', (_evt, opts: {
       return;
     }
 
+    // TBX-R3: forward only a whitelisted slice of the main-process env (not the
+    // whole thing), then layer the renderer-supplied BP_READER_* on top. We no
+    // longer hardcode BP_READER_READ_ONLY:'0' — that silently defeated the
+    // read-only-by-default invariant; write mode is now an explicit user choice
+    // (set BP_READER_ALLOW_WRITE=1 in Settings, which flows through opts.env).
+    const baseEnv: NodeJS.ProcessEnv = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined && !SENSITIVE_ENV_RE.test(k)) baseEnv[k] = v;
+    }
     const env: NodeJS.ProcessEnv = {
-      ...process.env,
+      ...baseEnv,
       BP_READER_BACKEND: opts.backend,
       BP_READER_HTTP_PORT: String(opts.port),
-      BP_READER_READ_ONLY: '0',
       ...opts.env,
     };
 
     const proc = spawn(exePath, [], { env, windowsHide: true });
+    proc.on('error', (e) => {
+      if (proc.pid) serverProcesses.delete(proc.pid);
+      reject(e);
+    });
     if (!proc.pid) {
       reject(new Error('Failed to spawn server process'));
       return;
@@ -937,8 +1094,15 @@ ipcMain.handle('start-server', (_evt, opts: {
     proc.on('exit', () => {
       if (proc.pid) serverProcesses.delete(proc.pid);
     });
-    // Give the server 500ms to start listening before resolving
-    setTimeout(() => resolve(proc.pid!), 500);
+    // Give the server 500ms to start listening — but only resolve the PID if it
+    // is still alive (a crash-on-start otherwise resolved a dead PID).
+    setTimeout(() => {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        reject(new Error(`Server exited immediately (code ${proc.exitCode ?? proc.signalCode}). Check the backend/env and exe.`));
+        return;
+      }
+      resolve(proc.pid!);
+    }, 500);
   });
 });
 

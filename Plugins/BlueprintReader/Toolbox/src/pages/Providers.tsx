@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { bridge } from '../lib/bridge';
 import StatusBadge, { type Status } from '../components/StatusBadge';
 import LogStream from '../components/LogStream';
@@ -50,8 +50,13 @@ export default function Providers() {
   const pluginDir  = uprojectToPluginDir(uproject);
   const exePath    = uprojectToExePath(uproject);
 
+  // TBX-R9: mounted guard + unsub-on-unmount for the script-log listener.
+  const mountedRef = useRef(true);
+  const unsubRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { mountedRef.current = false; unsubRef.current?.(); unsubRef.current = null; }, []);
+
   const appendLog = useCallback((line: string) => {
-    setLogs((prev) => [...prev, line]);
+    if (mountedRef.current) setLogs((prev) => [...prev, line]);
   }, []);
 
   useEffect(() => {
@@ -79,7 +84,7 @@ export default function Providers() {
       const content = await bridge.readFile(configPath);
       let status: ProviderStatus;
       if (provider.format === 'toml') {
-        status = getTomlProviderStatus(content);
+        status = getTomlProviderStatus(content, exePath);
       } else {
         status = getJsonProviderStatus(content, provider.configKey, exePath);
       }
@@ -88,9 +93,19 @@ export default function Providers() {
     setStates(newStates);
   }
 
-  function checkAssetsInstalled() {
+  // TBX-R8: the deploy writes several asset targets — probe all the concrete
+  // ones (AGENTS.md, the Copilot instructions, and a representative Claude skill)
+  // and only report "installed" when they're all present, so a half-deploy isn't
+  // shown as complete.
+  async function checkAssetsInstalled() {
     if (!projectDir) return;
-    bridge.readFile(`${projectDir}/AGENTS.md`).then((c) => setAssetsInstalled(c !== null));
+    const targets = [
+      `${projectDir}/AGENTS.md`,
+      `${projectDir}/.github/copilot-instructions.md`,
+      `${projectDir}/.claude/skills/bp-reader/SKILL.md`,
+    ];
+    const present = await Promise.all(targets.map((p) => bridge.readFile(p).then((c) => c !== null).catch(() => false)));
+    if (mountedRef.current) setAssetsInstalled(present.every(Boolean));
   }
 
   // Write one provider's config. Appends to the log but does NOT clear it /
@@ -137,10 +152,10 @@ export default function Providers() {
   async function configureProvider(providerId: string) {
     setLogs([]);
     setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     const provider = PROVIDERS.find((p) => p.id === providerId)!;
     await configureOne(provider, loadEnvOverrides());
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     setRunning(false);
     await refreshStatuses();
   }
@@ -148,7 +163,7 @@ export default function Providers() {
   async function configureAll() {
     setLogs([]);
     setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     const settingsEnv = loadEnvOverrides();
     const targets = PROVIDERS.filter((p) => p.scope !== 'manual');
     let ok = 0;
@@ -157,7 +172,7 @@ export default function Providers() {
       if (await configureOne(p, settingsEnv)) ok++;
     }
     appendLog(`\nConfigured ${ok}/${targets.length} provider(s).`);
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     setRunning(false);
     await refreshStatuses();
   }
@@ -165,12 +180,12 @@ export default function Providers() {
   async function deployAssets() {
     setLogs([]);
     setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     // Works whether or not the plugin is already mounted: the IPC runs the
     // in-project Install-ClaudeAssets.ps1 if present, else downloads the latest
     // release and runs the extracted copy.
     const res = await bridge.deployAssets({ projectDir });
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
     setRunning(false);
     checkAssetsInstalled();

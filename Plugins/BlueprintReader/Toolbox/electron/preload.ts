@@ -111,8 +111,11 @@ const api = {
   deployAssets(opts: { projectDir: string }): Promise<DeployResult> {
     return ipcRenderer.invoke('deploy-assets', opts);
   },
-  killMcpServers(): Promise<KillResult> {
-    return ipcRenderer.invoke('kill-mcp-servers');
+  killMcpServers(opts?: { global?: boolean }): Promise<KillResult> {
+    return ipcRenderer.invoke('kill-mcp-servers', opts);
+  },
+  cancelOperation(): Promise<void> {
+    return ipcRenderer.invoke('cancel-operation');
   },
 };
 

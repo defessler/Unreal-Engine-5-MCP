@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { bridge } from '../lib/bridge';
 import LogStream from '../components/LogStream';
 import { storeUproject, loadUproject } from '../lib/paths';
@@ -35,7 +35,14 @@ export default function Install() {
     bridge.getLatestRelease().then((r) => { if (r.ok && r.tag) setLatestTag(r.tag); }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // TBX-R9: guard against setState-after-unmount + a leaked script-log listener
+  // when the user navigates away mid-install.
+  const mountedRef = useRef(true);
+  const unsubRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { mountedRef.current = false; unsubRef.current?.(); unsubRef.current = null; }, []);
+
   const appendLog = useCallback((line: string) => {
+    if (!mountedRef.current) return;
     setLogs((prev) => [...prev, line]);
   }, []);
 
@@ -66,7 +73,7 @@ export default function Install() {
     setLogs([]);
     setExitCode(null);
     setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     // The Toolbox downloads the latest plugin ZIP from GitHub (carrying the
     // precompiled server exe) and mounts it into the project — no pre-existing
     // in-project plugin required.
@@ -77,7 +84,7 @@ export default function Install() {
       engineDir: buildServer ? engineDir : undefined,
       applyPatches: buildServer && applyPatches,
     });
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
     setExitCode(res.ok ? 0 : (res.code ?? 1));
     setRunning(false);
@@ -181,13 +188,24 @@ export default function Install() {
         </div>
 
         {/* Run */}
-        <button
-          onClick={runInstall}
-          disabled={running || !uprojectValid}
-          className="px-6 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold text-white transition-colors"
-        >
-          {running ? 'Installing…' : 'Download & Install Plugin'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runInstall}
+            disabled={running || !uprojectValid}
+            className="px-6 py-2 bg-ue-accent hover:bg-ue-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold text-white transition-colors"
+          >
+            {running ? 'Installing…' : 'Download & Install Plugin'}
+          </button>
+          {running && (
+            // TBX-R1: cancel tears down the in-flight install's process tree.
+            <button
+              onClick={() => bridge.cancelOperation()}
+              className="px-4 py-2 bg-red-600/80 hover:bg-red-600 rounded text-sm font-medium text-white"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
 
         {/* Log */}
         {(logs.length > 0 || running) && (

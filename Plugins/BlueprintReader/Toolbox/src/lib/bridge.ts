@@ -45,6 +45,7 @@ function api(): ElectronAPI {
       selfUpdateToolbox: async () => ({ ok: false, error: 'dev stub' }),
       deployAssets: async () => ({ ok: true, code: 0 }),
       killMcpServers: async () => ({ ok: true, count: 0 }),
+      cancelOperation: async () => undefined,
     };
   }
   return w.electronAPI;
@@ -73,5 +74,6 @@ export const bridge = {
   installPluginFromRelease: (opts: InstallFromReleaseOpts) => api().installPluginFromRelease(opts),
   selfUpdateToolbox: () => api().selfUpdateToolbox(),
   deployAssets: (opts: { projectDir: string }) => api().deployAssets(opts),
-  killMcpServers: () => api().killMcpServers(),
+  killMcpServers: (opts?: { global?: boolean }) => api().killMcpServers(opts),
+  cancelOperation: () => api().cancelOperation(),
 };

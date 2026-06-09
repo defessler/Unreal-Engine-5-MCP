@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { bridge } from '../lib/bridge';
 import LogStream from '../components/LogStream';
 import StatusBadge from '../components/StatusBadge';
@@ -21,7 +21,12 @@ export default function Update() {
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
 
-  const appendLog = useCallback((line: string) => setLogs((p) => [...p, line]), []);
+  // TBX-R9: mounted guard + unsub-on-unmount for the script-log listener.
+  const mountedRef = useRef(true);
+  const unsubRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { mountedRef.current = false; unsubRef.current?.(); unsubRef.current = null; }, []);
+
+  const appendLog = useCallback((line: string) => { if (mountedRef.current) setLogs((p) => [...p, line]); }, []);
 
   const pluginDir = uprojectToPluginDir(uproject);
 
@@ -56,9 +61,9 @@ export default function Update() {
 
   async function updateToolbox() {
     setLogs([]); setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     const res = await bridge.selfUpdateToolbox();
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     if (!res.ok) { appendLog(`[error] ${res.error ?? 'self-update failed'}`); setRunning(false); }
     else if (res.upToDate) { appendLog('Toolbox is already up to date.'); setRunning(false); }
     else { appendLog('Toolbox update downloaded — restarting to apply…'); }
@@ -70,9 +75,9 @@ export default function Update() {
   async function updatePlugin() {
     if (!uproject) { appendLog('[error] No project configured — set one on the Install tab first.'); return; }
     setLogs([]); setRunning(true);
-    const unsub = bridge.onScriptLog(appendLog);
+    unsubRef.current = bridge.onScriptLog(appendLog);
     const res = await bridge.installPluginFromRelease({ uproject, client: 'All' });
-    unsub();
+    unsubRef.current?.(); unsubRef.current = null;
     if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
     setRunning(false);
     await refresh();
