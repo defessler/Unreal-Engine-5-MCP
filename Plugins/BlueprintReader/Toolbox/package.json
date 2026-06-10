@@ -1,6 +1,6 @@
 {
   "name": "blueprint-reader-toolbox",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "BlueprintReader MCP plugin installer, provider configurator, and tool tester",
   "main": "electron-dist/main.js",
   "scripts": {
