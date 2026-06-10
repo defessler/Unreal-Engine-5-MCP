@@ -3,6 +3,7 @@
 #include "tools/Bpir.h"
 #include "tools/codegen/CppClassEmit.h"
 #include "tools/codegen/CppEmit.h"
+#include "tools/codegen/K2NodeSkeletonEmit.h"
 #include "tools/codegen/UnsupportedTreatment.h"
 #include "tools/CompileFunction.h"
 #include "tools/ContentBlocks.h"
@@ -860,6 +861,130 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			return nlohmann::json{
 				{"ok", true},
 				{"bpir", bpir},
+			};
+		});
+	}
+
+	// ----- describe_k2node --------------------------------------------------
+	// EDIT-5(a): introspect a custom (or engine) UK2Node class. The plugin
+	// spawns a TRANSIENT instance in a sandbox graph, calls AllocateDefaultPins,
+	// and reports the node's static surface. Editor-only (mock deny-filtered).
+	{
+		ToolDescriptor d;
+		d.name = "describe_k2node";
+		d.description =
+			"[read] Introspect a K2 node class (custom or engine): given a class "
+			"path like `/Script/BlueprintGraph.K2Node_FormatText` (or a short "
+			"name like `K2Node_FormatText`), spawns a transient instance, calls "
+			"AllocateDefaultPins, and reports its pins (name/direction/type/"
+			"defaults), purity, title, tooltip, menu category, parent class, and "
+			"owning module. Use this to understand what a `// TODO[bpr-"
+			"unsupported]` node in transpiled output actually is, or before "
+			"generating a replacement with `generate_k2node_skeleton`. Honesty "
+			"notes: pins reflect an UNCONFIGURED instance (nodes that derive pins "
+			"from a bound member — e.g. CallFunction — show only their static "
+			"pins), and ExpandNode output is a compile-time transform that is not "
+			"statically introspectable.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"class_path", {{"type","string"},
+								{"description","K2 node class path (e.g. /Script/BlueprintGraph.K2Node_FormatText) or short class name."}}},
+			}},
+			{"required", nlohmann::json::array({"class_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",            {{"type","boolean"}}},
+				{"class",         {{"type","string"}}},
+				{"module",        {{"type","string"}}},
+				{"parent_class",  {{"type","string"}}},
+				{"title",         {{"type","string"}}},
+				{"tooltip",       {{"type","string"}}},
+				{"menu_category", {{"type","string"}}},
+				{"is_node_pure",  {{"type","boolean"}}},
+				{"pins",          {{"type","array"}}},
+				{"note",          {{"type","string"}}},
+				{"error",         {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string classPath = RequireString(args, "class_path");
+			if (classPath.empty()) {
+				// An empty -Class= flag would trip FParse's swallow-next-token
+				// gotcha plugin-side; reject here with a clean message instead.
+				throw std::invalid_argument(
+					"describe_k2node: `class_path` must be non-empty "
+					"(e.g. /Script/BlueprintGraph.K2Node_FormatText)");
+			}
+			return reader.DescribeK2Node(classPath);
+		});
+	}
+
+	// ----- generate_k2node_skeleton -----------------------------------------
+	// EDIT-5(b): pure compute — emits compilable .h/.cpp TEXT for a custom
+	// UK2Node subclass. No reader, no file writes (materialize via the gated
+	// write_generated_source), works on every backend including mock.
+	{
+		ToolDescriptor d;
+		d.name = "generate_k2node_skeleton";
+		d.description =
+			"[cpp] Generate a compilable .h/.cpp skeleton for a custom UK2Node "
+			"subclass: AllocateDefaultPins from your pin spec (exec pins added "
+			"automatically unless `pure`), GetMenuActions (UBlueprintNodeSpawner "
+			"registrar idiom), GetNodeTitle/GetTooltipText/GetMenuCategory, "
+			"IsNodePure, and — when `target_function` is given — a canonical "
+			"ExpandNode that lowers the node to a CallFunction on that function. "
+			"Returns header/source TEXT only (writes no files; pair with "
+			"`write_generated_source` to materialize). Pin categories: bool, "
+			"byte, int, int64, float, name, string, text, object, class, "
+			"softobject, softclass, struct, wildcard; containers: array/set/map. "
+			"Unresolvable sub-types surface as TODO placeholders listed in "
+			"`notes`, never silent wrong code.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"class_name",      {{"type","string"},
+									 {"description","Node name, e.g. \"MyNode\" (UK2Node_ prefix added automatically)."}}},
+				{"module_api",      {{"type","string"},
+									 {"description","Optional module API macro stem, e.g. \"MYMODULE\" emits MYMODULE_API."}}},
+				{"title",           {{"type","string"}}},
+				{"tooltip",         {{"type","string"}}},
+				{"menu_category",   {{"type","string"}}},
+				{"pure",            {{"type","boolean"},
+									 {"description","true = no exec pins + IsNodePure()=true."}}},
+				{"pins",            {{"type","array"},
+									 {"description","[{name, direction:\"input\"|\"output\", category, sub_object?, container?, default_value?, is_reference?}]"}}},
+				{"target_function", {{"type","string"},
+									 {"description","Function ExpandNode lowers to, e.g. \"/Script/MyModule.MyFunctionLibrary:DoThing\". Omit to skip ExpandNode."}}},
+			}},
+			{"required", nlohmann::json::array({"class_name"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",            {{"type","boolean"}}},
+				{"class_name",    {{"type","string"}}},
+				{"header_file",   {{"type","string"}}},
+				{"impl_file",     {{"type","string"}}},
+				{"header_source", {{"type","string"}}},
+				{"impl_source",   {{"type","string"}}},
+				{"notes",         {{"type","array"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [](const nlohmann::json& args) {
+			K2NodeSkeletonEmitResult r = EmitK2NodeSkeleton(args);
+			return nlohmann::json{
+				{"ok", true},
+				{"class_name", r.className},
+				{"header_file", r.headerFileName},
+				{"impl_file", r.implFileName},
+				{"header_source", r.headerSource},
+				{"impl_source", r.implSource},
+				{"notes", r.notes},
 			};
 		});
 	}

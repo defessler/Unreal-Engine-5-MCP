@@ -43,6 +43,7 @@ const std::set<std::string>& ReadOnlySet() {
 		"list_assets", "find_asset",
 		// --- Class info --------------------------------------------------
 		"find_class", "get_class_info",
+		"describe_k2node",  // EDIT-5: transient-instance K2-node introspection
 		// --- Discoverability + situational awareness --------------------
 		"list_node_kinds", "list_pin_categories",
 		"read_output_log", "get_cvar",
@@ -60,6 +61,7 @@ const std::set<std::string>& ReadOnlySet() {
 		"decompile_function", "decompile_blueprint",
 		"transpile_function", "transpile_blueprint",
 		"parse_cpp_function",
+		"generate_k2node_skeleton",  // EDIT-5: emits text, writes nothing
 		// --- apply_ops dry-run ------------------------------------------
 		"preview_ops",
 		// --- Lazy-discovery meta-tools ----------------------------------
@@ -386,6 +388,8 @@ std::string TitleFor(const std::string& name) {
 		{"transpile_function",       "Transpile Function to C++"},
 		{"transpile_blueprint",      "Transpile Blueprint to C++"},
 		{"parse_cpp_function",       "Parse C++ Function to BPIR"},
+		{"describe_k2node",          "Describe K2 Node Class"},
+		{"generate_k2node_skeleton", "Generate K2 Node Skeleton"},
 		{"write_generated_source",   "Write Generated C++ Source"},
 		// Editor control
 		{"start_pie",                "Start Play-in-Editor"},

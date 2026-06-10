@@ -477,6 +477,11 @@ nlohmann::json CachingBlueprintReader::ReadActorInstance(std::string_view assetP
 	return inner_->ReadActorInstance(assetPath);
 }
 
+nlohmann::json CachingBlueprintReader::DescribeK2Node(std::string_view classPath) {
+	// Class-registry read, not asset-keyed — pass through (no cache slot).
+	return inner_->DescribeK2Node(classPath);
+}
+
 // ----- Asset-registry queries (PERF-3: now cached) -----------------------
 // These are pure registry reads that never change between write ops. They
 // use TTL-only expiry (no mtime check) because their "file" is the asset

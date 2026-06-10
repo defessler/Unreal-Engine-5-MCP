@@ -137,6 +137,7 @@ public:
 	nlohmann::json StructuralDiff(std::string_view a, std::string_view b,
 								   const StructuralDiffOptions& opts) override;
 	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
+	nlohmann::json DescribeK2Node(std::string_view classPath) override;
 
 	// ----- Asset-registry queries ---------------------------------------
 	AssetRegistryListResult ListAssets(std::string_view path, bool recursive) override;

@@ -1758,6 +1758,13 @@ nlohmann::json CommandletBlueprintReader::ReadActorInstance(std::string_view ass
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::DescribeK2Node(std::string_view classPath) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=DescribeK2Node");
+	args.push_back(L"-Class=" + Widen(classPath));
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

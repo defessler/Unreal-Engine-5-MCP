@@ -152,7 +152,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 	bpr::tools::ToolRegistry registry;
 	bpr::tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
-	REQUIRE(spec.size() == 261);  // ListSpec() is backend-independent (per-backend pruning happens later), so this matches the mock asserts: 261 after +1 health_check (UX-P4a). The previous 258 literal was stale and would have failed if this live-gated case ever ran.
+	REQUIRE(spec.size() == 263);  // ListSpec() is backend-independent (per-backend pruning happens later), so this matches the mock asserts: 263 after +2 EDIT-5 tools. The pre-261 literal (258) was stale and would have failed if this live-gated case ever ran.
 
 	std::vector<std::string> broken;    // unreachable / not-supported / crash
 	std::vector<std::string> infra;     // transport/daemon issues (environmental)

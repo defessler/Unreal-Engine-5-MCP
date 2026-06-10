@@ -34,10 +34,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 261 tools with input schemas") {
+TEST_CASE("ToolRegistry exposes 263 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 261);
+	CHECK(spec.size() == 263);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -52,6 +52,152 @@ TEST_CASE("health_check: mock backend reports synthetic-healthy") {
 	CHECK(r["game_thread_responsive"] == true);
 	CHECK(r["game_thread_age_ms"] == 0);
 	CHECK(r["state"] == "healthy");
+}
+
+// EDIT-5(b): pure codegen — works on every backend including mock.
+TEST_CASE("generate_k2node_skeleton: emits the canonical custom-node surface") {
+	Fixture f;
+	const auto r = f.Call("generate_k2node_skeleton", json{
+		{"class_name", "MyNode"},
+		{"module_api", "MYMODULE"},
+		{"menu_category", "My Tools"},
+		{"pins", json::array({
+			json{{"name","Value"},{"direction","input"},{"category","float"},{"default_value","0.0"}},
+			json{{"name","Items"},{"direction","input"},{"category","string"},{"container","array"}},
+			json{{"name","Result"},{"direction","output"},{"category","bool"}},
+		})},
+		{"target_function", "/Script/MyModule.MyFunctionLibrary:DoThing"},
+	});
+	CHECK(r["ok"] == true);
+	CHECK(r["class_name"] == "UK2Node_MyNode");
+	CHECK(r["header_file"] == "K2Node_MyNode.h");
+	const std::string h = r["header_source"].get<std::string>();
+	const std::string s = r["impl_source"].get<std::string>();
+	// Header: UCLASS scaffolding + the override set.
+	CHECK(h.find("class MYMODULE_API UK2Node_MyNode : public UK2Node") != std::string::npos);
+	CHECK(h.find("virtual void AllocateDefaultPins() override;") != std::string::npos);
+	CHECK(h.find("virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;") != std::string::npos);
+	CHECK(h.find("virtual void ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph) override;") != std::string::npos);
+	CHECK(h.find("return false;") != std::string::npos);  // IsNodePure (not pure)
+	// Source: exec pins, the float pin (PC_Real/PC_Double), the array container,
+	// the default value, the registrar idiom, and the CallFunction lowering.
+	CHECK(s.find("UEdGraphSchema_K2::PC_Exec, UEdGraphSchema_K2::PN_Execute") != std::string::npos);
+	CHECK(s.find("UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Double, TEXT(\"Value\")") != std::string::npos);
+	CHECK(s.find("ItemsParams.ContainerType = EPinContainerType::Array;") != std::string::npos);
+	CHECK(s.find("ValuePin->DefaultValue = TEXT(\"0.0\");") != std::string::npos);
+	CHECK(s.find("UBlueprintNodeSpawner::Create(GetClass())") != std::string::npos);
+	// The class spelling came from the U-prefix heuristic, so it's TODO-marked.
+	CHECK(s.find("FName(TEXT(\"DoThing\"))") != std::string::npos);
+	CHECK(s.find("/* TODO: verify the C++ spelling */ UMyFunctionLibrary::StaticClass()") != std::string::npos);
+	CHECK(s.find("MovePinLinksToIntermediate") != std::string::npos);
+	CHECK(r["notes"].is_array());
+}
+
+// EDIT-5(b): a pure node has no exec pins and no ExpandNode without a target.
+TEST_CASE("generate_k2node_skeleton: pure node without target omits exec + ExpandNode") {
+	Fixture f;
+	const auto r = f.Call("generate_k2node_skeleton", json{
+		{"class_name", "K2Node_PureThing"},   // prefix tolerated
+		{"pure", true},
+	});
+	CHECK(r["ok"] == true);
+	CHECK(r["class_name"] == "UK2Node_PureThing");
+	const std::string h = r["header_source"].get<std::string>();
+	const std::string s = r["impl_source"].get<std::string>();
+	CHECK(h.find("return true;") != std::string::npos);          // IsNodePure
+	CHECK(h.find("ExpandNode") == std::string::npos);            // omitted
+	CHECK(s.find("PN_Execute") == std::string::npos);            // no exec pins
+}
+
+// EDIT-5(b): validation errors are clear, not silent wrong code.
+TEST_CASE("generate_k2node_skeleton: rejects bad input clearly") {
+	Fixture f;
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{{"class_name", ""}}),
+		doctest::Contains("`class_name` is required"), std::invalid_argument);
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{
+			{"class_name", "X"},
+			{"pins", json::array({json{{"name","P"},{"category","exec"}}})}}),
+		doctest::Contains("exec pins are generated automatically"), std::invalid_argument);
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{
+			{"class_name", "X"},
+			{"pins", json::array({json{{"name","P"},{"category","frobnicate"}}})}}),
+		doctest::Contains("unknown pin category"), std::invalid_argument);
+	// Review hardening: duplicate pin names (case-insensitive + post-sanitize)
+	// would emit redefined locals; reserved exec-pin names collide on non-pure
+	// nodes; a /Script/ class path with no :Func part is module.class, not
+	// class.func — all rejected with clear messages.
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{
+			{"class_name", "X"},
+			{"pins", json::array({
+				json{{"name","My Value"},{"category","int"}},
+				json{{"name","myvalue"},{"category","int"}}})}}),
+		doctest::Contains("duplicate pin name"), std::invalid_argument);
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{
+			{"class_name", "X"},
+			{"pins", json::array({json{{"name","Execute"},{"category","int"}}})}}),
+		doctest::Contains("reserved for the auto exec pins"), std::invalid_argument);
+	CHECK_THROWS_WITH_AS(
+		f.Call("generate_k2node_skeleton", json{
+			{"class_name", "X"},
+			{"target_function", "/Script/MyModule.MyFunctionLibrary"}}),
+		doctest::Contains("no function part"), std::invalid_argument);
+}
+
+// EDIT-5(b) review hardening: free text is escaped into the generated string
+// literals (a quote/backslash/newline must not break out of the literal), and
+// module_api is identifier-sanitized (it lands in CODE position).
+TEST_CASE("generate_k2node_skeleton: escapes free text + sanitizes module_api") {
+	Fixture f;
+	const auto r = f.Call("generate_k2node_skeleton", json{
+		{"class_name", "Esc"},
+		{"module_api", "MY MODULE!"},
+		{"title", "Say \"Hi\"\\now"},
+		{"tooltip", "Line1\nLine2"},
+		{"pins", json::array({
+			json{{"name","Msg"},{"direction","input"},{"category","string"},
+				 {"default_value","quote\" and \\slash"}}})},
+	});
+	CHECK(r["ok"] == true);
+	const std::string h = r["header_source"].get<std::string>();
+	const std::string s = r["impl_source"].get<std::string>();
+	// module_api sanitized to an identifier (no space/!), still gets _API.
+	CHECK(h.find("class MYMODULE_API UK2Node_Esc") != std::string::npos);
+	// Escaped splices — the raw unescaped forms must NOT appear.
+	CHECK(s.find("Say \\\"Hi\\\"\\\\now") != std::string::npos);
+	CHECK(s.find("Line1\\nLine2") != std::string::npos);
+	CHECK(s.find("quote\\\" and \\\\slash") != std::string::npos);
+	CHECK(s.find("Say \"Hi\"") == std::string::npos);
+	// Every emitted line must stay a single line (no literal newline injected).
+	CHECK(s.find("Line1\nLine2") == std::string::npos);
+}
+
+// EDIT-5(b) review hardening: known engine classes get their REAL UE prefix
+// (Actor → AActor, not the broken UActor the naive heuristic produced).
+TEST_CASE("generate_k2node_skeleton: known-class table spells AActor correctly") {
+	Fixture f;
+	const auto r = f.Call("generate_k2node_skeleton", json{
+		{"class_name", "Sp"},
+		{"pins", json::array({
+			json{{"name","Target"},{"direction","input"},{"category","object"},
+				 {"sub_object","/Script/Engine.Actor"}}})},
+	});
+	const std::string s = r["impl_source"].get<std::string>();
+	CHECK(s.find("AActor::StaticClass()") != std::string::npos);
+	CHECK(s.find("UActor::StaticClass()") == std::string::npos);
+}
+
+// EDIT-5(a): editor-only — the mock throws a clear not-supported error.
+TEST_CASE("describe_k2node: mock backend throws not-supported") {
+	Fixture f;
+	CHECK_THROWS_WITH_AS(
+		f.Call("describe_k2node", json{{"class_path", "/Script/BlueprintGraph.K2Node_FormatText"}}),
+		doctest::Contains("requires the live or commandlet backend"),
+		bpr::backends::BlueprintReaderError);
 }
 
 TEST_CASE("ValidateToolName accepts spec-compliant names, rejects others") {
