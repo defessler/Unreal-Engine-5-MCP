@@ -2857,6 +2857,15 @@ public:
 		throw BlueprintReaderError("prepare_merge not supported by this backend");
 	}
 
+	// EDIT-5: introspect a custom (or engine) UK2Node class — spawn a transient
+	// instance, call AllocateDefaultPins, and report its pins, purity, title,
+	// tooltip, and menu category. Editor-only (needs the live UClass registry).
+	virtual nlohmann::json DescribeK2Node(std::string_view classPath)
+	{
+		(void)classPath;
+		throw BlueprintReaderError("DescribeK2Node not supported by this backend");
+	}
+
 	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER
 	// THREAD even when the game thread is halted — so a paused editor is a
 	// distinct, fast answer instead of a generic op timeout. `state` is one of

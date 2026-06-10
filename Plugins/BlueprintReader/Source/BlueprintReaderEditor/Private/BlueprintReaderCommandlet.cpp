@@ -532,6 +532,8 @@ namespace
 		// Diff + merge analysis tools
 		DiffAsset,       // structural diff between two assets
 		PrepareMerge,    // base→mine + base→theirs diffs with conflict identification
+		// EDIT-5: K2-node class introspection
+		DescribeK2Node,  // spawn a transient instance + report pins/purity/title
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -777,6 +779,8 @@ namespace
 		if (OpStr.Equals(TEXT("ListAnimMontages"), ESearchCase::IgnoreCase))      { OutOp = EOp::ListAnimMontages; return true; }
 		if (OpStr.Equals(TEXT("DiffAsset"),        ESearchCase::IgnoreCase))      { OutOp = EOp::DiffAsset;        return true; }
 		if (OpStr.Equals(TEXT("PrepareMerge"),     ESearchCase::IgnoreCase))      { OutOp = EOp::PrepareMerge;     return true; }
+		// EDIT-5
+		if (OpStr.Equals(TEXT("DescribeK2Node"),   ESearchCase::IgnoreCase))      { OutOp = EOp::DescribeK2Node;   return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -5629,6 +5633,154 @@ namespace
 			FString::Printf(TEXT("Run package manually: `RunUAT.bat BuildCookRun "
 			    "-project=<your>.uproject -platform=%s -cook -stage -package "
 			    "-archive -archivedirectory=%s`."), *Platform, *OutputDir));
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+	}
+
+	// EDIT-5: describe a K2 node class — spawn a TRANSIENT instance in a sandbox
+	// graph, call AllocateDefaultPins, and report the node's static surface
+	// (pins, purity, title, tooltip, menu category). Read-only: nothing is
+	// saved; the sandbox objects are RF_Transient and GC'd normally.
+	int32 RunDescribeK2NodeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		FString ClassName;
+		FParse::Value(*Params, TEXT("Class="), ClassName);
+		if (ClassName.IsEmpty())
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("DescribeK2Node: missing -Class=<path or short name>"));
+			return 1;
+		}
+
+		auto EmitErr = [&](const FString& Msg) -> int32
+		{
+			auto Err = MakeShared<FJsonObject>();
+			Err->SetBoolField(TEXT("ok"), false);
+			Err->SetStringField(TEXT("class"), ClassName);
+			Err->SetStringField(TEXT("error"), Msg);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Err, bPretty), OutputPath);
+		};
+
+		// Resolve: short name → object path → load. LoadObject handles classes in
+		// not-yet-loaded /Script packages (mirrors ResolveParentClass).
+		UClass* Cls = nullptr;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			if (It->GetName() == ClassName) { Cls = *It; break; }
+		}
+		if (!IsValid(Cls)) { Cls = FindObject<UClass>(nullptr, *ClassName); }
+		if (!IsValid(Cls)) { Cls = LoadObject<UClass>(nullptr, *ClassName); }
+		if (!IsValid(Cls))
+		{
+			return EmitErr(FString::Printf(TEXT("Class '%s' not found"), *ClassName));
+		}
+		if (!Cls->IsChildOf(UK2Node::StaticClass()))
+		{
+			return EmitErr(FString::Printf(
+				TEXT("'%s' is not a UK2Node subclass — use get_class_info for general class introspection"),
+				*Cls->GetPathName()));
+		}
+		if (Cls->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+		{
+			return EmitErr(FString::Printf(
+				TEXT("'%s' is abstract or deprecated — it can't be instantiated to read its pins"),
+				*Cls->GetPathName()));
+		}
+		// AnimGraph nodes derive from UK2Node but their PostPlacedNewNode does
+		// CastChecked<UAnimBlueprint>(GetBlueprint()) — fatal against our plain
+		// sandbox UBlueprint. Reject the family up front (runtime lookup, no
+		// link-time dependency on the AnimGraph module).
+		if (UClass* AnimBase = FindObject<UClass>(nullptr, TEXT("/Script/AnimGraph.AnimGraphNode_Base")))
+		{
+			if (Cls->IsChildOf(AnimBase))
+			{
+				return EmitErr(FString::Printf(
+					TEXT("'%s' is an AnimGraph node — it requires an Anim Blueprint host and "
+						 "can't be introspected in a plain sandbox graph"),
+					*Cls->GetPathName()));
+			}
+		}
+
+		// Sandbox outer chain: a UBlueprint must be in the node's outer chain —
+		// several GetNodeTitle overrides call FindBlueprintForNodeChecked, which
+		// asserts without one. Same shape as the engine's palette-preview
+		// template cache (FBlueprintNodeTemplateCache).
+		UBlueprint* SandboxBP = NewObject<UBlueprint>(GetTransientPackage(), NAME_None, RF_Transient);
+		SandboxBP->ParentClass = AActor::StaticClass();
+		UEdGraph* SandboxGraph = NewObject<UEdGraph>(SandboxBP, NAME_None, RF_Transient);
+		SandboxGraph->Schema = UEdGraphSchema_K2::StaticClass();
+
+		// Spawn order mirrors the engine's UBlueprintNodeSpawner::SpawnEdGraphNode
+		// (BlueprintNodeSpawner.cpp): NewObject → CreateNewGuid →
+		// AllocateDefaultPins → PostPlacedNewNode → AddNode. Allocate MUST precede
+		// PostPlaced — several PostPlacedNewNode overrides touch pins (e.g.
+		// K2Node_SpawnActorFromClass) and crash on a zero-pin node.
+		UK2Node* Node = NewObject<UK2Node>(SandboxGraph, Cls, NAME_None, RF_Transient);
+		Node->CreateNewGuid();
+		Node->AllocateDefaultPins();
+		Node->PostPlacedNewNode();
+		SandboxGraph->AddNode(Node, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), true);
+		Obj->SetStringField(TEXT("class"), Cls->GetPathName());
+		Obj->SetStringField(TEXT("module"), Cls->GetOutermost()->GetName());
+		Obj->SetStringField(TEXT("parent_class"),
+			Cls->GetSuperClass() ? Cls->GetSuperClass()->GetPathName() : FString());
+		Obj->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+		Obj->SetStringField(TEXT("tooltip"), Node->GetTooltipText().ToString());
+		Obj->SetStringField(TEXT("menu_category"), Node->GetMenuCategory().ToString());
+		Obj->SetBoolField(TEXT("is_node_pure"), Node->IsNodePure());
+
+		TArray<TSharedPtr<FJsonValue>> PinsJson;
+		for (UEdGraphPin* Pin : Node->Pins)
+		{
+			if (!Pin) { continue; }
+			auto P = MakeShared<FJsonObject>();
+			// PinName (public FName) — stable on both targeted engine versions;
+			// GetFName() on UEdGraphPin is unverified pre-5.8 (multi-engine guard).
+			P->SetStringField(TEXT("name"), Pin->PinName.ToString());
+			P->SetStringField(TEXT("direction"),
+				Pin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output"));
+			P->SetStringField(TEXT("type"), FBlueprintIntrospector::FormatPinType(Pin->PinType));
+
+			// Structured type — same keys as the wire serializer's pin shape
+			// (category / sub_category / sub_category_object / is_array / is_set /
+			// is_map / value_type), null-or-string for empty optionals.
+			const FBPStructuredPinType ST = FBlueprintIntrospector::MakeStructuredPinType(Pin->PinType);
+			auto T = MakeShared<FJsonObject>();
+			T->SetStringField(TEXT("category"), ST.Category);
+			if (ST.SubCategory.IsEmpty()) { T->SetField(TEXT("sub_category"), MakeShared<FJsonValueNull>()); }
+			else { T->SetStringField(TEXT("sub_category"), ST.SubCategory); }
+			if (ST.SubCategoryObject.IsEmpty()) { T->SetField(TEXT("sub_category_object"), MakeShared<FJsonValueNull>()); }
+			else { T->SetStringField(TEXT("sub_category_object"), ST.SubCategoryObject); }
+			T->SetBoolField(TEXT("is_array"), ST.bIsArray);
+			T->SetBoolField(TEXT("is_set"), ST.bIsSet);
+			T->SetBoolField(TEXT("is_map"), ST.bIsMap);
+			if (ST.bIsMap)
+			{
+				auto V = MakeShared<FJsonObject>();
+				V->SetStringField(TEXT("category"), ST.ValueCategory);
+				if (ST.ValueSubCategory.IsEmpty()) { V->SetField(TEXT("sub_category"), MakeShared<FJsonValueNull>()); }
+				else { V->SetStringField(TEXT("sub_category"), ST.ValueSubCategory); }
+				if (ST.ValueSubCategoryObject.IsEmpty()) { V->SetField(TEXT("sub_category_object"), MakeShared<FJsonValueNull>()); }
+				else { V->SetStringField(TEXT("sub_category_object"), ST.ValueSubCategoryObject); }
+				T->SetObjectField(TEXT("value_type"), V);
+			}
+			P->SetObjectField(TEXT("structured_type"), T);
+
+			if (!Pin->DefaultValue.IsEmpty()) { P->SetStringField(TEXT("default_value"), Pin->DefaultValue); }
+			if (Pin->DefaultObject) { P->SetStringField(TEXT("default_object_path"), Pin->DefaultObject->GetPathName()); }
+			if (!Pin->DefaultTextValue.IsEmpty()) { P->SetStringField(TEXT("default_text"), Pin->DefaultTextValue.ToString()); }
+			P->SetBoolField(TEXT("is_hidden"), Pin->bHidden);
+			P->SetBoolField(TEXT("is_reference"), Pin->PinType.bIsReference);
+			PinsJson.Add(MakeShared<FJsonValueObject>(P));
+		}
+		Obj->SetArrayField(TEXT("pins"), PinsJson);
+		Obj->SetStringField(TEXT("note"),
+			TEXT("Pins reflect AllocateDefaultPins on an unconfigured transient instance — "
+				 "nodes that derive pins from a bound member (e.g. CallFunction) show only "
+				 "their static pins. ExpandNode output is a compile-time transform and is "
+				 "not statically introspectable."));
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -13149,6 +13301,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::ListAnimMontages,           &RunListAnimMontagesOp },
 		{ EOp::DiffAsset,                  &RunDiffAssetOp },
 		{ EOp::PrepareMerge,               &RunPrepareMergeOp },
+		{ EOp::DescribeK2Node,             &RunDescribeK2NodeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

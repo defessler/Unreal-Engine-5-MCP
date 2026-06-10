@@ -152,6 +152,10 @@ nlohmann::json ReadOnlyBlueprintReader::ReadActorInstance(std::string_view asset
 	// Read op — passes through.
 	return inner_->ReadActorInstance(assetPath);
 }
+nlohmann::json ReadOnlyBlueprintReader::DescribeK2Node(std::string_view classPath) {
+	// Read op — passes through.
+	return inner_->DescribeK2Node(classPath);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

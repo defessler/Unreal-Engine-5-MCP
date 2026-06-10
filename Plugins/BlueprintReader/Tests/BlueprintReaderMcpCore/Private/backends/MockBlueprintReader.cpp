@@ -332,6 +332,12 @@ nlohmann::json MockBlueprintReader::ReadActorInstance(std::string_view) {
 		"(needs a UObject world that mock fixtures don't provide)");
 }
 
+nlohmann::json MockBlueprintReader::DescribeK2Node(std::string_view) {
+	throw BlueprintReaderError(
+		"DescribeK2Node requires the live or commandlet backend "
+		"(needs the UClass/K2-node registry that mock fixtures don't provide)");
+}
+
 // UX-P4a: the mock has no editor game thread to stall, so health is a stable
 // synthetic-healthy result (fixture-deterministic — age is always 0).
 IBlueprintReader::HealthResult MockBlueprintReader::HealthCheck() {
@@ -393,6 +399,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"list_anim_montages", "read_anim_montage",  // EDIT-4: no montage fixtures yet
 		// Class info — fixtures don't include the UClass registry
 		"find_class", "get_class_info", "list_functions",
+		"describe_k2node",  // EDIT-5: spawns a transient K2 node — editor only
 		// Asset management
 		"move_asset", "delete_asset", "create_folder",
 		"read_config_value", "set_config_value",

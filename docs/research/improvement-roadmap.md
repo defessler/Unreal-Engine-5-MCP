@@ -914,7 +914,38 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** All GAS/action game projects drive character actions through Montages. Notify names in ABP event graphs (`AnimNotify_<Name>`) are only visible from the montage side.
 
 ### EDIT-5 — Custom K2Node: describe + generate skeleton {#edit-5}
-- **Status:** ☐ Open · **Effort:** L
+- **Status:** ✅ Done (2026-06-09) · **Effort:** L
+- *Shipped both tools (261→263; protocol hash rebaselined; catalog regenerated):*
+  - **`describe_k2node`** (plugin-side `RunDescribeK2NodeOp` + the full 7-site
+    backend chain; mock deny-filtered): resolves a class (short name → FindObject
+    → LoadObject), spawns a TRANSIENT instance in a sandbox UBlueprint/UEdGraph
+    (engine spawner order: AllocateDefaultPins BEFORE PostPlacedNewNode — the
+    reverse order crashes pin-touching PostPlaced overrides like
+    SpawnActorFromClass), and reports pins (formatted + structured type),
+    purity, title, tooltip, menu category. Rejects non-K2 classes,
+    abstract/deprecated, and the AnimGraph family (their PostPlacedNewNode
+    CastChecks an AnimBlueprint host — fatal in a plain sandbox). Honesty note
+    in the payload: pins reflect an UNCONFIGURED instance; ExpandNode output
+    isn't statically introspectable (that part of the original spec was
+    dropped as infeasible).
+  - **`generate_k2node_skeleton`** (pure server-side codegen, new
+    `tools/codegen/K2NodeSkeletonEmit.{h,cpp}`; works on every backend incl.
+    mock; NOT transpile-gated — writes no files, parses no untrusted C++):
+    emits compilable .h/.cpp text — AllocateDefaultPins from a pin spec,
+    GetMenuActions registrar idiom, titles, IsNodePure, canonical ExpandNode
+    lowering to a CallFunction. Review-hardened: all free text escaped into
+    string literals (injection/compile-break), module_api identifier-sanitized,
+    duplicate + reserved ("execute"/"then") pin names rejected, known-class
+    spelling table (Actor→AActor …), heuristic spellings TODO-marked, /Script/
+    class-only target_function rejected, pin-name-matching contract surfaced
+    in `notes`.
+  - **Verified:** mock 869/0 (7 new cases incl. escaping/validation); 2-lens
+    adversarial review (caught a CRITICAL spawn-order bug — confirmed against
+    the engine's BlueprintNodeSpawner.cpp — + injection + AnimGraph crash);
+    editor module compiles on UE 5.8; **live** against a real `-nullrhi`
+    daemon: FormatText (pure, real title), SpawnActorFromClass (full real pin
+    set — the class that crashed pre-fix), IfThenElse, AnimGraph node cleanly
+    rejected, daemon survived all calls.*
 - `transpile_blueprint` emits `// TODO[bpr-unsupported]` for every non-built-in K2 node class. Two new tools: (a) `describe_k2node(class_path)` — given a custom UK2Node class path, reads its `AllocateDefaultPins` output, `GetMenuActions` category/tooltip, `IsNodePure`, and what `ExpandNode` produced at last compile; (b) `generate_k2node_skeleton(pin_spec, target_function)` — emit compilable `.h`/`.cpp` implementing `AllocateDefaultPins`, `GetMenuActions`, and a canonical `ExpandNode`. Builds on the C++ emit infrastructure in the transpiler.
 - **Why:** Plugin authors and framework teams building custom BP extension nodes. Lower frequency than EDIT-1/2 but high value for those teams.
 
@@ -1533,6 +1564,14 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-09** — **EDIT-5 SHIPPED**: `describe_k2node` (transient-sandbox K2
+  node introspection, plugin-side + full backend chain) + `generate_k2node_
+  skeleton` (pure server-side .h/.cpp codegen, new K2NodeSkeletonEmit) — 261→263
+  tools, hash rebaselined. 2-lens review caught a CRITICAL spawn-order bug
+  (Allocate must precede PostPlaced — verified against the engine's
+  BlueprintNodeSpawner.cpp), string-literal injection, and the AnimGraph-node
+  crash family; all fixed + regression-tested. Mock 869/0; live-verified incl.
+  SpawnActorFromClass (the pre-fix crasher) + AnimGraph rejection.
 - **2026-06-09** — **UX-P4a SHIPPED** (post-v0.7.0): on-demand health channel —
   game-thread heartbeat (FTSTicker + per-op bump) + worker-thread `health` frame
   in BOTH the LiveServer and CmdletServer + `HealthCheck()` through the full

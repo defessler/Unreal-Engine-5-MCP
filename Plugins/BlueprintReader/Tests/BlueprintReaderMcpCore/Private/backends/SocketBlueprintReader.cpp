@@ -1166,6 +1166,14 @@ nlohmann::json SocketBlueprintReader::ReadActorInstance(std::string_view assetPa
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::DescribeK2Node(std::string_view classPath) {
+	std::vector<std::string> args = {
+		"-Op=DescribeK2Node",
+		"-Class=" + std::string(classPath),
+	};
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

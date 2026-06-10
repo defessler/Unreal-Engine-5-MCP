@@ -84,6 +84,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"list_gameplay_tags", "read_ability_set",
 			"list_anim_blueprints", "read_anim_blueprint",
 			"find_class", "get_class_info",
+			"describe_k2node",  // EDIT-5: K2-node class introspection
 			// Diff / merge (read-only structural comparison) — UX-P4g:
 			// these ship fully wired but were in NO category, so progressive
 			// disclosure hid them (callable only via call_tool by exact name).
@@ -119,6 +120,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"parse_cpp_function",
 			"compile_function",
 			"write_generated_source",
+			"generate_k2node_skeleton",  // EDIT-5: custom-node skeleton codegen
 		}},
 
 		// --- editor: live-editor surface (PIE, viewport, console, log) ---
@@ -208,9 +210,11 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 		}},
 		{"class-info", {
 			"find_class", "get_class_info", "list_functions",
+			"describe_k2node",
 		}},
 		{"discover", {
 			"list_node_kinds", "list_pin_categories",
+			"describe_k2node",
 			"shutdown_daemon",
 		}},
 
@@ -265,6 +269,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"decompile_function", "decompile_blueprint",
 			"transpile_function", "transpile_blueprint",
 			"parse_cpp_function", "write_generated_source",
+			"describe_k2node", "generate_k2node_skeleton",  // EDIT-5
 			"compile_function", "apply_ops",
 			"save_all", "shutdown_daemon",
 		}},

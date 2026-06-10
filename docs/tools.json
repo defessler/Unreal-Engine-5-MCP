@@ -751,6 +751,135 @@
     }
   },
   {
+    "category": "read",
+    "description": "[read] Introspect a K2 node class (custom or engine): given a class path like `/Script/BlueprintGraph.K2Node_FormatText` (or a short name like `K2Node_FormatText`), spawns a transient instance, calls AllocateDefaultPins, and reports its pins (name/direction/type/defaults), purity, title, tooltip, menu category, parent class, and owning module. Use this to understand what a `// TODO[bpr-unsupported]` node in transpiled output actually is, or before generating a replacement with `generate_k2node_skeleton`. Honesty notes: pins reflect an UNCONFIGURED instance (nodes that derive pins from a bound member — e.g. CallFunction — show only their static pins), and ExpandNode output is a compile-time transform that is not statically introspectable.",
+    "input_schema": {
+      "properties": {
+        "class_path": {
+          "description": "K2 node class path (e.g. /Script/BlueprintGraph.K2Node_FormatText) or short class name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "class_path"
+      ],
+      "type": "object"
+    },
+    "name": "describe_k2node",
+    "output_schema": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "is_node_pure": {
+          "type": "boolean"
+        },
+        "menu_category": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "pins": {
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tooltip": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "cpp",
+    "description": "[cpp] Generate a compilable .h/.cpp skeleton for a custom UK2Node subclass: AllocateDefaultPins from your pin spec (exec pins added automatically unless `pure`), GetMenuActions (UBlueprintNodeSpawner registrar idiom), GetNodeTitle/GetTooltipText/GetMenuCategory, IsNodePure, and — when `target_function` is given — a canonical ExpandNode that lowers the node to a CallFunction on that function. Returns header/source TEXT only (writes no files; pair with `write_generated_source` to materialize). Pin categories: bool, byte, int, int64, float, name, string, text, object, class, softobject, softclass, struct, wildcard; containers: array/set/map. Unresolvable sub-types surface as TODO placeholders listed in `notes`, never silent wrong code.",
+    "input_schema": {
+      "properties": {
+        "class_name": {
+          "description": "Node name, e.g. \"MyNode\" (UK2Node_ prefix added automatically).",
+          "type": "string"
+        },
+        "menu_category": {
+          "type": "string"
+        },
+        "module_api": {
+          "description": "Optional module API macro stem, e.g. \"MYMODULE\" emits MYMODULE_API.",
+          "type": "string"
+        },
+        "pins": {
+          "description": "[{name, direction:\"input\"|\"output\", category, sub_object?, container?, default_value?, is_reference?}]",
+          "type": "array"
+        },
+        "pure": {
+          "description": "true = no exec pins + IsNodePure()=true.",
+          "type": "boolean"
+        },
+        "target_function": {
+          "description": "Function ExpandNode lowers to, e.g. \"/Script/MyModule.MyFunctionLibrary:DoThing\". Omit to skip ExpandNode.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tooltip": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "class_name"
+      ],
+      "type": "object"
+    },
+    "name": "generate_k2node_skeleton",
+    "output_schema": {
+      "properties": {
+        "class_name": {
+          "type": "string"
+        },
+        "header_file": {
+          "type": "string"
+        },
+        "header_source": {
+          "type": "string"
+        },
+        "impl_file": {
+          "type": "string"
+        },
+        "impl_source": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "category": "blueprint",
     "description": "[blueprint] Tiny orientation response for a Blueprint: parent class plus counts of variables, functions, graphs, macros, and interfaces. Use this BEFORE `read_blueprint` when you don't yet know how big the BP is — saves loading the full payload to find out it has hundreds of variables.",
     "input_schema": {

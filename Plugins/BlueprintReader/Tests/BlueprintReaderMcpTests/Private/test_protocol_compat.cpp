@@ -203,7 +203,7 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// does NOT filter unsupported ones (RegisterBlueprintTools registers
 	// all, but the per-backend filter in main.cpp does the prune in
 	// production). In test, full inventory = 132.
-	REQUIRE(spec.size() == 261);
+	REQUIRE(spec.size() == 263);
 
 	// The hash anchor — update on intentional inventory change.
 	// First baselined 2026-05-21 (Phase B commit) at 132 tools.
@@ -295,7 +295,9 @@ TEST_CASE("tools/list inventory snapshot: hash of canonical dump") {
 	// Re-baselined 2026-06-05 at 260 tools after +2 diff tools:
 	// diff_asset + prepare_merge.
 	// Re-baselined 2026-06-09 at 261 tools after +1 health_check (UX-P4a).
-	constexpr uint64_t kCurrentToolsHash = 0x9C365A477E8CAF7EULL;
+	// Re-baselined 2026-06-09 at 263 tools after +2 EDIT-5:
+	// describe_k2node + generate_k2node_skeleton.
+	constexpr uint64_t kCurrentToolsHash = 0xEA947BC1070FF8E9ULL;
 
 	if (hash != kCurrentToolsHash) {
 		// Re-baseline aid: when the inventory legitimately changes, the

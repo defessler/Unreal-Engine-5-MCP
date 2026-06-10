@@ -518,6 +518,9 @@ nlohmann::json AutoBlueprintReader::StructuralDiff(
 nlohmann::json AutoBlueprintReader::ReadActorInstance(std::string_view assetPath) {
 	FORWARD(ReadActorInstance, assetPath);
 }
+nlohmann::json AutoBlueprintReader::DescribeK2Node(std::string_view classPath) {
+	FORWARD(DescribeK2Node, classPath);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);
