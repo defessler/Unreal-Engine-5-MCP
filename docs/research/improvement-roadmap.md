@@ -836,6 +836,40 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** ~30 tools currently have only registration-level coverage; this is the
   only way to validate they respond correctly to real interactive use.
 
+### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
+- **Status:** ☐ Open (research done 2026-06-09) · **Effort:** M–L (phased) ·
+  **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
+- Programmatic interaction with the real GUI editor — click buttons, drive
+  menus, dismiss modals, inspect widgets. A 3-lens research pass (engine source
+  on disk + ecosystem + integration design) settled the approach:
+  - **Epic ships the Selenium analog in-engine**: `AutomationDriver`
+    (Developer module; full source + DLL + import lib verified present in the
+    installed 5.8 engine; linkable from this plugin). `By::Id`/`By::Path`/
+    `By::WidgetLambda` locators over ALL visible windows (modals + popups
+    included); input injected at the Slate message-handler level (no OS focus,
+    immune to "UIA can't see Slate"). Caveat: `Enable()` suppresses real user
+    input — exclusive sessions only, P2.
+  - **The modal wedge is root-caused**: `AddModalWindow`'s nested loop never
+    ticks FTSTicker/AsyncTask. Cure = a startup-registered
+    `OnModalLoopTickEvent` side-channel (report/dismiss/click inside the modal
+    pump); prevention = opt-in `GIsRunningUnattendedScript`.
+  - **Phases**: P0 `ui_list_widgets` + real `get_modal_state` (read-only, no
+    gate); P1a modal unblocker (worker-thread frame + modal-tick delegate);
+    P1b gated (`BP_READER_ALLOW_UI=1`) `ui_click`/`ui_type`/`ui_invoke_menu`
+    via game-thread Slate injection + the TEST-1 Track B smoke
+    (`BP_READER_SMOKE_UI`) with a modal-recovery drill; P2 AutomationDriver
+    sessions (drag/hover/chords) only if P1 proves insufficient.
+  - Also: `Automation RunTests <filter>` is a console command — Epic's own
+    automation/screenshot tests are triggerable in a live GUI editor through
+    the EXISTING `run_console_command` tool (only result harvesting needs
+    building). And the prior "UIAutomation can't see Slate" finding was the
+    default-off `Accessibility.Enable` CVar, not a hard limit — a 1-hour spike
+    is a worthwhile fallback probe.
+- **Why:** unblocks TEST-1 Track B (drive + assert the interactive surface in a
+  real GUI editor), turns the historical modal wedge into a tested recovery
+  path, and gives AI clients a controlled way to operate editor UI that has no
+  tool coverage today.
+
 ---
 
 ## 5. MCP spec parity (2025-11-25 features not yet used)
@@ -1564,6 +1598,13 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-09** — **TEST-2 added** (editor UI automation, Selenium-style):
+  3-lens research (engine source/ecosystem/integration) found Epic's in-engine
+  `AutomationDriver` ships complete in installed 5.8 and is linkable; modal
+  wedge root-caused (`AddModalWindow` never ticks FTSTicker) with an
+  `OnModalLoopTickEvent` cure; phased P0–P2 plan (widget tree → modal
+  unblocker → gated ui_click/type/menu → driver sessions). Full findings in
+  live-gui-testing.md. Also: v0.8.0 released (health_check + EDIT-5 tools).
 - **2026-06-09** — **EDIT-5 SHIPPED**: `describe_k2node` (transient-sandbox K2
   node introspection, plugin-side + full backend chain) + `generate_k2node_
   skeleton` (pure server-side .h/.cpp codegen, new K2NodeSkeletonEmit) — 261→263
