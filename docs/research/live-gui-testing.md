@@ -151,3 +151,101 @@ editor, run the same smoke against `BP_READER_BACKEND=live`, gate PIE behind
 - Net: the BP/asset (state-independent) surface is already faithfully covered
   headless; the render+interactive surface needs the real, in-use GUI editor to
   match how the tools actually respond to a person using it.
+
+---
+
+## Editor UI automation — Selenium-style driver (research 2026-06-09, → TEST-2)
+
+A 3-lens research pass (engine source on disk, ecosystem/community, plugin
+integration design) into *interacting with* the real GUI editor — clicking
+buttons, driving menus, dismissing modals, inspecting widgets — answered the
+"is there a Selenium for the editor?" question definitively: **yes, Epic ships
+one in-engine**, and the path to using it from this plugin is concrete.
+
+### Primary-source findings (verified in UE 5.8 installed-engine source)
+
+1. **`AutomationDriver` is the Selenium analog and ships complete.**
+   `Engine/Source/Developer/AutomationDriver/` (full source) +
+   `UnrealEditor-AutomationDriver.dll` + the import lib are all present in the
+   installed engine, so an installed-engine plugin can link it
+   (`PrivateDependencyModuleNames += "AutomationDriver"`). Plain Developer
+   module (Core/Slate deps only). Usage corpus:
+   `Engine/Plugins/Tests/AutomationDriverTests/`.
+   - **Locators**: `By::Id` (FDriverIdMetaData), `By::Path`
+     (`"#Suite//Piano/Key//<STextBlock>"` — tags, widget types,
+     child/descendant), `By::WidgetLambda` (arbitrary predicate — locate by
+     visible text). Roots come from `GetAllVisibleWindowsOrdered()`, so
+     **modal windows and menu popups are searchable**.
+   - **Input is Slate-level, not OS-level**: steps call
+     `GetRealMessageHandler()->OnMouseDown/OnKeyDown/...` — the same entry
+     points the OS pump feeds. Works without OS focus, no real cursor,
+     immune to the "UIA can't see Slate" problem.
+   - **Threading fits the LiveServer**: driver steps execute on the game
+     thread via FTSTicker; the synchronous `Perform()` must be called from a
+     NON-game thread (Epic's own specs run on the thread pool) — i.e. our
+     socket worker thread, NOT the usual `AsyncTask(GameThread)` op dispatch.
+   - **Caveat**: `IAutomationDriverModule::Enable()` swaps the platform app —
+     real mouse/keyboard input is suppressed while enabled. It can never run
+     against a user's working editor by default; per-call Enable/Disable with
+     guaranteed cleanup, behind an explicit gate.
+
+2. **The modal wedge is root-caused.** `FSlateApplication::AddModalWindow`'s
+   nested loop (SlateApplication.cpp:2232-2273) ticks the OS pump + Slate draw
+   but **not** `FTSTicker` / game-thread `AsyncTask` — which is exactly why
+   the LiveServer dispatch (and the AutomationDriver itself) stalls under a
+   hard modal. Two levers:
+   - **Cure**: subscribe `GetOnModalLoopTickEvent()` at plugin startup
+     (precedent: ContentBrowserDataSubsystem) — the only game-thread context
+     that runs inside the modal pump. Service a side-channel queue there:
+     report `GetActiveModalWindow()`, dismiss via `RequestDestroyWindow()`,
+     or click a located button via `ProcessMouseButtonDownEvent`.
+   - **Prevention**: `GIsRunningUnattendedScript` makes `FMessageDialog::Open`
+     return the default answer with no UI (MessageDialog.cpp:157). Covers only
+     FMessageDialog-routed dialogs; suppresses dialogs a co-working human may
+     want — opt-in only.
+
+3. **`Automation RunTests <filter>` is a console command** (FSelfRegisteringExec,
+   AutomationCommandline.cpp) — Epic's automation tests (incl.
+   FAutomationScreenshotOptions screenshot comparisons) can be triggered in a
+   live GUI editor through the EXISTING `run_console_command` tool today; only
+   result harvesting needs building.
+
+4. **Ecosystem verdicts**: Gauntlet = CI orchestration only (no UI
+   interaction); Python editor scripting = subsystem-level only (no Slate
+   click surface); pixel/image tools (SikuliX/AutoHotkey) = dead-end for a
+   dockable DPI-scaled layout; commercial GameDriver = in-game UMG only.
+   **Correction to a prior finding**: "Windows UIAutomation can't see Slate"
+   is the default-off `Accessibility.Enable` CVar, not a hard limit — a
+   1-hour spike (flip CVar, point pywinauto/Accessibility Insights at it) is
+   worth running as a fallback probe, expecting a sparse tree.
+
+5. **Render-surface tier without a visible window**: a full editor launched
+   `-RenderOffscreen -unattended` (the flags Gauntlet itself injects) has a
+   real RHI — viewport/screenshot/camera tools run honestly, no modal wedges,
+   no TDR-exposed window. AutomationDriver still works under it. This slots
+   between Track A and Track B as the render tier; the thin manual real-GUI
+   pass remains the final fidelity check per the project's requirement.
+
+### Phased plan (TEST-2 in the roadmap)
+
+- **P0 — read-only widget tree (1–2 days, no gate).** `ui_list_widgets`: walk
+  `GetAllVisibleWindowsOrdered()` emitting stable index+type paths, tag/text,
+  `GetCachedGeometry` screen rects, enabled/visible flags; upgrade
+  `get_modal_state` from stub to include the modal's button list. Unblocks
+  selector authoring + Track B assertions immediately.
+- **P1a — modal unblocker (2–3 days).** A second inline worker-thread frame
+  type (modeled on the UX-P4a health frame) that queues dismiss/click
+  commands, executed by the startup-registered `OnModalLoopTickEvent`
+  delegate; plus the opt-in `BP_READER_GUI_AUTOMATION=1` →
+  `GIsRunningUnattendedScript` prevention gate. Turns the historical wedge
+  into a tested recovery path.
+- **P1b — interaction tools (4–6 days, gated `BP_READER_ALLOW_UI=1`).**
+  `ui_click` / `ui_type` / `ui_focus_window` / `ui_focus_tab` /
+  `ui_invoke_menu` (UToolMenus direct-FUIAction entries) via game-thread
+  `FSlateApplication` event injection through the existing dispatch; require
+  `widget_path` + expect_text/expect_type revalidation; raw-coordinate clicks
+  only behind `unsafe_screen_pos:true`. Wire the TEST-1 Track B smoke
+  (`BP_READER_SMOKE_UI`) on top, including a modal-recovery drill.
+- **P2 — AutomationDriver sessions (only if P1 proves insufficient).**
+  Drag/hover/key-chords/complex sequences via the real driver from the socket
+  worker thread; per-call Enable/Disable; exclusive-input caveat documented.
