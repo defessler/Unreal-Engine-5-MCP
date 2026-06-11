@@ -837,10 +837,19 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 done (2026-06-11)** — `ui_list_widgets` (264 tools) +
-  `get_modal_state` enriched with `buttons[]`; P1a/P1b/P2 ☐ Open · **Effort:**
-  M–L (phased) ·
+- **Status:** ◑ **P0 + P1a done (2026-06-11)** — `ui_list_widgets` (264 tools) +
+  `get_modal_state` enriched with `buttons[]` (P0); the modal side-channel +
+  render-tier harness (P1a); P1b/P2 ☐ Open · **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
+- **Render tier proven (2026-06-11):** a full editor launched
+  `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
+  **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
+  reuse-if-alive). `ui_list_widgets` returns the actual editor widget tree
+  (real `SDockingArea`/`SLevelEditor`/`SButton` paths), which also **retro-
+  verified P0's populated-tree paths**: a `type=SButton` walk over the real
+  (huge) tree returned in ~3 ms with `truncated=true` — the emit-vs-visit budget
+  split bounds traversal cost as intended. This is the TEST-1 Track B render
+  tier, now real; it unblocks P1b + the render/screenshot/PIE surface.
 - **P0 shipped:** `ui_list_widgets` walks the live editor's Slate tree
   (per-widget path/type/tag/text/visible/enabled/rect, per-window + global
   `truncated`, `ui_available` headless-honesty bool, independent emit-vs-visit
@@ -854,6 +863,29 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   visit/emit budget split, depth-cutoff truncation flag, `ui_available`,
   nested-button label boundary, `buttons_truncated`, and the response-local
   path / global-budget doc clarifications all came from that pass.
+- **P1a shipped (modal unblocker):** a worker-thread `modal` TCP frame
+  (mirroring the UX-P4a health frame) enqueues a command answered ON THE GAME
+  THREAD by a drainer hooked into TWO contexts — the idle heartbeat `FTSTicker`
+  and the lazily-registered `FSlateApplication::OnModalLoopTickEvent` delegate
+  (the only game-thread context that runs INSIDE `AddModalWindow`'s blocking
+  loop). So `report`/`dismiss` work even while a hard modal wedges the normal
+  `AsyncTask(GameThread)` op dispatch. `BuildActiveModalReport` is shared with
+  `get_modal_state`; commands use shared-ownership + a per-command event so the
+  worker/drainer are race-safe across a timeout. Plus the opt-in
+  `BP_READER_GUI_AUTOMATION=1` → persistent `GIsRunningUnattendedScript`
+  prevention gate (`AddModalWindow` self-cancels non-slow-task modals), and a
+  test-only `RaiseTestModal` hook (gated `BP_READER_TEST_MODAL=1`, not a tool —
+  264 unchanged). **Live-verified on the render tier** (`Saved/verify-test2-
+  p1a.ps1`): with a real modal blocking op dispatch (a concurrent normal op
+  WEDGED / timed out), the side-channel reported the modal's title + OK/Cancel
+  buttons and dismissed it, recovering BOTH the blocked test op and the wedged
+  normal op. **Headless regression PASS** (`verify-test2-p1a-headless.ps1`):
+  the daemon's health/op are intact and the `modal` frame degrades gracefully
+  (`serviced=true, is_open=false` via the ticker drain). Finding: the heartbeat
+  DOES go stale inside the modal loop (FTSTicker isn't pumped there), so
+  `health_check` can flag a long modal but can't distinguish it from any
+  game-thread stall — the modal channel is the modal-specific answer. Editor-
+  module only (no MCP server/tool/hash change).
 - Programmatic interaction with the real GUI editor — click buttons, drive
   menus, dismiss modals, inspect widgets. A 3-lens research pass (engine source
   on disk + ecosystem + integration design) settled the approach:
@@ -1613,6 +1645,18 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-11** — **TEST-2 P1a SHIPPED + render tier proven**: the modal side-
+  channel (worker-thread `modal` frame → game-thread drainer via the heartbeat
+  ticker AND the OnModalLoopTickEvent delegate; report/dismiss; shared
+  `BuildActiveModalReport`) + the `BP_READER_GUI_AUTOMATION` prevention gate +
+  a gated `RaiseTestModal` hook. Editor-module only (264 tools unchanged).
+  Keystone: a full editor `-RenderOffscreen -unattended` runs on this box with
+  real D3D12 RHI + Slate (the TEST-1 Track B render tier), which both verified
+  the P1a modal-recovery drill (normal op WEDGED while the side-channel reported
+  + dismissed the modal) AND retro-verified P0's populated-tree paths against
+  the real editor widget tree. Headless daemon regression PASS. Finding:
+  FTSTicker is NOT pumped in AddModalWindow's loop (heartbeat goes stale), so
+  health_check can't distinguish a modal from any game-thread stall.
 - **2026-06-11** — **TEST-2 P0 SHIPPED**: `ui_list_widgets` (264 tools — new
   editor-category read tool walking the live Slate tree) + `get_modal_state`
   enriched with `buttons[]`/`buttons_truncated`. Plugin op + full backend chain

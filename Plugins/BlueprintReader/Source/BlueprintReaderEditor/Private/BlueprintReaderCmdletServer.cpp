@@ -1,6 +1,8 @@
 #include "BlueprintReaderCmdletServer.h"
 
 #include "BlueprintReaderLiveServer.h"   // UX-P4a: GameThreadHeartbeatAgeMs()
+#include "BlueprintReaderModalChannel.h" // TEST-2 P1a: modal side-channel
+#include "Policies/CondensedJsonPrintPolicy.h"  // TEST-2 P1a: single-line modal_result
 #include "DaemonProgress.h"
 #include "Async/Async.h"
 #include "Common/TcpListener.h"
@@ -151,6 +153,28 @@ public:
 					TEXT("{\"type\":\"health\",\"id\":%d,\"game_thread_age_ms\":%lld,\"pid\":%u}\n"),
 					HealthId, static_cast<long long>(AgeMs),
 					FPlatformProcess::GetCurrentProcessId()));
+				continue;
+			}
+
+			// TEST-2 P1a: `modal` side-channel frame — enqueue + wait on the worker
+			// thread, drained on the game thread (idle ticker or modal-loop
+			// delegate), so it answers even while a modal wedges op dispatch.
+			if (Type == TEXT("modal"))
+			{
+				int32 ModalId = 0; Msg->TryGetNumberField(TEXT("id"), ModalId);
+				FString Action; Msg->TryGetStringField(TEXT("action"), Action);
+				FString ButtonPath; Msg->TryGetStringField(TEXT("button_path"), ButtonPath);
+				int32 TimeoutMs = 5000; Msg->TryGetNumberField(TEXT("timeout_ms"), TimeoutMs);
+				TSharedPtr<FJsonObject> Res =
+					BlueprintReader::SubmitModalCommand(Action, ButtonPath, TimeoutMs);
+				Res->SetStringField(TEXT("type"), TEXT("modal_result"));
+				Res->SetNumberField(TEXT("id"), ModalId);
+				FString Serialized;
+				// Condensed (single-line) — the wire is newline-delimited JSON.
+				TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Serialized);
+				FJsonSerializer::Serialize(Res.ToSharedRef(), Writer);
+				SendRaw(Serialized + TEXT("\n"));
 				continue;
 			}
 

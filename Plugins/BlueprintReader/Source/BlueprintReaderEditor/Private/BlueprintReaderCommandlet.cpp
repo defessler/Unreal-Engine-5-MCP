@@ -83,6 +83,9 @@
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Text/STextBlock.h"     // TEST-2 P0: text extraction in the widget-tree walk
+#include "Widgets/Input/SButton.h"       // TEST-2 P1a: RaiseTestModal buttons
+#include "Widgets/SBoxPanel.h"           // TEST-2 P1a: RaiseTestModal layout
+#include "BlueprintReaderModalChannel.h" // TEST-2 P1a: modal side-channel impl
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
@@ -537,6 +540,9 @@ namespace
 		DescribeK2Node,  // spawn a transient instance + report pins/purity/title
 		// TEST-2 P0: read-only Slate widget tree (selector authoring + UI assertions)
 		UiListWidgets,
+		// TEST-2 P1a: test hook — raise a blocking modal (BP_READER_TEST_MODAL=1).
+		// Not an MCP tool; reachable only via a raw -Op=RaiseTestModal frame.
+		RaiseTestModal,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -786,6 +792,8 @@ namespace
 		if (OpStr.Equals(TEXT("DescribeK2Node"),   ESearchCase::IgnoreCase))      { OutOp = EOp::DescribeK2Node;   return true; }
 		// TEST-2 P0
 		if (OpStr.Equals(TEXT("UiListWidgets"),    ESearchCase::IgnoreCase))      { OutOp = EOp::UiListWidgets;    return true; }
+		// TEST-2 P1a
+		if (OpStr.Equals(TEXT("RaiseTestModal"),   ESearchCase::IgnoreCase))      { OutOp = EOp::RaiseTestModal;   return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7332,36 +7340,30 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
-	int32 RunGetModalStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	// TEST-2 P0/P1a: fill Out with the active modal's state — is_open, title,
+	// buttons[] ({path, label?}, nested-button-safe labels), buttons_truncated.
+	// Returns whether a modal is open. Shared by get_modal_state AND the P1a
+	// modal side-channel so both report an identical shape. GAME THREAD ONLY
+	// (touches Slate). A single modal is small and bounded; 5000 visited/emitted
+	// comfortably covers even a content-picker with an asset tree, so truncation
+	// here is practically unreachable — but surfaced rather than silently
+	// dropping a 'Cancel'/'OK'.
+	bool BuildActiveModalReport(const TSharedPtr<FJsonObject>& Out)
 	{
-		auto Out = MakeShared<FJsonObject>();
-		Out->SetBoolField(TEXT("ok"), true);
 		bool bOpen = false;
 		FString Title;
 		TArray<TSharedPtr<FJsonValue>> Buttons;
 		bool bModalTruncated = false;
 		if (FSlateApplication::IsInitialized())
 		{
-			FSlateApplication& Slate = FSlateApplication::Get();
-			// IsActiveModalWindow returns the modal window when one's
-			// blocking input. We surface its title.
-			TSharedPtr<SWindow> Modal = Slate.GetActiveModalWindow();
+			TSharedPtr<SWindow> Modal = FSlateApplication::Get().GetActiveModalWindow();
 			if (Modal.IsValid())
 			{
 				bOpen = true;
 				Title = Modal->GetTitle().ToString();
-				// TEST-2 P0: list the modal's buttons (path + label) so a client
-				// can see what it CAN answer — pairs with the planned dismiss
-				// path (P1a). A button's label is the text of its descendant
-				// STextBlock(s), which the walk captures. A single modal is small
-				// and bounded; 5000 visited/emitted comfortably covers even a
-				// content-picker modal with an asset tree, so truncation here is
-				// practically unreachable — but it is surfaced (buttons_truncated)
-				// rather than silently dropping a 'Cancel'/'OK'.
 				TArray<TSharedPtr<FJsonValue>> WidgetsJson;
 				int32 EmitBudget = 5000;
 				int32 VisitBudget = 5000;
-				bModalTruncated = false;
 				WalkSlateTree(Modal.ToSharedRef(),
 					FString::Printf(TEXT("0:%s"), *Modal->GetTypeAsString()),
 					/*Depth=*/0, /*MaxDepth=*/25, /*TypeFilter=*/TEXT(""),
@@ -7402,6 +7404,102 @@ namespace
 		Out->SetStringField(TEXT("title"), Title);
 		Out->SetArrayField(TEXT("buttons"), Buttons);
 		Out->SetBoolField(TEXT("buttons_truncated"), bModalTruncated);
+		return bOpen;
+	}
+
+	int32 RunGetModalStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+		BuildActiveModalReport(Out);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
+	// TEST-2 P1a (test hook): raise a modal that genuinely BLOCKS the game thread
+	// so the side-channel's recovery path can be exercised. Gated behind
+	// BP_READER_TEST_MODAL=1 (a deliberate test affordance, never a tool). The
+	// per-op dispatch wraps ops in GIsRunningUnattendedScript=true, under which
+	// AddModalWindow self-cancels (SlateApplication.cpp:2128) — so to actually
+	// block we locally restore it to false. -ForceBlock=0 honors the ambient
+	// setting instead (used to verify the BP_READER_GUI_AUTOMATION prevention
+	// gate cancels the modal). AddModalWindow does not return until the modal is
+	// destroyed (e.g. by a `modal`/dismiss command), so this op's reply only
+	// arrives AFTER recovery — which is the whole point.
+	int32 RunRaiseTestModalOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_TEST_MODAL"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("RaiseTestModal is a test hook; set BP_READER_TEST_MODAL=1 to enable it."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("Slate is not initialized (headless) — no modal can be raised here. Use the -RenderOffscreen render tier."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		// Guarantee the modal-loop drainer is hooked before we block (the idle
+		// heartbeat ticker normally registers it, but it won't run once we're in
+		// the modal loop — so register now, on the game thread, just in case).
+		BlueprintReader::RegisterModalTickIfNeeded();
+
+		FString Title = TEXT("BPR Test Modal");
+		FParse::Value(*Params, TEXT("Title="), Title);
+		int32 ForceBlock = 1;
+		FParse::Value(*Params, TEXT("ForceBlock="), ForceBlock);
+
+		TSharedRef<SWindow> Win = SNew(SWindow)
+			.Title(FText::FromString(Title))
+			.ClientSize(FVector2D(320.0f, 130.0f))
+			.SupportsMaximize(false)
+			.SupportsMinimize(false);
+		// Two real buttons that close the modal when clicked (so a human, or a
+		// future P1b click-to-answer, can resolve it). The P1a `dismiss` path
+		// instead force-closes via RequestDestroyWindow.
+		TWeakPtr<SWindow> WinWeak = Win;
+		auto CloseModal = [WinWeak]() -> FReply {
+			if (TSharedPtr<SWindow> W = WinWeak.Pin())
+			{
+				FSlateApplication::Get().RequestDestroyWindow(W.ToSharedRef());
+			}
+			return FReply::Handled();
+		};
+		Win->SetContent(
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(12.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("Test modal — blocking the game thread."))) ]
+			+ SVerticalBox::Slot().AutoHeight().Padding(12.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f)
+				[ SNew(SButton).OnClicked_Lambda(CloseModal)
+					[ SNew(STextBlock).Text(FText::FromString(TEXT("OK"))) ] ]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f)
+				[ SNew(SButton).OnClicked_Lambda(CloseModal)
+					[ SNew(STextBlock).Text(FText::FromString(TEXT("Cancel"))) ] ]
+			]);
+
+		// Force the modal to actually block (the op dispatch set unattended=true,
+		// which would otherwise cancel it).
+		TOptional<TGuardValue<bool>> UnattendedOverride;
+		if (ForceBlock != 0)
+		{
+			UnattendedOverride.Emplace(GIsRunningUnattendedScript, false);
+		}
+		FSlateApplication::Get().AddModalWindow(Win, nullptr);
+		// Reaches here only once the modal is gone.
+		const bool bStillModal = FSlateApplication::Get().GetActiveModalWindow().IsValid();
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("title"), Title);
+		Out->SetBoolField(TEXT("force_block"), ForceBlock != 0);
+		// When ForceBlock=0 under the prevention gate, AddModalWindow returns
+		// immediately having canceled the window — a fast, non-blocking result.
+		Out->SetBoolField(TEXT("returned_with_modal_open"), bStillModal);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
@@ -13503,6 +13601,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::PrepareMerge,               &RunPrepareMergeOp },
 		{ EOp::DescribeK2Node,             &RunDescribeK2NodeOp },
 		{ EOp::UiListWidgets,              &RunUiListWidgetsOp },
+		{ EOp::RaiseTestModal,             &RunRaiseTestModalOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{
@@ -13670,6 +13769,120 @@ int32 BlueprintReader::RunOneOpFromLiveServer(uint64 ConnectionId, const FString
     // unattended, so this is a no-op there.
     TGuardValue<bool> UnattendedGuard(GIsRunningUnattendedScript, true);
     return RunOneOp(Params);
+}
+
+// ============================================================================
+// TEST-2 P1a — modal side-channel implementation. The worker-thread `modal`
+// frame calls SubmitModalCommand (enqueue + wait); a game-thread drainer (the
+// heartbeat FTSTicker when idle, or the OnModalLoopTickEvent delegate when a
+// modal blocks the game thread) runs DrainModalCommands. BuildActiveModalReport
+// (anon namespace, above) is reached by unqualified lookup, same as RunOneOp.
+// ============================================================================
+namespace
+{
+	// A queued modal command. Heap-allocated + shared so the worker thread and
+	// the game-thread drainer can both hold it safely across a timeout race: on
+	// timeout the worker simply stops waiting (it never removes from the queue),
+	// so the command is still drained later and freed when the last ref drops.
+	struct FPendingModalCommand
+	{
+		FString Action;
+		FString ButtonPath;
+		FEvent* Done = nullptr;
+		TSharedPtr<FJsonObject> Result;
+		FPendingModalCommand() { Done = FPlatformProcess::GetSynchEventFromPool(false); }
+		~FPendingModalCommand() { if (Done) { FPlatformProcess::ReturnSynchEventToPool(Done); Done = nullptr; } }
+	};
+	FCriticalSection GModalQueueCs;
+	TArray<TSharedPtr<FPendingModalCommand>> GModalQueue;
+	bool GModalTickRegistered = false;     // game thread only
+	FDelegateHandle GModalTickHandle;      // game thread only
+
+	void ModalLoopTickDrain(float /*DeltaTime*/)
+	{
+		BlueprintReader::DrainModalCommands();
+	}
+}
+
+TSharedPtr<FJsonObject> BlueprintReader::SubmitModalCommand(
+	const FString& Action, const FString& ButtonPath, int32 TimeoutMs)
+{
+	TSharedPtr<FPendingModalCommand> Cmd = MakeShared<FPendingModalCommand>();
+	Cmd->Action = Action.IsEmpty() ? FString(TEXT("report")) : Action;
+	Cmd->ButtonPath = ButtonPath;
+	{
+		FScopeLock Lock(&GModalQueueCs);
+		GModalQueue.Add(Cmd);
+	}
+	const uint32 WaitMs = (uint32)FMath::Clamp(TimeoutMs, 1, 60000);
+	if (Cmd->Done->Wait(WaitMs) && Cmd->Result.IsValid())
+	{
+		return Cmd->Result;
+	}
+	// Timed out: do NOT remove (a drainer may already own this batch). Leave it
+	// to be drained + freed later; return an honest not-serviced result.
+	auto R = MakeShared<FJsonObject>();
+	R->SetBoolField(TEXT("serviced"), false);
+	R->SetBoolField(TEXT("is_open"), false);
+	R->SetStringField(TEXT("note"),
+		TEXT("no game-thread drainer ran within the timeout — Slate may be down, "
+			 "or the editor is fully wedged with no active modal loop."));
+	return R;
+}
+
+void BlueprintReader::DrainModalCommands()
+{
+	if (!IsInGameThread()) { return; }
+	TArray<TSharedPtr<FPendingModalCommand>> Batch;
+	{
+		FScopeLock Lock(&GModalQueueCs);
+		if (GModalQueue.Num() == 0) { return; }
+		Batch = MoveTemp(GModalQueue);
+		GModalQueue.Reset();
+	}
+	for (const TSharedPtr<FPendingModalCommand>& Cmd : Batch)
+	{
+		auto R = MakeShared<FJsonObject>();
+		R->SetBoolField(TEXT("serviced"), true);
+		const bool bOpen = BuildActiveModalReport(R);    // is_open/title/buttons/...
+		if (Cmd->Action == TEXT("dismiss"))
+		{
+			bool bDismissed = false;
+			if (bOpen && FSlateApplication::IsInitialized())
+			{
+				TSharedPtr<SWindow> Modal = FSlateApplication::Get().GetActiveModalWindow();
+				if (Modal.IsValid())
+				{
+					// Force the blocking AddModalWindow loop to exit: once this is
+					// no longer the active modal, its while-loop breaks and the
+					// wedged op dispatch unblocks.
+					FSlateApplication::Get().RequestDestroyWindow(Modal.ToSharedRef());
+					bDismissed = true;
+				}
+			}
+			R->SetBoolField(TEXT("dismissed"), bDismissed);
+		}
+		Cmd->Result = R;
+		Cmd->Done->Trigger();
+	}
+}
+
+void BlueprintReader::RegisterModalTickIfNeeded()
+{
+	if (!IsInGameThread() || GModalTickRegistered) { return; }
+	if (!FSlateApplication::IsInitialized()) { return; }
+	GModalTickHandle = FSlateApplication::Get().GetOnModalLoopTickEvent().AddStatic(&ModalLoopTickDrain);
+	GModalTickRegistered = true;
+}
+
+void BlueprintReader::UnregisterModalTick()
+{
+	if (GModalTickRegistered && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().GetOnModalLoopTickEvent().Remove(GModalTickHandle);
+	}
+	GModalTickHandle.Reset();
+	GModalTickRegistered = false;
 }
 
 // Commit-partial-on-disconnect (Task 4.4). Called from the cmdlet /
