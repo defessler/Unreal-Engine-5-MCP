@@ -68,8 +68,12 @@ void FBlueprintReaderEditorModule::ShutdownModule()
 		FTSTicker::GetCoreTicker().RemoveTicker(GHeartbeatTickerHandle);
 		GHeartbeatTickerHandle.Reset();
 	}
-	// TEST-2 P1a: drop the OnModalLoopTickEvent registration.
+	// TEST-2 P1a: drop the OnModalLoopTickEvent registration, then release any
+	// in-flight modal commands BEFORE the server threads are joined — otherwise a
+	// worker blocked in SubmitModalCommand's wait (with both drainers now gone)
+	// would stall the server's WaitForCompletion() up to the command's timeout.
 	BlueprintReader::UnregisterModalTick();
+	BlueprintReader::FailPendingModalCommands();
 	if (BlueprintReader::FLiveServer* S = BlueprintReader::GetLiveServer())
 	{
 		S->Stop();
