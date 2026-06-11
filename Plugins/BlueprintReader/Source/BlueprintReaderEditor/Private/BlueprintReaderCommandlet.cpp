@@ -13819,15 +13819,61 @@ TSharedPtr<FJsonObject> BlueprintReader::SubmitModalCommand(
 	{
 		return Cmd->Result;
 	}
-	// Timed out: do NOT remove (a drainer may already own this batch). Leave it
-	// to be drained + freed later; return an honest not-serviced result.
+	// Wait returned false (timeout). Resolve the boundary race UNDER THE LOCK,
+	// which serializes us against DrainModalCommands' MoveTemp:
+	bool bRemovedUnserviced = false;
+	{
+		FScopeLock Lock(&GModalQueueCs);
+		// Still queued => NO drainer has taken it. Remove it so it can NEVER be
+		// executed later — a stale `dismiss` that the client gave up on must not
+		// force-close a future, unrelated modal (the "ghost dismiss").
+		bRemovedUnserviced = (GModalQueue.Remove(Cmd) > 0);
+	}
+	if (!bRemovedUnserviced)
+	{
+		// Not in the queue => a drainer already owns this command (it MoveTemp'd
+		// the batch at the boundary) and will set Result then Trigger. Collect
+		// that real result with a short bounded wait — the Trigger establishes
+		// the happens-before for reading Result, so this is race-free (unlike a
+		// bare re-read). The drainer is mid-batch, so this returns promptly.
+		if (Cmd->Done->Wait(1000) && Cmd->Result.IsValid())
+		{
+			return Cmd->Result;
+		}
+	}
+	// Genuinely not serviced within the timeout.
 	auto R = MakeShared<FJsonObject>();
 	R->SetBoolField(TEXT("serviced"), false);
 	R->SetBoolField(TEXT("is_open"), false);
 	R->SetStringField(TEXT("note"),
-		TEXT("no game-thread drainer ran within the timeout — Slate may be down, "
-			 "or the editor is fully wedged with no active modal loop."));
+		TEXT("no game-thread drainer serviced this within the timeout — Slate may "
+			 "be down, or the editor is fully wedged with no active modal loop."));
 	return R;
+}
+
+// Module shutdown (game thread): fail-fast every queued command so a worker
+// blocked in SubmitModalCommand's wait is released immediately (otherwise the
+// drainers are gone and the server's WaitForCompletion() would stall up to the
+// command's timeout). Also drops the queue's refs so the pooled events are
+// returned. Safe to call with an empty queue.
+void BlueprintReader::FailPendingModalCommands()
+{
+	TArray<TSharedPtr<FPendingModalCommand>> Batch;
+	{
+		FScopeLock Lock(&GModalQueueCs);
+		if (GModalQueue.Num() == 0) { return; }
+		Batch = MoveTemp(GModalQueue);
+		GModalQueue.Reset();
+	}
+	for (const TSharedPtr<FPendingModalCommand>& Cmd : Batch)
+	{
+		auto R = MakeShared<FJsonObject>();
+		R->SetBoolField(TEXT("serviced"), false);
+		R->SetBoolField(TEXT("is_open"), false);
+		R->SetStringField(TEXT("note"), TEXT("editor shutting down"));
+		Cmd->Result = R;
+		Cmd->Done->Trigger();
+	}
 }
 
 void BlueprintReader::DrainModalCommands()

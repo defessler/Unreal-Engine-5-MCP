@@ -42,4 +42,10 @@ namespace BlueprintReader
 
 	// Game thread: remove the OnModalLoopTickEvent registration (module shutdown).
 	void UnregisterModalTick();
+
+	// Game thread (module shutdown, BEFORE the servers' worker threads are
+	// joined): release every queued command with a {serviced:false, note:
+	// "editor shutting down"} result so a worker blocked in SubmitModalCommand's
+	// wait returns immediately instead of stalling the join up to its timeout.
+	void FailPendingModalCommands();
 }
