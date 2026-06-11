@@ -90,6 +90,12 @@ public:
 	// in UnsupportedTools() so the catalog hides it under the mock.
 	nlohmann::json DescribeK2Node(std::string_view classPath) override;
 
+	// Not supported on the mock backend (no Slate UI); throws. Listed in
+	// UnsupportedTools() so the catalog hides it under the mock.
+	nlohmann::json UiListWidgets(int maxDepth, int maxWidgets,
+								  std::string_view window,
+								  std::string_view type) override;
+
 	// UX-P4a: the mock backend has no editor game thread, so health is always a
 	// synthetic-healthy result (age 0). It IS supported (returns, never throws) —
 	// do NOT add it to UnsupportedTools().

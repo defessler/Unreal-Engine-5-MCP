@@ -82,6 +82,7 @@
 #include "UObject/Interface.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Widgets/Text/STextBlock.h"     // TEST-2 P0: text extraction in the widget-tree walk
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
@@ -534,6 +535,8 @@ namespace
 		PrepareMerge,    // base→mine + base→theirs diffs with conflict identification
 		// EDIT-5: K2-node class introspection
 		DescribeK2Node,  // spawn a transient instance + report pins/purity/title
+		// TEST-2 P0: read-only Slate widget tree (selector authoring + UI assertions)
+		UiListWidgets,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -781,6 +784,8 @@ namespace
 		if (OpStr.Equals(TEXT("PrepareMerge"),     ESearchCase::IgnoreCase))      { OutOp = EOp::PrepareMerge;     return true; }
 		// EDIT-5
 		if (OpStr.Equals(TEXT("DescribeK2Node"),   ESearchCase::IgnoreCase))      { OutOp = EOp::DescribeK2Node;   return true; }
+		// TEST-2 P0
+		if (OpStr.Equals(TEXT("UiListWidgets"),    ESearchCase::IgnoreCase))      { OutOp = EOp::UiListWidgets;    return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7182,12 +7187,159 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// TEST-2 P0: recursive Slate widget-tree walk. Emits one entry per widget:
+	// `path` (child-index:Type segments — a RESPONSE-LOCAL selector; the leading
+	// window-index is ordinal in GetAllVisibleWindowsOrdered and shifts as
+	// windows/menus/modals come and go, so it is not a durable cross-call key —
+	// see the tool description), type, tag, text (STextBlock content —
+	// labels/buttons get their text from descendant text blocks), visibility,
+	// enabled, and the cached screen rect. Read-only, game thread (the normal op
+	// dispatch). TWO independent caps keep the editor's huge tree off the wire
+	// AND off the game thread: `EmitBudget` bounds how many widgets are
+	// SERIALIZED; `VisitBudget` bounds how many are VISITED. The split matters
+	// because a `type` filter emits few widgets but would otherwise traverse the
+	// entire tree hunting for matches — VisitBudget is the real game-thread cost
+	// guard (decremented on every node, match or not). `bTruncated` is set on
+	// either budget exhaustion OR a depth cutoff that actually drops children, so
+	// the caller always learns when the result is partial.
+	void WalkSlateTree(const TSharedRef<SWidget>& Widget, const FString& Path,
+					   int32 Depth, int32 MaxDepth, const FString& TypeFilter,
+					   int32& EmitBudget, int32& VisitBudget, bool& bTruncated,
+					   TArray<TSharedPtr<FJsonValue>>& Out)
+	{
+		if (EmitBudget <= 0 || VisitBudget <= 0) { bTruncated = true; return; }
+		--VisitBudget;    // every node entered costs a visit, whether or not it matches
+		const FString Type = Widget->GetTypeAsString();
+
+		if (TypeFilter.IsEmpty() || Type.Contains(TypeFilter))
+		{
+			--EmitBudget;
+			auto W = MakeShared<FJsonObject>();
+			W->SetStringField(TEXT("path"), Path);
+			W->SetStringField(TEXT("type"), Type);
+			const FName Tag = Widget->GetTag();
+			if (Tag != NAME_None) { W->SetStringField(TEXT("tag"), Tag.ToString()); }
+			if (Type == TEXT("STextBlock"))
+			{
+				W->SetStringField(TEXT("text"),
+					StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString());
+			}
+			W->SetBoolField(TEXT("visible"), Widget->GetVisibility().IsVisible());
+			W->SetBoolField(TEXT("enabled"), Widget->IsEnabled());
+			const FGeometry& Geo = Widget->GetCachedGeometry();
+			const FVector2D Pos = Geo.GetAbsolutePosition();
+			const FVector2D Size = Geo.GetAbsoluteSize();
+			W->SetNumberField(TEXT("x"), Pos.X);
+			W->SetNumberField(TEXT("y"), Pos.Y);
+			W->SetNumberField(TEXT("w"), Size.X);
+			W->SetNumberField(TEXT("h"), Size.Y);
+			Out.Add(MakeShared<FJsonValueObject>(W));
+		}
+
+		if (Depth >= MaxDepth)
+		{
+			// Children below the depth cap are silently dropped — that is a
+			// truncation too, so the caller can learn to raise max_depth. Only
+			// flag it when children actually exist (a genuine leaf at the cap is
+			// complete).
+			FChildren* AtCap = Widget->GetChildren();
+			if (AtCap && AtCap->Num() > 0) { bTruncated = true; }
+			return;
+		}
+		FChildren* Children = Widget->GetChildren();
+		if (!Children) { return; }
+		for (int32 i = 0; i < Children->Num(); ++i)
+		{
+			TSharedRef<SWidget> Child = Children->GetChildAt(i);
+			WalkSlateTree(Child,
+				FString::Printf(TEXT("%s/%d:%s"), *Path, i, *Child->GetTypeAsString()),
+				Depth + 1, MaxDepth, TypeFilter, EmitBudget, VisitBudget, bTruncated, Out);
+			if (EmitBudget <= 0 || VisitBudget <= 0) { bTruncated = true; return; }
+		}
+	}
+
+	int32 RunUiListWidgetsOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		Out->SetBoolField(TEXT("ok"), true);
+
+		int32 MaxDepth = 25;
+		int32 MaxWidgets = 800;
+		FString WindowFilter;    // substring match on the window title
+		FString TypeFilter;      // substring match on the widget type
+		FParse::Value(*Params, TEXT("MaxDepth="), MaxDepth);
+		FParse::Value(*Params, TEXT("MaxWidgets="), MaxWidgets);
+		FParse::Value(*Params, TEXT("Window="), WindowFilter);
+		FParse::Value(*Params, TEXT("Type="), TypeFilter);
+		MaxDepth = FMath::Clamp(MaxDepth, 1, 100);
+		MaxWidgets = FMath::Clamp(MaxWidgets, 1, 10000);
+
+		// VisitBudget bounds the game-thread traversal cost independently of the
+		// emit cap, derived from MaxWidgets so a caller can raise both together.
+		// Floor of 5000 keeps a small max_widgets probe from missing a shallow
+		// target; ceiling of 200000 bounds the absolute worst-case walk of the
+		// full editor tree to a few-ms game-thread hitch.
+		const int32 MaxVisited = FMath::Clamp(MaxWidgets * 50, 5000, 200000);
+
+		TArray<TSharedPtr<FJsonValue>> Windows;
+		bool bTruncated = false;
+		const bool bUiAvailable = FSlateApplication::IsInitialized();
+		if (bUiAvailable)
+		{
+			TArray<TSharedRef<SWindow>> AllWindows;
+			FSlateApplication::Get().GetAllVisibleWindowsOrdered(AllWindows);
+			int32 EmitBudget = MaxWidgets;     // shared across windows (global cap)
+			int32 VisitBudget = MaxVisited;    // shared across windows (cost cap)
+			for (int32 wi = 0; wi < AllWindows.Num(); ++wi)
+			{
+				const TSharedRef<SWindow>& Window = AllWindows[wi];
+				const FString WindowTitle = Window->GetTitle().ToString();
+				if (!WindowFilter.IsEmpty() && !WindowTitle.Contains(WindowFilter))
+				{
+					continue;
+				}
+				auto WObj = MakeShared<FJsonObject>();
+				WObj->SetStringField(TEXT("title"), WindowTitle);
+				WObj->SetBoolField(TEXT("is_modal"), Window->IsModalWindow());
+				TArray<TSharedPtr<FJsonValue>> WidgetsJson;
+				bool bWindowTruncated = false;
+				WalkSlateTree(Window,
+					FString::Printf(TEXT("%d:%s"), wi, *Window->GetTypeAsString()),
+					/*Depth=*/0, MaxDepth, TypeFilter, EmitBudget, VisitBudget,
+					bWindowTruncated, WidgetsJson);
+				WObj->SetArrayField(TEXT("widgets"), WidgetsJson);
+				// Per-window truncation so a caller chasing one window knows its
+				// subtree was cut, not just that *some* global cap tripped.
+				WObj->SetBoolField(TEXT("truncated"), bWindowTruncated);
+				bTruncated = bTruncated || bWindowTruncated;
+				Windows.Add(MakeShared<FJsonValueObject>(WObj));
+				if (EmitBudget <= 0 || VisitBudget <= 0) { bTruncated = true; break; }
+			}
+		}
+		else
+		{
+			Out->SetStringField(TEXT("note"),
+				TEXT("Slate is not initialized in this editor process (headless "
+					 "daemon) — no UI windows exist to list. Use a GUI or "
+					 "-RenderOffscreen editor for real widget trees."));
+		}
+		// Machine-readable headless signal (mirrors take_screenshot's `captured`
+		// / pie_start's `started` precedent) so a client branches on a bool, not
+		// on the presence of `note`.
+		Out->SetBoolField(TEXT("ui_available"), bUiAvailable);
+		Out->SetArrayField(TEXT("windows"), Windows);
+		Out->SetBoolField(TEXT("truncated"), bTruncated);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunGetModalStateOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), true);
 		bool bOpen = false;
 		FString Title;
+		TArray<TSharedPtr<FJsonValue>> Buttons;
+		bool bModalTruncated = false;
 		if (FSlateApplication::IsInitialized())
 		{
 			FSlateApplication& Slate = FSlateApplication::Get();
@@ -7198,10 +7350,58 @@ namespace
 			{
 				bOpen = true;
 				Title = Modal->GetTitle().ToString();
+				// TEST-2 P0: list the modal's buttons (path + label) so a client
+				// can see what it CAN answer — pairs with the planned dismiss
+				// path (P1a). A button's label is the text of its descendant
+				// STextBlock(s), which the walk captures. A single modal is small
+				// and bounded; 5000 visited/emitted comfortably covers even a
+				// content-picker modal with an asset tree, so truncation here is
+				// practically unreachable — but it is surfaced (buttons_truncated)
+				// rather than silently dropping a 'Cancel'/'OK'.
+				TArray<TSharedPtr<FJsonValue>> WidgetsJson;
+				int32 EmitBudget = 5000;
+				int32 VisitBudget = 5000;
+				bModalTruncated = false;
+				WalkSlateTree(Modal.ToSharedRef(),
+					FString::Printf(TEXT("0:%s"), *Modal->GetTypeAsString()),
+					/*Depth=*/0, /*MaxDepth=*/25, /*TypeFilter=*/TEXT(""),
+					EmitBudget, VisitBudget, bModalTruncated, WidgetsJson);
+				// Project just the buttons + their nearest text for the summary.
+				for (int32 i = 0; i < WidgetsJson.Num(); ++i)
+				{
+					const TSharedPtr<FJsonObject>* WObj = nullptr;
+					if (!WidgetsJson[i]->TryGetObject(WObj) || !WObj) { continue; }
+					if ((*WObj)->GetStringField(TEXT("type")) != TEXT("SButton")) { continue; }
+					auto B = MakeShared<FJsonObject>();
+					B->SetStringField(TEXT("path"), (*WObj)->GetStringField(TEXT("path")));
+					// Nearest following STextBlock under this button's path = label.
+					// Stop at a NESTED SButton boundary: its text belongs to the
+					// inner button, not this (possibly icon-only) outer one —
+					// otherwise an outer button borrows the inner's caption.
+					const FString ButtonPath = (*WObj)->GetStringField(TEXT("path"));
+					for (int32 j = i + 1; j < WidgetsJson.Num(); ++j)
+					{
+						const TSharedPtr<FJsonObject>* TObj = nullptr;
+						if (!WidgetsJson[j]->TryGetObject(TObj) || !TObj) { continue; }
+						const FString TPath = (*TObj)->GetStringField(TEXT("path"));
+						if (!TPath.StartsWith(ButtonPath)) { break; }
+						const FString TType = (*TObj)->GetStringField(TEXT("type"));
+						if (TType == TEXT("SButton")) { break; }
+						if (TType == TEXT("STextBlock"))
+						{
+							B->SetStringField(TEXT("label"),
+								(*TObj)->GetStringField(TEXT("text")));
+							break;
+						}
+					}
+					Buttons.Add(MakeShared<FJsonValueObject>(B));
+				}
 			}
 		}
 		Out->SetBoolField(TEXT("is_open"), bOpen);
 		Out->SetStringField(TEXT("title"), Title);
+		Out->SetArrayField(TEXT("buttons"), Buttons);
+		Out->SetBoolField(TEXT("buttons_truncated"), bModalTruncated);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
@@ -13302,6 +13502,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::DiffAsset,                  &RunDiffAssetOp },
 		{ EOp::PrepareMerge,               &RunPrepareMergeOp },
 		{ EOp::DescribeK2Node,             &RunDescribeK2NodeOp },
+		{ EOp::UiListWidgets,              &RunUiListWidgetsOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

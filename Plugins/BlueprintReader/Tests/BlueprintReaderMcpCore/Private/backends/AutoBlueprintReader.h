@@ -142,6 +142,9 @@ public:
 								   const StructuralDiffOptions& opts) override;
 	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 	nlohmann::json DescribeK2Node(std::string_view classPath) override;
+	nlohmann::json UiListWidgets(int maxDepth, int maxWidgets,
+								  std::string_view window,
+								  std::string_view type) override;
 
 	// ----- batch + meta ---------------------------------------------
 	void BeginBatch() override;

@@ -198,16 +198,23 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.name = "get_modal_state";
 		d.description =
 			"[editor] Is a modal Slate window blocking input right now? "
-			"Returns `{is_open, title}`. Common modals: confirm-deletion, "
-			"asset-picker, save-as. Agents should refuse mutation ops when "
-			"is_open=true — the editor is gated on user input. Requires a "
-			"live editor.";
+			"Returns `{is_open, title, buttons, buttons_truncated}` — `buttons` "
+			"lists the modal's SButtons as `[{path, label?}]` so you can see what "
+			"answers the dialog offers (label comes from the button's text "
+			"block; `buttons_truncated` is true in the rare case the modal walk "
+			"hit its budget). Common modals: confirm-deletion, asset-picker, "
+			"save-as. Agents should refuse mutation ops when is_open=true — the "
+			"editor is gated on user input. Requires a live editor.";
 		d.input_schema = {{"type","object"}, {"properties", nlohmann::json::object()}};
 		d.output_schema = {
 			{"type", "object"},
 			{"properties", {
 				{"is_open", {{"type", "boolean"}}},
 				{"title",   {{"type", "string"}}},
+				{"buttons", {{"type", "array"},
+							 {"description", "The modal's buttons: [{path, label?}]. Empty when no modal."}}},
+				{"buttons_truncated", {{"type", "boolean"},
+							 {"description", "True when the button list may be incomplete (modal walk hit its budget)."}}},
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
@@ -215,7 +222,67 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 			return nlohmann::json{
 				{"is_open", r.isOpen},
 				{"title",   r.title},
+				{"buttons", r.buttons},
+				{"buttons_truncated", r.buttonsTruncated},
 			};
+		});
+	}
+
+	// ----- ui_list_widgets ---------------------------------------------------
+	// TEST-2 P0: read-only Slate widget-tree inspection — the editor-UI analog
+	// of a DOM dump. Foundation for the gated UI-interaction tools (P1b) and
+	// AutomationDriver By::Path locators (P2).
+	{
+		ToolDescriptor d;
+		d.name = "ui_list_widgets";
+		d.description =
+			"[editor] Walk the live editor's Slate widget tree (Selenium-style "
+			"UI inspection). Returns `{ui_available, windows: [{title, is_modal, "
+			"truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, "
+			"y, w, h}]}], truncated}`. `path` is a child-index:Type selector (e.g. "
+			"`0:SWindow/3:SButton`); it is RESPONSE-LOCAL — the leading window "
+			"index is ordinal in z-order and shifts as windows/menus/modals come "
+			"and go, so re-query rather than caching it across calls. `text` is "
+			"filled for STextBlock — button/label captions live on descendant "
+			"text blocks. Filter with `window` (title substring) and `type` "
+			"(widget-type substring, e.g. SButton). `max_widgets` is a single "
+			"global budget consumed window-by-window in z-order, so to inspect a "
+			"specific window pass `window=` to focus the budget on it. "
+			"`truncated` (top-level and per-window) is true when a depth or "
+			"budget cap dropped widgets. `ui_available` is false on a headless "
+			"daemon (no Slate) — branch on that bool, not on the `note` string.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"max_depth",   {{"type","integer"},
+								 {"description","Max tree depth to descend (default 25, clamp 1-100)."}}},
+				{"max_widgets", {{"type","integer"},
+								 {"description","Max widgets EMITTED across all windows (default 800, clamp 1-10000). Traversal cost is bounded separately (derived from this)."}}},
+				{"window",      {{"type","string"},
+								 {"description","Only walk windows whose title contains this substring. Use to focus the shared max_widgets budget on one window."}}},
+				{"type",        {{"type","string"},
+								 {"description","Only emit widgets whose Slate type contains this substring (e.g. SButton). The walk still descends through non-matching widgets (bounded by an internal visit cap)."}}},
+			}},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",           {{"type","boolean"}}},
+				{"ui_available", {{"type","boolean"},
+								  {"description","False on a headless daemon (no Slate); true in a GUI/-RenderOffscreen editor."}}},
+				{"windows",      {{"type","array"},
+								  {"description","[{title, is_modal, truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, y, w, h}]}]"}}},
+				{"truncated",    {{"type","boolean"}}},
+				{"note",         {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const int maxDepth   = args.value("max_depth", 25);
+			const int maxWidgets = args.value("max_widgets", 800);
+			const std::string window = args.value("window", std::string{});
+			const std::string type   = args.value("type",   std::string{});
+			return reader.UiListWidgets(maxDepth, maxWidgets, window, type);
 		});
 	}
 

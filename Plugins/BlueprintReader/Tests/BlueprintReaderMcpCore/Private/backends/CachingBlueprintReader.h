@@ -126,6 +126,9 @@ public:
 								   const StructuralDiffOptions& opts) override;
 	nlohmann::json ReadActorInstance(std::string_view assetPath) override;
 	nlohmann::json DescribeK2Node(std::string_view classPath) override;
+	nlohmann::json UiListWidgets(int maxDepth, int maxWidgets,
+								  std::string_view window,
+								  std::string_view type) override;
 
 	// ----- Asset-registry queries (pass-through) ------------------------
 	// Asset registry is hot in the editor; no TTL caching needed.

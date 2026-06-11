@@ -521,6 +521,10 @@ nlohmann::json AutoBlueprintReader::ReadActorInstance(std::string_view assetPath
 nlohmann::json AutoBlueprintReader::DescribeK2Node(std::string_view classPath) {
 	FORWARD(DescribeK2Node, classPath);
 }
+nlohmann::json AutoBlueprintReader::UiListWidgets(
+	int maxDepth, int maxWidgets, std::string_view window, std::string_view type) {
+	FORWARD(UiListWidgets, maxDepth, maxWidgets, window, type);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

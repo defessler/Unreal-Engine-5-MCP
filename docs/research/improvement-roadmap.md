@@ -837,8 +837,23 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ☐ Open (research done 2026-06-09) · **Effort:** M–L (phased) ·
+- **Status:** ◑ **P0 done (2026-06-11)** — `ui_list_widgets` (264 tools) +
+  `get_modal_state` enriched with `buttons[]`; P1a/P1b/P2 ☐ Open · **Effort:**
+  M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
+- **P0 shipped:** `ui_list_widgets` walks the live editor's Slate tree
+  (per-widget path/type/tag/text/visible/enabled/rect, per-window + global
+  `truncated`, `ui_available` headless-honesty bool, independent emit-vs-visit
+  budgets so a `type` filter can't stall the game thread); `get_modal_state`
+  now also returns `buttons[]` (`{path, label?}`, nested-button-safe labels) +
+  `buttons_truncated`. Read-only, no gate. Built (editor + server), mock
+  870/870, and **live-verified against a real `-nullrhi` daemon both directly
+  over TCP and through the full `call_tool`→Socket-backend MCP stack** (honest
+  headless contract; populated-tree paths need a GUI editor — TEST-1 Track B).
+  An 8-finding adversarial review (3 lenses) was applied before commit: the
+  visit/emit budget split, depth-cutoff truncation flag, `ui_available`,
+  nested-button label boundary, `buttons_truncated`, and the response-local
+  path / global-budget doc clarifications all came from that pass.
 - Programmatic interaction with the real GUI editor — click buttons, drive
   menus, dismiss modals, inspect widgets. A 3-lens research pass (engine source
   on disk + ecosystem + integration design) settled the approach:
@@ -1598,6 +1613,18 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-11** — **TEST-2 P0 SHIPPED**: `ui_list_widgets` (264 tools — new
+  editor-category read tool walking the live Slate tree) + `get_modal_state`
+  enriched with `buttons[]`/`buttons_truncated`. Plugin op + full backend chain
+  (6 overrides) + categories/annotations. No hash drift (description changes are
+  beyond the 40-char hashed prefix; output-schema not hashed). Live-verified
+  against a real `-nullrhi` daemon both directly over TCP and through the full
+  `call_tool`→Socket MCP stack. An 8-finding / 3-lens adversarial review landed
+  pre-commit: emit-vs-visit budget split (game-thread cost guard for `type`
+  filters), depth-cutoff `truncated` flag, `ui_available` headless bool,
+  nested-button label boundary, `buttons_truncated`, per-window `truncated`,
+  and response-local-path / global-budget doc clarifications. P1a/P1b/P2 remain
+  Open.
 - **2026-06-09** — **TEST-2 added** (editor UI automation, Selenium-style):
   3-lens research (engine source/ecosystem/integration) found Epic's in-engine
   `AutomationDriver` ships complete in installed 5.8 and is linkable; modal
