@@ -54,7 +54,7 @@ TEST_CASE("progressive default-on: lean core surface + call_tool escape hatch") 
 	tools::ToolRegistry registry;
 	tools::RegisterBlueprintTools(registry, reader);
 	const size_t full = registry.ListSpec().size();
-	CHECK(full == 263);    // full surface before progressive trimming
+	CHECK(full == 264);    // full surface before progressive trimming
 
 	WireProgressiveDefault(registry);
 	const auto spec = registry.ListSpec();

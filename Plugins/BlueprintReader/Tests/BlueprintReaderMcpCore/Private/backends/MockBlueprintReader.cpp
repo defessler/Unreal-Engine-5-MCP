@@ -338,6 +338,13 @@ nlohmann::json MockBlueprintReader::DescribeK2Node(std::string_view) {
 		"(needs the UClass/K2-node registry that mock fixtures don't provide)");
 }
 
+nlohmann::json MockBlueprintReader::UiListWidgets(
+	int, int, std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"UiListWidgets requires the live backend "
+		"(needs a running editor's Slate UI that mock fixtures don't provide)");
+}
+
 // UX-P4a: the mock has no editor game thread to stall, so health is a stable
 // synthetic-healthy result (fixture-deterministic — age is always 0).
 IBlueprintReader::HealthResult MockBlueprintReader::HealthCheck() {
@@ -420,6 +427,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_dirty_packages", "get_focused_window",
 		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 		"get_focused_widget",
+		"ui_list_widgets",  // TEST-2 P0: walks live Slate — editor only
 
 		// ---------------------------------------------------------------
 		// Live-editor-dependent surface the mock backend does not serve.

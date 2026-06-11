@@ -1174,6 +1174,25 @@ nlohmann::json SocketBlueprintReader::DescribeK2Node(std::string_view classPath)
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::UiListWidgets(
+		int maxDepth, int maxWidgets,
+		std::string_view window, std::string_view type) {
+	std::vector<std::string> args = {
+		"-Op=UiListWidgets",
+		"-MaxDepth=" + std::to_string(maxDepth),
+		"-MaxWidgets=" + std::to_string(maxWidgets),
+	};
+	// FParse gotcha: an empty `-Window=` would swallow the next flag — skip
+	// empty optional filters entirely.
+	if (!window.empty()) {
+		args.push_back("-Window=" + std::string(window));
+	}
+	if (!type.empty()) {
+		args.push_back("-Type=" + std::string(type));
+	}
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {
@@ -1727,6 +1746,10 @@ IBlueprintReader::ModalStateResult SocketBlueprintReader::GetModalState() {
 	if (j.is_object()) {
 		out.isOpen = j.value("is_open", false);
 		out.title  = j.value("title",   std::string{});
+		if (j.contains("buttons") && j["buttons"].is_array()) {
+			out.buttons = j["buttons"];
+		}
+		out.buttonsTruncated = j.value("buttons_truncated", false);
 	}
 	return out;
 }

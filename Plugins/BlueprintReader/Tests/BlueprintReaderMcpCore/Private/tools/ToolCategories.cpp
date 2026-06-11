@@ -137,6 +137,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"run_python_script",
 			"build_lighting",
 			"live_coding_compile",
+			"ui_list_widgets",  // TEST-2 P0: Slate widget-tree inspection
 		}},
 
 		// --- assets: project-level asset management ----------------------
@@ -287,6 +288,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"console_command", "get_cvar", "set_cvar",
 			"read_output_log",
 			"live_coding_compile",
+			"ui_list_widgets",  // TEST-2 P0: Slate widget-tree inspection
 			"get_project_metadata", "shutdown_daemon",
 		}},
 

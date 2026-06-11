@@ -1765,6 +1765,24 @@ nlohmann::json CommandletBlueprintReader::DescribeK2Node(std::string_view classP
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::UiListWidgets(
+		int maxDepth, int maxWidgets,
+		std::string_view window, std::string_view type) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=UiListWidgets");
+	args.push_back(L"-MaxDepth=" + std::to_wstring(maxDepth));
+	args.push_back(L"-MaxWidgets=" + std::to_wstring(maxWidgets));
+	// FParse gotcha: an empty `-Window=` would swallow the next flag — skip
+	// empty optional filters entirely.
+	if (!window.empty()) {
+		args.push_back(L"-Window=" + Widen(window));
+	}
+	if (!type.empty()) {
+		args.push_back(L"-Type=" + Widen(type));
+	}
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {
@@ -3311,6 +3329,10 @@ IBlueprintReader::ModalStateResult CommandletBlueprintReader::GetModalState() {
 	if (j.is_object()) {
 		out.isOpen = j.value("is_open", false);
 		out.title  = j.value("title",   std::string{});
+		if (j.contains("buttons") && j["buttons"].is_array()) {
+			out.buttons = j["buttons"];
+		}
+		out.buttonsTruncated = j.value("buttons_truncated", false);
 	}
 	return out;
 }

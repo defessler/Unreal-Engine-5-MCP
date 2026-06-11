@@ -3190,7 +3190,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Is a modal Slate window blocking input right now? Returns `{is_open, title}`. Common modals: confirm-deletion, asset-picker, save-as. Agents should refuse mutation ops when is_open=true — the editor is gated on user input. Requires a live editor.",
+    "description": "[editor] Is a modal Slate window blocking input right now? Returns `{is_open, title, buttons, buttons_truncated}` — `buttons` lists the modal's SButtons as `[{path, label?}]` so you can see what answers the dialog offers (label comes from the button's text block; `buttons_truncated` is true in the rare case the modal walk hit its budget). Common modals: confirm-deletion, asset-picker, save-as. Agents should refuse mutation ops when is_open=true — the editor is gated on user input. Requires a live editor.",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -3198,6 +3198,14 @@
     "name": "get_modal_state",
     "output_schema": {
       "properties": {
+        "buttons": {
+          "description": "The modal's buttons: [{path, label?}]. Empty when no modal.",
+          "type": "array"
+        },
+        "buttons_truncated": {
+          "description": "True when the button list may be incomplete (modal walk hit its budget).",
+          "type": "boolean"
+        },
         "is_open": {
           "type": "boolean"
         },
@@ -3205,6 +3213,57 @@
           "type": "string"
         }
       },
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Walk the live editor's Slate widget tree (Selenium-style UI inspection). Returns `{ui_available, windows: [{title, is_modal, truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, y, w, h}]}], truncated}`. `path` is a child-index:Type selector (e.g. `0:SWindow/3:SButton`); it is RESPONSE-LOCAL — the leading window index is ordinal in z-order and shifts as windows/menus/modals come and go, so re-query rather than caching it across calls. `text` is filled for STextBlock — button/label captions live on descendant text blocks. Filter with `window` (title substring) and `type` (widget-type substring, e.g. SButton). `max_widgets` is a single global budget consumed window-by-window in z-order, so to inspect a specific window pass `window=` to focus the budget on it. `truncated` (top-level and per-window) is true when a depth or budget cap dropped widgets. `ui_available` is false on a headless daemon (no Slate) — branch on that bool, not on the `note` string.",
+    "input_schema": {
+      "properties": {
+        "max_depth": {
+          "description": "Max tree depth to descend (default 25, clamp 1-100).",
+          "type": "integer"
+        },
+        "max_widgets": {
+          "description": "Max widgets EMITTED across all windows (default 800, clamp 1-10000). Traversal cost is bounded separately (derived from this).",
+          "type": "integer"
+        },
+        "type": {
+          "description": "Only emit widgets whose Slate type contains this substring (e.g. SButton). The walk still descends through non-matching widgets (bounded by an internal visit cap).",
+          "type": "string"
+        },
+        "window": {
+          "description": "Only walk windows whose title contains this substring. Use to focus the shared max_widgets budget on one window.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ui_list_widgets",
+    "output_schema": {
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "ui_available": {
+          "description": "False on a headless daemon (no Slate); true in a GUI/-RenderOffscreen editor.",
+          "type": "boolean"
+        },
+        "windows": {
+          "description": "[{title, is_modal, truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, y, w, h}]}]",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok"
+      ],
       "type": "object"
     }
   },

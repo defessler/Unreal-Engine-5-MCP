@@ -1824,6 +1824,13 @@ public:
 	struct ModalStateResult {
 		bool isOpen = false;
 		std::string title;          // "" when no modal
+		// TEST-2 P0: the modal's buttons, [{path, label?}] — so an agent can
+		// see what answers the dialog offers. Empty when no modal is open.
+		nlohmann::json buttons = nlohmann::json::array();
+		// True when the modal's widget walk hit its budget and some buttons may
+		// be missing (practically unreachable — the cap comfortably exceeds a
+		// real modal — but surfaced rather than silently dropping a button).
+		bool buttonsTruncated = false;
 	};
 	virtual ModalStateResult GetModalState() {
 		throw BlueprintReaderError("GetModalState not supported by this backend");
@@ -2864,6 +2871,19 @@ public:
 	{
 		(void)classPath;
 		throw BlueprintReaderError("DescribeK2Node not supported by this backend");
+	}
+
+	// TEST-2 P0: walk the live editor's Slate widget tree and return one entry
+	// per widget (path selector, type, tag, text, visibility, enabled, screen
+	// rect), grouped per visible window. Read-only; the foundation for the
+	// gated UI-interaction tools (ui_click / ui_type) and AutomationDriver
+	// By::Path locators. `window`/`type` are substring filters; empty = all.
+	virtual nlohmann::json UiListWidgets(
+		int maxDepth, int maxWidgets,
+		std::string_view window, std::string_view type)
+	{
+		(void)maxDepth; (void)maxWidgets; (void)window; (void)type;
+		throw BlueprintReaderError("UiListWidgets not supported by this backend");
 	}
 
 	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER

@@ -57,6 +57,7 @@ const std::set<std::string>& ReadOnlySet() {
 		"get_dirty_packages", "get_focused_window",
 		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 		"get_focused_widget",
+		"ui_list_widgets",  // TEST-2 P0: read-only Slate-tree walk
 		// --- BP↔C++ pure compute (no write) -----------------------------
 		"decompile_function", "decompile_blueprint",
 		"transpile_function", "transpile_blueprint",
@@ -398,6 +399,7 @@ std::string TitleFor(const std::string& name) {
 		{"compile_live_coding",      "Compile via Live Coding"},
 		{"build_lighting",           "Build Level Lighting"},
 		{"run_automation_tests",     "Run Automation Tests"},
+		{"ui_list_widgets",          "List Editor UI Widgets"},
 		// Discovery / meta
 		{"list_node_kinds",          "List Spawnable Node Kinds"},
 		{"list_pin_categories",      "List Pin Type Categories"},

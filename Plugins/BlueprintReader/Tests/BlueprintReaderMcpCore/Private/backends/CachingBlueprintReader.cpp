@@ -482,6 +482,12 @@ nlohmann::json CachingBlueprintReader::DescribeK2Node(std::string_view classPath
 	return inner_->DescribeK2Node(classPath);
 }
 
+nlohmann::json CachingBlueprintReader::UiListWidgets(
+	int maxDepth, int maxWidgets, std::string_view window, std::string_view type) {
+	// Live UI state changes every frame — never cache; always fresh.
+	return inner_->UiListWidgets(maxDepth, maxWidgets, window, type);
+}
+
 // ----- Asset-registry queries (PERF-3: now cached) -----------------------
 // These are pure registry reads that never change between write ops. They
 // use TTL-only expiry (no mtime check) because their "file" is the asset

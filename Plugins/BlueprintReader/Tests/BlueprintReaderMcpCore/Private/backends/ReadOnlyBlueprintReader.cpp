@@ -156,6 +156,11 @@ nlohmann::json ReadOnlyBlueprintReader::DescribeK2Node(std::string_view classPat
 	// Read op — passes through.
 	return inner_->DescribeK2Node(classPath);
 }
+nlohmann::json ReadOnlyBlueprintReader::UiListWidgets(
+	int maxDepth, int maxWidgets, std::string_view window, std::string_view type) {
+	// Read op — passes through.
+	return inner_->UiListWidgets(maxDepth, maxWidgets, window, type);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

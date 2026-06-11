@@ -34,10 +34,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 263 tools with input schemas") {
+TEST_CASE("ToolRegistry exposes 264 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 263);
+	CHECK(spec.size() == 264);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -197,6 +197,16 @@ TEST_CASE("describe_k2node: mock backend throws not-supported") {
 	CHECK_THROWS_WITH_AS(
 		f.Call("describe_k2node", json{{"class_path", "/Script/BlueprintGraph.K2Node_FormatText"}}),
 		doctest::Contains("requires the live or commandlet backend"),
+		bpr::backends::BlueprintReaderError);
+}
+
+// TEST-2 P0: editor-only Slate walk — the mock throws a clear not-supported
+// error (no Slate UI in fixtures).
+TEST_CASE("ui_list_widgets: mock backend throws not-supported") {
+	Fixture f;
+	CHECK_THROWS_WITH_AS(
+		f.Call("ui_list_widgets", json::object()),
+		doctest::Contains("requires the live backend"),
 		bpr::backends::BlueprintReaderError);
 }
 
