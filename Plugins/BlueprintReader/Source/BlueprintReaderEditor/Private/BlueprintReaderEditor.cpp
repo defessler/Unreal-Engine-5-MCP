@@ -1,7 +1,10 @@
 #include "BlueprintReaderEditor.h"
 #include "BlueprintReaderLiveServer.h"
 #include "BlueprintReaderLogSink.h"
+#include "BlueprintReaderModalChannel.h"  // TEST-2 P1a: modal side-channel
 #include "Containers/Ticker.h"            // UX-P4a: FTSTicker game-thread heartbeat
+#include "CoreGlobals.h"                  // TEST-2 P1a: GIsRunningUnattendedScript gate
+#include "HAL/PlatformMisc.h"             // TEST-2 P1a: GetEnvironmentVariable
 #include "Modules/ModuleManager.h"
 
 // UX-P4a: handle for the game-thread heartbeat ticker, removed on shutdown.
@@ -30,11 +33,32 @@ void FBlueprintReaderEditorModule::StartupModule()
 		FTickerDelegate::CreateLambda([](float /*DeltaTime*/) -> bool
 		{
 			BlueprintReader::BumpGameThreadHeartbeat();
+			// TEST-2 P1a: lazily hook the modal-loop drainer once Slate is up
+			// (a single bool check after the first success), and service the
+			// modal side-channel queue here for the idle (no-modal) case — the
+			// modal-loop delegate covers the wedged case.
+			BlueprintReader::RegisterModalTickIfNeeded();
+			BlueprintReader::DrainModalCommands();
 			return true;
 		}),
 		0.1f);
 	// Seed an initial value so a probe in the first 100ms reads "fresh", not -1.
 	BlueprintReader::BumpGameThreadHeartbeat();
+
+	// TEST-2 P1a prevention gate (opt-in): BP_READER_GUI_AUTOMATION=1 sets
+	// GIsRunningUnattendedScript persistently so AddModalWindow auto-cancels
+	// non-slow-task modals (SlateApplication.cpp:2128) — they never block an
+	// automated editor. This is the complement to the recovery side-channel;
+	// it is opt-in because it also suppresses dialogs a co-working human might
+	// want to answer.
+	const FString GuiAutomation =
+		FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_GUI_AUTOMATION"));
+	if (GuiAutomation == TEXT("1") || GuiAutomation.Equals(TEXT("true"), ESearchCase::IgnoreCase))
+	{
+		GIsRunningUnattendedScript = true;
+		UE_LOG(LogTemp, Display,
+			TEXT("[BlueprintReader] BP_READER_GUI_AUTOMATION=1 — GIsRunningUnattendedScript set; modal dialogs will auto-cancel."));
+	}
 }
 
 void FBlueprintReaderEditorModule::ShutdownModule()
@@ -44,6 +68,8 @@ void FBlueprintReaderEditorModule::ShutdownModule()
 		FTSTicker::GetCoreTicker().RemoveTicker(GHeartbeatTickerHandle);
 		GHeartbeatTickerHandle.Reset();
 	}
+	// TEST-2 P1a: drop the OnModalLoopTickEvent registration.
+	BlueprintReader::UnregisterModalTick();
 	if (BlueprintReader::FLiveServer* S = BlueprintReader::GetLiveServer())
 	{
 		S->Stop();

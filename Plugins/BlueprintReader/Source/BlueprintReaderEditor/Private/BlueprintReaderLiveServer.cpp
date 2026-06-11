@@ -1,6 +1,8 @@
 #include "BlueprintReaderLiveServer.h"
+#include "BlueprintReaderModalChannel.h"   // TEST-2 P1a: modal side-channel
 
 #include "Async/Async.h"
+#include "Policies/CondensedJsonPrintPolicy.h"  // TEST-2 P1a: single-line modal_result
 #include "Common/TcpListener.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -157,6 +159,30 @@ public:
 					TEXT("{\"type\":\"health\",\"id\":%d,\"game_thread_age_ms\":%lld,\"pid\":%u}\n"),
 					HealthId, static_cast<long long>(AgeMs),
 					FPlatformProcess::GetCurrentProcessId()));
+				continue;
+			}
+
+			// TEST-2 P1a: a `modal` frame is also answered off the normal op path —
+			// it only ENQUEUES onto the modal side-channel and blocks THIS worker
+			// thread on an event, so it returns even while a hard modal wedges the
+			// game thread (the game-thread work runs in the modal-loop drainer).
+			// {"type":"modal","id":N,"action":"report"|"dismiss","timeout_ms":M}
+			if (Type == TEXT("modal"))
+			{
+				int32 ModalId = 0; Msg->TryGetNumberField(TEXT("id"), ModalId);
+				FString Action; Msg->TryGetStringField(TEXT("action"), Action);
+				FString ButtonPath; Msg->TryGetStringField(TEXT("button_path"), ButtonPath);
+				int32 TimeoutMs = 5000; Msg->TryGetNumberField(TEXT("timeout_ms"), TimeoutMs);
+				TSharedPtr<FJsonObject> Res =
+					BlueprintReader::SubmitModalCommand(Action, ButtonPath, TimeoutMs);
+				Res->SetStringField(TEXT("type"), TEXT("modal_result"));
+				Res->SetNumberField(TEXT("id"), ModalId);
+				FString Serialized;
+				// Condensed (single-line) — the wire is newline-delimited JSON.
+				TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Serialized);
+				FJsonSerializer::Serialize(Res.ToSharedRef(), Writer);
+				SendRaw(Serialized + TEXT("\n"));
 				continue;
 			}
 
