@@ -18,7 +18,20 @@
 # (drop it into any .uproject and the server travels with it).
 
 cmake_minimum_required(VERSION 3.23)
-project(bp-reader-mcp VERSION 0.1.0 LANGUAGES CXX)
+
+# Version single-source-of-truth (UX-P5 / TBX-V5): parse VersionName from the
+# plugin manifest so the built exe reports the SAME version as the on-disk
+# plugin. Previously hardcoded 0.1.0 — so EVERY released exe (CI builds via this
+# CMake path) self-reported 0.1.0, which made doctor's stale-exe warning fire on
+# a correct install and hid real updates (the root of a whole class of phantom
+# "stale build" client reports). CMAKE_CURRENT_SOURCE_DIR is valid before
+# project().
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../BlueprintReader.uplugin" _bpr_uplugin)
+string(REGEX MATCH "\"VersionName\"[ \t]*:[ \t]*\"([^\"]+)\"" _bpr_vn "${_bpr_uplugin}")
+if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "CMakeLists: could not parse VersionName from BlueprintReader.uplugin")
+endif()
+project(bp-reader-mcp VERSION ${CMAKE_MATCH_1} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,13 +84,16 @@ target_link_libraries(bp-reader-core PUBLIC nlohmann_json fmt)
 # Stamp the build version + git short-hash into the binary so `--version`,
 # `doctor`, and the MCP `initialize` handshake report exactly which build is
 # running — and doctor can warn when the exe is stale vs the on-disk plugin
-# source. PROJECT_VERSION mirrors BlueprintReader.uplugin's VersionName.
+# source. PROJECT_VERSION is now parsed from BlueprintReader.uplugin's
+# VersionName above (single source of truth), not hardcoded.
 # PUBLIC so it propagates to main.cpp (BlueprintReaderMcp) + Diagnostics.cpp.
 set(BPR_GIT_HASH "unknown")
 find_package(Git QUIET)
 if(GIT_FOUND)
     execute_process(
-        COMMAND "${GIT_EXECUTABLE}" -C "${REPO_ROOT}" rev-parse --short HEAD
+        # PLUGIN_ROOT is inside the git work tree (REPO_ROOT was never defined —
+        # the old `-C ""` only worked by cwd accident).
+        COMMAND "${GIT_EXECUTABLE}" -C "${PLUGIN_ROOT}" rev-parse --short HEAD
         OUTPUT_VARIABLE _bpr_git OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET RESULT_VARIABLE _bpr_git_rc)
     if(_bpr_git_rc EQUAL 0 AND _bpr_git)
