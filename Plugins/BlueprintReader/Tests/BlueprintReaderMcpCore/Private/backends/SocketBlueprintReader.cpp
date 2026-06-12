@@ -4530,12 +4530,16 @@ void SocketBlueprintReader::BeginBatch() {
 	(void)RunOp({"-Op=BeginBatch"});
 }
 
-nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
+nlohmann::json SocketBlueprintReader::EndBatch(bool skipCompile, bool rollback,
+											   bool saveOnError) {
 	std::vector<std::string> args = {"-Op=EndBatch"};
 	if (rollback) {
 		args.push_back("-Rollback");
 	} else if (skipCompile) {
 		args.push_back("-Skip");
+	}
+	if (saveOnError) {
+		args.push_back("-SaveOnError");  // REL-2: persist despite compile errors
 	}
 	return RunOp(args);
 }

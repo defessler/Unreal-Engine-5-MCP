@@ -1763,10 +1763,107 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 ---
 
+## 10. Reliability & data-integrity (REL-*) {#reliability}
+
+From the 2026-06-12 deep audit (external best-practices research + inline
+verification + a 25-agent fleet with an adversarial refute pass — 5 false
+claims excluded). Full findings record with file:line evidence and failure
+scenarios: [`reliability-plan.md`](reliability-plan.md). Severity: P0 = data
+loss/corruption possible · P1 = reliability failure / unrecoverable change ·
+P2 = robustness/trust · P3 = hygiene. Items marked *(fleet)* survived the
+refute pass.
+
+### Phase A — P0 closure + doctor trust
+- **REL-1** (P0) config writer destroyed user config on JSON parse failure
+  (`Generate-ClientConfig.ps1`) · **Status:** ✅ Done (2026-06-12) — abort that
+  client's write + `.bak` + atomic temp+rename publish; live-verified.
+- **REL-2** (P0) broken BPs saved without consent (`CompileAndSaveBlueprint`
+  never checked `NumErrors`) · **Status:** ✅ Done (2026-06-12) — EndBatch
+  refuses error saves by default (`save_skipped[]` in the ack, lifted into
+  apply_ops + flips ok:false), `save_on_error`/`-SaveOnError` escape hatch,
+  `BP_READER_STRICT_COMPILE=1` extends to single ops; live-verified (on-disk
+  .uasset byte-identical after a refused save).
+- **REL-9** (P2) doctor false-FAILed the editor-DLL check (wrong path helper)
+  · **Status:** ✅ Done (2026-06-12) — uses `FindPluginDir`; live-verified.
+
+### Phase B — write-path durability
+- **REL-14** (P1, fleet) five ops mark-dirty-but-never-save (AddWidget,
+  SetWidgetProperty, AddAnimState, SetBTNodeProperty, SetDataAssetProperty) ·
+  **Status:** ☐ Open · **Effort:** S
+- **REL-15** (P1, fleet) component ops + ImplementInterface bypass batch
+  deferral (mid-batch disk writes break H1 rollback's invariant) · **Status:**
+  ☐ Open · **Effort:** S
+- **REL-5** (P1) single-op live writes bypass the undo stack (no
+  FScopedTransaction outside batches) · **Status:** ☐ Open · **Effort:** S–M
+- **REL-4** (P1) no pre-write .uasset backup (ring buffer in
+  Saved/BPReaderBackups, `BP_READER_BACKUP=0` opt-out) · **Status:** ☐ Open ·
+  **Effort:** M
+- **REL-3** (P1) non-atomic truncate writes of user-owned files · **Status:**
+  ◑ Generate-ClientConfig done (with REL-1); Check-Update.ps1 + Toolbox
+  saveProject remain · **Effort:** S
+- **REL-21** (P2, fleet) write_generated_source overwrites source files
+  non-atomically, no backup · **Status:** ☐ Open · **Effort:** S
+- **REL-8** (P2) handshake/status files written non-atomically (partial-JSON
+  reads) · **Status:** ☐ Open · **Effort:** S
+
+### Phase C — transport & process lifecycle
+- **REL-16** (P1, fleet) Auto backend write ops can double-execute on
+  socket→commandlet fallback after dispatch · **Status:** ☐ Open · **Effort:** M
+- **REL-17** (P1, fleet) LiveServer ReadFrame unbounded buffer growth (OOM via
+  oversized frame) · **Status:** ☐ Open · **Effort:** S
+- **REL-6** (P1) no Job Object on spawned editors (orphan guard is timers only)
+  · **Status:** ☐ Open · **Effort:** M
+- **REL-7** (P1) daemon shutdown is hard TerminateProcess + spawn-retry storms
+  · **Status:** ☐ Open · **Effort:** M
+- **REL-12** (P2) updater Stop-Process kills live MCP sessions of every project
+  · **Status:** ☐ Open · **Effort:** S
+- **REL-24** (P2, fleet) transport robustness batch (stdout-failure exit,
+  Content-Length validation, constant-time token compare, env-parse warnings)
+  · **Status:** ☐ Open · **Effort:** M
+
+### Phase D — policy & install integrity
+- **REL-19** (P2, fleet) read-only-mode bypass via console_command /
+  run_python_script · **Status:** ☐ Open · **Effort:** S
+- **REL-20** (P2, fleet) save_all persists the user's own half-done manual
+  edits (scope to connection-touched by default) · **Status:** ☐ Open ·
+  **Effort:** M
+- **REL-22** (P2, fleet) BPRSeed silently overwrites user assets at the fixed
+  seed paths · **Status:** ☐ Open · **Effort:** S
+- **REL-23** (P2, fleet) runtime console commands live in SHIPPING builds ·
+  **Status:** ☐ Open · **Effort:** S
+- **REL-10** (P2) robocopy /MIR purges a plain git checkout in Plugins/ ·
+  **Status:** ☐ Open · **Effort:** S
+- **REL-11** (P2) release artifacts unverified (no SHA256SUMS) · **Status:**
+  ☐ Open · **Effort:** S–M
+### Phase E — caching correctness
+- **REL-18** (P1/P2, fleet) invalidation completeness (ImplementInterface,
+  GameFeature toggles, MoveAsset global list, TTL-only staleness after external
+  saves) · **Status:** ☐ Open · **Effort:** M
+
+### Phase F — small robustness + verification debt
+- **REL-25** (P3, fleet) commandlet-backend polish (ifstream open check,
+  thread-unique temp names, output-file validation) · **Status:** ☐ Open ·
+  **Effort:** S
+- **REL-13** verification debt — every phase ships with mock doctests +
+  real-editor live verification (`Saved/verify-rel-a.ps1` is the Phase A
+  harness) · **Status:** ◑ ongoing discipline
+
+---
+
 ## Revision log
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **NEW §10 Reliability (REL-1..25) + Phase A SHIPPED.** Deep
+  audit (best-practices research + inline verification + 25-agent fleet with
+  adversarial refute pass; findings record in reliability-plan.md). Phase A:
+  REL-1 (config writer no longer destroys user config on parse failure — abort
+  + .bak + atomic publish), REL-2 (EndBatch refuses to save BPs whose final
+  compile has ERRORS — save_skipped[] reporting, apply_ops save_on_error escape,
+  BP_READER_STRICT_COMPILE for single ops), REL-9 (doctor DLL check uses
+  FindPluginDir — false FAIL gone). Live-verified via Saved/verify-rel-a.ps1
+  (corrupt config untouched; refused save left the .uasset byte-identical;
+  save_on_error persisted; doctor [ OK ]). Mock 875/875.
 - **2026-06-12** — **TEST-2 P1b slice 3: `ui_focus_tab` SHIPPED** (267 tools).
   Foreground an editor dock tab by a label substring — geometry-independent (no
   click, no painted geometry): collect every SDockTab, match, ActivateInParent.

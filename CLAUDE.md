@@ -145,6 +145,7 @@ commandlet (editor closed).
 | `BP_READER_ALLOW_TRANSPILE`  | `0` (off)                          | Set `1` to enable the 6 BP↔C++ transpile tools (off by default). |
 | `BP_READER_AUTO_CHECKOUT`    | `1` (on)                           | Before a write op mutates an asset, auto-check-it-out of source control (Perforce/Git) non-interactively. Stops a live editor from popping a blocking "Check Out?" modal mid-call. Set `0` to manage checkouts yourself. |
 | `BP_READER_PLUGIN_DENYLIST`  | (empty)                            | Comma-separated plugin names; each becomes a `-DisablePlugin=<name>` arg on the headless editor spawn. Use to skip a plugin that crashes in `StartupModule` (e.g. DLSS) and would otherwise kill the commandlet before handshake. Caveat: `-DisablePlugin` does **not** override `.uproject`-force-enabled plugins. |
+| `BP_READER_STRICT_COMPILE`   | `0` (off)                          | REL-2: set `1` to make even single (non-batch) write ops refuse to save a BP whose compile produced ERRORS. Off by default — incremental construction legitimately passes through error states between calls. Batch flushes (apply_ops/EndBatch) always refuse error saves unless `save_on_error` is passed; refused assets are listed in the ack's `save_skipped[]`. |
 
 For local dev, the mock backend works against a fresh checkout with no
 UE setup — useful for iterating on the MCP server itself.

@@ -9590,6 +9590,10 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "save_on_error": {
+          "description": "When the batch succeeds but a BP's final compile has ERRORS, the flush refuses to save that BP by default (the on-disk asset keeps its last good state; refused assets are listed in `save_skipped`). Set true to persist anyway (e.g. intentionally saving work-in-progress graphs). Default false.",
+          "type": "boolean"
         }
       },
       "required": [

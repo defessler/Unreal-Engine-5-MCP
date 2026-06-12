@@ -87,8 +87,14 @@ function Read-JsonFileOrEmpty([string]$path) {
         try {
             return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
         } catch {
-            Write-Warning "Existing config at $path is not valid JSON; overwriting."
-            return @{}
+            # REL-1: NEVER fall through to an empty hashtable here — the caller
+            # merges into whatever we return and saves it back, so returning @{}
+            # would replace the user's entire config (every other MCP server
+            # entry, every unrelated setting) because of one stray comma. Refuse
+            # this client's write instead and tell the user how to recover.
+            throw ("Existing config at $path is not valid JSON ($($_.Exception.Message)). " +
+                   "Refusing to overwrite it - your other MCP servers/settings would be lost. " +
+                   "Fix or delete that file, then re-run this script.")
         }
     }
     return @{}
@@ -100,7 +106,15 @@ function Save-JsonFile([string]$path, [hashtable]$content) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
     $json = $content | ConvertTo-Json -Depth 10
-    Set-Content -LiteralPath $path -Value $json -Encoding utf8 -NoNewline
+    # REL-1/REL-3: back up the pre-edit file, then publish atomically
+    # (temp file in the same dir + rename) so a crash mid-write can never
+    # leave a truncated config behind.
+    if (Test-Path -LiteralPath $path) {
+        Copy-Item -LiteralPath $path -Destination "$path.bak" -Force
+    }
+    $tmp = "$path.tmp.$PID"
+    Set-Content -LiteralPath $tmp -Value $json -Encoding utf8 -NoNewline
+    Move-Item -LiteralPath $tmp -Destination $path -Force
 }
 
 function Build-ClaudeCodeEntry {
@@ -189,7 +203,14 @@ function Write-CodexConfig([string]$baseDir) {
             $lines += ('{0} = {1}' -f $k, (Format-TomlString $v))
         }
     }
-    Set-Content -LiteralPath $path -Value ($lines -join "`n") -Encoding utf8 -NoNewline
+    # REL-3: same backup + atomic-publish discipline as the JSON writers
+    # (only reachable with -Force when the file already exists).
+    if (Test-Path -LiteralPath $path) {
+        Copy-Item -LiteralPath $path -Destination "$path.bak" -Force
+    }
+    $tmp = "$path.tmp.$PID"
+    Set-Content -LiteralPath $tmp -Value ($lines -join "`n") -Encoding utf8 -NoNewline
+    Move-Item -LiteralPath $tmp -Destination $path -Force
     return $path
 }
 
@@ -197,19 +218,31 @@ function Write-CodexConfig([string]$baseDir) {
 
 $targets = if ($Client -eq 'All') { @('ClaudeCode','Cursor','VSCode','Gemini','Codex') } else { @($Client) }
 $written = @()
+$failed  = @()
 
 foreach ($t in $targets) {
-    $p = switch ($t) {
-        'ClaudeCode' { Write-ClaudeCodeConfig $BaseDir }
-        'Cursor'     { Write-CursorConfig     $BaseDir }
-        'VSCode'     { Write-VSCodeConfig     $BaseDir }
-        'Gemini'     { Write-GeminiConfig     $BaseDir }
-        'Codex'      { Write-CodexConfig      $BaseDir }
-    }
-    if ($null -ne $p) {
-        Write-Host "wrote $p"
-        $written += $p
+    # REL-1: a corrupt existing config aborts THAT client's write (throw from
+    # Read-JsonFileOrEmpty) without blocking the other clients' writes.
+    try {
+        $p = switch ($t) {
+            'ClaudeCode' { Write-ClaudeCodeConfig $BaseDir }
+            'Cursor'     { Write-CursorConfig     $BaseDir }
+            'VSCode'     { Write-VSCodeConfig     $BaseDir }
+            'Gemini'     { Write-GeminiConfig     $BaseDir }
+            'Codex'      { Write-CodexConfig      $BaseDir }
+        }
+        if ($null -ne $p) {
+            Write-Host "wrote $p"
+            $written += $p
+        }
+    } catch {
+        Write-Warning "${t}: $($_.Exception.Message)"
+        $failed += $t
     }
 }
 
 Write-Host ("done - {0} file(s) updated" -f $written.Count)
+if ($failed.Count -gt 0) {
+    Write-Warning ("{0} client config(s) NOT written: {1}" -f $failed.Count, ($failed -join ', '))
+    exit 1
+}

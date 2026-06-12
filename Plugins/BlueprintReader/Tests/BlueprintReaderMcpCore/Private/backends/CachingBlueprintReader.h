@@ -387,7 +387,8 @@ public:
 	// that subsequent ops in the same batch would re-fetch. Flushed by
 	// EndBatch's trailing call to InvalidateAsset for each pending entry.
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false,
+							bool saveOnError = false) override;
 	nlohmann::json ShutdownDaemon() override;
 	// UX-P4a: never cache health — a stale "healthy" would mask a just-paused
 	// game thread, defeating the probe. Always pass through for a fresh answer.

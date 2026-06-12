@@ -5124,13 +5124,17 @@ void CommandletBlueprintReader::BeginBatch() {
 	(void)RunOp(args);
 }
 
-nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
+nlohmann::json CommandletBlueprintReader::EndBatch(bool skipCompile, bool rollback,
+												   bool saveOnError) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=EndBatch");
 	if (rollback) {
 		args.push_back(L"-Rollback");   // commandlet cancels the FScopedTransaction
 	} else if (skipCompile) {
 		args.push_back(L"-Skip");
+	}
+	if (saveOnError) {
+		args.push_back(L"-SaveOnError");  // REL-2: persist despite compile errors
 	}
 	return RunOp(args);
 }

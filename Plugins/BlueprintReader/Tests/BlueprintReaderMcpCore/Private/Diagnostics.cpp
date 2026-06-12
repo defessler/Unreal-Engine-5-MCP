@@ -37,26 +37,13 @@ Finding Error(std::string label, std::string detail, std::string fix = {}) {
 	return {Severity::Error, std::move(label), std::move(detail), std::move(fix)};
 }
 
-// Walk up from the executable to find the plugin directory. Returns empty
-// path if the standard layout doesn't apply (e.g. the user moved the exe).
-std::filesystem::path GuessPluginDirFromCfg(const backends::BackendConfig& cfg) {
-	// The fixturesDir defaults to <exeDir>/fixtures, so back-compute exeDir
-	// from it. Plugin dir is 3 levels above exeDir:
-	//   <projectRoot>/Binaries/Win64/BlueprintReaderMcp.exe
-	auto exeDir = cfg.fixturesDir.parent_path();
-	auto p = exeDir;
-	for (int i = 0; i < 3 && !p.empty(); ++i)
-	{
-		p = p.parent_path();
-	}
-	return p;
-}
-
-// Locate the directory that actually contains BlueprintReader.uplugin. Unlike
-// GuessPluginDirFromCfg (which yields the *project* root), this walks up from
-// the exe and checks both "<dir>/BlueprintReader.uplugin" and the conventional
-// "<dir>/Plugins/BlueprintReader/" nesting, so the version/git-staleness checks
-// read the real plugin source. Empty if not found.
+// Locate the directory that actually contains BlueprintReader.uplugin: walks
+// up from the exe and checks both "<dir>/BlueprintReader.uplugin" and the
+// conventional "<dir>/Plugins/BlueprintReader/" nesting, so the version/
+// git-staleness/DLL checks read the real plugin dir regardless of whether the
+// exe lives in the plugin's own Binaries/Win64 or the project's. Empty if not
+// found. (REL-9: a predecessor helper that blindly walked 3 levels up gave the
+// *project* root and false-FAILed the DLL check on plugin-shipped exes.)
 std::filesystem::path FindPluginDir(const backends::BackendConfig& cfg) {
 	std::filesystem::path p = cfg.fixturesDir.parent_path();  // exeDir
 	std::error_code ec;
@@ -361,8 +348,13 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 			expectedExe.string()));
 	}
 
-	// 5. BlueprintReaderEditor module DLL with matching config
-	auto pluginDir = GuessPluginDirFromCfg(cfg);
+	// 5. BlueprintReaderEditor module DLL with matching config.
+	// REL-9: FindPluginDir locates the dir actually containing
+	// BlueprintReader.uplugin — required because with the plugin-shipped exe
+	// layout (<plugin>/Binaries/Win64/BlueprintReaderMcp.exe) a naive
+	// walk-3-levels-up lands on "<project>/Plugins" and probes a bogus
+	// "Plugins/Binaries/Win64" path, false-FAILing the DLL check.
+	auto pluginDir = FindPluginDir(cfg);
 	if (!pluginDir.empty()) {
 		auto pluginBin = pluginDir / "Binaries" / "Win64";
 		std::filesystem::path expectedDll = (cfgName == "Development")

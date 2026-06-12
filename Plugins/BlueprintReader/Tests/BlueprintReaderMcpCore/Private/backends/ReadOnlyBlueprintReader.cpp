@@ -185,8 +185,9 @@ nlohmann::json ReadOnlyBlueprintReader::UiFocusTab(std::string_view tabLabel) {
 void ReadOnlyBlueprintReader::BeginBatch() {
 	inner_->BeginBatch();
 }
-nlohmann::json ReadOnlyBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
-	return inner_->EndBatch(skipCompile, rollback);
+nlohmann::json ReadOnlyBlueprintReader::EndBatch(bool skipCompile, bool rollback,
+												 bool saveOnError) {
+	return inner_->EndBatch(skipCompile, rollback, saveOnError);
 }
 
 nlohmann::json ReadOnlyBlueprintReader::ShutdownDaemon() {

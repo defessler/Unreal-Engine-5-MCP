@@ -155,7 +155,8 @@ public:
 
 	// ----- batch + meta ---------------------------------------------
 	void BeginBatch() override;
-	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override;
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false,
+							bool saveOnError = false) override;
 	nlohmann::json ShutdownDaemon() override;
 	HealthResult HealthCheck() override;  // UX-P4a — forwards to live/commandlet
 	nlohmann::json DiffAsset(std::string_view a, std::string_view b,

@@ -61,9 +61,15 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 //                         stays dirty until restart; documented limitation.
 //   "rollback"         — reserved; not implemented in v1. Falls back to
 //                         "compile" with a warning logged.
+//
+// `saveOnError` (REL-2): when true, the success-path EndBatch persists BPs
+// even if their final compile produced errors (pre-REL-2 behavior). Default
+// false — the flush refuses those saves (ack lists them in `save_skipped`)
+// so a batch can never bake a broken BP over the last good on-disk state.
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
                       const nlohmann::json& ops, bool atomic,
-                      std::string_view onFailure = "compile");
+                      std::string_view onFailure = "compile",
+                      bool saveOnError = false);
 
 // Validate a sequence of ops without mutating anything (B2). Walks the
 // op array, parses each op's required fields, resolves named-slot refs

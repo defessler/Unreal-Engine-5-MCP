@@ -2817,8 +2817,14 @@ public:
 	// rollback:    true = undo all in-memory mutations via FScopedTransaction
 	//              (on_failure="rollback"); implies !skipCompile since there is
 	//              nothing to save after a full undo.
+	// saveOnError (REL-2): true = persist BPs even when their final compile
+	//              produced errors (pre-REL-2 behavior). Default false — the
+	//              flush refuses those saves so a batch can never bake a broken
+	//              BP over the last good on-disk state; refused assets are
+	//              listed in the ack's `save_skipped` array.
 	virtual nlohmann::json EndBatch(bool /*skipCompile*/ = false,
-									bool /*rollback*/    = false) {
+									bool /*rollback*/    = false,
+									bool /*saveOnError*/ = false) {
 		return nlohmann::json::object();
 	}
 

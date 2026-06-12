@@ -1271,7 +1271,10 @@ namespace
 	// Compile + save. When `OutDiagnostics` is non-null, populates it with
 	// the collected compile diagnostics serialized as JSON values.
 	bool CompileAndSaveBlueprint(UBlueprint* BP,
-	                             TArray<TSharedPtr<FJsonValue>>* OutDiagnostics = nullptr)
+	                             TArray<TSharedPtr<FJsonValue>>* OutDiagnostics = nullptr,
+	                             bool bRefuseSaveOnErrors = false,
+	                             int32* OutNumErrors = nullptr,
+	                             bool* bOutSaveRefused = nullptr)
 	{
 		// Anchor the BP against GC for the duration of compile + save.
 		// `FKismetEditorUtilities::CompileBlueprint` creates and destroys
@@ -1292,6 +1295,33 @@ namespace
 		{
 			TArray<TSharedPtr<FJsonValue>> Diags = SerializeDiagnostics(Results);
 			OutDiagnostics->Append(MoveTemp(Diags));
+		}
+		if (OutNumErrors)
+		{
+			*OutNumErrors = Results.NumErrors;
+		}
+
+		// REL-2: optionally refuse to persist a BP whose compile produced
+		// ERRORS — saving it would bake a broken asset over the last good
+		// one on disk (and auto-checkout may already have it checked out).
+		// Default is refuse=false for single ops because incremental graph
+		// construction legitimately passes through error states (a node with
+		// unconnected required pins) between calls, and one-shot commandlet
+		// mode NEEDS each op persisted to carry state to the next call.
+		// EndBatch turns the gate ON (the batch is the atomic-construction
+		// primitive), and BP_READER_STRICT_COMPILE=1 turns it on everywhere.
+		if (bRefuseSaveOnErrors && Results.NumErrors > 0)
+		{
+			if (bOutSaveRefused)
+			{
+				*bOutSaveRefused = true;
+			}
+			UE_LOG(LogBlueprintReader, Warning,
+				TEXT("save refused for %s: compile produced %d error(s) — the on-disk "
+				     "asset keeps its last good state. Fix the errors and recompile, or "
+				     "pass save_on_error/-SaveOnError to persist anyway."),
+				*BP->GetPathName(), Results.NumErrors);
+			return false;
 		}
 
 		UPackage* Package = BP->GetOutermost();
@@ -1408,7 +1438,15 @@ namespace
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 			return true;
 		}
-		return CompileAndSaveBlueprint(BP);
+		// REL-2: BP_READER_STRICT_COMPILE=1 makes even single (non-batch) ops
+		// refuse to save when the compile produced errors. Off by default —
+		// incremental construction passes through error states between calls.
+		static const bool bStrictCompile = []()
+		{
+			const FString V = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_STRICT_COMPILE"));
+			return V == TEXT("1") || V.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+		}();
+		return CompileAndSaveBlueprint(BP, nullptr, /*bRefuseSaveOnErrors=*/bStrictCompile);
 	}
 
 	int32 RunBeginBatchOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
@@ -1457,8 +1495,12 @@ namespace
 		// `-Skip` flag: discard pending compile + save (on_failure="skip").
 		// `-Rollback` flag: cancel the FScopedTransaction opened in BeginBatch to
 		// revert all in-memory mutations to the pre-batch state (on_failure="rollback").
+		// `-SaveOnError` flag (REL-2): persist BPs even when their final compile
+		// produced errors (pre-REL-2 behavior). Default is to REFUSE those saves
+		// so a batch can never bake a broken BP over the last good on-disk state.
 		const bool bSkipCompile = FParse::Param(*Params, TEXT("Skip"));
 		const bool bRollback    = FParse::Param(*Params, TEXT("Rollback"));
+		const bool bSaveOnError = FParse::Param(*Params, TEXT("SaveOnError"));
 
 		// Close the FScopedTransaction opened in BeginBatch. CancelTransaction
 		// reverts in-memory mutations in a full editor, but it is a NO-OP in the
@@ -1504,6 +1546,7 @@ namespace
 
 		TArray<TSharedPtr<FJsonValue>> Recompiled;
 		TArray<TSharedPtr<FJsonValue>> AllDiagnostics;
+		TArray<TSharedPtr<FJsonValue>> SaveSkipped;
 		int32 Failures = 0;
 		int32 Errors = 0, Warnings = 0;
 		// bRollback: the reload above already restored the pre-batch state;
@@ -1526,10 +1569,24 @@ namespace
 				continue;
 			}
 			TArray<TSharedPtr<FJsonValue>> Diags;
-			const bool bOk = CompileAndSaveBlueprint(BP, &Diags);
+			// REL-2: the batch flush gates saves on a clean compile by default
+			// (the batch is the atomic-construction unit, so an error here is
+			// final, not an intermediate state). -SaveOnError restores the old
+			// persist-anyway behavior.
+			int32 NumErrors = 0;
+			bool bSaveRefused = false;
+			const bool bOk = CompileAndSaveBlueprint(BP, &Diags,
+				/*bRefuseSaveOnErrors=*/!bSaveOnError, &NumErrors, &bSaveRefused);
 			if (!bOk)
 			{
 				++Failures;
+			}
+			if (bSaveRefused)
+			{
+				auto Skip = MakeShared<FJsonObject>();
+				Skip->SetStringField(TEXT("asset_path"), AssetPath);
+				Skip->SetNumberField(TEXT("error_count"), NumErrors);
+				SaveSkipped.Add(MakeShared<FJsonValueObject>(Skip));
 			}
 			// Tag each diagnostic with the asset_path so callers can attribute
 			// when multiple BPs compile in one batch.
@@ -1564,6 +1621,11 @@ namespace
 		Obj->SetArrayField(TEXT("diagnostics"), AllDiagnostics);
 		Obj->SetNumberField(TEXT("error_count"),   Errors);
 		Obj->SetNumberField(TEXT("warning_count"), Warnings);
+		// REL-2: which BPs were NOT persisted because their final compile had
+		// errors (each entry: {asset_path, error_count}). The on-disk assets
+		// keep their pre-batch state; fix the errors and recompile, or re-run
+		// with save_on_error to persist anyway. Empty when -SaveOnError.
+		Obj->SetArrayField(TEXT("save_skipped"), SaveSkipped);
 		// UX-P4c: how many packages were reloaded-from-disk to revert the batch
 		// (0 unless -Rollback). Lets callers/tests confirm a real rollback ran.
 		Obj->SetNumberField(TEXT("rolled_back"), RolledBack);

@@ -778,7 +778,7 @@ nlohmann::json ValidateOps(backends::IBlueprintReader& reader,
 
 nlohmann::json RunOps(backends::IBlueprintReader& reader,
 					  const nlohmann::json& ops, bool atomic,
-					  std::string_view onFailure) {
+					  std::string_view onFailure, bool saveOnError) {
 	if (!ops.is_array()) {
 		throw std::invalid_argument(R"(RunOps requires "ops" to be an array)");
 	}
@@ -977,8 +977,10 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 	}
 	// Normal path — explicit EndBatch so we surface any flush errors and
 	// capture the diagnostics ack (C1). on_failure doesn't apply here
-	// because nothing failed.
-	flushAck = reader.EndBatch(/*skipCompile=*/false);
+	// because nothing failed. saveOnError (REL-2) controls whether BPs whose
+	// final compile produced errors are persisted anyway (default: refused,
+	// reported in the ack's `save_skipped`).
+	flushAck = reader.EndBatch(/*skipCompile=*/false, /*rollback=*/false, saveOnError);
 	guard.release();
 
 	nlohmann::json out = {
@@ -1025,6 +1027,19 @@ nlohmann::json RunOps(backends::IBlueprintReader& reader,
 		if (flushAck.contains("recompiled"))
 		{
 			out["recompiled"]       = flushAck["recompiled"];
+		}
+		// REL-2: surface which BPs the flush REFUSED to save because their
+		// final compile had errors ({asset_path, error_count} entries). The
+		// on-disk assets keep their pre-batch state; re-run with
+		// save_on_error:true to persist anyway. Also flip ok:false — a batch
+		// whose result never reached disk is not a success.
+		if (flushAck.contains("save_skipped") && flushAck["save_skipped"].is_array())
+		{
+			out["save_skipped"] = flushAck["save_skipped"];
+			if (!flushAck["save_skipped"].empty())
+			{
+				out["ok"] = false;
+			}
 		}
 	}
 	return out;
@@ -1085,6 +1100,14 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 							 "the FScopedTransaction to revert all in-memory mutations "
 							 "to the exact pre-batch state -- the BP is left as it was "
 							 "before apply_ops was called."}}},
+			{"save_on_error", {{"type","boolean"},
+							   {"description",
+								"When the batch succeeds but a BP's final compile has "
+								"ERRORS, the flush refuses to save that BP by default "
+								"(the on-disk asset keeps its last good state; refused "
+								"assets are listed in `save_skipped`). Set true to "
+								"persist anyway (e.g. intentionally saving "
+								"work-in-progress graphs). Default false."}}},
 		}},
 		{"required", nlohmann::json::array({"ops"})},
 	};
@@ -1106,7 +1129,8 @@ void RegisterApplyOps(ToolRegistry& registry, backends::IBlueprintReader& reader
 			(args.contains("on_failure") && args["on_failure"].is_string())
 				? args["on_failure"].get<std::string>()
 				: (atomic ? std::string{"rollback"} : std::string{"compile"});
-		return RunOps(reader, *opsIt, atomic, onFailure);
+		const bool saveOnError = args.value("save_on_error", false);
+		return RunOps(reader, *opsIt, atomic, onFailure, saveOnError);
 	});
 
 	// ----- preview_ops (B2) ------------------------------------------------

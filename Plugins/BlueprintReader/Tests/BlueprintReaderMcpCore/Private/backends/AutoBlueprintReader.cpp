@@ -540,8 +540,9 @@ nlohmann::json AutoBlueprintReader::UiFocusTab(std::string_view tabLabel) {
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);
 }
-nlohmann::json AutoBlueprintReader::EndBatch(bool skipCompile, bool rollback) {
-	FORWARD(EndBatch, skipCompile, rollback);
+nlohmann::json AutoBlueprintReader::EndBatch(bool skipCompile, bool rollback,
+											 bool saveOnError) {
+	FORWARD(EndBatch, skipCompile, rollback, saveOnError);
 }
 IBlueprintReader::ProjectMetadata
 AutoBlueprintReader::GetProjectMetadata() {

@@ -220,7 +220,8 @@ public:
 	// own no-op default that's fine for unit tests. EndBatch can return
 	// a synthetic compile-diagnostics payload for C1 tests.
 	void BeginBatch() override { ++beginBatchCalls; }
-	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false) override {
+	nlohmann::json EndBatch(bool skipCompile = false, bool rollback = false,
+							bool saveOnError = false) override {
 		++endBatchCalls;
 		if (skipCompile)
 		{
@@ -230,10 +231,15 @@ public:
 		{
 			++endBatchRollbackCalls;
 		}
+		if (saveOnError)
+		{
+			++endBatchSaveOnErrorCalls;
+		}
 		return endBatchAck;
 	}
 	int endBatchSkipCalls = 0;
 	int endBatchRollbackCalls = 0;
+	int endBatchSaveOnErrorCalls = 0;
 	nlohmann::json endBatchAck = nlohmann::json::object();
 
 private:
@@ -698,6 +704,42 @@ TEST_CASE("apply_ops: explicit on_failure=compile flushes EndBatch with skipComp
 	CHECK(r.endBatchCalls   == 1);
 	CHECK(r.endBatchSkipCalls == 0);      // did NOT skip
 	CHECK(r.endBatchRollbackCalls == 0);  // did NOT roll back
+}
+
+// REL-2: the success-path EndBatch refuses compile-error saves by default;
+// `save_on_error: true` opts back into persist-anyway and must reach the
+// backend as the third EndBatch argument.
+TEST_CASE("apply_ops: save_on_error defaults to false on the success-path flush (REL-2)") {
+	FakeWritableReader r;
+	bpr::tools::ToolRegistry registry;
+	bpr::tools::RegisterBlueprintTools(registry, r);
+	const auto* fn = registry.Find("apply_ops");
+	REQUIRE(fn != nullptr);
+	json args = {{"ops", json::array({
+		json{{"op","add_variable"},
+			 {"asset_path","/Game/AI/BP_Enemy"},
+			 {"name","NewVar"}, {"type","float"}},
+	})}};
+	(void)(*fn)(args);
+	CHECK(r.endBatchCalls == 1);
+	CHECK(r.endBatchSaveOnErrorCalls == 0);  // default: refuse error saves
+}
+
+TEST_CASE("apply_ops: save_on_error=true is forwarded to EndBatch (REL-2)") {
+	FakeWritableReader r;
+	bpr::tools::ToolRegistry registry;
+	bpr::tools::RegisterBlueprintTools(registry, r);
+	const auto* fn = registry.Find("apply_ops");
+	REQUIRE(fn != nullptr);
+	json args = {{"ops", json::array({
+		json{{"op","add_variable"},
+			 {"asset_path","/Game/AI/BP_Enemy"},
+			 {"name","NewVar"}, {"type","float"}},
+	})},
+	{"save_on_error", true}};
+	(void)(*fn)(args);
+	CHECK(r.endBatchCalls == 1);
+	CHECK(r.endBatchSaveOnErrorCalls == 1);  // opt-in reached the backend
 }
 
 // UX-P4c: the apply_ops registry handler couples the on_failure default to
