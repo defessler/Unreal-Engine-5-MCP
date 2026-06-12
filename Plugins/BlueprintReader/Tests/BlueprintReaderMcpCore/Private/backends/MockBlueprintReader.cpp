@@ -345,6 +345,13 @@ nlohmann::json MockBlueprintReader::UiListWidgets(
 		"(needs a running editor's Slate UI that mock fixtures don't provide)");
 }
 
+nlohmann::json MockBlueprintReader::UiClick(
+	std::string_view, std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"UiClick requires the live backend "
+		"(injects input into a running editor's Slate UI that mock fixtures don't provide)");
+}
+
 // UX-P4a: the mock has no editor game thread to stall, so health is a stable
 // synthetic-healthy result (fixture-deterministic — age is always 0).
 IBlueprintReader::HealthResult MockBlueprintReader::HealthCheck() {
@@ -428,6 +435,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"get_pie_state", "get_modal_state", "get_active_editor_mode",
 		"get_focused_widget",
 		"ui_list_widgets",  // TEST-2 P0: walks live Slate — editor only
+		"ui_click",         // TEST-2 P1b: injects input into live Slate — editor only
 
 		// ---------------------------------------------------------------
 		// Live-editor-dependent surface the mock backend does not serve.

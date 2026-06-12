@@ -86,6 +86,8 @@
 #include "Widgets/Input/SButton.h"       // TEST-2 P1a: RaiseTestModal buttons
 #include "Widgets/SBoxPanel.h"           // TEST-2 P1a: RaiseTestModal layout
 #include "BlueprintReaderModalChannel.h" // TEST-2 P1a: modal side-channel impl
+#include "GenericPlatform/GenericApplicationMessageHandler.h" // TEST-2 P1b: EMouseButtons
+#include "GenericPlatform/GenericWindow.h" // TEST-2 P1b: FGenericWindow (ui_click)
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
@@ -543,6 +545,8 @@ namespace
 		// TEST-2 P1a: test hook — raise a blocking modal (BP_READER_TEST_MODAL=1).
 		// Not an MCP tool; reachable only via a raw -Op=RaiseTestModal frame.
 		RaiseTestModal,
+		// TEST-2 P1b: click a widget by its ui_list_widgets path (BP_READER_ALLOW_UI=1).
+		UiClick,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -794,6 +798,8 @@ namespace
 		if (OpStr.Equals(TEXT("UiListWidgets"),    ESearchCase::IgnoreCase))      { OutOp = EOp::UiListWidgets;    return true; }
 		// TEST-2 P1a
 		if (OpStr.Equals(TEXT("RaiseTestModal"),   ESearchCase::IgnoreCase))      { OutOp = EOp::RaiseTestModal;   return true; }
+		// TEST-2 P1b
+		if (OpStr.Equals(TEXT("UiClick"),          ESearchCase::IgnoreCase))      { OutOp = EOp::UiClick;          return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7375,6 +7381,145 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// TEST-2 P1b: resolve a widget from a ui_list_widgets `path`
+	// (<window_index>:Type/<child_index>:Type/...). Returns the widget + its
+	// window, or null + an error. The type token after each ':' is revalidated so
+	// a SHIFTED tree (paths are response-local) fails loudly instead of clicking
+	// the wrong widget. Type names can contain "::" (e.g. UE::Slate::Private::...),
+	// so each segment is split on its FIRST ':' only. GAME THREAD ONLY.
+	TSharedPtr<SWidget> ResolveWidgetByPath(const FString& Path,
+											TSharedPtr<SWindow>& OutWindow, FString& OutError)
+	{
+		TArray<FString> Segs;
+		Path.ParseIntoArray(Segs, TEXT("/"), /*CullEmpty=*/true);
+		if (Segs.Num() == 0) { OutError = TEXT("empty widget path"); return nullptr; }
+
+		FString WinIdxStr, WinType;
+		if (!Segs[0].Split(TEXT(":"), &WinIdxStr, &WinType)) { WinIdxStr = Segs[0]; }
+		const int32 WinIdx = FCString::Atoi(*WinIdxStr);
+		TArray<TSharedRef<SWindow>> Windows;
+		FSlateApplication::Get().GetAllVisibleWindowsOrdered(Windows);
+		if (!Windows.IsValidIndex(WinIdx))
+		{
+			OutError = FString::Printf(TEXT("window index %d out of range (%d visible windows) — re-run ui_list_widgets, the window order shifted"), WinIdx, Windows.Num());
+			return nullptr;
+		}
+		OutWindow = Windows[WinIdx];
+		TSharedPtr<SWidget> Current = StaticCastSharedRef<SWidget>(Windows[WinIdx]);
+
+		for (int32 s = 1; s < Segs.Num(); ++s)
+		{
+			FString IdxStr, TypeStr;
+			if (!Segs[s].Split(TEXT(":"), &IdxStr, &TypeStr)) { IdxStr = Segs[s]; }
+			const int32 ChildIdx = FCString::Atoi(*IdxStr);
+			FChildren* Children = Current->GetChildren();
+			if (!Children || ChildIdx < 0 || ChildIdx >= Children->Num())
+			{
+				OutError = FString::Printf(TEXT("child index %d out of range at segment '%s' (parent %s has %d children) — the tree shifted; re-run ui_list_widgets"),
+					ChildIdx, *Segs[s], *Current->GetTypeAsString(), Children ? Children->Num() : 0);
+				return nullptr;
+			}
+			Current = Children->GetChildAt(ChildIdx);
+			if (!TypeStr.IsEmpty() && Current->GetTypeAsString() != TypeStr)
+			{
+				OutError = FString::Printf(TEXT("path shifted at segment '%s': expected %s but found %s — re-run ui_list_widgets"),
+					*Segs[s], *TypeStr, *Current->GetTypeAsString());
+				return nullptr;
+			}
+		}
+		return Current;
+	}
+
+	// TEST-2 P1b: click a widget located by its ui_list_widgets `path`, by
+	// injecting a synthetic mouse down+up at the widget's geometry center via the
+	// same FSlateApplication message-handler path real OS input takes (so Slate
+	// hit-tests + routes it normally). Gated behind BP_READER_ALLOW_UI=1 (off by
+	// default — it drives real editor UI). Optional ExpectType/ExpectText
+	// revalidate the target before clicking (paths are response-local). GAME
+	// THREAD ONLY (the op dispatch is on the game thread).
+	int32 RunUiClickOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_ALLOW_UI"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("ui_click is gated: set BP_READER_ALLOW_UI=1 to enable editor UI "
+					 "interaction (off by default — it injects synthetic input into a "
+					 "live editor)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("Slate is not initialized (headless) — no UI to click. Use a GUI "
+					 "or -RenderOffscreen editor."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		FString WidgetPath, ExpectType, ExpectText;
+		FParse::Value(*Params, TEXT("WidgetPath="), WidgetPath);
+		FParse::Value(*Params, TEXT("ExpectType="), ExpectType);
+		FParse::Value(*Params, TEXT("ExpectText="), ExpectText);
+		if (WidgetPath.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), TEXT("ui_click requires a non-empty widget_path (from ui_list_widgets)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		TSharedPtr<SWindow> Window;
+		FString Err;
+		TSharedPtr<SWidget> Target = ResolveWidgetByPath(WidgetPath, Window, Err);
+		if (!Target.IsValid())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), Err);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		const FString ActualType = Target->GetTypeAsString();
+		if (!ExpectType.IsEmpty() && !ActualType.Contains(ExpectType))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("expect_type mismatch: widget at that path is %s, not containing '%s' — re-run ui_list_widgets"),
+				*ActualType, *ExpectType));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		const FGeometry& Geo = Target->GetCachedGeometry();
+		const FVector2D Size = FVector2D(Geo.GetAbsoluteSize());
+		// A widget with zero cached geometry is collapsed/hidden or in an
+		// unpainted/clipped (overflow) area — clicking its "center" would inject
+		// at (0,0) and silently miss. Refuse, with a diagnostic, rather than
+		// fire a useless click. (ui_list_widgets reports each widget's w/h.)
+		if (Size.X <= 0.0f || Size.Y <= 0.0f)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("widget %s at that path has no rendered geometry (w=%.0f h=%.0f) — it is "
+					 "collapsed, hidden, or in a clipped/overflow area. Pick a visible widget "
+					 "(ui_list_widgets reports each widget's w/h)."),
+				*ActualType, Size.X, Size.Y));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		const FVector2D Center = FVector2D(Geo.GetAbsolutePosition()) + Size * 0.5f;
+		TSharedPtr<FGenericWindow> Native = Window.IsValid() ? Window->GetNativeWindow() : nullptr;
+
+		FSlateApplication& Slate = FSlateApplication::Get();
+		Slate.SetCursorPos(Center);
+		Slate.OnMouseDown(Native, EMouseButtons::Left, Center);
+		Slate.OnMouseUp(EMouseButtons::Left, Center);
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("clicked"), true);
+		Out->SetStringField(TEXT("widget_type"), ActualType);
+		Out->SetNumberField(TEXT("x"), Center.X);
+		Out->SetNumberField(TEXT("y"), Center.Y);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// TEST-2 P0/P1a: fill Out with the active modal's state — is_open, title,
 	// buttons[] ({path, label?}, nested-button-safe labels), buttons_truncated.
 	// Returns whether a modal is open. Shared by get_modal_state AND the P1a
@@ -13637,6 +13782,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::DescribeK2Node,             &RunDescribeK2NodeOp },
 		{ EOp::UiListWidgets,              &RunUiListWidgetsOp },
 		{ EOp::RaiseTestModal,             &RunRaiseTestModalOp },
+		{ EOp::UiClick,                    &RunUiClickOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

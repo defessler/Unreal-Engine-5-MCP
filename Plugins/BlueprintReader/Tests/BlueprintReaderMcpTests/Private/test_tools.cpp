@@ -34,10 +34,10 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
-TEST_CASE("ToolRegistry exposes 264 tools with input schemas") {
+TEST_CASE("ToolRegistry exposes 265 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 264);
+	CHECK(spec.size() == 265);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}
@@ -206,6 +206,15 @@ TEST_CASE("ui_list_widgets: mock backend throws not-supported") {
 	Fixture f;
 	CHECK_THROWS_WITH_AS(
 		f.Call("ui_list_widgets", json::object()),
+		doctest::Contains("requires the live backend"),
+		bpr::backends::BlueprintReaderError);
+}
+
+// TEST-2 P1b: editor-only UI click — the mock throws a clear not-supported error.
+TEST_CASE("ui_click: mock backend throws not-supported") {
+	Fixture f;
+	CHECK_THROWS_WITH_AS(
+		f.Call("ui_click", json{{"widget_path", "0:SWindow/1:SButton"}}),
 		doctest::Contains("requires the live backend"),
 		bpr::backends::BlueprintReaderError);
 }

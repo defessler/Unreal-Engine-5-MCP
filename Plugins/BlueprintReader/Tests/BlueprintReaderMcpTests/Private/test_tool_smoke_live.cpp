@@ -75,7 +75,7 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"focus_actor", "set_camera_transform", "set_selection", "set_show_flag",
 	"set_selected_assets", "take_screenshot", "take_viewport_screenshot",
 	"take_annotated_screenshot", "open_asset_editor", "start_profile",
-	"stop_profile",
+	"stop_profile", "ui_click",   // TEST-2 P1b: injects real input — don't click in the smoke
 };
 
 // Best-effort placeholders for common required fields. A deliberately
@@ -152,7 +152,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 	bpr::tools::ToolRegistry registry;
 	bpr::tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
-	REQUIRE(spec.size() == 264);  // ListSpec() is backend-independent (per-backend pruning happens later), so this matches the mock asserts: 264 after +1 ui_list_widgets (TEST-2 P0). The pre-261 literal (258) was stale and would have failed if this live-gated case ever ran.
+	REQUIRE(spec.size() == 265);  // ListSpec() is backend-independent; matches the mock asserts: 265 after +1 ui_click (TEST-2 P1b).
 
 	std::vector<std::string> broken;    // unreachable / not-supported / crash
 	std::vector<std::string> infra;     // transport/daemon issues (environmental)

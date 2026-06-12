@@ -161,6 +161,13 @@ nlohmann::json ReadOnlyBlueprintReader::UiListWidgets(
 	// Read op — passes through.
 	return inner_->UiListWidgets(maxDepth, maxWidgets, window, type);
 }
+nlohmann::json ReadOnlyBlueprintReader::UiClick(
+	std::string_view widgetPath, std::string_view expectType, std::string_view expectText) {
+	// Editor-control action (no .uasset write), gated editor-side by
+	// BP_READER_ALLOW_UI — passes through, like console_command / pie_start /
+	// set_camera_transform.
+	return inner_->UiClick(widgetPath, expectType, expectText);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

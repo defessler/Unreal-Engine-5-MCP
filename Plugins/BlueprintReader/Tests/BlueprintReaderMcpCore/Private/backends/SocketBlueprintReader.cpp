@@ -1193,6 +1193,17 @@ nlohmann::json SocketBlueprintReader::UiListWidgets(
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::UiClick(std::string_view widgetPath,
+		std::string_view expectType, std::string_view expectText) {
+	std::vector<std::string> args = {
+		"-Op=UiClick",
+		"-WidgetPath=" + std::string(widgetPath),
+	};
+	if (!expectType.empty()) { args.push_back("-ExpectType=" + std::string(expectType)); }
+	if (!expectText.empty()) { args.push_back("-ExpectText=" + std::string(expectText)); }
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

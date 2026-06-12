@@ -145,6 +145,9 @@ public:
 	nlohmann::json UiListWidgets(int maxDepth, int maxWidgets,
 								  std::string_view window,
 								  std::string_view type) override;
+	nlohmann::json UiClick(std::string_view widgetPath,
+							std::string_view expectType,
+							std::string_view expectText) override;
 
 	// ----- batch + meta ---------------------------------------------
 	void BeginBatch() override;

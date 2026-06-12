@@ -488,6 +488,12 @@ nlohmann::json CachingBlueprintReader::UiListWidgets(
 	return inner_->UiListWidgets(maxDepth, maxWidgets, window, type);
 }
 
+nlohmann::json CachingBlueprintReader::UiClick(
+	std::string_view widgetPath, std::string_view expectType, std::string_view expectText) {
+	// An action (injects input) — pass through, never cache.
+	return inner_->UiClick(widgetPath, expectType, expectText);
+}
+
 // ----- Asset-registry queries (PERF-3: now cached) -----------------------
 // These are pure registry reads that never change between write ops. They
 // use TTL-only expiry (no mtime check) because their "file" is the asset

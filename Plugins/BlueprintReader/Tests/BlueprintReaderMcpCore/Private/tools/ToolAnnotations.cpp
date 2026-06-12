@@ -400,6 +400,7 @@ std::string TitleFor(const std::string& name) {
 		{"build_lighting",           "Build Level Lighting"},
 		{"run_automation_tests",     "Run Automation Tests"},
 		{"ui_list_widgets",          "List Editor UI Widgets"},
+		{"ui_click",                 "Click Editor Widget"},
 		// Discovery / meta
 		{"list_node_kinds",          "List Spawnable Node Kinds"},
 		{"list_pin_categories",      "List Pin Type Categories"},

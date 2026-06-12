@@ -3269,6 +3269,57 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Click an editor widget located by its `widget_path` (from `ui_list_widgets`). Injects a real synthetic mouse down+up at the widget's geometry center via the same path OS input takes, so Slate hit-tests and routes it normally (e.g. clicking a toolbar combo opens its dropdown). GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). `widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass `expect_type` / `expect_text` to revalidate the target before clicking (a shifted tree errors instead of clicking the wrong widget). Widgets with zero rendered geometry (collapsed/hidden/overflow) are refused. Returns `{ok, clicked, widget_type, x, y}` (the injected screen point) or `{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "expect_text": {
+          "description": "Optional: reserved for text revalidation of the target.",
+          "type": "string"
+        },
+        "expect_type": {
+          "description": "Optional: the widget type must CONTAIN this (e.g. SButton) or the click is refused (path-shift guard).",
+          "type": "string"
+        },
+        "widget_path": {
+          "description": "The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SButton).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "widget_path"
+      ],
+      "type": "object"
+    },
+    "name": "ui_click",
+    "output_schema": {
+      "properties": {
+        "clicked": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "widget_type": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Slate widget the user is currently typing into / focused on. Finer-grained than get_focused_window: \"the user is in the BP graph search box\" vs \"the user is on the BP editor window\". Returns `{widget_type, parent_window_title}`. Both empty when no widget has focus. Requires a live editor.",
     "input_schema": {
       "properties": {},

@@ -910,10 +910,28 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 + P1a done (2026-06-11)** — `ui_list_widgets` (264 tools) +
-  `get_modal_state` enriched with `buttons[]` (P0); the modal side-channel +
-  render-tier harness (P1a); P1b/P2 ☐ Open · **Effort:** M–L (phased) ·
+- **Status:** ◑ **P0 + P1a done; P1b started — `ui_click` shipped (2026-06-11)**
+  — `ui_list_widgets` + `get_modal_state` buttons (P0); modal side-channel +
+  render-tier harness (P1a); `ui_click` (265 tools, P1b slice 1); P1b rest
+  (`ui_type`/`ui_focus`/`ui_invoke_menu`) + P2 ☐ Open · **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
+- **P1b slice 1 — `ui_click` SHIPPED + END-TO-END VERIFIED:** click an editor
+  widget located by its `ui_list_widgets` path. Resolves the path
+  (window-index → child-index walk, type-revalidated so a shifted tree errors
+  instead of clicking the wrong widget), guards degenerate geometry (w/h=0 →
+  refuse, never inject at (0,0)), then injects a synthetic mouse down+up at the
+  widget's geometry center via `FSlateApplication::OnMouseDown/OnMouseUp` (the
+  same path real OS input takes → Slate hit-tests + routes it). Gated
+  `BP_READER_ALLOW_UI=1` (off by default). **Live-verified on the render tier
+  (`Saved/verify-ui-click.ps1`)**: clicking a toolbar combo button opened its
+  dropdown — menu-widget count went 18 → 61 (+43), an observable UI effect
+  proving the click routed, not a no-op. Editor menus open IN-WINDOW (popup
+  layer), not as new OS windows — so the observable is menu-widget growth.
+  Findings: offscreen widget geometry is MIXED (top-level + toolbar blocks real;
+  collapsed/overflow widgets are (0,0) — hence the geometry guard). Full backend
+  chain + categories/annotations (action, NOT read-only — passes through like
+  console_command). Next P1b: `ui_type` (key injection), `ui_focus_window/tab`,
+  `ui_invoke_menu`, + the BP_READER_SMOKE_UI Track B smoke.
 - **Render tier proven (2026-06-11):** a full editor launched
   `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
   **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
@@ -1718,6 +1736,15 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-11** — **TEST-2 P1b slice 1: `ui_click` SHIPPED** (265 tools). Click an
+  editor widget by its ui_list_widgets path — path resolver (window→child walk,
+  type-revalidated), degenerate-geometry guard (refuse w/h=0), synthetic mouse
+  down+up at the geometry center via FSlateApplication::OnMouseDown/OnMouseUp.
+  Gated BP_READER_ALLOW_UI=1. END-TO-END VERIFIED on the render tier: clicking a
+  toolbar combo opened its dropdown (menu widgets 18→61). Full backend chain +
+  action annotation (passes through read-only like console_command). Hash
+  rebaselined; mock 871/871. The original "Selenium for the editor" capability,
+  working. Next: ui_type / ui_focus / ui_invoke_menu + the Track B UI smoke.
 - **2026-06-11** — **TEST-1 Track B render tier live + render-tool fixes**: using
   the P1a `-RenderOffscreen` harness, exercised the render/interactive tools that
   the `-nullrhi` daemon could only registration-check, and fixed two real

@@ -286,6 +286,62 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 		});
 	}
 
+	// ----- ui_click ----------------------------------------------------------
+	// TEST-2 P1b: click an editor widget located by its ui_list_widgets `path`.
+	// An ACTION (injects synthetic input), gated editor-side by
+	// BP_READER_ALLOW_UI=1 — off by default. Foundation for ui_type / menu
+	// invocation (later P1b slices).
+	{
+		ToolDescriptor d;
+		d.name = "ui_click";
+		d.description =
+			"[editor] Click an editor widget located by its `widget_path` (from "
+			"`ui_list_widgets`). Injects a real synthetic mouse down+up at the "
+			"widget's geometry center via the same path OS input takes, so Slate "
+			"hit-tests and routes it normally (e.g. clicking a toolbar combo opens "
+			"its dropdown). GATED: returns an error unless the editor was started "
+			"with BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). "
+			"`widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass "
+			"`expect_type` / `expect_text` to revalidate the target before clicking "
+			"(a shifted tree errors instead of clicking the wrong widget). Widgets "
+			"with zero rendered geometry (collapsed/hidden/overflow) are refused. "
+			"Returns `{ok, clicked, widget_type, x, y}` (the injected screen point) "
+			"or `{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"widget_path", {{"type","string"},
+								 {"description","The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SButton)."}}},
+				{"expect_type", {{"type","string"},
+								 {"description","Optional: the widget type must CONTAIN this (e.g. SButton) or the click is refused (path-shift guard)."}}},
+				{"expect_text", {{"type","string"},
+								 {"description","Optional: reserved for text revalidation of the target."}}},
+			}},
+			{"required", nlohmann::json::array({"widget_path"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"clicked",     {{"type","boolean"}}},
+				{"widget_type", {{"type","string"}}},
+				{"x",           {{"type","number"}}},
+				{"y",           {{"type","number"}}},
+				{"error",       {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string widgetPath = RequireString(args, "widget_path");
+			if (widgetPath.empty()) {
+				throw std::invalid_argument("ui_click: `widget_path` must be non-empty (from ui_list_widgets).");
+			}
+			const std::string expectType = OptString(args, "expect_type", "");
+			const std::string expectText = OptString(args, "expect_text", "");
+			return reader.UiClick(widgetPath, expectType, expectText);
+		});
+	}
+
 	// ----- get_focused_widget ---------------------------------------------
 	{
 		ToolDescriptor d;

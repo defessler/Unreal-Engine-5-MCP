@@ -95,6 +95,9 @@ public:
 	nlohmann::json UiListWidgets(int maxDepth, int maxWidgets,
 								  std::string_view window,
 								  std::string_view type) override;
+	nlohmann::json UiClick(std::string_view widgetPath,
+							std::string_view expectType,
+							std::string_view expectText) override;
 
 	// UX-P4a: the mock backend has no editor game thread, so health is always a
 	// synthetic-healthy result (age 0). It IS supported (returns, never throws) —
