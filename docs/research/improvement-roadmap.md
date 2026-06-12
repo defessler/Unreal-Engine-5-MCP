@@ -1787,12 +1787,25 @@ refute pass.
   · **Status:** ✅ Done (2026-06-12) — uses `FindPluginDir`; live-verified.
 
 ### Phase B — write-path durability
-- **REL-14** (P1, fleet) five ops mark-dirty-but-never-save (AddWidget,
-  SetWidgetProperty, AddAnimState, SetBTNodeProperty, SetDataAssetProperty) ·
-  **Status:** ☐ Open · **Effort:** S
+- **REL-14** (P1, fleet) mark-dirty-but-never-save ops · **Status:** ✅ Done
+  (2026-06-12) — SIX sites fixed (the fleet's five + `AddBTNode`, same gap):
+  WBP/AnimBP ops route through `MaybeCompileAndSave`; BT/DataAsset ops through
+  a new shared `SaveAssetPackage` helper. Live-verified across a FRESH editor
+  process for the SaveAssetPackage family (`set_data_asset_property` persisted
+  after restart, `Saved/verify-rel-b1.ps1`); widget/anim-family readback not
+  exercisable on this host (no UMG WidgetBlueprints in its content — CommonUI
+  C++-backed) — their new save call is the same `MaybeCompileAndSave` every
+  long-proven op uses.
 - **REL-15** (P1, fleet) component ops + ImplementInterface bypass batch
-  deferral (mid-batch disk writes break H1 rollback's invariant) · **Status:**
-  ☐ Open · **Effort:** S
+  deferral · **Status:** ✅ Done (2026-06-12) — `AddComponent`/`RemoveComponent`
+  /`ReparentComponent`/`SetComponentProperty`/`ImplementInterface`/
+  `BindWidgetEvent` now defer via `MaybeCompileAndSave` (clone_graph keeps its
+  direct compile ON PURPOSE — its post-compile self-context rebind needs the
+  skeleton refreshed mid-op). Bonus REL-2 hardening: the disconnect-mid-batch
+  salvage flush now refuses compile-error saves (nobody is present to consent).
+  Live-verified: `AddComponent` inside a raw BeginBatch left the disk untouched
+  MID-batch (pre-fix it saved immediately), `EndBatch -Rollback` restored, and
+  a fresh editor process confirmed no component leak + byte-identical .uasset.
 - **REL-5** (P1) single-op live writes bypass the undo stack (no
   FScopedTransaction outside batches) · **Status:** ☐ Open · **Effort:** S–M
 - **REL-4** (P1) no pre-write .uasset backup (ring buffer in
@@ -1854,6 +1867,17 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **REL Phase B slice 1 SHIPPED: REL-14 + REL-15.** Six
+  mark-dirty-but-never-save ops now persist (WBP/AnimBP via MaybeCompileAndSave;
+  BT/DataAsset via new SaveAssetPackage helper — incl. AddBTNode, a sixth site
+  the fleet's list missed); component ops + ImplementInterface + BindWidgetEvent
+  now DEFER inside batches (mid-batch disk writes broke H1 rollback's
+  nothing-on-disk invariant; clone_graph deliberately keeps its direct compile
+  for the skeleton-dependent rebind); the disconnect-mid-batch salvage flush
+  refuses compile-error saves. Live-verified (Saved/verify-rel-b1.ps1, fresh
+  editor-process read-backs): data-asset property persisted after restart;
+  AddComponent in a raw batch left disk untouched mid-batch, rollback left no
+  trace. Widget-family readback skipped on this host (no UMG WBPs in content).
 - **2026-06-12** — **NEW §10 Reliability (REL-1..25) + Phase A SHIPPED.** Deep
   audit (best-practices research + inline verification + 25-agent fleet with
   adversarial refute pass; findings record in reliability-plan.md). Phase A:

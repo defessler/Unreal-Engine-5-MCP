@@ -1395,6 +1395,37 @@ namespace
 		return bOk;
 	}
 
+	// REL-14: persist a non-Blueprint asset (BehaviorTree, DataAsset, ...) —
+	// the same SavePackage path CompileAndSaveBlueprint uses, minus the compile
+	// (these assets have none). Saves immediately even inside a batch: batch
+	// deferral exists to collapse N×BP-compile, which doesn't apply here, and
+	// BatchPending/H1-rollback only track UBlueprints.
+	bool SaveAssetPackage(UObject* Asset)
+	{
+		if (!IsValid(Asset))
+		{
+			return false;
+		}
+		UPackage* Package = Asset->GetOutermost();
+		if (!IsValid(Package))
+		{
+			return false;
+		}
+		const FString FileName = FPackageName::LongPackageNameToFilename(
+			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs Args;
+		Args.TopLevelFlags = RF_Public | RF_Standalone;
+		Args.SaveFlags = SAVE_NoError;
+		Args.Error = GError;
+		const bool bOk = UPackage::SavePackage(Package, Asset, *FileName, Args);
+		if (!bOk)
+		{
+			UE_LOG(LogBlueprintReader, Error,
+				TEXT("SaveAssetPackage failed: %s"), *FileName);
+		}
+		return bOk;
+	}
+
 	// ----- Batch state (A1) ---------------------------------------------------
 	// When a BeginBatch op is seen, every subsequent write op defers its
 	// CompileAndSaveBlueprint call. The deferred BPs are tracked here and
@@ -3875,7 +3906,10 @@ namespace
 		}
 
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
-		CompileAndSaveBlueprint(BP);
+		// REL-15: MaybeCompileAndSave (not a direct compile+save) so batches
+		// defer — a direct save here wrote to disk MID-batch, breaking H1
+		// rollback's "nothing reached disk until EndBatch" invariant.
+		MaybeCompileAndSave(BP);
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -3913,7 +3947,7 @@ namespace
 			SCS->RemoveNodeAndPromoteChildren(Node);
 			bRemoved = true;
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
-			CompileAndSaveBlueprint(BP);
+			MaybeCompileAndSave(BP);  // REL-15: defer inside batches
 		}
 
 		auto Obj = MakeShared<FJsonObject>();
@@ -3983,7 +4017,7 @@ namespace
 		}
 
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
-		CompileAndSaveBlueprint(BP);
+		MaybeCompileAndSave(BP);  // REL-15: defer inside batches
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4072,7 +4106,7 @@ namespace
 			: true;
 
 		FBlueprintEditorUtils::MarkBlueprintAsModified(BP);
-		CompileAndSaveBlueprint(BP);
+		MaybeCompileAndSave(BP);  // REL-15: defer inside batches
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4637,6 +4671,13 @@ namespace
 		}
 
 		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+		// REL-14: persist — this op used to mark-dirty and return ok:true with
+		// the new widget stranded in memory (lost on session end; in batch mode
+		// it never even entered BatchPending).
+		if (!MaybeCompileAndSave(WBP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), bCreated);
@@ -4685,6 +4726,11 @@ namespace
 			nullptr, W, PPF_None);
 
 		FBlueprintEditorUtils::MarkBlueprintAsModified(WBP);
+		// REL-14: persist — was mark-dirty-only (change lost on session end).
+		if (!MaybeCompileAndSave(WBP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -4799,7 +4845,8 @@ namespace
 		// a separate compile_widget_blueprint call. A failed save means the bind
 		// is NOT durable (a fresh read won't see it), so report it honestly as
 		// not-ok rather than claiming success — the node exists only in memory.
-		if (!CompileAndSaveBlueprint(WBP))
+		// REL-15: MaybeCompileAndSave so batches defer (deferral returns true).
+		if (!MaybeCompileAndSave(WBP))
 		{
 			return Emit(false, TEXT("event bound in memory but compile/save failed "
 				"— not persisted; check the asset isn't read-only / checked out "
@@ -5015,6 +5062,11 @@ namespace
 		}
 
 		BT->MarkPackageDirty();
+		// REL-14: persist — was mark-dirty-only (node lost on session end).
+		if (!SaveAssetPackage(BT))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -5076,6 +5128,11 @@ namespace
 			Prop->ContainerPtrToValuePtr<void>(Target), nullptr, Target, PPF_None);
 
 		BT->MarkPackageDirty();
+		// REL-14: persist — was mark-dirty-only (change lost on session end).
+		if (!SaveAssetPackage(BT))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -5415,6 +5472,11 @@ namespace
 			Prop->ContainerPtrToValuePtr<void>(DA), nullptr, DA, PPF_None);
 
 		DA->MarkPackageDirty();
+		// REL-14: persist — was mark-dirty-only (change lost on session end).
+		if (!SaveAssetPackage(DA))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
@@ -6674,6 +6736,12 @@ namespace
 		// the node's BoundGraph. For now, rename via NodeTitle.
 		NewState->SetFlags(RF_Transactional);
 		FBlueprintEditorUtils::MarkBlueprintAsModified(ABP);
+		// REL-14: persist — the new state existed only in memory (ok:true then
+		// silently lost on session end).
+		if (!MaybeCompileAndSave(ABP))
+		{
+			return 5;
+		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"),           true);
@@ -11874,7 +11942,9 @@ namespace
 		UBlueprint* BP = LoadMutableBlueprint(AssetPath);
 		if (!IsValid(BP)) { return 4; }
 		const bool bAdded = FBlueprintEditorUtils::ImplementNewInterface(BP, FTopLevelAssetPath(Interface));
-		const bool bOk = CompileAndSaveBlueprint(BP);
+		// REL-15: defer inside batches — a direct compile+save here wrote to
+		// disk MID-batch, breaking H1 rollback's "nothing reached disk" invariant.
+		const bool bOk = MaybeCompileAndSave(BP);
 		auto Out = MakeShared<FJsonObject>();
 		Out->SetBoolField(TEXT("ok"), bOk);
 		Out->SetBoolField(TEXT("added"), bAdded);
@@ -12352,6 +12422,9 @@ namespace
 		TMap<FName, UEdGraph*> MacroMap;
 		CloneGraphContents(SrcBP, DstBP, SrcGraph, DstGraph, Visited, MacroMap, &Stats);
 
+		// REL-15 review: clone_graph keeps its DIRECT compile+save on purpose —
+		// the post-compile self-context rebind below requires the skeleton
+		// class refreshed mid-op, so this op cannot defer to a batch flush.
 		bool bOk = CompileAndSaveBlueprint(DstBP);
 
 		// Post-compile self-context rebind. K2Node_CallFunction::AllocateDefaultPins
@@ -14462,7 +14535,11 @@ void BlueprintReader::FlushBatchForConnection(uint64 ConnectionId)
         {
             if (UBlueprint* BP = Weak.Get())
             {
-                CompileAndSaveBlueprint(BP);
+                // REL-2: this is the abandoned-batch salvage flush — the
+                // client is GONE, so nobody can consent to persisting a
+                // compile-broken partial state over the last good asset.
+                // Refuse error saves unconditionally here.
+                CompileAndSaveBlueprint(BP, nullptr, /*bRefuseSaveOnErrors=*/true);
             }
         }
         Done->Trigger();
