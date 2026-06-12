@@ -5591,19 +5591,41 @@ namespace
 		}
 		else if (GEngine && GetEditorWorldOrNull())
 		{
+			// TEST-1 Track B fix: HighResShot only honors the destination via the
+			// NAMED `filename=` token — a positional path (the old form) is parsed
+			// as an argument and DROPPED, so the capture silently landed at the
+			// engine default (Saved/Screenshots/.../HighresScreenshotNNNNN.png)
+			// while we reported `output_file=<dest_path>` that never existed. Pass
+			// it as filename="<dest>" so the file actually lands where requested.
+			// (Verified on the -RenderOffscreen render tier — headless can't render
+			// so this path is unreachable there.)
+			// Forward slashes: FParse::Value does escape-processing on the quoted
+			// value, so a Windows '\' path would be mangled — UE accepts '/'.
+			const FString CmdDest = Dest.Replace(TEXT("\\"), TEXT("/"));
 			FString Cmd = (W > 0 && H > 0)
-				? FString::Printf(TEXT("HighResShot %dx%d %s"), W, H, *Dest)
-				: FString::Printf(TEXT("HighResShot %s"), *Dest);
+				? FString::Printf(TEXT("HighResShot %dx%d filename=\"%s\""), W, H, *CmdDest)
+				: FString::Printf(TEXT("HighResShot filename=\"%s\""), *CmdDest);
 			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+			// Force a viewport redraw so the pending HighResShot renders NOW. An
+			// offscreen (-RenderOffscreen) editor only draws on demand, so without
+			// this the capture waits for some other redraw — and a back-to-back
+			// second request would clobber this one's (global) config first.
+			if (GEditor) { GEditor->RedrawLevelEditingViewports(true); }
 		}
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("captured"),    bOk);
 		Obj->SetStringField(TEXT("output_file"), Dest);
-		if (!Note.IsEmpty())
+		// HighResShot captures ASYNCHRONOUSLY on the next rendered frame, so the
+		// file appears shortly AFTER this call returns (captured=true means the
+		// command was accepted, not that the PNG is already on disk). Poll
+		// output_file for existence if you need to consume it.
+		if (Note.IsEmpty())
 		{
-			Obj->SetStringField(TEXT("note"), Note);
+			Note = TEXT("Capture is asynchronous — the PNG is written to output_file "
+				"within a frame or two after this call returns.");
 		}
+		Obj->SetStringField(TEXT("note"), Note);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -6066,18 +6088,31 @@ namespace
 		}
 		else if (GEngine && GetEditorWorldOrNull())
 		{
-			FString Cmd = FString::Printf(TEXT("Shot %s"), *Dest);
+			// TEST-1 Track B fix: the old `Shot <path>` exec is a GAME-viewport
+			// command (UGameViewportClient) — it is NOT handled in the editor
+			// (no PIE/game viewport), so it returned captured=false on a real
+			// editor. Route through HighResShot at native viewport resolution
+			// (no WxH = 1x), which DOES work in the editor (verified on the
+			// -RenderOffscreen tier), honoring the destination via filename=.
+			const FString CmdDest = Dest.Replace(TEXT("\\"), TEXT("/"));
+			FString Cmd = FString::Printf(TEXT("HighResShot filename=\"%s\""), *CmdDest);
 			bOk = GEngine->Exec(GetEditorWorldOrNull(), *Cmd);
+			// Force the capture to render now (offscreen editor draws on demand).
+			if (GEditor) { GEditor->RedrawLevelEditingViewports(true); }
 		}
 
 		auto Obj = MakeShared<FJsonObject>();
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetBoolField(TEXT("captured"),    bOk);
 		Obj->SetStringField(TEXT("output_file"), Dest);
-		if (!Note.IsEmpty())
+		// Like take_screenshot, the capture is asynchronous — the PNG lands at
+		// output_file within a frame or two after this call returns.
+		if (Note.IsEmpty())
 		{
-			Obj->SetStringField(TEXT("note"), Note);
+			Note = TEXT("Capture is asynchronous — the PNG is written to output_file "
+				"within a frame or two after this call returns.");
 		}
+		Obj->SetStringField(TEXT("note"), Note);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

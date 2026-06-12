@@ -861,7 +861,37 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   and makes the plugin folder a complete, drop-in bundle.
 
 ### TEST-1 — exercise the render/interactive surface against a real active editor {#test-1}
-- **Status:** ☐ Open (research + plan done) · **Effort:** M–L · **Design:** [`live-gui-testing.md`](live-gui-testing.md)
+- **Status:** ◑ **Track B render tier live + first render tools verified/fixed
+  (2026-06-11)** · **Effort:** M–L · **Design:** [`live-gui-testing.md`](live-gui-testing.md)
+- **Track B is real (via the TEST-2 P1a render harness):** the
+  `-RenderOffscreen` editor (`Saved/start-render-editor.ps1`) has a real D3D12
+  RHI, so the render tools that the `-nullrhi` daemon could only
+  registration-check now actually run. First sweep
+  (`Saved/verify-render-tools.ps1`) found + FIXED two real bugs that ONLY
+  manifest on a rendering editor (so prior CI/headless never caught them):
+  - **`take_screenshot` ignored `dest_path`** — `HighResShot <WxH> <path>` passes
+    the path POSITIONALLY, which the engine parser drops (it only honors a NAMED
+    `filename=` token, resetting the override otherwise), so the PNG silently
+    landed at the engine default (`Saved/Screenshots/.../HighresScreenshotNNNNN.png`)
+    while the tool reported `output_file=<dest_path>` that never existed. Fixed to
+    `HighResShot WxH filename="<dest>"` (forward-slashed; FParse escape-processes
+    the quoted value). Verified: PNG now lands at the requested path.
+  - **`take_viewport_screenshot` was a no-op in the editor** — it used the
+    game-only `Shot` exec (UGameViewportClient), unhandled outside PIE, so
+    `captured:false` on a real editor. Rerouted through HighResShot at native
+    resolution (verified: captures real pixels at `dest_path`).
+  - Both now force a viewport redraw after the exec (`GEditor->
+    RedrawLevelEditingViewports`) so the async capture renders deterministically.
+  - **Render-tier limitation found:** the offscreen editor renders ON DEMAND and
+    HighResShot uses a GLOBAL config singleton, so only ONE capture renders per
+    interaction — back-to-back screenshots race (the 2nd silently doesn't draw).
+    A single capture per call is reliable; a real GPU editor (continuous redraw)
+    would not hit this. Sequential captures on `-RenderOffscreen` are unreliable.
+  - `set_camera_transform` (moved:true) + `set_show_flag` (ok:true) verified
+    working on the render tier.
+- Remaining: codify the render sweep into `test_tool_smoke_live.cpp` behind
+  `BP_READER_SMOKE_RENDER`; cover PIE (Track B, TDR-cautious) + the
+  active-editor-state group. Original plan below.
 - The `-nullrhi` commandlet daemon can't exercise the ~30 render/interactive
   tools (`take_screenshot`/`take_viewport_screenshot`/`set_camera_transform`/
   `set_show_flag`/`build_lighting`/`pie_start`/selection/`open_asset_editor`) —
@@ -1688,6 +1718,17 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-11** — **TEST-1 Track B render tier live + render-tool fixes**: using
+  the P1a `-RenderOffscreen` harness, exercised the render/interactive tools that
+  the `-nullrhi` daemon could only registration-check, and fixed two real
+  rendering-only bugs: `take_screenshot` ignored `dest_path` (HighResShot needs a
+  NAMED `filename=`, not a positional path → silently wrote to the engine
+  default), and `take_viewport_screenshot` used the game-only `Shot` command
+  (no-op in the editor) → both rerouted through HighResShot `filename=` + forced
+  redraw; verified pixels land at `dest_path`. Found the offscreen render-on-
+  demand + global-HighResShot-config limitation (only one capture per
+  interaction). camera/show-flag verified. Also: v0.9.0 released (version-stamp
+  fix → exe reports its real version, confirmed `0.9.0+853c5e7a` in CI).
 - **2026-06-11** — **TEST-2 P1a SHIPPED + render tier proven**: the modal side-
   channel (worker-thread `modal` frame → game-thread drainer via the heartbeat
   ticker AND the OnModalLoopTickEvent delegate; report/dismiss; shared

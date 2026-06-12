@@ -1419,9 +1419,12 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 		ToolDescriptor d;
 		d.name = "take_viewport_screenshot";
 		d.description = "[editor] Quick capture of the active editor viewport to "
-						"disk (vs `take_screenshot` which uses HighResShot "
-						"for offline-quality output). Requires a GPU editor; a "
-						"headless (-nullrhi) session returns `captured:false` "
+						"disk at native resolution (`take_screenshot` adds optional "
+						"`width`/`height`). Both route through HighResShot in-editor "
+						"(the game-only `Shot` command does not work there), and the "
+						"capture is ASYNCHRONOUS — the PNG lands at `output_file` a "
+						"frame or two after the call. Requires a GPU / -RenderOffscreen "
+						"editor; a headless (-nullrhi) session returns `captured:false` "
 						"with an explanatory `note`.\n\n"
 						"Pass `return_inline: true` (default false) to also "
 						"receive the PNG as an MCP Image content block — "
