@@ -92,6 +92,7 @@
 #include "Widgets/Input/SEditableTextBox.h"  // TEST-2 P1b: read/verify ui_type
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "Widgets/Docking/SDockTab.h"     // TEST-2 P1b: ui_focus_tab
+#include "ScopedTransaction.h"            // REL-5: per-op undo transaction
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
@@ -893,6 +894,52 @@ namespace
 	// parse time.
 	bool& BatchDeferFlag();
 
+	// ----- REL-5: op-scoped undo transaction (live editor only) -------------
+	// A single MCP write op against a LIVE editor used to mutate the open
+	// asset with no FScopedTransaction — the human at the editor could not
+	// Ctrl+Z what the agent just did. The transaction is opened LAZILY by
+	// LoadMutableBlueprint (the common entry every standard BP mutator goes
+	// through), so write ops get exactly one undo entry and read ops get none
+	// — no hand-maintained write-op list to drift. RunOneOp's scope guard
+	// closes it on every return path. Commandlets have no functional
+	// transaction buffer (skipped); ops inside a batch are covered by H1's
+	// BeginBatch transaction instead. Plain statics: dispatch is single-
+	// threaded (game thread for live ops, main thread for the commandlet).
+	TUniquePtr<FScopedTransaction> GOpUndoTransaction;
+	FString GOpUndoLabel;
+
+	void MaybeOpenOpUndoTransaction()
+	{
+		if (GOpUndoTransaction.IsValid())
+		{
+			return;
+		}
+		if (!IsValid(GEditor) || IsRunningCommandlet())
+		{
+			return;
+		}
+		if (BatchDeferFlag())
+		{
+			return;  // H1's batch transaction already covers these ops
+		}
+		GOpUndoTransaction = MakeUnique<FScopedTransaction>(
+			FText::FromString(FString::Printf(TEXT("bp-reader: %s"),
+				GOpUndoLabel.IsEmpty() ? TEXT("edit") : *GOpUndoLabel)));
+		UE_LOG(LogBlueprintReader, Verbose,
+			TEXT("REL-5: undo transaction '%s' opened=%d"),
+			*GOpUndoLabel, GOpUndoTransaction->IsOutstanding() ? 1 : 0);
+	}
+
+	void CloseOpUndoTransaction()
+	{
+		GOpUndoTransaction.Reset();
+	}
+
+	struct FOpUndoScope
+	{
+		~FOpUndoScope() { CloseOpUndoTransaction(); }
+	};
+
 	// Cross-session BP write-lock side channel. When LoadMutableBlueprint
 	// detects that another connection has the BP locked for its own
 	// batch, it can't return a useful UBlueprint*. Returning nullptr is
@@ -968,6 +1015,9 @@ namespace
 
 	UBlueprint* LoadMutableBlueprint(const FString& AssetPath)
 	{
+		// REL-5: every standard BP mutator funnels through here — open the
+		// op-scoped undo transaction (live editor only; lazy + idempotent).
+		MaybeOpenOpUndoTransaction();
 		FString Resolved = AssetPath;
 		if (!Resolved.Contains(TEXT(".")))
 		{
@@ -1270,6 +1320,64 @@ namespace
 
 	// Compile + save. When `OutDiagnostics` is non-null, populates it with
 	// the collected compile diagnostics serialized as JSON values.
+	// ----- REL-4: pre-write .uasset backup ring ------------------------------
+	// UE's autosave/FAutoPackageBackup never runs under commandlets, and a
+	// SUCCESSFUL save of an unwanted mutation has no escape hatch outside
+	// batch mode. Before the FIRST save of each asset per process session,
+	// copy the on-disk file to Saved/BPReaderBackups/<Package>-<UTC>.uasset
+	// and prune to the newest 5 per asset. Restore = copy the backup over the
+	// asset file while the editor is closed (or delete the asset + copy).
+	// Opt out with BP_READER_BACKUP=0. Plain static set: dispatch is
+	// single-threaded (game thread / commandlet main).
+	void BackupAssetFileOnce(const FString& FileName, const FString& PackageName)
+	{
+		static const bool bEnabled = []()
+		{
+			const FString V = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_BACKUP"));
+			return !(V == TEXT("0") || V.Equals(TEXT("false"), ESearchCase::IgnoreCase));
+		}();
+		if (!bEnabled)
+		{
+			return;
+		}
+		static TSet<FString> BackedUpThisSession;
+		if (BackedUpThisSession.Contains(PackageName))
+		{
+			return;
+		}
+		BackedUpThisSession.Add(PackageName);
+		IFileManager& FM = IFileManager::Get();
+		if (!FM.FileExists(*FileName))
+		{
+			return;  // brand-new asset — nothing on disk to protect yet
+		}
+		const FString Dir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("BPReaderBackups"));
+		FM.MakeDirectory(*Dir, /*Tree=*/true);
+		// "/Game/AI/BP_Foo" -> "Game_AI_BP_Foo"
+		FString Sanitized = PackageName;
+		Sanitized.RemoveFromStart(TEXT("/"));
+		Sanitized.ReplaceInline(TEXT("/"), TEXT("_"));
+		const FString Stamp = FDateTime::UtcNow().ToString(TEXT("%Y%m%d-%H%M%S"));
+		const FString Dest = FPaths::Combine(Dir, FString::Printf(TEXT("%s-%s.uasset"), *Sanitized, *Stamp));
+		if (FM.Copy(*Dest, *FileName) != COPY_OK)
+		{
+			UE_LOG(LogBlueprintReader, Warning,
+				TEXT("BPReaderBackups: could not back up %s before write"), *FileName);
+			return;
+		}
+		// Ring prune: keep the newest 5 backups per asset.
+		TArray<FString> Existing;
+		FM.FindFiles(Existing, *FPaths::Combine(Dir, Sanitized + TEXT("-*.uasset")), /*Files=*/true, /*Dirs=*/false);
+		if (Existing.Num() > 5)
+		{
+			Existing.Sort();  // timestamp suffix sorts lexicographically
+			for (int32 i = 0; i < Existing.Num() - 5; ++i)
+			{
+				FM.Delete(*FPaths::Combine(Dir, Existing[i]), /*RequireExists=*/false, /*EvenReadOnly=*/true);
+			}
+		}
+	}
+
 	bool CompileAndSaveBlueprint(UBlueprint* BP,
 	                             TArray<TSharedPtr<FJsonValue>>* OutDiagnostics = nullptr,
 	                             bool bRefuseSaveOnErrors = false,
@@ -1332,6 +1440,7 @@ namespace
 
 		const FString FileName = FPackageName::LongPackageNameToFilename(
 			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		BackupAssetFileOnce(FileName, Package->GetName());  // REL-4
 		FSavePackageArgs Args;
 		Args.TopLevelFlags = RF_Public | RF_Standalone;
 		Args.SaveFlags = SAVE_NoError;
@@ -1413,6 +1522,7 @@ namespace
 		}
 		const FString FileName = FPackageName::LongPackageNameToFilename(
 			Package->GetName(), FPackageName::GetAssetPackageExtension());
+		BackupAssetFileOnce(FileName, Package->GetName());  // REL-4
 		FSavePackageArgs Args;
 		Args.TopLevelFlags = RF_Public | RF_Standalone;
 		Args.SaveFlags = SAVE_NoError;
@@ -13920,6 +14030,13 @@ int32 RunOneOp(const FString& Params)
 
 	const bool bPretty = !FParse::Param(*Params, TEXT("Compact"));
 	const FString OutputPath = ResolveOutputPath(Params);
+
+	// REL-5: label + close-guard for the lazily-opened per-op undo
+	// transaction (LoadMutableBlueprint opens it; live editor only). The
+	// guard closes on EVERY return path below so a transaction can never
+	// leak across ops.
+	FParse::Value(*Params, TEXT("Op="), GOpUndoLabel);
+	FOpUndoScope OpUndoScope;
 
 	// Belt + suspenders: each dispatch starts with a clean TLS slot.
 	// Should already be 0 (cleared after the previous dispatch), but a

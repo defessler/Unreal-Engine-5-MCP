@@ -1806,11 +1806,22 @@ refute pass.
   Live-verified: `AddComponent` inside a raw BeginBatch left the disk untouched
   MID-batch (pre-fix it saved immediately), `EndBatch -Rollback` restored, and
   a fresh editor process confirmed no component leak + byte-identical .uasset.
-- **REL-5** (P1) single-op live writes bypass the undo stack (no
-  FScopedTransaction outside batches) · **Status:** ☐ Open · **Effort:** S–M
-- **REL-4** (P1) no pre-write .uasset backup (ring buffer in
-  Saved/BPReaderBackups, `BP_READER_BACKUP=0` opt-out) · **Status:** ☐ Open ·
-  **Effort:** M
+- **REL-5** (P1) single-op live writes bypass the undo stack · **Status:**
+  ✅ Done (2026-06-12) — a per-op `FScopedTransaction` opens LAZILY from
+  `LoadMutableBlueprint` (the common mutator entry — write ops get exactly one
+  undo entry, read ops none, no hand-maintained op list to drift) and closes
+  via an `FOpUndoScope` guard on every RunOneOp return path. Live editor only
+  (commandlets have no functional buffer; batch ops use H1's transaction).
+  Live-verified: add_variable → `TRANSACTION UNDO` → variable gone, editor log
+  shows `Undo bp-reader: AddVariable` applied. Finding: `UndoTransaction`
+  silently no-ops during package save / GC — callers should retry.
+- **REL-4** (P1) no pre-write .uasset backup · **Status:** ✅ Done (2026-06-12)
+  — before the FIRST save of each asset per session, the on-disk `.uasset` is
+  copied to `Saved/BPReaderBackups/<Package>-<UTC>.uasset` (newest 5 kept per
+  asset; `BP_READER_BACKUP=0` opt-out; wired into both CompileAndSaveBlueprint
+  and SaveAssetPackage). Live-verified: backup file created on first save of a
+  fresh session and byte-matches the pre-mutation asset hash. Residual: the
+  material/material-instance ops' inline SavePackage calls aren't covered yet.
 - **REL-3** (P1) non-atomic truncate writes of user-owned files · **Status:**
   ◑ Generate-ClientConfig done (with REL-1); Check-Update.ps1 + Toolbox
   saveProject remain · **Effort:** S
@@ -1867,6 +1878,15 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **REL Phase B slice 2 SHIPPED: REL-4 + REL-5.** Pre-write
+  .uasset backup ring (Saved/BPReaderBackups, first save per asset per session,
+  newest 5 kept, BP_READER_BACKUP=0 opt-out; wired into CompileAndSaveBlueprint
+  + SaveAssetPackage) and per-op undo transactions (lazy FScopedTransaction from
+  LoadMutableBlueprint, closed by a RunOneOp scope guard; live editor only).
+  Live-verified (Saved/verify-rel-b2.ps1): backup byte-matches the pre-mutation
+  asset; add_variable + TRANSACTION UNDO → variable gone with the applied-undo
+  line in the editor log. Engine finding: UndoTransaction silently no-ops
+  during save/GC — verify retries until the observable flips.
 - **2026-06-12** — **REL Phase B slice 1 SHIPPED: REL-14 + REL-15.** Six
   mark-dirty-but-never-save ops now persist (WBP/AnimBP via MaybeCompileAndSave;
   BT/DataAsset via new SaveAssetPackage helper — incl. AddBTNode, a sixth site
