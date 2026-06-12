@@ -192,6 +192,21 @@ namespace
 		Obj->SetStringField(TEXT("direction"), P.Direction);
 		Obj->SetObjectField(TEXT("type"), StructuredPinTypeToJson(P.StructuredType));
 		SetStringOrNull(Obj, TEXT("default_value"), P.DefaultValue);
+		// ISSUE-002: class / object / soft-object / soft-class / asset-reference
+		// pins store their literal in DefaultObject (a UObject*), NOT in
+		// DefaultValue — so `default_value` is null for them and a class-pin
+		// literal was previously unreadable (blocking headless self-verification
+		// of class-pin edits). Surface the resolved object path + the text
+		// default (the same fields describe_k2node already emits). Emitted only
+		// when present, so value-typed pins keep their existing shape.
+		if (!P.DefaultObjectPath.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("default_object_path"), P.DefaultObjectPath);
+		}
+		if (!P.DefaultText.IsEmpty())
+		{
+			Obj->SetStringField(TEXT("default_text"), P.DefaultText);
+		}
 		// Emit each pin's outgoing/incoming connections inline so a
 		// `get_node` (or a fields-filtered `get_graph`) call gives the
 		// caller enough information to verify wiring without a separate
@@ -311,6 +326,43 @@ namespace
 		}
 		Obj->SetArrayField(TEXT("nodes"), Nodes);
 		Obj->SetArrayField(TEXT("connections"), ConnectionsForGraph(G));
+		// ISSUE-001: pin GUIDs are NOT globally unique within a graph — duplicating
+		// a node (common for multiple FunctionResult / return nodes) copies its pin
+		// GUIDs. The connections above resolve links by the REAL owning node
+		// (from_node/to_node come from the actual node pointer), so they are
+		// correct — but a consumer that keys link lookups on pin_id ALONE would
+		// misattribute a link to whichever node was indexed first. Surface every
+		// pin GUID that appears on more than one node so consumers know to key on
+		// (node_id, pin_id) together and fall back to per-node reads if needed.
+		{
+			TMap<FString, TSet<FString>> PinIdToNodes;
+			for (const FBPNodeInfo& N : G.Nodes)
+			{
+				for (const FBPPinInfo& P : N.Pins)
+				{
+					if (!P.PinId.IsEmpty())
+					{
+						PinIdToNodes.FindOrAdd(P.PinId).Add(N.Guid);
+					}
+				}
+			}
+			TArray<FString> Dupes;
+			for (const TPair<FString, TSet<FString>>& KV : PinIdToNodes)
+			{
+				if (KV.Value.Num() > 1)
+				{
+					Dupes.Add(KV.Key);
+				}
+			}
+			Dupes.Sort();
+			TArray<TSharedPtr<FJsonValue>> DupesJson;
+			DupesJson.Reserve(Dupes.Num());
+			for (const FString& D : Dupes)
+			{
+				DupesJson.Add(MakeShared<FJsonValueString>(D));
+			}
+			Obj->SetArrayField(TEXT("duplicate_pin_guids"), DupesJson);
+		}
 		// REFLECT-4: function flags + UFUNCTION metadata.
 		// Only present on Function graphs; absent on EventGraph/Macro/etc.
 		if (G.WireType == TEXT("Function") || G.WireType == TEXT("Construction"))

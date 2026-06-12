@@ -525,6 +525,49 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
 
 ---
 
+### UX-P5 — client report 2026-06-11 (StateTree condition BP, duplicate pin GUIDs) {#ux-p5}
+- **Status:** ◑ a/b/d done (2026-06-11); c/e already-shipped (stale build); e1 deferred · **Effort:** S–M · **Source:** 2026-06-11 client issue report (UE 5.7.4 downstream project, single repro asset with two K2Node_FunctionResult nodes sharing pin GUIDs)
+- Key cross-cutting insight: **several reported issues were already fixed in
+  current `main`** (prefix-GUID resolution UX-P4d; explicit read-only error;
+  DLSS denylist doc). The client's exe self-reports `0.1.0` (the version-stamp
+  bug, Toolbox §9 / TBX-V5) — so they could NOT tell their build was stale. The
+  version-stamp fix is the durable cure; flagged here as the connective tissue.
+- **UX-P5a (ISSUE-001, S1→defensive) ✅ Done:** pin GUIDs are not unique within a
+  graph (node duplication copies them). The reader's connections were ALREADY
+  correct — `from_node`/`to_node` resolve via the real owning node pointer
+  (`GetOwningNodeUnchecked`), unchanged since May 1 — so the client's root-cause
+  guess ("keys on pin_id alone") doesn't match current code; their symptom was a
+  consumer keying link lookups on pin_id alone. Fix: `get_graph`/`get_function`
+  now emit `duplicate_pin_guids: [...]` per graph (the client's own suggestion
+  #3) so consumers know to key on (node_id, pin_id) together.
+- **UX-P5b (ISSUE-002, S2) ✅ Done:** class / object / soft-object / soft-class /
+  asset-reference pins store their literal in `DefaultObject` (a UObject*), so
+  `default_value` was null for them — blocking headless self-verification of a
+  class-pin edit. The introspector already captured `DefaultObjectPath` +
+  `DefaultText`; `PinToJson` now emits `default_object_path` + `default_text`
+  (matching `describe_k2node`). Covers `get_node`/`get_graph`/`get_function`/
+  `find_node` (all route through `PinToJson`).
+- **UX-P5c (ISSUE-003, S3) ✅ already shipped (UX-P4d):** `FindNodeByGuid` accepts
+  unambiguous ≥8-hex prefixes and `NodeRefError` already emits a detailed
+  "need a full GUID or unambiguous prefix" message + sample GUIDs. The client's
+  generic NotFound indicates a stale build. (Follow-up e1: verify the detailed
+  NodeRefError propagates through `apply_ops` → the MCP error envelope rather
+  than collapsing to a bare code-4.)
+- **UX-P5d (ISSUE-004, S3) ✅ Done:** `find_node(query:"")` now enumerates every
+  node (optionally narrowed by `kind`) instead of erroring/returning zero —
+  matching the tool description. Removed the empty-query+empty-kind rejection.
+- **UX-P5e (ISSUE-005, S3 DX):** read-only write error is ALREADY explicit
+  (names the tool + `BP_READER_ALLOW_WRITE=1`); DLSS `DLSSUtility` startup
+  failure is ALREADY documented (`BP_READER_PLUGIN_DENYLIST`). ☐ **Open (e1):**
+  surface `write_enabled` (+ daemon-mode + degraded-plugin notes) on
+  `health_check` so write-gating is discoverable pre-flight, not on first
+  failure.
+- **Why:** UX-P5a/b restore the reader's trustworthiness for automated diagnosis
+  (the report's central theme); the rest are friction the version-stamp fix
+  largely dissolves by letting clients run a current build.
+
+---
+
 ## 3. BP↔C++ transpiling
 
 **Verdict: the most architecturally interesting subsystem — but fidelity is
