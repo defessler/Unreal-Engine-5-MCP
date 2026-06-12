@@ -910,11 +910,11 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 + P1a done; P1b in progress — `ui_click` + `ui_type` shipped (2026-06-12)**
+- **Status:** ◑ **P0 + P1a done; P1b in progress — `ui_click` + `ui_type` + `ui_focus_tab` shipped (2026-06-12)**
   — `ui_list_widgets` + `get_modal_state` buttons (P0); modal side-channel +
   render-tier harness (P1a); `ui_click` (265 tools, slice 1) + `ui_type` (266
-  tools, slice 2); P1b rest (`ui_focus`/`ui_invoke_menu`) + P2 ☐ Open ·
-  **Effort:** M–L (phased) ·
+  tools, slice 2) + `ui_focus_tab` (267 tools, slice 3); P1b rest
+  (`ui_invoke_menu`) + P2 ☐ Open · **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
 - **P1b slice 1 — `ui_click` SHIPPED + END-TO-END VERIFIED:** click an editor
   widget located by its `ui_list_widgets` path. Resolves the path
@@ -947,6 +947,22 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   `RaiseTestUiWindow` test hook (`BP_READER_TEST_MODAL=1`) raises a non-modal
   window with an `SEditableTextBox` to type into. Full backend chain +
   categories/annotations (action, NOT read-only).
+- **P1b slice 3 — `ui_focus_tab` SHIPPED + END-TO-END VERIFIED (267 tools):**
+  foreground an editor dock tab by a case-insensitive substring of its label —
+  the geometry-independent way to bring a panel forward (no click, no painted
+  geometry). Collects every `SDockTab` across the visible windows, matches the
+  label, and calls `SDockTab::ActivateInParent(UserClickedOnTab)` (exactly what
+  a header click does). Reports `is_foreground` (the tab's post-activation
+  foreground state) + `active_tab` (`FGlobalTabmanager::GetActiveTab()` readback)
+  as observables; a no-match lists `available_tabs` (candidate-list NotFound).
+  Gated `BP_READER_ALLOW_UI=1`. **Live-verified through the full MCP server
+  stack** (`Saved/verify-ui-focus-tab.ps1`): discovered 5 tabs, then focusing
+  Viewport 1 / Outliner / Details each returned `is_foreground=true` with
+  `active_tab` matching the focused label. Finding: focusing a *major* tab (e.g.
+  "Home Panel") correctly switches the whole major-tab away, hiding the
+  level-editor minor tabs — so a NotFound on a previously-listed minor tab can be
+  a real layout change, not a bug. Full backend chain + categories/annotations
+  (action, NOT read-only).
 - **Render tier proven (2026-06-11):** a full editor launched
   `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
   **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
@@ -1751,6 +1767,15 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **TEST-2 P1b slice 3: `ui_focus_tab` SHIPPED** (267 tools).
+  Foreground an editor dock tab by a label substring — geometry-independent (no
+  click, no painted geometry): collect every SDockTab, match, ActivateInParent.
+  Reports is_foreground + active_tab (GetActiveTab readback); no-match lists
+  available_tabs. Gated BP_READER_ALLOW_UI=1. Full backend chain +
+  categories/annotations. Live-verified through the full MCP server stack
+  (discovered 5 tabs; Viewport 1 / Outliner / Details each foregrounded, active_tab
+  matched). Mock 873/873, hash rebaselined (0x9DA75072AF669656), catalog regen.
+  Next P1b: ui_invoke_menu (UToolMenus) + BP_READER_SMOKE_UI Track B smoke.
 - **2026-06-12** — **TEST-2 P1b slice 2: `ui_type` SHIPPED** (266 tools). Type text
   into an editor widget by its ui_list_widgets path — focus the type-revalidated
   target, inject one OnKeyChar per char. ui_list_widgets now reads editable-text

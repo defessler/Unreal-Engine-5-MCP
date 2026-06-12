@@ -1215,6 +1215,14 @@ nlohmann::json SocketBlueprintReader::UiType(std::string_view widgetPath,
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::UiFocusTab(std::string_view tabLabel) {
+	std::vector<std::string> args = {
+		"-Op=UiFocusTab",
+		"-TabLabel=" + std::string(tabLabel),
+	};
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

@@ -101,6 +101,7 @@ public:
 	nlohmann::json UiType(std::string_view widgetPath,
 						  std::string_view text,
 						  std::string_view expectType) override;
+	nlohmann::json UiFocusTab(std::string_view tabLabel) override;
 
 	// UX-P4a: the mock backend has no editor game thread, so health is always a
 	// synthetic-healthy result (age 0). It IS supported (returns, never throws) —

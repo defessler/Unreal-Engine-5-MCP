@@ -91,6 +91,7 @@
 #include "Widgets/Input/SEditableText.h"     // TEST-2 P1b: read/verify ui_type
 #include "Widgets/Input/SEditableTextBox.h"  // TEST-2 P1b: read/verify ui_type
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
+#include "Widgets/Docking/SDockTab.h"     // TEST-2 P1b: ui_focus_tab
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
@@ -553,6 +554,8 @@ namespace
 		UiClick,
 		// TEST-2 P1b: type text into a widget by its path (BP_READER_ALLOW_UI=1).
 		UiType,
+		// TEST-2 P1b: focus an editor dock tab by its label (BP_READER_ALLOW_UI=1).
+		UiFocusTab,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -808,6 +811,7 @@ namespace
 		// TEST-2 P1b
 		if (OpStr.Equals(TEXT("UiClick"),          ESearchCase::IgnoreCase))      { OutOp = EOp::UiClick;          return true; }
 		if (OpStr.Equals(TEXT("UiType"),           ESearchCase::IgnoreCase))      { OutOp = EOp::UiType;           return true; }
+		if (OpStr.Equals(TEXT("UiFocusTab"),       ESearchCase::IgnoreCase))      { OutOp = EOp::UiFocusTab;       return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7612,6 +7616,111 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// TEST-2 P1b: collect every SDockTab in a Slate subtree (recursive). Used by
+	// ui_focus_tab to enumerate the editor's dock tabs by label.
+	void CollectDockTabs(const TSharedRef<SWidget>& W, TArray<TSharedPtr<SDockTab>>& Out)
+	{
+		if (W->GetTypeAsString() == TEXT("SDockTab"))
+		{
+			Out.Add(StaticCastSharedRef<SDockTab>(W));
+		}
+		FChildren* Children = W->GetChildren();
+		if (Children)
+		{
+			for (int32 i = 0; i < Children->Num(); ++i)
+			{
+				CollectDockTabs(Children->GetChildAt(i), Out);
+			}
+		}
+	}
+
+	// TEST-2 P1b: focus (foreground) an editor dock tab by a substring of its
+	// label, the geometry-independent way to bring a panel forward — no click,
+	// no painted geometry needed. Activates the matched tab in its parent tab
+	// stack (exactly what clicking the tab does) and reports its post-activation
+	// foreground state as the observable. Gated BP_READER_ALLOW_UI=1 (it changes
+	// live editor UI state). GAME THREAD ONLY.
+	int32 RunUiFocusTabOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_ALLOW_UI"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("ui_focus_tab is gated: set BP_READER_ALLOW_UI=1 to enable editor UI "
+					 "interaction (off by default — it changes the active editor tab)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("Slate is not initialized (headless) — no tabs to focus. Use a GUI "
+					 "or -RenderOffscreen editor."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		FString TabLabel;
+		FParse::Value(*Params, TEXT("TabLabel="), TabLabel);
+		if (TabLabel.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), TEXT("ui_focus_tab requires a non-empty tab_label (a substring of the tab's label, e.g. 'Details')."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		FSlateApplication& Slate = FSlateApplication::Get();
+		TArray<TSharedRef<SWindow>> Windows;
+		Slate.GetAllVisibleWindowsOrdered(Windows);
+		TArray<TSharedPtr<SDockTab>> Tabs;
+		for (const TSharedRef<SWindow>& Win : Windows)
+		{
+			CollectDockTabs(StaticCastSharedRef<SWidget>(Win), Tabs);
+		}
+
+		TSharedPtr<SDockTab> Match;
+		TArray<FString> Available;
+		for (const TSharedPtr<SDockTab>& T : Tabs)
+		{
+			if (!T.IsValid()) { continue; }
+			const FString L = T->GetTabLabel().ToString();
+			Available.AddUnique(L);
+			if (!Match.IsValid() && L.Contains(TabLabel, ESearchCase::IgnoreCase)) { Match = T; }
+		}
+		if (!Match.IsValid())
+		{
+			// Candidate-list NotFound: list the visible tabs so the caller can
+			// correct the label (mirrors the space-named-graph fix's UX).
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("no visible dock tab whose label contains '%s'. Available tabs: %s"),
+				*TabLabel,
+				Available.Num() ? *FString::Join(Available, TEXT(", ")) : TEXT("(none)")));
+			TArray<TSharedPtr<FJsonValue>> AvailJson;
+			for (const FString& L : Available) { AvailJson.Add(MakeShared<FJsonValueString>(L)); }
+			Out->SetArrayField(TEXT("available_tabs"), AvailJson);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		const FString MatchedLabel = Match->GetTabLabel().ToString();
+		// ActivateInParent foregrounds the tab in its tab well — the same effect
+		// as a user clicking the tab header (no synthetic mouse needed).
+		Match->ActivateInParent(ETabActivationCause::UserClickedOnTab);
+		if (GEditor) { GEditor->RedrawLevelEditingViewports(true); }
+
+		const bool bForeground = Match->IsForeground();
+		FString ActiveLabel;
+		TSharedPtr<SDockTab> Active = FGlobalTabmanager::Get()->GetActiveTab();
+		if (Active.IsValid()) { ActiveLabel = Active->GetTabLabel().ToString(); }
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("focused"), true);
+		Out->SetStringField(TEXT("tab_label"), MatchedLabel);
+		Out->SetBoolField(TEXT("is_foreground"), bForeground);
+		Out->SetStringField(TEXT("active_tab"), ActiveLabel);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// TEST-2 P0/P1a: fill Out with the active modal's state — is_open, title,
 	// buttons[] ({path, label?}, nested-button-safe labels), buttons_truncated.
 	// Returns whether a modal is open. Shared by get_modal_state AND the P1a
@@ -13918,6 +14027,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::RaiseTestUiWindow,          &RunRaiseTestUiWindowOp },
 		{ EOp::UiClick,                    &RunUiClickOp },
 		{ EOp::UiType,                     &RunUiTypeOp },
+		{ EOp::UiFocusTab,                 &RunUiFocusTabOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

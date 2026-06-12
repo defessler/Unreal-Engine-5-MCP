@@ -533,6 +533,9 @@ nlohmann::json AutoBlueprintReader::UiType(
 	std::string_view widgetPath, std::string_view text, std::string_view expectType) {
 	FORWARD(UiType, widgetPath, text, expectType);
 }
+nlohmann::json AutoBlueprintReader::UiFocusTab(std::string_view tabLabel) {
+	FORWARD(UiFocusTab, tabLabel);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

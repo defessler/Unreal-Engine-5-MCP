@@ -167,7 +167,7 @@ TEST_CASE("ToolRegistry: every tool advertises an outputSchema in ListSpec") {
 	tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
 	REQUIRE(spec.is_array());
-	REQUIRE(spec.size() == 266);
+	REQUIRE(spec.size() == 267);
 	for (const auto& t : spec) {
 		CAPTURE(t["name"].get<std::string>());
 		REQUIRE(t.contains("outputSchema"));

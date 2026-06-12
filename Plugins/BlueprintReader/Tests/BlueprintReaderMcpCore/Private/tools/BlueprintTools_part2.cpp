@@ -395,6 +395,57 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 		});
 	}
 
+	// ----- ui_focus_tab ------------------------------------------------------
+	// TEST-2 P1b slice 3: bring an editor dock tab to the foreground by a
+	// substring of its label. Geometry-independent (no click, no painted
+	// geometry) — activates the tab in its tab stack the way a header click
+	// does. An ACTION, gated editor-side by BP_READER_ALLOW_UI=1.
+	{
+		ToolDescriptor d;
+		d.name = "ui_focus_tab";
+		d.description =
+			"[editor] Focus (foreground) an editor dock tab by a substring of its "
+			"label — the geometry-independent way to bring a panel forward (e.g. "
+			"Details, Content Browser, a specific asset-editor tab) before reading or "
+			"interacting with it. No click and no painted geometry needed: it "
+			"activates the matched tab in its tab stack exactly as clicking the tab "
+			"header would. GATED: returns an error unless the editor was started with "
+			"BP_READER_ALLOW_UI=1 (off by default — it changes live editor UI state). "
+			"`tab_label` is a case-insensitive substring; the first matching visible "
+			"tab wins. If nothing matches, the error lists the available tab labels "
+			"(also in `available_tabs`). Returns `{ok, focused, tab_label, "
+			"is_foreground, active_tab}` or `{ok:false, error, available_tabs}`. "
+			"Requires a GUI / -RenderOffscreen editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"tab_label", {{"type","string"},
+							   {"description","Case-insensitive substring of the dock tab's label (e.g. 'Details')."}}},
+			}},
+			{"required", nlohmann::json::array({"tab_label"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",             {{"type","boolean"}}},
+				{"focused",        {{"type","boolean"}}},
+				{"tab_label",      {{"type","string"}}},
+				{"is_foreground",  {{"type","boolean"}}},
+				{"active_tab",     {{"type","string"}}},
+				{"available_tabs", {{"type","array"},{"items",{{"type","string"}}}}},
+				{"error",          {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string tabLabel = RequireString(args, "tab_label");
+			if (tabLabel.empty()) {
+				throw std::invalid_argument("ui_focus_tab: `tab_label` must be non-empty (a substring of the tab's label).");
+			}
+			return reader.UiFocusTab(tabLabel);
+		});
+	}
+
 	// ----- get_focused_widget ---------------------------------------------
 	{
 		ToolDescriptor d;

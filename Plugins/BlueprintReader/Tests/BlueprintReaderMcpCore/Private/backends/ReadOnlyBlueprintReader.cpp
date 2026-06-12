@@ -173,6 +173,10 @@ nlohmann::json ReadOnlyBlueprintReader::UiType(
 	// Editor-control action, gated by BP_READER_ALLOW_UI — passes through.
 	return inner_->UiType(widgetPath, text, expectType);
 }
+nlohmann::json ReadOnlyBlueprintReader::UiFocusTab(std::string_view tabLabel) {
+	// Editor-control action, gated by BP_READER_ALLOW_UI — passes through.
+	return inner_->UiFocusTab(tabLabel);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

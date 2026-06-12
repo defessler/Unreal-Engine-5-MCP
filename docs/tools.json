@@ -3369,6 +3369,55 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Focus (foreground) an editor dock tab by a substring of its label — the geometry-independent way to bring a panel forward (e.g. Details, Content Browser, a specific asset-editor tab) before reading or interacting with it. No click and no painted geometry needed: it activates the matched tab in its tab stack exactly as clicking the tab header would. GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it changes live editor UI state). `tab_label` is a case-insensitive substring; the first matching visible tab wins. If nothing matches, the error lists the available tab labels (also in `available_tabs`). Returns `{ok, focused, tab_label, is_foreground, active_tab}` or `{ok:false, error, available_tabs}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "tab_label": {
+          "description": "Case-insensitive substring of the dock tab's label (e.g. 'Details').",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tab_label"
+      ],
+      "type": "object"
+    },
+    "name": "ui_focus_tab",
+    "output_schema": {
+      "properties": {
+        "active_tab": {
+          "type": "string"
+        },
+        "available_tabs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        },
+        "focused": {
+          "type": "boolean"
+        },
+        "is_foreground": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "tab_label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Slate widget the user is currently typing into / focused on. Finer-grained than get_focused_window: \"the user is in the BP graph search box\" vs \"the user is on the BP editor window\". Returns `{widget_type, parent_window_title}`. Both empty when no widget has focus. Requires a live editor.",
     "input_schema": {
       "properties": {},

@@ -219,6 +219,7 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"take_annotated_screenshot", "open_asset_editor", "start_profile",
 	"stop_profile", "ui_click",   // TEST-2 P1b: injects real input
 	"ui_type",                    // TEST-2 P1b: injects real key events
+	"ui_focus_tab",               // TEST-2 P1b: changes the active editor tab
 };
 
 // ---------------------------------------------------------------------------

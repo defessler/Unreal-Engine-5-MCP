@@ -1803,6 +1803,13 @@ nlohmann::json CommandletBlueprintReader::UiType(std::string_view widgetPath,
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::UiFocusTab(std::string_view tabLabel) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=UiFocusTab");
+	args.push_back(L"-TabLabel=" + Widen(tabLabel));
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

@@ -2911,6 +2911,15 @@ public:
 		throw BlueprintReaderError("UiType not supported by this backend");
 	}
 
+	// TEST-2 P1b: focus (foreground) an editor dock tab by a substring of its
+	// `tabLabel`, the geometry-independent way to bring a panel forward.
+	// Gated editor-side behind BP_READER_ALLOW_UI=1. Editor-only; an ACTION.
+	virtual nlohmann::json UiFocusTab(std::string_view tabLabel)
+	{
+		(void)tabLabel;
+		throw BlueprintReaderError("UiFocusTab not supported by this backend");
+	}
+
 	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER
 	// THREAD even when the game thread is halted — so a paused editor is a
 	// distinct, fast answer instead of a generic op timeout. `state` is one of
