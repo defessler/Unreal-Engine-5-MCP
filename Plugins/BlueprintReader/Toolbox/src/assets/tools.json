@@ -751,6 +751,135 @@
     }
   },
   {
+    "category": "read",
+    "description": "[read] Introspect a K2 node class (custom or engine): given a class path like `/Script/BlueprintGraph.K2Node_FormatText` (or a short name like `K2Node_FormatText`), spawns a transient instance, calls AllocateDefaultPins, and reports its pins (name/direction/type/defaults), purity, title, tooltip, menu category, parent class, and owning module. Use this to understand what a `// TODO[bpr-unsupported]` node in transpiled output actually is, or before generating a replacement with `generate_k2node_skeleton`. Honesty notes: pins reflect an UNCONFIGURED instance (nodes that derive pins from a bound member — e.g. CallFunction — show only their static pins), and ExpandNode output is a compile-time transform that is not statically introspectable.",
+    "input_schema": {
+      "properties": {
+        "class_path": {
+          "description": "K2 node class path (e.g. /Script/BlueprintGraph.K2Node_FormatText) or short class name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "class_path"
+      ],
+      "type": "object"
+    },
+    "name": "describe_k2node",
+    "output_schema": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "is_node_pure": {
+          "type": "boolean"
+        },
+        "menu_category": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "pins": {
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tooltip": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "cpp",
+    "description": "[cpp] Generate a compilable .h/.cpp skeleton for a custom UK2Node subclass: AllocateDefaultPins from your pin spec (exec pins added automatically unless `pure`), GetMenuActions (UBlueprintNodeSpawner registrar idiom), GetNodeTitle/GetTooltipText/GetMenuCategory, IsNodePure, and — when `target_function` is given — a canonical ExpandNode that lowers the node to a CallFunction on that function. Returns header/source TEXT only (writes no files; pair with `write_generated_source` to materialize). Pin categories: bool, byte, int, int64, float, name, string, text, object, class, softobject, softclass, struct, wildcard; containers: array/set/map. Unresolvable sub-types surface as TODO placeholders listed in `notes`, never silent wrong code.",
+    "input_schema": {
+      "properties": {
+        "class_name": {
+          "description": "Node name, e.g. \"MyNode\" (UK2Node_ prefix added automatically).",
+          "type": "string"
+        },
+        "menu_category": {
+          "type": "string"
+        },
+        "module_api": {
+          "description": "Optional module API macro stem, e.g. \"MYMODULE\" emits MYMODULE_API.",
+          "type": "string"
+        },
+        "pins": {
+          "description": "[{name, direction:\"input\"|\"output\", category, sub_object?, container?, default_value?, is_reference?}]",
+          "type": "array"
+        },
+        "pure": {
+          "description": "true = no exec pins + IsNodePure()=true.",
+          "type": "boolean"
+        },
+        "target_function": {
+          "description": "Function ExpandNode lowers to, e.g. \"/Script/MyModule.MyFunctionLibrary:DoThing\". Omit to skip ExpandNode.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tooltip": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "class_name"
+      ],
+      "type": "object"
+    },
+    "name": "generate_k2node_skeleton",
+    "output_schema": {
+      "properties": {
+        "class_name": {
+          "type": "string"
+        },
+        "header_file": {
+          "type": "string"
+        },
+        "header_source": {
+          "type": "string"
+        },
+        "impl_file": {
+          "type": "string"
+        },
+        "impl_source": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "category": "blueprint",
     "description": "[blueprint] Tiny orientation response for a Blueprint: parent class plus counts of variables, functions, graphs, macros, and interfaces. Use this BEFORE `read_blueprint` when you don't yet know how big the BP is — saves loading the full payload to find out it has hundreds of variables.",
     "input_schema": {
@@ -1146,7 +1275,7 @@
           "type": "integer"
         },
         "query": {
-          "description": "Substring matched against node class or title. Pass an empty string to match any node when filtering by `kind` only.",
+          "description": "Substring matched against node class or title. Pass an empty string to match ANY node (optionally narrowed by `kind`); empty query + no kind enumerates every node.",
           "type": "string"
         }
       },
@@ -2479,6 +2608,35 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable).",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "health_check",
+    "output_schema": {
+      "properties": {
+        "game_thread_age_ms": {
+          "type": "integer"
+        },
+        "game_thread_responsive": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Execute an Unreal Python script in the live editor. Wrapped in a single undo transaction so mutations are reversible. **Gated:** the MCP server's process env must include `BP_READER_ALLOW_PYTHON=1`. Off by default — arbitrary Python has full access to the `unreal.*` API and bypasses the curated tool surface. When disabled, returns `{ok: false, error: 'python_disabled', hint: ...}`. Returns the captured stdout/stderr in `log[]` plus the script's command result. For curated authoring, prefer the named BP/asset/material/widget tools.",
     "input_schema": {
       "properties": {
@@ -3032,7 +3190,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Is a modal Slate window blocking input right now? Returns `{is_open, title}`. Common modals: confirm-deletion, asset-picker, save-as. Agents should refuse mutation ops when is_open=true — the editor is gated on user input. Requires a live editor.",
+    "description": "[editor] Is a modal Slate window blocking input right now? Returns `{is_open, title, buttons, buttons_truncated}` — `buttons` lists the modal's SButtons as `[{path, label?}]` so you can see what answers the dialog offers (label comes from the button's text block; `buttons_truncated` is true in the rare case the modal walk hit its budget). Common modals: confirm-deletion, asset-picker, save-as. Agents should refuse mutation ops when is_open=true — the editor is gated on user input. Requires a live editor.",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -3040,6 +3198,14 @@
     "name": "get_modal_state",
     "output_schema": {
       "properties": {
+        "buttons": {
+          "description": "The modal's buttons: [{path, label?}]. Empty when no modal.",
+          "type": "array"
+        },
+        "buttons_truncated": {
+          "description": "True when the button list may be incomplete (modal walk hit its budget).",
+          "type": "boolean"
+        },
         "is_open": {
           "type": "boolean"
         },
@@ -3047,6 +3213,206 @@
           "type": "string"
         }
       },
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Walk the live editor's Slate widget tree (Selenium-style UI inspection). Returns `{ui_available, windows: [{title, is_modal, truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, y, w, h}]}], truncated}`. `path` is a child-index:Type selector (e.g. `0:SWindow/3:SButton`); it is RESPONSE-LOCAL — the leading window index is ordinal in z-order and shifts as windows/menus/modals come and go, so re-query rather than caching it across calls. `text` is filled for STextBlock — button/label captions live on descendant text blocks. Filter with `window` (title substring) and `type` (widget-type substring, e.g. SButton). `max_widgets` is a single global budget consumed window-by-window in z-order, so to inspect a specific window pass `window=` to focus the budget on it. `truncated` (top-level and per-window) is true when a depth or budget cap dropped widgets. `ui_available` is false on a headless daemon (no Slate) — branch on that bool, not on the `note` string.",
+    "input_schema": {
+      "properties": {
+        "max_depth": {
+          "description": "Max tree depth to descend (default 25, clamp 1-100).",
+          "type": "integer"
+        },
+        "max_widgets": {
+          "description": "Max widgets EMITTED across all windows (default 800, clamp 1-10000). Traversal cost is bounded separately (derived from this).",
+          "type": "integer"
+        },
+        "type": {
+          "description": "Only emit widgets whose Slate type contains this substring (e.g. SButton). The walk still descends through non-matching widgets (bounded by an internal visit cap).",
+          "type": "string"
+        },
+        "window": {
+          "description": "Only walk windows whose title contains this substring. Use to focus the shared max_widgets budget on one window.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ui_list_widgets",
+    "output_schema": {
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "ui_available": {
+          "description": "False on a headless daemon (no Slate); true in a GUI/-RenderOffscreen editor.",
+          "type": "boolean"
+        },
+        "windows": {
+          "description": "[{title, is_modal, truncated, widgets: [{path, type, tag?, text?, visible, enabled, x, y, w, h}]}]",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Click an editor widget located by its `widget_path` (from `ui_list_widgets`). Injects a real synthetic mouse down+up at the widget's geometry center via the same path OS input takes, so Slate hit-tests and routes it normally (e.g. clicking a toolbar combo opens its dropdown). GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). `widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass `expect_type` / `expect_text` to revalidate the target before clicking (a shifted tree errors instead of clicking the wrong widget). Widgets with zero rendered geometry (collapsed/hidden/overflow) are refused. Returns `{ok, clicked, widget_type, x, y}` (the injected screen point) or `{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "expect_text": {
+          "description": "Optional: reserved for text revalidation of the target.",
+          "type": "string"
+        },
+        "expect_type": {
+          "description": "Optional: the widget type must CONTAIN this (e.g. SButton) or the click is refused (path-shift guard).",
+          "type": "string"
+        },
+        "widget_path": {
+          "description": "The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SButton).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "widget_path"
+      ],
+      "type": "object"
+    },
+    "name": "ui_click",
+    "output_schema": {
+      "properties": {
+        "clicked": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "widget_type": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Type `text` into an editor widget located by its `widget_path` (from `ui_list_widgets`). Sets keyboard focus to the target, then injects one real synthetic character event per char via the same path OS input takes, so Slate routes it normally (e.g. typing into a search box filters its list). GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). `widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass `expect_type` to revalidate the target is still an editable-text widget before typing (a shifted tree errors instead of typing into the wrong widget). Returns `{ok, typed, widget_type, char_count}` or `{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "expect_type": {
+          "description": "Optional: the widget type must CONTAIN this (e.g. SEditableText) or the type is refused (path-shift guard).",
+          "type": "string"
+        },
+        "text": {
+          "description": "The text to type, one character event per char.",
+          "type": "string"
+        },
+        "widget_path": {
+          "description": "The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SEditableTextBox).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "widget_path",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "ui_type",
+    "output_schema": {
+      "properties": {
+        "char_count": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "typed": {
+          "type": "boolean"
+        },
+        "widget_type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Focus (foreground) an editor dock tab by a substring of its label — the geometry-independent way to bring a panel forward (e.g. Details, Content Browser, a specific asset-editor tab) before reading or interacting with it. No click and no painted geometry needed: it activates the matched tab in its tab stack exactly as clicking the tab header would. GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it changes live editor UI state). `tab_label` is a case-insensitive substring; the first matching visible tab wins. If nothing matches, the error lists the available tab labels (also in `available_tabs`). Returns `{ok, focused, tab_label, is_foreground, active_tab}` or `{ok:false, error, available_tabs}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "tab_label": {
+          "description": "Case-insensitive substring of the dock tab's label (e.g. 'Details').",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tab_label"
+      ],
+      "type": "object"
+    },
+    "name": "ui_focus_tab",
+    "output_schema": {
+      "properties": {
+        "active_tab": {
+          "type": "string"
+        },
+        "available_tabs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        },
+        "focused": {
+          "type": "boolean"
+        },
+        "is_foreground": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "tab_label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
       "type": "object"
     }
   },
@@ -6960,7 +7326,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Quick capture of the active editor viewport to disk (vs `take_screenshot` which uses HighResShot for offline-quality output). Requires a GPU editor; a headless (-nullrhi) session returns `captured:false` with an explanatory `note`.\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour.",
+    "description": "[editor] Quick capture of the active editor viewport to disk at native resolution (`take_screenshot` adds optional `width`/`height`). Both route through HighResShot in-editor (the game-only `Shot` command does not work there), and the capture is ASYNCHRONOUS — the PNG lands at `output_file` a frame or two after the call. Requires a GPU / -RenderOffscreen editor; a headless (-nullrhi) session returns `captured:false` with an explanatory `note`.\n\nPass `return_inline: true` (default false) to also receive the PNG as an MCP Image content block — capped at 1280px max-dim; larger captures are rejected with a hint to re-capture smaller. BP_READER_NEVER_INLINE_IMAGES=1 forces classic path-only behaviour.",
     "input_schema": {
       "properties": {
         "dest_path": {
@@ -9224,6 +9590,10 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "save_on_error": {
+          "description": "When the batch succeeds but a BP's final compile has ERRORS, the flush refuses to save that BP by default (the on-disk asset keeps its last good state; refused assets are listed in `save_skipped`). Set true to persist anyway (e.g. intentionally saving work-in-progress graphs). Default false.",
+          "type": "boolean"
         }
       },
       "required": [

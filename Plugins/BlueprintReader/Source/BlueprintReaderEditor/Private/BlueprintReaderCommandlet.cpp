@@ -2289,8 +2289,18 @@ namespace
 			IFileManager::Get().MakeDirectory(*FPaths::GetPath(DestAbs), /*Tree=*/true);
 		}
 
-		if (!FFileHelper::SaveStringToFile(Content, *DestAbs,
-			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		// REL-21: back up any PRE-EXISTING file (this op can overwrite
+		// hand-written source), then publish atomically (temp + rename) so a
+		// crash mid-write can never leave a truncated source file behind.
+		bool bBackedUp = false;
+		if (IFileManager::Get().FileExists(*DestAbs))
+		{
+			bBackedUp = (IFileManager::Get().Copy(*(DestAbs + TEXT(".bak")), *DestAbs) == COPY_OK);
+		}
+		const FString TmpDest = DestAbs + TEXT(".tmp");
+		if (!FFileHelper::SaveStringToFile(Content, *TmpDest,
+				FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM) ||
+			!IFileManager::Get().Move(*DestAbs, *TmpDest, /*Replace=*/true, /*EvenIfReadOnly=*/true))
 		{
 			UE_LOG(LogBlueprintReader, Error,
 				TEXT("WriteGeneratedSource: failed to write %s"), *DestAbs);
@@ -2305,6 +2315,7 @@ namespace
 		Obj->SetBoolField(TEXT("ok"), true);
 		Obj->SetStringField(TEXT("path"), DestAbs);
 		Obj->SetNumberField(TEXT("bytes_written"), Content.Len());
+		Obj->SetBoolField(TEXT("previous_backed_up"), bBackedUp);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

@@ -134,12 +134,16 @@ try {
 if (-not (Test-Path -LiteralPath $savedDir)) {
     New-Item -ItemType Directory -Force $savedDir | Out-Null
 }
+# REL-3: temp + rename so a crash mid-write can't leave a truncated cache
+# (doctor reads this file verbatim).
+$cacheTmp = "$cacheFile.tmp.$PID"
 @{
     checked_iso      = [datetime]::UtcNow.ToString('o')
     latest_tag       = $latestTag
     current          = $currentVersion
     update_available = $updateAvailable
-} | ConvertTo-Json -Compress | Set-Content -LiteralPath $cacheFile -Encoding UTF8
+} | ConvertTo-Json -Compress | Set-Content -LiteralPath $cacheTmp -Encoding UTF8
+Move-Item -LiteralPath $cacheTmp -Destination $cacheFile -Force
 
 # ---- Report ----------------------------------------------------------------
 if ($updateAvailable) {

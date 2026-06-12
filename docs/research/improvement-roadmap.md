@@ -1823,12 +1823,18 @@ refute pass.
   fresh session and byte-matches the pre-mutation asset hash. Residual: the
   material/material-instance ops' inline SavePackage calls aren't covered yet.
 - **REL-3** (P1) non-atomic truncate writes of user-owned files · **Status:**
-  ◑ Generate-ClientConfig done (with REL-1); Check-Update.ps1 + Toolbox
-  saveProject remain · **Effort:** S
+  ✅ Done (2026-06-12) — Generate-ClientConfig (with REL-1), Check-Update.ps1
+  cache, and Toolbox `saveProject` (mirrors its own write-file IPC pattern)
+  all publish via temp+rename. Live-verified: cache valid + zero tmp residue.
 - **REL-21** (P2, fleet) write_generated_source overwrites source files
-  non-atomically, no backup · **Status:** ☐ Open · **Effort:** S
-- **REL-8** (P2) handshake/status files written non-atomically (partial-JSON
-  reads) · **Status:** ☐ Open · **Effort:** S
+  non-atomically, no backup · **Status:** ✅ Done (2026-06-12) — pre-existing
+  dest is copied to `.bak`, content publishes temp+rename, response gains
+  `previous_backed_up`. Live-verified: overwrite left `.bak` holding the OLD
+  content and the dest holding the new, no residue.
+- **REL-8** (P2) handshake/status files written non-atomically · **Status:**
+  ✅ Done (2026-06-12) — all four sites (LiveServer + CmdletServer handshake +
+  port-cache) publish via temp+rename. Live-verified: fresh editor handshakes
+  through the new path, no `.tmp` residue.
 
 ### Phase C — transport & process lifecycle
 - **REL-16** (P1, fleet) Auto backend write ops can double-execute on
@@ -1878,6 +1884,14 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **REL Phase B slice 3 SHIPPED: REL-3 + REL-21 + REL-8 —
+  Phase B complete.** Every user-owned/status file now publishes atomically
+  (temp+rename): Check-Update cache, Toolbox project.json, all four
+  handshake/port-cache sites; write_generated_source additionally `.bak`s any
+  pre-existing source file and reports `previous_backed_up`. Live-verified
+  (Saved/verify-rel-b3.ps1): fresh-editor handshake through the new path with
+  zero residue; generated-source overwrite left .bak=old + dest=new; update
+  cache valid JSON. Toolbox typechecks.
 - **2026-06-12** — **REL Phase B slice 2 SHIPPED: REL-4 + REL-5.** Pre-write
   .uasset backup ring (Saved/BPReaderBackups, first save per asset per session,
   newest 5 kept, BP_READER_BACKUP=0 opt-out; wired into CompileAndSaveBlueprint

@@ -649,10 +649,15 @@ bool FLiveServer::WriteHandshakeFile()
 		TEXT("\"token\":\"%s\",\"pid\":%u,\"started_at\":\"%s\"}\n"),
 		BoundPort, *ExpectedToken, Pid, *Now.ToIso8601());
 
-	if (!FFileHelper::SaveStringToFile(Json, *Path,
+	// REL-8: write-to-temp + rename so a concurrently-polling MCP client can
+	// never read a partially-written handshake (a plausible contributor to
+	// historical handshake flakiness). Same-volume rename is atomic to readers.
+	const FString Tmp = Path + TEXT(".tmp");
+	if (!FFileHelper::SaveStringToFile(Json, *Tmp,
 			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
 			&IFileManager::Get(),
-			FILEWRITE_EvenIfReadOnly))
+			FILEWRITE_EvenIfReadOnly) ||
+		!IFileManager::Get().Move(*Path, *Tmp, /*Replace=*/true, /*EvenIfReadOnly=*/true))
 	{
 		UE_LOG(LogBlueprintReaderLive, Warning,
 			TEXT("Failed to write handshake file %s — MCP server will need "
@@ -722,9 +727,12 @@ void FLiveServer::WriteCachedPort(int32 Port)
 	const FString Path = PortCacheFilePath();
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
 	const FString Json = FString::Printf(TEXT("{\"port\":%d}\n"), Port);
-	if (!FFileHelper::SaveStringToFile(Json, *Path,
+	// REL-8: temp + rename (see WriteHandshakeFile).
+	const FString Tmp = Path + TEXT(".tmp");
+	if (!FFileHelper::SaveStringToFile(Json, *Tmp,
 			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
-			&IFileManager::Get(), FILEWRITE_EvenIfReadOnly))
+			&IFileManager::Get(), FILEWRITE_EvenIfReadOnly) ||
+		!IFileManager::Get().Move(*Path, *Tmp, /*Replace=*/true, /*EvenIfReadOnly=*/true))
 	{
 		UE_LOG(LogBlueprintReaderLive, Verbose,
 			TEXT("Could not write port cache %s; next launch will be ephemeral"),

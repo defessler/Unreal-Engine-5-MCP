@@ -141,7 +141,12 @@ function loadSavedProject(): string {
 function saveProject(uprojectPath: string): void {
   try {
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(savedProjectFilePath(), JSON.stringify({ uproject: uprojectPath }), 'utf8');
+    // REL-3: temp + rename so a crash mid-write can't truncate project.json
+    // (same pattern as the write-file IPC handler below).
+    const dest = savedProjectFilePath();
+    const tmp = `${dest}.tmp.${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify({ uproject: uprojectPath }), 'utf8');
+    fs.renameSync(tmp, dest);
     _projectDirCache = null; // TBX-P8: project changed — invalidate the cache
   } catch { /* ignore write errors */ }
 }
