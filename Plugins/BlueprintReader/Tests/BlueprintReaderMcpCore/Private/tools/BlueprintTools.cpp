@@ -1362,7 +1362,8 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
 				{"query", {{"type", "string"},
 						   {"description", "Substring matched against node class or title. "
-										   "Pass an empty string to match any node when filtering by `kind` only."}}},
+										   "Pass an empty string to match ANY node (optionally narrowed by `kind`); "
+										   "empty query + no kind enumerates every node."}}},
 				{"kind",   {{"type", "string"},
 							{"description", "Optional. K2 extras `kind` to match exactly (case-insensitive)."}}},
 				{"limit",  LimitProperty()},

@@ -1275,7 +1275,7 @@
           "type": "integer"
         },
         "query": {
-          "description": "Substring matched against node class or title. Pass an empty string to match any node when filtering by `kind` only.",
+          "description": "Substring matched against node class or title. Pass an empty string to match ANY node (optionally narrowed by `kind`); empty query + no kind enumerates every node.",
           "type": "string"
         }
       },

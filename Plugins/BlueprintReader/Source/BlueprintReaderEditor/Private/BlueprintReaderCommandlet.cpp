@@ -13709,12 +13709,11 @@ int32 RunOneOp(const FString& Params)
 		FParse::Value(*Params, TEXT("Query="), Query);
 		FString Kind;
 		FParse::Value(*Params, TEXT("Kind="), Kind);
-		// Permit empty Query when Kind is set (kind-only filter).
-		if (Query.IsEmpty() && Kind.IsEmpty())
-		{
-			UE_LOG(LogBlueprintReader, Error, TEXT("find_node requires -Query=<substring> and/or -Kind=<extra>"));
-			return 1;
-		}
+		// ISSUE-004: an empty query matches ANY node (optionally narrowed by
+		// -Kind=), as the tool description promises ("Pass an empty string to
+		// match any node when filtering by kind only"). Empty query AND empty
+		// kind => enumerate every node in the blueprint, rather than the old
+		// error/zero-result behavior that contradicted the description.
 		auto Nodes = FBlueprintReaderWireJson::FindNodesAsJson(*Info, Query, Kind);
 		return EmitJson(FBlueprintReaderWireJson::WriteArrayString(Nodes, bPretty), OutputPath);
 	}
