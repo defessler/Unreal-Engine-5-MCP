@@ -218,6 +218,7 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"set_selected_assets", "take_screenshot", "take_viewport_screenshot",
 	"take_annotated_screenshot", "open_asset_editor", "start_profile",
 	"stop_profile", "ui_click",   // TEST-2 P1b: injects real input
+	"ui_type",                    // TEST-2 P1b: injects real key events
 };
 
 // ---------------------------------------------------------------------------

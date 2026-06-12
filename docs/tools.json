@@ -3320,6 +3320,55 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Type `text` into an editor widget located by its `widget_path` (from `ui_list_widgets`). Sets keyboard focus to the target, then injects one real synthetic character event per char via the same path OS input takes, so Slate routes it normally (e.g. typing into a search box filters its list). GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). `widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass `expect_type` to revalidate the target is still an editable-text widget before typing (a shifted tree errors instead of typing into the wrong widget). Returns `{ok, typed, widget_type, char_count}` or `{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "expect_type": {
+          "description": "Optional: the widget type must CONTAIN this (e.g. SEditableText) or the type is refused (path-shift guard).",
+          "type": "string"
+        },
+        "text": {
+          "description": "The text to type, one character event per char.",
+          "type": "string"
+        },
+        "widget_path": {
+          "description": "The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SEditableTextBox).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "widget_path",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "ui_type",
+    "output_schema": {
+      "properties": {
+        "char_count": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "typed": {
+          "type": "boolean"
+        },
+        "widget_type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Slate widget the user is currently typing into / focused on. Finer-grained than get_focused_window: \"the user is in the BP graph search box\" vs \"the user is on the BP editor window\". Returns `{widget_type, parent_window_title}`. Both empty when no widget has focus. Requires a live editor.",
     "input_schema": {
       "properties": {},

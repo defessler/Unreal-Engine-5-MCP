@@ -168,6 +168,11 @@ nlohmann::json ReadOnlyBlueprintReader::UiClick(
 	// set_camera_transform.
 	return inner_->UiClick(widgetPath, expectType, expectText);
 }
+nlohmann::json ReadOnlyBlueprintReader::UiType(
+	std::string_view widgetPath, std::string_view text, std::string_view expectType) {
+	// Editor-control action, gated by BP_READER_ALLOW_UI — passes through.
+	return inner_->UiType(widgetPath, text, expectType);
+}
 
 // ----- batch sentinels ---------------------------------------------------
 // Pass through. apply_ops calls these unconditionally; in read-only mode

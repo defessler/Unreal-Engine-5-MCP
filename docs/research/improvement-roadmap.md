@@ -910,10 +910,11 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 + P1a done; P1b started — `ui_click` shipped (2026-06-11)**
+- **Status:** ◑ **P0 + P1a done; P1b in progress — `ui_click` + `ui_type` shipped (2026-06-12)**
   — `ui_list_widgets` + `get_modal_state` buttons (P0); modal side-channel +
-  render-tier harness (P1a); `ui_click` (265 tools, P1b slice 1); P1b rest
-  (`ui_type`/`ui_focus`/`ui_invoke_menu`) + P2 ☐ Open · **Effort:** M–L (phased) ·
+  render-tier harness (P1a); `ui_click` (265 tools, slice 1) + `ui_type` (266
+  tools, slice 2); P1b rest (`ui_focus`/`ui_invoke_menu`) + P2 ☐ Open ·
+  **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
 - **P1b slice 1 — `ui_click` SHIPPED + END-TO-END VERIFIED:** click an editor
   widget located by its `ui_list_widgets` path. Resolves the path
@@ -930,8 +931,22 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   Findings: offscreen widget geometry is MIXED (top-level + toolbar blocks real;
   collapsed/overflow widgets are (0,0) — hence the geometry guard). Full backend
   chain + categories/annotations (action, NOT read-only — passes through like
-  console_command). Next P1b: `ui_type` (key injection), `ui_focus_window/tab`,
-  `ui_invoke_menu`, + the BP_READER_SMOKE_UI Track B smoke.
+  console_command). Next P1b: `ui_focus_window/tab`, `ui_invoke_menu`, + the
+  BP_READER_SMOKE_UI Track B smoke.
+- **P1b slice 2 — `ui_type` SHIPPED + END-TO-END VERIFIED (266 tools):** type
+  text into an editor widget located by its `ui_list_widgets` path. Sets
+  keyboard focus to the resolved (type-revalidated) widget, then injects one
+  synthetic character event per char via `FSlateApplication::SetKeyboardFocus`
+  + `OnKeyChar` (the same path real OS input takes → Slate routes per focus).
+  Gated `BP_READER_ALLOW_UI=1` (off by default). `ui_list_widgets` now also
+  reads back `SEditableText`/`SEditableTextBox` content, giving an observable
+  round-trip. **Live-verified on the render tier** both at the raw-op layer
+  (`Saved/verify-ui-type.ps1`) and through the **full MCP server stack**
+  (`Saved/verify-ui-type-stack.ps1`, `call_tool ui_type` → typed → read back
+  the marker). The default editor view has no editable field, so a gated
+  `RaiseTestUiWindow` test hook (`BP_READER_TEST_MODAL=1`) raises a non-modal
+  window with an `SEditableTextBox` to type into. Full backend chain +
+  categories/annotations (action, NOT read-only).
 - **Render tier proven (2026-06-11):** a full editor launched
   `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
   **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
@@ -1736,6 +1751,15 @@ As each batch ships: flip the TBX `Status:` rows to `✅` with a revision-log li
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **TEST-2 P1b slice 2: `ui_type` SHIPPED** (266 tools). Type text
+  into an editor widget by its ui_list_widgets path — focus the type-revalidated
+  target, inject one OnKeyChar per char. ui_list_widgets now reads editable-text
+  content for an observable round-trip; gated RaiseTestUiWindow test hook raises a
+  non-modal SEditableTextBox to type into (default editor view has none). Gated
+  BP_READER_ALLOW_UI=1. Full backend chain + categories/annotations. Live-verified
+  on the render tier at the raw-op layer AND through the full MCP server stack
+  (call_tool ui_type → typed → marker read back). Mock 872/872, hash rebaselined
+  (0x5ABBBE5BA4BFC9FE), catalog regen. Next P1b: ui_focus / ui_invoke_menu.
 - **2026-06-11** — **TEST-2 P1b slice 1: `ui_click` SHIPPED** (265 tools). Click an
   editor widget by its ui_list_widgets path — path resolver (window→child walk,
   type-revalidated), degenerate-geometry guard (refuse w/h=0), synthetic mouse

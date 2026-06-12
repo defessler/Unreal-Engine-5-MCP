@@ -139,6 +139,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"live_coding_compile",
 			"ui_list_widgets",  // TEST-2 P0: Slate widget-tree inspection
 			"ui_click",         // TEST-2 P1b: click a widget by path (gated)
+			"ui_type",          // TEST-2 P1b: type into a widget by path (gated)
 		}},
 
 		// --- assets: project-level asset management ----------------------
@@ -291,6 +292,7 @@ const std::map<std::string, std::vector<std::string>>& CategoryTable() {
 			"live_coding_compile",
 			"ui_list_widgets",  // TEST-2 P0: Slate widget-tree inspection
 			"ui_click",         // TEST-2 P1b: click a widget by path (gated)
+			"ui_type",          // TEST-2 P1b: type into a widget by path (gated)
 			"get_project_metadata", "shutdown_daemon",
 		}},
 

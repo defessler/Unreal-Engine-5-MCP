@@ -529,6 +529,10 @@ nlohmann::json AutoBlueprintReader::UiClick(
 	std::string_view widgetPath, std::string_view expectType, std::string_view expectText) {
 	FORWARD(UiClick, widgetPath, expectType, expectText);
 }
+nlohmann::json AutoBlueprintReader::UiType(
+	std::string_view widgetPath, std::string_view text, std::string_view expectType) {
+	FORWARD(UiType, widgetPath, text, expectType);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

@@ -1793,6 +1793,16 @@ nlohmann::json CommandletBlueprintReader::UiClick(std::string_view widgetPath,
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::UiType(std::string_view widgetPath,
+		std::string_view text, std::string_view expectType) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=UiType");
+	args.push_back(L"-WidgetPath=" + Widen(widgetPath));
+	args.push_back(L"-Text=" + Widen(text));
+	if (!expectType.empty()) { args.push_back(L"-ExpectType=" + Widen(expectType)); }
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

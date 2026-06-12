@@ -493,6 +493,10 @@ nlohmann::json CachingBlueprintReader::UiClick(
 	// An action (injects input) — pass through, never cache.
 	return inner_->UiClick(widgetPath, expectType, expectText);
 }
+nlohmann::json CachingBlueprintReader::UiType(
+	std::string_view widgetPath, std::string_view text, std::string_view expectType) {
+	return inner_->UiType(widgetPath, text, expectType);
+}
 
 // ----- Asset-registry queries (PERF-3: now cached) -----------------------
 // These are pure registry reads that never change between write ops. They

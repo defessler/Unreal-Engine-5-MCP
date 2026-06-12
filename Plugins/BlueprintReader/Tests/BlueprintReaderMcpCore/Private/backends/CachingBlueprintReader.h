@@ -132,6 +132,9 @@ public:
 	nlohmann::json UiClick(std::string_view widgetPath,
 							std::string_view expectType,
 							std::string_view expectText) override;
+	nlohmann::json UiType(std::string_view widgetPath,
+						   std::string_view text,
+						   std::string_view expectType) override;
 
 	// ----- Asset-registry queries (pass-through) ------------------------
 	// Asset registry is hot in the editor; no TTL caching needed.

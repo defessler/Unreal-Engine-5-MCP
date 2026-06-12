@@ -88,6 +88,8 @@
 #include "BlueprintReaderModalChannel.h" // TEST-2 P1a: modal side-channel impl
 #include "GenericPlatform/GenericApplicationMessageHandler.h" // TEST-2 P1b: EMouseButtons
 #include "GenericPlatform/GenericWindow.h" // TEST-2 P1b: FGenericWindow (ui_click)
+#include "Widgets/Input/SEditableText.h"     // TEST-2 P1b: read/verify ui_type
+#include "Widgets/Input/SEditableTextBox.h"  // TEST-2 P1b: read/verify ui_type
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
@@ -545,8 +547,12 @@ namespace
 		// TEST-2 P1a: test hook — raise a blocking modal (BP_READER_TEST_MODAL=1).
 		// Not an MCP tool; reachable only via a raw -Op=RaiseTestModal frame.
 		RaiseTestModal,
+		// TEST-2 P1b: test hook — non-modal window w/ an editable field (BP_READER_TEST_MODAL=1).
+		RaiseTestUiWindow,
 		// TEST-2 P1b: click a widget by its ui_list_widgets path (BP_READER_ALLOW_UI=1).
 		UiClick,
+		// TEST-2 P1b: type text into a widget by its path (BP_READER_ALLOW_UI=1).
+		UiType,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -798,8 +804,10 @@ namespace
 		if (OpStr.Equals(TEXT("UiListWidgets"),    ESearchCase::IgnoreCase))      { OutOp = EOp::UiListWidgets;    return true; }
 		// TEST-2 P1a
 		if (OpStr.Equals(TEXT("RaiseTestModal"),   ESearchCase::IgnoreCase))      { OutOp = EOp::RaiseTestModal;   return true; }
+		if (OpStr.Equals(TEXT("RaiseTestUiWindow"),ESearchCase::IgnoreCase))      { OutOp = EOp::RaiseTestUiWindow; return true; }
 		// TEST-2 P1b
 		if (OpStr.Equals(TEXT("UiClick"),          ESearchCase::IgnoreCase))      { OutOp = EOp::UiClick;          return true; }
+		if (OpStr.Equals(TEXT("UiType"),           ESearchCase::IgnoreCase))      { OutOp = EOp::UiType;           return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -7273,6 +7281,18 @@ namespace
 				W->SetStringField(TEXT("text"),
 					StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString());
 			}
+			// TEST-2 P1b: editable-text content too, so a ui_type round-trip (and
+			// agents inspecting form/search fields) can read what's in a field.
+			else if (Type == TEXT("SEditableText"))
+			{
+				W->SetStringField(TEXT("text"),
+					StaticCastSharedRef<SEditableText>(Widget)->GetText().ToString());
+			}
+			else if (Type == TEXT("SEditableTextBox"))
+			{
+				W->SetStringField(TEXT("text"),
+					StaticCastSharedRef<SEditableTextBox>(Widget)->GetText().ToString());
+			}
 			W->SetBoolField(TEXT("visible"), Widget->GetVisibility().IsVisible());
 			W->SetBoolField(TEXT("enabled"), Widget->IsEnabled());
 			const FGeometry& Geo = Widget->GetCachedGeometry();
@@ -7520,6 +7540,78 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// TEST-2 P1b: type text into a widget located by its ui_list_widgets `path`,
+	// by focusing it and injecting one character event per char via
+	// FSlateApplication::OnKeyChar (the same path real keyboard input takes — a
+	// focused SEditableText/SEditableTextBox consumes it and inserts the text).
+	// Appends at the current caret (no clear). Gated BP_READER_ALLOW_UI=1.
+	// GAME THREAD ONLY.
+	int32 RunUiTypeOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_ALLOW_UI"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("ui_type is gated: set BP_READER_ALLOW_UI=1 to enable editor UI "
+					 "interaction (off by default — it injects synthetic input)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("Slate is not initialized (headless) — no UI to type into. Use a "
+					 "GUI or -RenderOffscreen editor."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		FString WidgetPath, Text, ExpectType;
+		FParse::Value(*Params, TEXT("WidgetPath="), WidgetPath);
+		FParse::Value(*Params, TEXT("Text="), Text);
+		FParse::Value(*Params, TEXT("ExpectType="), ExpectType);
+		if (WidgetPath.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), TEXT("ui_type requires a non-empty widget_path (from ui_list_widgets) — the field to type into."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		TSharedPtr<SWindow> Window;
+		FString Err;
+		TSharedPtr<SWidget> Target = ResolveWidgetByPath(WidgetPath, Window, Err);
+		if (!Target.IsValid())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), Err);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		const FString ActualType = Target->GetTypeAsString();
+		if (!ExpectType.IsEmpty() && !ActualType.Contains(ExpectType))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("expect_type mismatch: widget at that path is %s, not containing '%s' — re-run ui_list_widgets"),
+				*ActualType, *ExpectType));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		FSlateApplication& Slate = FSlateApplication::Get();
+		Slate.SetKeyboardFocus(Target, EFocusCause::SetDirectly);
+		int32 Typed = 0;
+		for (const TCHAR Ch : Text)
+		{
+			Slate.OnKeyChar(Ch, /*IsRepeat=*/false);
+			++Typed;
+		}
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("typed"), true);
+		Out->SetStringField(TEXT("widget_type"), ActualType);
+		Out->SetNumberField(TEXT("char_count"), Typed);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// TEST-2 P0/P1a: fill Out with the active modal's state — is_open, title,
 	// buttons[] ({path, label?}, nested-button-safe labels), buttons_truncated.
 	// Returns whether a modal is open. Shared by get_modal_state AND the P1a
@@ -7605,6 +7697,47 @@ namespace
 	// gate cancels the modal). AddModalWindow does not return until the modal is
 	// destroyed (e.g. by a `modal`/dismiss command), so this op's reply only
 	// arrives AFTER recovery — which is the whole point.
+	// TEST-2 P1b (test hook): show a NON-modal window with an editable text box,
+	// so ui_type / ui_click have a stable, focusable target (the default editor
+	// view exposes no editable field). Gated BP_READER_TEST_MODAL=1. Non-modal,
+	// so it doesn't block op dispatch. Forces a redraw so the field gets real
+	// geometry. GAME THREAD ONLY.
+	int32 RunRaiseTestUiWindowOp(const FString& /*Params*/, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_TEST_MODAL"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("RaiseTestUiWindow is a test hook; set BP_READER_TEST_MODAL=1 to enable it."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), TEXT("Slate is not initialized (headless)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		const FString Title = TEXT("BPR Test UI");
+		TSharedPtr<SEditableTextBox> Edit;
+		TSharedRef<SWindow> Win = SNew(SWindow)
+			.Title(FText::FromString(Title))
+			.ClientSize(FVector2D(420.0f, 140.0f))
+			.SupportsMaximize(false).SupportsMinimize(false);
+		Win->SetContent(
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(12.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("Type into the box (test target for ui_type):"))) ]
+			+ SVerticalBox::Slot().AutoHeight().Padding(12.0f, 4.0f)
+			[ SAssignNew(Edit, SEditableTextBox).HintText(FText::FromString(TEXT("…"))) ]);
+		FSlateApplication::Get().AddWindow(Win, /*bShowImmediately=*/true);  // NON-modal
+		if (GEditor) { GEditor->RedrawLevelEditingViewports(true); }
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetStringField(TEXT("title"), Title);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	int32 RunRaiseTestModalOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		auto Out = MakeShared<FJsonObject>();
@@ -13782,7 +13915,9 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::DescribeK2Node,             &RunDescribeK2NodeOp },
 		{ EOp::UiListWidgets,              &RunUiListWidgetsOp },
 		{ EOp::RaiseTestModal,             &RunRaiseTestModalOp },
+		{ EOp::RaiseTestUiWindow,          &RunRaiseTestUiWindowOp },
 		{ EOp::UiClick,                    &RunUiClickOp },
+		{ EOp::UiType,                     &RunUiTypeOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

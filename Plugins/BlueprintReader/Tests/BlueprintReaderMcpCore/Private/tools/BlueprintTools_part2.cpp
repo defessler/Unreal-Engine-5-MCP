@@ -342,6 +342,59 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 		});
 	}
 
+	// ----- ui_type -----------------------------------------------------------
+	// TEST-2 P1b slice 2: type text into an editor widget located by its
+	// ui_list_widgets `path`. Sibling of ui_click — an ACTION (injects
+	// synthetic key-char events), gated editor-side by BP_READER_ALLOW_UI=1.
+	{
+		ToolDescriptor d;
+		d.name = "ui_type";
+		d.description =
+			"[editor] Type `text` into an editor widget located by its `widget_path` "
+			"(from `ui_list_widgets`). Sets keyboard focus to the target, then injects "
+			"one real synthetic character event per char via the same path OS input "
+			"takes, so Slate routes it normally (e.g. typing into a search box filters "
+			"its list). GATED: returns an error unless the editor was started with "
+			"BP_READER_ALLOW_UI=1 (off by default — it drives the live UI). "
+			"`widget_path` is RESPONSE-LOCAL (re-run ui_list_widgets first); pass "
+			"`expect_type` to revalidate the target is still an editable-text widget "
+			"before typing (a shifted tree errors instead of typing into the wrong "
+			"widget). Returns `{ok, typed, widget_type, char_count}` or "
+			"`{ok:false, error}`. Requires a GUI / -RenderOffscreen editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"widget_path", {{"type","string"},
+								 {"description","The target widget's path from ui_list_widgets (e.g. 0:SWindow/.../1:SEditableTextBox)."}}},
+				{"text",        {{"type","string"},
+								 {"description","The text to type, one character event per char."}}},
+				{"expect_type", {{"type","string"},
+								 {"description","Optional: the widget type must CONTAIN this (e.g. SEditableText) or the type is refused (path-shift guard)."}}},
+			}},
+			{"required", nlohmann::json::array({"widget_path","text"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",          {{"type","boolean"}}},
+				{"typed",       {{"type","boolean"}}},
+				{"widget_type", {{"type","string"}}},
+				{"char_count",  {{"type","integer"}}},
+				{"error",       {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string widgetPath = RequireString(args, "widget_path");
+			if (widgetPath.empty()) {
+				throw std::invalid_argument("ui_type: `widget_path` must be non-empty (from ui_list_widgets).");
+			}
+			const std::string text = RequireString(args, "text");
+			const std::string expectType = OptString(args, "expect_type", "");
+			return reader.UiType(widgetPath, text, expectType);
+		});
+	}
+
 	// ----- get_focused_widget ---------------------------------------------
 	{
 		ToolDescriptor d;

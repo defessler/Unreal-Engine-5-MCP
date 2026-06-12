@@ -2899,6 +2899,18 @@ public:
 		throw BlueprintReaderError("UiClick not supported by this backend");
 	}
 
+	// TEST-2 P1b: type `text` into a widget located by its ui_list_widgets
+	// `path` (focus it, then inject one character event per char via OnKeyChar).
+	// Gated editor-side behind BP_READER_ALLOW_UI=1. `expectType` revalidates
+	// the target. Editor-only; an ACTION.
+	virtual nlohmann::json UiType(std::string_view widgetPath,
+								  std::string_view text,
+								  std::string_view expectType)
+	{
+		(void)widgetPath; (void)text; (void)expectType;
+		throw BlueprintReaderError("UiType not supported by this backend");
+	}
+
 	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER
 	// THREAD even when the game thread is halted — so a paused editor is a
 	// distinct, fast answer instead of a generic op timeout. `state` is one of
