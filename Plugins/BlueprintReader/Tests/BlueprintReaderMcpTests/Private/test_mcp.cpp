@@ -381,7 +381,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	REQUIRE(registry.TotalRegistered() == 268);
 
 	tools::RegisterToolsetMetaTools(registry);
-	REQUIRE(registry.TotalRegistered() == 271);  // 267 + 3 meta-tools
+	REQUIRE(registry.TotalRegistered() == 271);  // 268 + 3 meta-tools
 
 	tools::EnableToolSearchMode(registry);
 	// Active set should now be 4: list_toolsets, describe_toolset, call_tool, shutdown_daemon.

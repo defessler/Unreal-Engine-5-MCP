@@ -2616,7 +2616,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable). Also reports `write_enabled` — whether mutation tools are enabled (false in the default read-only mode, BP_READER_READ_ONLY=1) — so a client can discover write-gating PRE-FLIGHT instead of on the first rejected write.",
+    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable). Also reports `write_enabled` — whether mutation tools are enabled (false in the default read-only mode, BP_READER_READ_ONLY=1) — so a client can discover write-gating PRE-FLIGHT instead of on the first rejected write. Also reports `daemon_enabled` (whether the commandlet daemon is on, BP_READER_DAEMON) and `disabled_plugins` (BP_READER_PLUGIN_DENYLIST — plugins skipped on the editor spawn, which explains absent functionality), so the server's config is discoverable pre-flight.",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -2624,6 +2624,15 @@
     "name": "health_check",
     "output_schema": {
       "properties": {
+        "daemon_enabled": {
+          "type": "boolean"
+        },
+        "disabled_plugins": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "game_thread_age_ms": {
           "type": "integer"
         },

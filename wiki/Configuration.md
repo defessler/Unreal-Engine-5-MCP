@@ -25,8 +25,8 @@ startup. In a Claude config you set them under the server's `env` block.
 | `BP_READER_LIVE_HOST`       | `127.0.0.1`                            | Hostname for the live backend's TCP connection. Loopback only; non-loopback connections are rejected by the editor-side listener. |
 | `BP_READER_LIVE_PORT`       | (unset → live backend disabled)        | TCP port for the live backend. **Set in BOTH** the editor's process env (the listener binds here) AND the MCP server's process env (the client connects here). Pick anything 8400–8500 range that's not in use. |
 | `BP_READER_LIVE_TOKEN`      | (unset → live backend refuses to start) | Shared secret for the live backend's auth handshake. **Set in BOTH** processes; values must match. Pick a random string. Treat like a password — anyone with localhost access who can read your env vars can mutate BPs. |
-| `BP_READER_TOOLS`           | (unset → all ~258 tools)               | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, leaving razor-thin headroom for the full bp-reader surface. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
-| `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` drops just those categories from the full ~258-tool surface. |
+| `BP_READER_TOOLS`           | (unset → all ~268 tools)               | Comma-separated allow-list of tool names AND/OR category names. When set, `tools/list` advertises only the matching subset. Use to fit under MCP clients' tool-count caps — GitHub Copilot caps at **128 tools total** across all servers + its built-ins, leaving razor-thin headroom for the full bp-reader surface. See [Tool filtering](#tool-filtering) below for category names + recommended presets. |
+| `BP_READER_TOOLS_EXCLUDE`   | (unset → no removals)                  | Comma-separated deny-list of tool names AND/OR category names. Applied AFTER the allow step (or against the full tool set when `BP_READER_TOOLS` is unset). Useful when you want most-of-everything minus specific asset types: `BP_READER_TOOLS_EXCLUDE=materials,widgets,niagara` drops just those categories from the full ~268-tool surface. |
 | `BP_READER_ALLOW_PYTHON`    | `0` (off)                              | `1`/`true`/`yes`/`on` enables the `run_python_script` tool. Off by default — arbitrary Python in the editor has full `unreal.*` API access and bypasses every safety convention the curated tool surface establishes. When disabled, calling `run_python_script` returns `{ok: false, error: "python_disabled", hint: ...}` rather than executing. |
 | `BP_READER_ALLOW_TRANSPILE` | `0` (off)                              | `1`/`true`/`yes`/`on` enables the 6 BP↔C++ transpile tools (`decompile_function`, `decompile_blueprint`, `transpile_function`, `transpile_blueprint`, `write_generated_source`, `parse_cpp_function`). Off by default — the transpile path writes source files, parses caller-supplied C++, and shells to UBT downstream, so opt-in keeps the surface explicit. When disabled, the tools stay listed in `tools/list` but every call returns `{ok: false, error: "transpile_disabled", hint: ...}`. To remove them from `tools/list` entirely, use `BP_READER_TOOLS_EXCLUDE=cpp` instead. |
 | `BP_READER_REQUIRE_CONFIRM` | `0` (off)                              | `1`/`true`/`yes`/`on` adds a confirmation gate on every destructive tool (`delete_asset`, `delete_variable`, `delete_node`, `delete_function`, `build_lighting`, etc.). When enabled, those tools return `isError: true` with an actionable message unless the call includes `"_confirm": true` in its arguments. Protects against accidental deletions in AI-agent workflows. |
@@ -43,7 +43,7 @@ startup. In a Claude config you set them under the server's `env` block.
 
 ## Tool filtering
 
-The full bp-reader surface is ~258 tools (note: with progressive disclosure
+The full bp-reader surface is ~268 tools (note: with progressive disclosure
 on by default, `tools/list` advertises only ~39 — the core set plus meta-tools
 — so most clients' caps are a non-issue without any filtering). Some MCP
 clients cap the total
@@ -83,7 +83,7 @@ Both vars take **category names** as a shorthand for groups of tools:
 | `tests`          | 1     | run_automation_tests |
 | `class-info`     | 3     | find_class + get_class_info + list_functions |
 | `discover`       | 3     | list_node_kinds + list_pin_categories + shutdown_daemon |
-| `all`            | ~258  | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
+| `all`            | ~268  | Everything (the implicit default if `BP_READER_TOOLS` is unset) |
 
 The canonical mapping lives in
 [`tools/ToolCategories.cpp`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/tools/ToolCategories.cpp).
@@ -145,7 +145,7 @@ The mapping lives in [`tools/ToolCategories.cpp`](https://github.com/defessler/U
 The MCP server logs the result on stderr at startup:
 
 ```
-[bp-reader-mcp] tool filter: kept 35 of 252 tools (allow=core)
+[bp-reader-mcp] tool filter: kept 35 of 268 tools (allow=core)
 ```
 
 Unknown tokens (typos in tool/category names) silently drop nothing —
@@ -193,7 +193,7 @@ Response:
   "added": ["list_materials", "read_material", "add_material_expression", ...],
   "newly_activated_count": 7,
   "total_active": 43,
-  "total_registered": 252
+  "total_registered": 268
 }
 ```
 
@@ -228,8 +228,8 @@ active set only grows, never shrinks.
 The server logs both decisions on stderr at startup:
 
 ```
-[bp-reader-mcp] tool filter: kept 35 of 252 tools (allow=core)
-[bp-reader-mcp] progressive disclosure: enabled. Initial active set is 36 tools (of 252 registered). Agent can widen via `enable_tool_category(<name>)`.
+[bp-reader-mcp] tool filter: kept 35 of 268 tools (allow=core)
+[bp-reader-mcp] progressive disclosure: enabled. Initial active set is 36 tools (of 268 registered). Agent can widen via `enable_tool_category(<name>)`.
 ```
 
 (36 = the 35 core tools + the `enable_tool_category` meta-tool.)
@@ -681,7 +681,7 @@ listener bound). Auto mode then always picks commandlet.
 
 ### What works in v1
 
-All ~258 tools route over the same wire: reads, writes, batch ops,
+All ~268 tools route over the same wire: reads, writes, batch ops,
 `compile_function` / `preview_ops`, plus the BP↔C++ transpile group
 (`decompile_function`, `decompile_blueprint`, `transpile_function`,
 `transpile_blueprint`, `write_generated_source`, `parse_cpp_function`).

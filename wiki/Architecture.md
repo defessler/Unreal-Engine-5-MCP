@@ -43,7 +43,7 @@ flowchart LR
         STDIO["Server.Run<br/>stdio framing"]
         HTTP["HttpServerMain<br/>HTTP + chunked SSE"]
         MCP["mcp::RegisterHandlers<br/>initialize / tools.* / ping"]
-        REG["ToolRegistry<br/>~252 ToolDescriptors"]
+        REG["ToolRegistry<br/>~268 ToolDescriptors"]
         BTOOLS["RegisterBlueprintTools<br/>handlers"]
         CHAIN["IBlueprintReader chain<br/>ReadOnly to Caching to Auto"]
         MAIN --> TRANSPORT

@@ -7,7 +7,7 @@
 > drift. This hand-curated page adds examples; if a count disagrees, the
 > generated catalog wins.
 
-~252 tools spanning Blueprint read/write, batch generation, 6 BP↔C++
+~268 tools spanning Blueprint read/write, batch generation, 6 BP↔C++
 transpile tools, project / content-browser ops, live-editor control,
 material / widget / behavior-tree / data-asset / state-tree / Niagara /
 Sequencer / GAS / AnimGraph authoring, profiling, cook, class
