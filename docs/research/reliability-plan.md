@@ -41,6 +41,13 @@ Worth recording so future audits don't re-litigate it:
 
 ## Findings & plan items
 
+> **STATUS: COMPLETE — all 25 items (REL-1..25) shipped + tested 2026-06-12**
+> (commits `a3186862` / `9f26e607` / `10e938de` / `35b1b9eb` / `df5aba61`, all
+> CI-green). The per-phase `(☐ open)` headers below are the original plan
+> shape; the authoritative live status tracker is
+> [roadmap §10](improvement-roadmap.md#reliability) (every row ✅ Done).
+> Verification: mock 877/877 + live `Saved/verify-rel-{a,b1,b2,b3,c,c7,d}.ps1`.
+
 Severity: **P0** = data loss / corruption possible · **P1** = reliability
 failure or unrecoverable-change hazard · **P2** = robustness / trust gap ·
 **P3** = hygiene.
