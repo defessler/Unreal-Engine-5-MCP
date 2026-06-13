@@ -869,8 +869,11 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   and makes the plugin folder a complete, drop-in bundle.
 
 ### TEST-1 — exercise the render/interactive surface against a real active editor {#test-1}
-- **Status:** ◑ **Track B render tier live + first render tools verified/fixed
-  (2026-06-11)** · **Effort:** M–L · **Design:** [`live-gui-testing.md`](live-gui-testing.md)
+- **Status:** ✅ **Done (2026-06-13)** — Track B render tier live; screenshot
+  bugs fixed (first sweep); the render/interactive surface is now codified as the
+  `BP_READER_SMOKE_RENDER` live smoke (render tier certified: real capture +
+  projection). PIE remains honestly headless-limited; heavy build/cook tools are
+  registration-checked. · **Effort:** M–L · **Design:** [`live-gui-testing.md`](live-gui-testing.md)
 - **Track B is real (via the TEST-2 P1a render harness):** the
   `-RenderOffscreen` editor (`Saved/start-render-editor.ps1`) has a real D3D12
   RHI, so the render tools that the `-nullrhi` daemon could only
@@ -897,9 +900,20 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
     would not hit this. Sequential captures on `-RenderOffscreen` are unreliable.
   - `set_camera_transform` (moved:true) + `set_show_flag` (ok:true) verified
     working on the render tier.
-- Remaining: codify the render sweep into `test_tool_smoke_live.cpp` behind
-  `BP_READER_SMOKE_RENDER`; cover PIE (Track B, TDR-cautious) + the
-  active-editor-state group. Original plan below.
+- **Render sweep CODIFIED (2026-06-13): `BP_READER_SMOKE_RENDER` live smoke.**
+  `test_tool_smoke_render_live.cpp` drives the render/interactive surface against
+  a real `-RenderOffscreen` editor through the full tool-handler → live-socket
+  stack and **certifies the render tier**: `take_screenshot` captured=true (real
+  D3D12 capture, not the headless `captured:false`), `world_pos_to_screen`
+  valid=true (viewport projection), `get_camera_transform` valid=true, plus
+  reachability of get_show_flags / get_view_mode / get_selected_actors and the
+  safe view-state writes (set_camera_transform / set_show_flag toggle+restore /
+  set_view_mode / set_selection clear). 12 tools dispatched, 0 broken, 0 infra
+  (`Saved/run-smoke-render.ps1`). Gated on `BP_READER_SMOKE_RENDER` + the render-
+  editor handshake → auto-skips in the editor-less hosted CI. No new bugs (the
+  first sweep already fixed the two screenshot ones). PIE stays Track-B headless-
+  limited (honest `started:false`; real PIE needs an interactive desktop session)
+  and `build_lighting`/cook/package are heavy → registration-checked only.
 - The `-nullrhi` commandlet daemon can't exercise the ~30 render/interactive
   tools (`take_screenshot`/`take_viewport_screenshot`/`set_camera_transform`/
   `set_show_flag`/`build_lighting`/`pie_start`/selection/`open_asset_editor`) —
@@ -1980,6 +1994,15 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **TEST-1 render sweep CODIFIED: `BP_READER_SMOKE_RENDER` live
+  smoke — TEST-1 COMPLETE.** `test_tool_smoke_render_live.cpp` drives the
+  render/interactive surface against a real `-RenderOffscreen` editor and
+  certifies the render tier (take_screenshot captured=true, world_pos_to_screen
+  valid=true, get_camera_transform valid=true) + reachability of the show-flag/
+  view-mode/selection/camera tools. 12 dispatched, 0 broken
+  (`Saved/run-smoke-render.ps1`). Auto-skips with no editor. Found a test-side
+  field-name bug (cam uses `valid` not `ok`), no tool bug. Mock 879/879 (skipped
+  there). PIE stays honest-headless; build/cook registration-only.
 - **2026-06-13** — **TEST-2 P2 SHIPPED: `BP_READER_SMOKE_UI` live smoke — TEST-2
   COMPLETE.** A gated doctest (`test_tool_smoke_ui_live.cpp`) drives the whole
   editor-UI tool surface against a real render editor via the live-socket stack
