@@ -393,6 +393,12 @@ public:
 		return inner_->UnsupportedTools();
 	}
 
+	// This decorator is exactly what gates writes — report it so health_check
+	// can advertise write-gating pre-flight (UX-P5 e1).
+	bool WritesEnabled() const override {
+		return false;
+	}
+
 private:
 	std::unique_ptr<IBlueprintReader> inner_;
 };

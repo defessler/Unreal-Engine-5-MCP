@@ -526,7 +526,7 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
 ---
 
 ### UX-P5 — client report 2026-06-11 (StateTree condition BP, duplicate pin GUIDs) {#ux-p5}
-- **Status:** ◑ a/b/d done (2026-06-11); c/e already-shipped (stale build); e1 deferred · **Effort:** S–M · **Source:** 2026-06-11 client issue report (UE 5.7.4 downstream project, single repro asset with two K2Node_FunctionResult nodes sharing pin GUIDs)
+- **Status:** ◑ a/b/d/e1 done (e1 2026-06-13); c already-shipped (stale build) · **Effort:** S–M · **Source:** 2026-06-11 client issue report (UE 5.7.4 downstream project, single repro asset with two K2Node_FunctionResult nodes sharing pin GUIDs)
 - Key cross-cutting insight: **several reported issues were already fixed in
   current `main`** (prefix-GUID resolution UX-P4d; explicit read-only error;
   DLSS denylist doc). The client's exe self-reports `0.1.0` (the version-stamp
@@ -558,10 +558,18 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
   matching the tool description. Removed the empty-query+empty-kind rejection.
 - **UX-P5e (ISSUE-005, S3 DX):** read-only write error is ALREADY explicit
   (names the tool + `BP_READER_ALLOW_WRITE=1`); DLSS `DLSSUtility` startup
-  failure is ALREADY documented (`BP_READER_PLUGIN_DENYLIST`). ☐ **Open (e1):**
-  surface `write_enabled` (+ daemon-mode + degraded-plugin notes) on
-  `health_check` so write-gating is discoverable pre-flight, not on first
-  failure.
+  failure is ALREADY documented (`BP_READER_PLUGIN_DENYLIST`). ✅ **e1 done
+  (2026-06-13):** `health_check` now reports `write_enabled` — the server-side
+  read-only state (`IBlueprintReader::WritesEnabled()`, answered `false` by the
+  outermost `ReadOnlyBlueprintReader` decorator, knowable without the editor) —
+  so write-gating is discoverable pre-flight, not on the first rejected write.
+  Two touch points only (interface default `true` + ReadOnly override `false`);
+  mock-tested (`ReadOnly(Mock)`→false, `Mock`→true) and live-verified through
+  the shipping exe (`BP_READER_READ_ONLY=1`→false, `BP_READER_ALLOW_WRITE=1`→
+  true; `Saved/verify-health-writeenabled.ps1`). Description first-40 preserved →
+  no protocol-hash drift. *(Small optional follow-ups: daemon-mode + degraded-
+  plugin notes on the same channel; verify the detailed `NodeRefError` reaches
+  the `apply_ops` error envelope rather than collapsing to a bare code-4.)*
 - **Why:** UX-P5a/b restore the reader's trustworthiness for automated diagnosis
   (the report's central theme); the rest are friction the version-stamp fix
   largely dissolves by letting clients run a current build.
@@ -1949,6 +1957,14 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **UX-P5 e1 SHIPPED: `health_check.write_enabled`.** Surfaces
+  server-side write-gating pre-flight so a client sees read-only mode without
+  attempting a write. Implemented as `IBlueprintReader::WritesEnabled()` (default
+  `true`; `ReadOnlyBlueprintReader` — the outermost decorator — overrides `false`),
+  read at the health_check handler (backend-independent, no editor needed). Two
+  touch points; description first-40 preserved → no hash drift. Mock 879/879
+  (`ReadOnly(Mock)`→false, `Mock`→true); live-verified through the shipping exe
+  (RO=false, allow-write=true). Catalog 268.
 - **2026-06-12** — **TEST-2 P1b slice 4: `ui_invoke_menu` SHIPPED — P1b COMPLETE**
   (268 tools). Execute an editor menu command by registered UToolMenus name +
   entry — the most geometry-independent driving primitive. GenerateMenu seeded

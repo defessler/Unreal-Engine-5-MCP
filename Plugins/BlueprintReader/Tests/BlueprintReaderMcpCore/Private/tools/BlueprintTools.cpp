@@ -3601,7 +3601,10 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			"the game thread last advanced; -1 = unknown, e.g. the commandlet "
 			"one-shot backend which has no persistent editor). Call this when a "
 			"normal tool call is hanging to learn whether to wait (paused) or "
-			"reconnect (unreachable).";
+			"reconnect (unreachable). Also reports `write_enabled` — whether "
+			"mutation tools are enabled (false in the default read-only mode, "
+			"BP_READER_READ_ONLY=1) — so a client can discover write-gating "
+			"PRE-FLIGHT instead of on the first rejected write.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", nlohmann::json::object()},
@@ -3614,6 +3617,7 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"game_thread_age_ms", {{"type", "integer"}}},
 				{"state", {{"type", "string"}}},
 				{"note", {{"type", "string"}}},
+				{"write_enabled", {{"type", "boolean"}}},
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
@@ -3624,6 +3628,9 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"game_thread_age_ms", h.gameThreadAgeMs},
 				{"state", h.state},
 				{"note", h.note},
+				// UX-P5 e1: server-side write-gating, knowable without the
+				// editor — lets a client see read-only mode pre-flight.
+				{"write_enabled", reader.WritesEnabled()},
 			};
 		});
 	}

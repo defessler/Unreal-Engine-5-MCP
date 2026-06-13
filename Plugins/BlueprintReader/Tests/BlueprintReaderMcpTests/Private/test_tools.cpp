@@ -5,8 +5,11 @@
 
 #include "backends/AutoBlueprintReader.h"   // REL-16: IsWriteMethod classification
 #include "backends/MockBlueprintReader.h"
+#include "backends/ReadOnlyBlueprintReader.h"   // UX-P5 e1: write_enabled probe
 #include "tools/BlueprintTools.h"
 #include "tools/ToolRegistry.h"
+
+#include <memory>
 
 #include "test_helpers.h"
 
@@ -52,6 +55,24 @@ TEST_CASE("health_check: mock backend reports synthetic-healthy") {
 	CHECK(r["reachable"] == true);
 	CHECK(r["game_thread_responsive"] == true);
 	CHECK(r["game_thread_age_ms"] == 0);
+	CHECK(r["state"] == "healthy");
+	// UX-P5 e1: the default fixture is a plain (write-enabled) mock chain.
+	CHECK(r["write_enabled"] == true);
+}
+
+// UX-P5 e1: write_enabled mirrors the read-only decorator so a client can
+// discover write-gating from health_check, pre-flight, without attempting a
+// write. Reads (incl. health) still pass through.
+TEST_CASE("health_check: write_enabled reflects read-only mode") {
+	auto inner = std::make_unique<backends::MockBlueprintReader>(test::FixturesDir());
+	backends::ReadOnlyBlueprintReader ro(std::move(inner));
+	tools::ToolRegistry reg;
+	tools::RegisterBlueprintTools(reg, ro);
+	const auto* fn = reg.Find("health_check");
+	REQUIRE(fn != nullptr);
+	const auto r = (*fn)(json::object());
+	CHECK(r["write_enabled"] == false);
+	CHECK(r["reachable"] == true);    // health is a read — still passes through
 	CHECK(r["state"] == "healthy");
 }
 

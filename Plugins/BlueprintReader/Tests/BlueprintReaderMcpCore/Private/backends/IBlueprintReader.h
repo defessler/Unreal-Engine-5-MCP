@@ -2659,6 +2659,16 @@ public:
 		return {};
 	}
 
+	// Whether write/mutation tools are enabled. False only when the
+	// ReadOnlyBlueprintReader decorator is in the chain (BP_READER_READ_ONLY,
+	// the default) — it's the outermost wrap, so the value propagates up
+	// without every decorator delegating. health_check surfaces this so a
+	// client can discover write-gating PRE-FLIGHT instead of on the first
+	// rejected write (UX-P5 e1).
+	virtual bool WritesEnabled() const {
+		return true;
+	}
+
 	// General-purpose asset enumeration. The list_blueprints /
 	// list_materials / list_data_tables family are typed slices;
 	// FindAsset/ListAssets are the asset-registry-wide queries an
