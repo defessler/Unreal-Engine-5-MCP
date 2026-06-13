@@ -305,6 +305,14 @@ void RegisterHandlersImpl(jr::Server& server,
 				taskTtlMs = ttlIt->get<std::int64_t>();
 			}
 		}
+		// MCP-8 (registry-race fix): tools that MUTATE the lock-free ToolRegistry
+		// must not run on a background thread, because the stdio read loop keeps
+		// serving tools/list (ListSpec) concurrently. enable_tool_category
+		// rewrites the active set; call_tool can dispatch it. Both are instant
+		// meta-tools — run them synchronously even if a `task` was requested.
+		if (taskMode && (name == "enable_tool_category" || name == "call_tool")) {
+			taskMode = false;
+		}
 		// MCP-8: single-task model — the editor backend (one socket / one
 		// commandlet subprocess) is exclusive, so while a task runs we reject
 		// any tools/call (sync OR a second task) with a clear busy error. The
@@ -456,10 +464,15 @@ void RegisterHandlersImpl(jr::Server& server,
 		// so progress notifications still flow (drained on the next write).
 		if (taskMode) {
 			auto startedId = tasks->Start(name, taskTtlMs,
-				[&server, executeAndWrap, arguments, progressToken](const std::string& taskId) -> nlohmann::json {
+				[&server, executeAndWrap, arguments, progressToken](const std::string& taskId,
+						const std::function<void()>& markReady) -> nlohmann::json {
 					jr::CallContext taskCtx(server, nlohmann::json(taskId), progressToken);
 					jr::CallContext::Scope taskScope(&taskCtx);
 					server.RegisterInFlight(&taskCtx);
+					// The context is now findable by taskId — release Start so the
+					// returned taskId is immediately cancellable (no registration
+					// TOCTOU vs. a fast tasks/cancel).
+					markReady();
 					struct UnregTask {
 						jr::Server& s; jr::CallContext* c;
 						~UnregTask() { s.UnregisterInFlight(c); }

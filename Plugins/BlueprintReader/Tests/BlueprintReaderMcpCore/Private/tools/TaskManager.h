@@ -27,8 +27,10 @@
 // is spec-version-independent.
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -44,10 +46,15 @@ namespace bpr::tools {
 class TaskManager {
 public:
 	// Runs on a background thread. Receives the assigned taskId (so it can set
-	// up a CallContext registered under that id for cancellation). Returns the
-	// finished CallToolResult envelope (success or isError). Must not throw for
-	// normal tool errors — only an unexpected exception marks the task failed.
-	using WorkFn = std::function<nlohmann::json(const std::string& taskId)>;
+	// up a CallContext registered under that id for cancellation) and a
+	// `markReady` callback it MUST invoke once that context is registered and
+	// findable — Start() blocks until then before returning the taskId, so a
+	// tasks/cancel that arrives the instant the client has the id can't miss
+	// the worker (closes the registration TOCTOU). Returns the finished
+	// CallToolResult envelope (success or isError). Must not throw for normal
+	// tool errors — only an unexpected exception marks the task failed.
+	using WorkFn = std::function<nlohmann::json(const std::string& taskId,
+												const std::function<void()>& markReady)>;
 
 	struct View {
 		std::string taskId;
@@ -61,13 +68,45 @@ public:
 	TaskManager() : state_(std::make_shared<State>()) {}
 
 	~TaskManager() {
-		// Detach any live workers. Each worker holds its own State + Task via
-		// shared_ptr, so it is safe to keep running after `this` is gone; the
-		// objects survive until the thread releases them.
-		std::lock_guard<std::mutex> lk(state_->mu);
-		for (auto& [id, t] : state_->tasks) {
-			if (t->worker.joinable()) {
-				t->worker.detach();
+		// JOIN (not detach) any live worker before we go, so a worker can't
+		// outlive the Server/registry/reader it borrows by reference and touch
+		// freed memory at shutdown. Deadlock-safe: the worker's terminal block
+		// locks state_->mu, so we move the thread handles OUT from under the
+		// lock and join them WITHOUT holding it. (The owning Server declares
+		// handlers_ last so this runs while its other members are still alive;
+		// main keeps registry/reader alive past the Server — see main.cpp.)
+		std::vector<std::thread> toJoin;
+		{
+			std::lock_guard<std::mutex> lk(state_->mu);
+			for (auto& [id, t] : state_->tasks) {
+				if (t->worker.joinable()) {
+					toJoin.push_back(std::move(t->worker));
+				}
+			}
+		}
+		for (auto& th : toJoin) {
+			if (th.joinable()) {
+				th.join();
+			}
+		}
+	}
+
+	// Join every still-running worker (deadlock-safe). Belt-and-braces hook for
+	// an explicit shutdown quiesce before the borrowed Server/registry/reader
+	// are torn down; the destructor calls the same logic.
+	void JoinAll() {
+		std::vector<std::thread> toJoin;
+		{
+			std::lock_guard<std::mutex> lk(state_->mu);
+			for (auto& [id, t] : state_->tasks) {
+				if (t->worker.joinable()) {
+					toJoin.push_back(std::move(t->worker));
+				}
+			}
+		}
+		for (auto& th : toJoin) {
+			if (th.joinable()) {
+				th.join();
 			}
 		}
 	}
@@ -81,40 +120,64 @@ public:
 	std::optional<std::string> Start(const std::string& tool,
 									 std::int64_t ttlMs, WorkFn work) {
 		auto st = state_;
-		std::lock_guard<std::mutex> lk(st->mu);
-		if (!st->activeId.empty()) {
-			return std::nullopt;
-		}
-		const std::string id = "task-" + std::to_string(++st->counter);
-		auto t = std::make_shared<Task>();
-		t->tool = tool;
-		t->status = "working";
-		t->ttlMs = ttlMs;
-		st->tasks[id] = t;
-		st->activeId = id;
-		// Worker captures only shared_ptrs (st, t) — never `this` — so it is
-		// safe to outlive the TaskManager (detached in the dtor).
-		t->worker = std::thread([st, t, id, work]() {
-			nlohmann::json env;
-			std::string status;
-			try {
-				env = work(id);
-				status = "completed";
-			} catch (const std::exception& e) {
-				env = {
-					{"content", nlohmann::json::array({
-						nlohmann::json{{"type", "text"},
-									   {"text", std::string("task failed: ") + e.what()}}})},
-					{"isError", true},
-				};
-				status = "failed";
+		std::shared_future<void> readyFut;
+		std::string id;
+		{
+			std::lock_guard<std::mutex> lk(st->mu);
+			if (!st->activeId.empty()) {
+				return std::nullopt;
 			}
-			std::lock_guard<std::mutex> wl(st->mu);
-			t->result = std::move(env);
-			t->hasResult = true;
-			t->status = t->cancelRequested ? "cancelled" : status;
-			st->activeId.clear();    // free the slot for the next task
-		});
+			id = "task-" + std::to_string(++st->counter);
+			auto t = std::make_shared<Task>();
+			t->tool = tool;
+			t->status = "working";
+			t->ttlMs = ttlMs;
+			st->tasks[id] = t;
+			st->activeId = id;
+			auto ready = std::make_shared<std::promise<void>>();
+			readyFut = ready->get_future().share();
+			// Worker captures only shared_ptrs (st, t, ready) — never `this`.
+			t->worker = std::thread([st, t, id, work, ready]() {
+				// markReady is idempotent + always fires exactly once, even on a
+				// throw before the WorkFn registered, so Start never hangs.
+				auto readyOnce = std::make_shared<std::once_flag>();
+				auto markReady = [ready, readyOnce]() {
+					std::call_once(*readyOnce, [&]() { ready->set_value(); });
+				};
+				nlohmann::json env;
+				std::string status;
+				try {
+					env = work(id, markReady);
+					status = "completed";
+				} catch (const std::exception& e) {
+					env = {
+						{"content", nlohmann::json::array({
+							nlohmann::json{{"type", "text"},
+										   {"text", std::string("task failed: ") + e.what()}}})},
+						{"isError", true},
+					};
+					status = "failed";
+				}
+				markReady();    // backstop: release Start if the WorkFn never did
+				std::lock_guard<std::mutex> wl(st->mu);
+				t->result = std::move(env);
+				t->hasResult = true;
+				// Only label "cancelled" if cancellation was requested AND the op
+				// actually errored out (honored the cancel). A task that ran to
+				// successful completion despite a late/un-polled cancel is
+				// "completed" — never report status:"cancelled" with a success
+				// result envelope.
+				const bool errored = (status == "failed") ||
+					(t->result.is_object() && t->result.value("isError", false));
+				t->status = (t->cancelRequested && errored) ? "cancelled" : status;
+				st->activeId.clear();    // free the slot for the next task
+			});
+		}
+		// Block (bounded) until the worker signals its CallContext is registered
+		// and findable, so a tasks/cancel issued the moment the client holds the
+		// taskId can't race ahead of registration. Done OUTSIDE st->mu (the
+		// worker locks it on completion).
+		readyFut.wait_for(std::chrono::seconds(5));
 		return id;
 	}
 

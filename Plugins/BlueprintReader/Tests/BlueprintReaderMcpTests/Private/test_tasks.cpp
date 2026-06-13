@@ -14,6 +14,7 @@
 #include "tools/BlueprintTools.h"
 #include "tools/TaskManager.h"
 #include "tools/ToolRegistry.h"
+#include "tools/ToolsetMeta.h"
 
 #include "test_helpers.h"
 
@@ -74,15 +75,18 @@ TEST_CASE("TaskManager: single-task model rejects a second start while active") 
 	std::promise<void> gate;
 	std::shared_future<void> released = gate.get_future().share();
 
-	auto id1 = mgr.Start("tool_a", 60000, [released](const std::string&) -> json {
-		released.wait();    // block so the task stays "working"
-		return json{{"ok", true}, {"who", "a"}};
-	});
+	auto id1 = mgr.Start("tool_a", 60000,
+		[released](const std::string&, const std::function<void()>& markReady) -> json {
+			markReady();        // release Start immediately, then block "working"
+			released.wait();
+			return json{{"ok", true}, {"who", "a"}};
+		});
 	REQUIRE(id1.has_value());
 	CHECK(mgr.HasActive());
 
 	// Second start while the first is active → busy (nullopt).
-	auto id2 = mgr.Start("tool_b", 60000, [](const std::string&) { return json::object(); });
+	auto id2 = mgr.Start("tool_b", 60000,
+		[](const std::string&, const std::function<void()>& markReady) { markReady(); return json::object(); });
 	CHECK_FALSE(id2.has_value());
 
 	auto working = mgr.Get(*id1);
@@ -103,7 +107,8 @@ TEST_CASE("TaskManager: single-task model rejects a second start while active") 
 	CHECK(done->result["ok"] == true);
 
 	// With the first finished, a new task can start.
-	auto id3 = mgr.Start("tool_c", 60000, [](const std::string&) { return json{{"ok", true}}; });
+	auto id3 = mgr.Start("tool_c", 60000,
+		[](const std::string&, const std::function<void()>& markReady) { markReady(); return json{{"ok", true}}; });
 	CHECK(id3.has_value());
 	for (int i = 0; i < 400 && mgr.HasActive(); ++i) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -112,9 +117,11 @@ TEST_CASE("TaskManager: single-task model rejects a second start while active") 
 
 TEST_CASE("TaskManager: a throwing worker is marked failed, not crashing") {
 	tools::TaskManager mgr;
-	auto id = mgr.Start("boom", 1000, [](const std::string&) -> json {
-		throw std::runtime_error("kaboom");
-	});
+	auto id = mgr.Start("boom", 1000,
+		[](const std::string&, const std::function<void()>& markReady) -> json {
+			markReady();
+			throw std::runtime_error("kaboom");
+		});
 	REQUIRE(id.has_value());
 	for (int i = 0; i < 400 && mgr.HasActive(); ++i) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -129,7 +136,8 @@ TEST_CASE("TaskManager: a throwing worker is marked failed, not crashing") {
 TEST_CASE("TaskManager: Get on an unknown id is nullopt; List enumerates") {
 	tools::TaskManager mgr;
 	CHECK_FALSE(mgr.Get("task-nope").has_value());
-	auto id = mgr.Start("t", 1000, [](const std::string&) { return json{{"ok", true}}; });
+	auto id = mgr.Start("t", 1000,
+		[](const std::string&, const std::function<void()>& markReady) { markReady(); return json{{"ok", true}}; });
 	REQUIRE(id.has_value());
 	for (int i = 0; i < 400 && mgr.HasActive(); ++i) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -138,6 +146,50 @@ TEST_CASE("TaskManager: Get on an unknown id is nullopt; List enumerates") {
 	REQUIRE(list.size() == 1);
 	CHECK(list[0].taskId == *id);
 	CHECK(list[0].tool == "t");
+}
+
+// MCP-8 (cancel-race fix): a task that is cancel-requested but still finishes
+// SUCCESSFULLY must report status "completed" — NOT "cancelled" alongside a
+// success result. Only an actual error (cancellation honored) yields
+// "cancelled".
+TEST_CASE("TaskManager: cancel-requested + success = completed; + error = cancelled") {
+	auto drain = [](tools::TaskManager& m) {
+		for (int i = 0; i < 400 && m.HasActive(); ++i)
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	};
+	{   // (a) cancel requested, work succeeds → completed
+		tools::TaskManager mgr;
+		std::promise<void> gate;
+		std::shared_future<void> released = gate.get_future().share();
+		auto id = mgr.Start("t", 60000,
+			[released](const std::string&, const std::function<void()>& markReady) -> json {
+				markReady(); released.wait(); return json{{"ok", true}};
+			});
+		REQUIRE(id.has_value());
+		CHECK(mgr.MarkCancelRequested(*id));    // request while it's still working
+		gate.set_value();
+		drain(mgr);
+		auto v = mgr.Get(*id);
+		REQUIRE(v.has_value());
+		CHECK(v->status == "completed");        // NOT "cancelled" — it succeeded
+		REQUIRE(v->hasResult);
+	}
+	{   // (b) cancel requested, work throws → cancelled (honored)
+		tools::TaskManager mgr;
+		std::promise<void> gate;
+		std::shared_future<void> released = gate.get_future().share();
+		auto id = mgr.Start("t", 60000,
+			[released](const std::string&, const std::function<void()>& markReady) -> json {
+				markReady(); released.wait(); throw std::runtime_error("aborted");
+			});
+		REQUIRE(id.has_value());
+		CHECK(mgr.MarkCancelRequested(*id));
+		gate.set_value();
+		drain(mgr);
+		auto v = mgr.Get(*id);
+		REQUIRE(v.has_value());
+		CHECK(v->status == "cancelled");
+	}
 }
 
 // ---- MCP protocol-flow integration tests ------------------------------------
@@ -241,3 +293,34 @@ TEST_CASE("MCP tasks: tasks/get on an unknown id is an error; tasks/cancel acks"
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 }
+
+// MCP-8 (registry-race fix): a tool that can mutate the lock-free ToolRegistry
+// must NOT be task-ified (the read loop serves tools/list concurrently).
+// call_tool can dispatch enable_tool_category, so a `task` augmentation on it is
+// ignored and it runs synchronously (the response is the tool result, never a
+// CreateTaskResult).
+TEST_CASE("MCP tasks: registry-mutating meta-tool (call_tool) is refused task mode") {
+	auto reader = test::MakeMockReader();
+	tools::ToolRegistry registry;
+	tools::RegisterBlueprintTools(registry, reader);
+	tools::RegisterProgressiveDisclosureMetaTool(registry);   // enable_tool_category
+	tools::RegisterToolsetMetaTools(registry);                // list_toolsets/describe_toolset/call_tool
+	registry.ActivateToken("call_tool");
+	jsonrpc::Server server;
+	mcp::ServerInfo info;
+	mcp::RegisterHandlers(server, registry, info);
+	RunOne(server, json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "initialize"},
+		{"params", json{{"protocolVersion", "2025-11-25"}, {"capabilities", json::object()},
+						{"clientInfo", json{{"name", "t"}, {"version", "0"}}}}}});
+
+	const json r = RunOne(server, json{
+		{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/call"},
+		{"params", json{{"name", "call_tool"},
+						{"arguments", json{{"name", "find_class"}, {"arguments", json{{"name", "Actor"}}}}},
+						{"task", json{{"ttl", 30000}}}}}});
+	// Ran synchronously despite the task augmentation → no CreateTaskResult.
+	REQUIRE(r.contains("result"));
+	CHECK_FALSE(r["result"].contains("task"));
+	CHECK(r["result"].contains("content"));    // a normal tool result envelope
+}
+

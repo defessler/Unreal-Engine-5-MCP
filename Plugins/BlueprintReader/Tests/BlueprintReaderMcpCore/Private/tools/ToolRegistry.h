@@ -220,6 +220,14 @@ private:
 	// is authoritative.
 	std::set<std::string> active_;
 	bool filterApplied_ = false;
+	// MCP-8 thread-safety: this flag (and the containers above) need no lock
+	// because they are never touched concurrently. Registry-MUTATING tools
+	// (enable_tool_category, which sets listChanged_) are refused task mode and
+	// run synchronously on the read loop, and a sync tools/call is busy-rejected
+	// while a task runs — so during a background task ONLY the worker touches
+	// listChanged_ (via TakeListChangedFlag), and ListSpec()/tasks/* never read
+	// it. Single-writer-at-a-time, so a plain bool is correct (kept copyable for
+	// the filter tests).
 	bool listChanged_ = false;
 };
 

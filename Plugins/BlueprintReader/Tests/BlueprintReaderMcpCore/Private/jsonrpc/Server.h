@@ -162,13 +162,20 @@ public:
 	CallContext* FindInFlight(const nlohmann::json& requestId);
 
 private:
-	std::map<std::string, Handler> handlers_;
+	// MEMBER ORDER MATTERS (MCP-8 shutdown safety). These mutexes/containers are
+	// declared BEFORE handlers_ so they destruct AFTER it. The handler lambdas
+	// hold the only shared_ptr to the async TaskManager; when handlers_ destructs
+	// (FIRST, being last-declared) it runs ~TaskManager, which JOINS any
+	// in-flight task worker. That worker may still call UnregisterInFlight /
+	// QueueNotification as it unwinds, so inFlight_/inFlightMu_/notifMu_/
+	// pendingNotifications_ must still be alive at that point.
 	mutable std::mutex notifMu_;
 	std::vector<nlohmann::json> pendingNotifications_;
 	std::uint64_t nextSseSessionId_ = 1;
 	std::map<SseSessionId, std::vector<nlohmann::json>> sseSessions_;
 	mutable std::mutex inFlightMu_;
 	std::vector<CallContext*> inFlight_;
+	std::map<std::string, Handler> handlers_;    // declared LAST → destructs FIRST
 };
 
 // Helpers for building JSON-RPC envelopes (used by Dispatch and tests).
