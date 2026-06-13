@@ -918,11 +918,15 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 + P1a + P1b done (full Selenium-style driver: click/type/focus/invoke); P2 ☐ Open** — all four P1b slices shipped 2026-06-12
+- **Status:** ✅ **Done (2026-06-13)** — P0 + P1a + P1b (full Selenium-style
+  driver: click/type/focus/invoke) + P2 (`BP_READER_SMOKE_UI` live smoke) all
+  shipped. AutomationDriver exclusive sessions were conditional ("only if P1
+  proves insufficient") and are **not needed** — the gated game-thread Slate
+  injection (P1b) covers the driving surface.
   — `ui_list_widgets` + `get_modal_state` buttons (P0); modal side-channel +
   render-tier harness (P1a); `ui_click` (265 tools, slice 1) + `ui_type` (266
   tools, slice 2) + `ui_focus_tab` (267 tools, slice 3) + `ui_invoke_menu` (268
-  tools, slice 4); P2 (BP_READER_SMOKE_UI Track B smoke) ☐ Open ·
+  tools, slice 4); P2 `BP_READER_SMOKE_UI` Track B smoke ✅ ·
   **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
 - **P1b slice 1 — `ui_click` SHIPPED + END-TO-END VERIFIED:** click an editor
@@ -998,6 +1002,25 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   returned `ok=false` → ui_click. Full backend chain + categories/annotations
   (action, NOT read-only). **TEST-2 P1b complete** — the Selenium-style driver
   now covers click + type + focus + invoke.
+- **P2 — `BP_READER_SMOKE_UI` live smoke SHIPPED + VERIFIED (2026-06-13):** a
+  gated doctest (`test_tool_smoke_ui_live.cpp`) that drives the whole editor-UI
+  tool surface against a REAL render editor through the full tool-handler →
+  live-socket stack and asserts every UI tool is reachable (no "not supported"
+  / unreachable / crash) — the UI analog of `test_tool_smoke_live`'s
+  `BP_READER_SMOKE_ALL`. Connects via `SocketBlueprintReader` reading the render
+  editor's `<Project>/Saved/bp-reader-live.json` handshake; **auto-skips** unless
+  `BP_READER_SMOKE_UI` is set AND that handshake exists (so the hosted CI, which
+  has no editor, skips it). Drives `ui_list_widgets` (asserts `ui_available` +
+  `windows` — proves real Slate data), `get_modal_state`, `get_focused_widget`,
+  `ui_focus_tab` (Outliner/Details action paths + a NotFound), and
+  `ui_invoke_menu` (NotFound + a safe reversible `Select/SelectNone`). A
+  gate-rejection or structured NotFound counts as *reachable*, never *broken*,
+  matching the existing smoke philosophy. **Live-verified on the render tier**
+  (`Saved/run-smoke-ui.ps1`): 8 UI tools dispatched, 0 broken, 0 infra,
+  `ui_available=true`. The modal-recovery drill is separately proven by
+  `Saved/verify-test2-p1a.ps1` (the gated `RaiseTestModal` hook needs the
+  side-channel, not a tool). Mock 879/879 (the smoke is skipped there). No tool/
+  hash change — it adds a test, not a tool.
 - **Render tier proven (2026-06-11):** a full editor launched
   `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
   **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
@@ -1957,6 +1980,14 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **TEST-2 P2 SHIPPED: `BP_READER_SMOKE_UI` live smoke — TEST-2
+  COMPLETE.** A gated doctest (`test_tool_smoke_ui_live.cpp`) drives the whole
+  editor-UI tool surface against a real render editor via the live-socket stack
+  (reads the `bp-reader-live.json` handshake; auto-skips with no editor/env).
+  Live-verified (`Saved/run-smoke-ui.ps1`): 8 UI tools dispatched, 0 broken,
+  `ui_available=true`. AutomationDriver sessions were conditional and aren't
+  needed (P1b game-thread Slate injection suffices) → TEST-2 done. Mock 879/879
+  (skipped there); no tool/hash change (adds a test, not a tool).
 - **2026-06-13** — **UX-P5 e1 SHIPPED: `health_check.write_enabled`.** Surfaces
   server-side write-gating pre-flight so a client sees read-only mode without
   attempting a write. Implemented as `IBlueprintReader::WritesEnabled()` (default
