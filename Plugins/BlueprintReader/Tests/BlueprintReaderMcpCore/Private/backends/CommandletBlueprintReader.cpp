@@ -1948,6 +1948,14 @@ nlohmann::json CommandletBlueprintReader::UiFocusTab(std::string_view tabLabel) 
 	return RunOp(args);
 }
 
+nlohmann::json CommandletBlueprintReader::UiInvokeMenu(std::string_view menu, std::string_view entry) {
+	std::vector<std::wstring> args;
+	args.push_back(L"-Op=UiInvokeMenu");
+	args.push_back(L"-Menu=" + Widen(menu));
+	args.push_back(L"-Entry=" + Widen(entry));
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

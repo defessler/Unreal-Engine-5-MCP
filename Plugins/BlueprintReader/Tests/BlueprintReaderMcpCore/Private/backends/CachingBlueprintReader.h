@@ -136,6 +136,7 @@ public:
 						   std::string_view text,
 						   std::string_view expectType) override;
 	nlohmann::json UiFocusTab(std::string_view tabLabel) override;
+	nlohmann::json UiInvokeMenu(std::string_view menu, std::string_view entry) override;
 
 	// ----- Asset-registry queries (pass-through) ------------------------
 	// Asset registry is hot in the editor; no TTL caching needed.

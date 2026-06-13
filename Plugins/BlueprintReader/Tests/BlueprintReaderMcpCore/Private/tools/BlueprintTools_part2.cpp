@@ -446,6 +446,72 @@ void RegisterTools_03(ToolRegistry& registry, backends::IBlueprintReader& reader
 		});
 	}
 
+	// ----- ui_invoke_menu ----------------------------------------------------
+	// TEST-2 P1b slice 4: execute an editor menu command by its registered
+	// UToolMenus `menu` name + `entry`. The MOST geometry-independent driving
+	// primitive — no clicking, no painted geometry, the menu need not even be
+	// open: it generates the menu, finds the entry, and Executes its action the
+	// same way a click would. Scope is command-bound level-editor entries
+	// (File/Edit/Build/Select/Play…), seeded from the level editor's GLOBAL
+	// command list; module-specific entries (Fab/Bridge) and non-command action
+	// types don't resolve headlessly and are steered to ui_click. An ACTION,
+	// gated editor-side by BP_READER_ALLOW_UI=1.
+	{
+		ToolDescriptor d;
+		d.name = "ui_invoke_menu";
+		d.description =
+			"[editor] Execute an editor menu command by its registered UToolMenus "
+			"`menu` name + `entry` — the most geometry-independent way to drive the "
+			"editor (no clicking, no painted geometry, the menu need not be open). "
+			"Generates the menu, finds the entry by command name (exact, case-"
+			"insensitive) OR label (substring), and executes its bound action exactly "
+			"as a click would. Works for command-bound level-editor entries — e.g. "
+			"menu='LevelEditor.MainMenu.Select' entry='SelectAll'; "
+			"menu='LevelEditor.MainMenu.Edit' entry='Undo'; "
+			"menu='LevelEditor.MainMenu.File' entry='SaveAll'. The level editor's "
+			"GLOBAL command list is seeded, so an entry whose command lives in a "
+			"module-specific list (e.g. Fab/Bridge in the Window menu) or that uses a "
+			"non-command action type won't resolve headlessly — the error then points "
+			"you at ui_click for geometry-based invocation. GATED: returns an error "
+			"unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — "
+			"it runs editor commands). If the menu or entry isn't found, the error "
+			"lists the menu's `available_entries` ([{name,label}]) so you can correct "
+			"it. Submenus and separators have no action — target the leaf command. "
+			"Returns `{ok, invoked, menu, entry, label}` or `{ok:false, error, "
+			"available_entries}`. Requires a GUI / -RenderOffscreen editor.";
+		d.input_schema = {
+			{"type","object"},
+			{"properties", {
+				{"menu",  {{"type","string"},
+						   {"description","The registered UToolMenus name (dotted path, e.g. 'LevelEditor.MainMenu.Select')."}}},
+				{"entry", {{"type","string"},
+						   {"description","The entry's command name (exact, case-insensitive) or a label substring (e.g. 'SelectAll' or 'Select All')."}}},
+			}},
+			{"required", nlohmann::json::array({"menu","entry"})},
+		};
+		d.output_schema = {
+			{"type","object"},
+			{"properties", {
+				{"ok",                {{"type","boolean"}}},
+				{"invoked",           {{"type","boolean"}}},
+				{"menu",              {{"type","string"}}},
+				{"entry",             {{"type","string"}}},
+				{"label",             {{"type","string"}}},
+				{"available_entries", {{"type","array"},{"items",{{"type","object"}}}}},
+				{"error",             {{"type","string"}}},
+			}},
+			{"required", nlohmann::json::array({"ok"})},
+		};
+		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
+			const std::string menu = RequireString(args, "menu");
+			const std::string entry = RequireString(args, "entry");
+			if (menu.empty() || entry.empty()) {
+				throw std::invalid_argument("ui_invoke_menu: `menu` and `entry` must both be non-empty.");
+			}
+			return reader.UiInvokeMenu(menu, entry);
+		});
+	}
+
 	// ----- get_focused_widget ---------------------------------------------
 	{
 		ToolDescriptor d;

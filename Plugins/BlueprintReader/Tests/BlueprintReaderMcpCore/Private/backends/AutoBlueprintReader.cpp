@@ -630,6 +630,9 @@ nlohmann::json AutoBlueprintReader::UiType(
 nlohmann::json AutoBlueprintReader::UiFocusTab(std::string_view tabLabel) {
 	FORWARD(UiFocusTab, tabLabel);
 }
+nlohmann::json AutoBlueprintReader::UiInvokeMenu(std::string_view menu, std::string_view entry) {
+	FORWARD(UiInvokeMenu, menu, entry);
+}
 
 void AutoBlueprintReader::BeginBatch() {
 	FORWARD_VOID(BeginBatch);

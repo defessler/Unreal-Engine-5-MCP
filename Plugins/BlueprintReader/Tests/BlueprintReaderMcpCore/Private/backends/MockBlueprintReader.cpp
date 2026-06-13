@@ -365,6 +365,12 @@ nlohmann::json MockBlueprintReader::UiFocusTab(std::string_view) {
 		"(focuses a tab in a running editor's Slate UI that mock fixtures don't provide)");
 }
 
+nlohmann::json MockBlueprintReader::UiInvokeMenu(std::string_view, std::string_view) {
+	throw BlueprintReaderError(
+		"UiInvokeMenu requires the live backend "
+		"(executes an editor menu command in a running editor that mock fixtures don't provide)");
+}
+
 // UX-P4a: the mock has no editor game thread to stall, so health is a stable
 // synthetic-healthy result (fixture-deterministic — age is always 0).
 IBlueprintReader::HealthResult MockBlueprintReader::HealthCheck() {
@@ -451,6 +457,7 @@ std::vector<std::string> MockBlueprintReader::UnsupportedTools() const {
 		"ui_click",         // TEST-2 P1b: injects input into live Slate — editor only
 		"ui_type",          // TEST-2 P1b: injects key events into live Slate — editor only
 		"ui_focus_tab",     // TEST-2 P1b: focuses a live editor dock tab — editor only
+		"ui_invoke_menu",   // TEST-2 P1b: executes a live editor menu command — editor only
 
 		// ---------------------------------------------------------------
 		// Live-editor-dependent surface the mock backend does not serve.

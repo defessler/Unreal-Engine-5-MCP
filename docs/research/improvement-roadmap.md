@@ -910,11 +910,12 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   only way to validate they respond correctly to real interactive use.
 
 ### TEST-2 — editor UI automation driver (Selenium-style) {#test-2}
-- **Status:** ◑ **P0 + P1a done; P1b in progress — `ui_click` + `ui_type` + `ui_focus_tab` shipped (2026-06-12)**
+- **Status:** ◑ **P0 + P1a + P1b done (full Selenium-style driver: click/type/focus/invoke); P2 ☐ Open** — all four P1b slices shipped 2026-06-12
   — `ui_list_widgets` + `get_modal_state` buttons (P0); modal side-channel +
   render-tier harness (P1a); `ui_click` (265 tools, slice 1) + `ui_type` (266
-  tools, slice 2) + `ui_focus_tab` (267 tools, slice 3); P1b rest
-  (`ui_invoke_menu`) + P2 ☐ Open · **Effort:** M–L (phased) ·
+  tools, slice 2) + `ui_focus_tab` (267 tools, slice 3) + `ui_invoke_menu` (268
+  tools, slice 4); P2 (BP_READER_SMOKE_UI Track B smoke) ☐ Open ·
+  **Effort:** M–L (phased) ·
   **Design:** [`live-gui-testing.md`](live-gui-testing.md) § "Editor UI automation"
 - **P1b slice 1 — `ui_click` SHIPPED + END-TO-END VERIFIED:** click an editor
   widget located by its `ui_list_widgets` path. Resolves the path
@@ -963,6 +964,32 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
   level-editor minor tabs — so a NotFound on a previously-listed minor tab can be
   a real layout change, not a bug. Full backend chain + categories/annotations
   (action, NOT read-only).
+- **P1b slice 4 — `ui_invoke_menu` SHIPPED + END-TO-END VERIFIED (268 tools):**
+  execute an editor menu command by its registered `UToolMenus` name + entry —
+  the most geometry-independent driving primitive (no click, no painted
+  geometry, the menu need not be open). `GenerateMenu(name, context)` (NOT
+  FindMenu — Generate populates Sections/Blocks), seeded with the level editor's
+  GLOBAL command list (`FLevelEditorModule::GetGlobalLevelEditorActions()`),
+  then walks Sections→Blocks matching the entry by command **name** (exact, CI)
+  or **label** (substring) and executes its bound action via the **public** API
+  — `FToolMenuEntry::GetActionForCommand(ctx, outList)` (command-bound entries:
+  honor CanExecute, then Execute the returned `FUIAction`) with a
+  `TryExecuteToolUIAction(ctx)` fallback for `FToolUIAction` entries.
+  **Scope is honest:** `Action`/`Command`/`ConvertUIAction` are all private, so
+  only command-bound entries reachable from the global list (File/Edit/Build/
+  Select/Play…) + `FToolUIAction` entries execute; an entry whose command lives
+  in a module-specific list (e.g. Fab/Bridge in the Window menu) or that uses a
+  plain-`FUIAction`/dynamic/script action type returns a clear `ok:false` that
+  points the caller at `ui_click` for geometry-based invocation — never a
+  phantom success. A no-match lists `available_entries` ([{name,label}]).
+  Gated `BP_READER_ALLOW_UI=1`. **Live-verified through the full MCP server
+  stack** (`Saved/verify-ui-invoke-menu.ps1`): `Select/SelectNone` then
+  `Select/SelectAll` each returned `ok=true invoked=true`, with
+  `get_selected_actors` showing the selection actually change **0 → 21 → 0** (an
+  observable editor-state effect, not a no-op); `Window/OpenFabTab` correctly
+  returned `ok=false` → ui_click. Full backend chain + categories/annotations
+  (action, NOT read-only). **TEST-2 P1b complete** — the Selenium-style driver
+  now covers click + type + focus + invoke.
 - **Render tier proven (2026-06-11):** a full editor launched
   `UnrealEditor.exe -RenderOffscreen -unattended` comes up on this box with a
   **real D3D12 RHI and Slate INITIALIZED** (`Saved/start-render-editor.ps1`,
@@ -1922,6 +1949,22 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **TEST-2 P1b slice 4: `ui_invoke_menu` SHIPPED — P1b COMPLETE**
+  (268 tools). Execute an editor menu command by registered UToolMenus name +
+  entry — the most geometry-independent driving primitive. GenerateMenu seeded
+  with the level editor's GLOBAL command list, walk Sections→Blocks (match by
+  command name exact-CI or label substring), execute via the **public**
+  `FToolMenuEntry::GetActionForCommand` (CanExecute→Execute the `FUIAction`) with
+  a `TryExecuteToolUIAction` fallback — `Action`/`Command`/`ConvertUIAction` are
+  private, so scope is honestly command-bound (File/Edit/Build/Select/Play) +
+  FToolUIAction entries; module-specific (Fab/Bridge) / non-command entries get a
+  clear ok:false → ui_click, never a phantom success. Gated BP_READER_ALLOW_UI=1.
+  Full backend chain + categories/annotations (action). Description first-40
+  preserved → protocol hash unchanged. **Live-verified through the full MCP
+  stack** (Saved/verify-ui-invoke-menu.ps1): Select/SelectNone then SelectAll
+  each ok+invoked=true with get_selected_actors observing selection change
+  **0→21→0**; Window/OpenFabTab → ok:false → ui_click. Mock 878/878. The
+  Selenium-style driver now covers click + type + focus + invoke.
 - **2026-06-12** — **REL Phases C+D+E+F SHIPPED — §10 reliability plan COMPLETE
   (REL-1..25 all done).** C (transport/process): REL-16 no-double-execute write
   fallback (SocketTransportError.requestDispatched + IsWriteMethod guard, unit-

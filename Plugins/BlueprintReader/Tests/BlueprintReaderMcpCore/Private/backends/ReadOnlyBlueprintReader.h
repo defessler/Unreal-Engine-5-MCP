@@ -93,6 +93,7 @@ public:
 						   std::string_view text,
 						   std::string_view expectType) override;
 	nlohmann::json UiFocusTab(std::string_view tabLabel) override;
+	nlohmann::json UiInvokeMenu(std::string_view menu, std::string_view entry) override;
 
 	// ----- Asset-registry queries (reads) -------------------------------
 	AssetRegistryListResult ListAssets(std::string_view, bool) override;

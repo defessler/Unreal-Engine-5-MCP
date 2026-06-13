@@ -152,6 +152,7 @@ public:
 						   std::string_view text,
 						   std::string_view expectType) override;
 	nlohmann::json UiFocusTab(std::string_view tabLabel) override;
+	nlohmann::json UiInvokeMenu(std::string_view menu, std::string_view entry) override;
 
 	// ----- batch + meta ---------------------------------------------
 	void BeginBatch() override;

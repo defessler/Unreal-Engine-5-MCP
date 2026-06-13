@@ -102,6 +102,7 @@ public:
 						  std::string_view text,
 						  std::string_view expectType) override;
 	nlohmann::json UiFocusTab(std::string_view tabLabel) override;
+	nlohmann::json UiInvokeMenu(std::string_view menu, std::string_view entry) override;
 
 	// UX-P4a: the mock backend has no editor game thread, so health is always a
 	// synthetic-healthy result (age 0). It IS supported (returns, never throws) —

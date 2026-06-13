@@ -506,6 +506,10 @@ nlohmann::json CachingBlueprintReader::UiFocusTab(std::string_view tabLabel) {
 	// An action (changes editor UI state) — pass through, never cache.
 	return inner_->UiFocusTab(tabLabel);
 }
+nlohmann::json CachingBlueprintReader::UiInvokeMenu(std::string_view menu, std::string_view entry) {
+	// An action (executes an editor command) — pass through, never cache.
+	return inner_->UiInvokeMenu(menu, entry);
+}
 
 // ----- Asset-registry queries (PERF-3: now cached) -----------------------
 // These are pure registry reads that never change between write ops. They

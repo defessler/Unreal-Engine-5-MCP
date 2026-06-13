@@ -403,6 +403,7 @@ std::string TitleFor(const std::string& name) {
 		{"ui_click",                 "Click Editor Widget"},
 		{"ui_type",                  "Type Into Editor Widget"},
 		{"ui_focus_tab",             "Focus Editor Dock Tab"},
+		{"ui_invoke_menu",           "Invoke Editor Menu"},
 		// Discovery / meta
 		{"list_node_kinds",          "List Spawnable Node Kinds"},
 		{"list_pin_categories",      "List Pin Type Categories"},

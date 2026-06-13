@@ -138,7 +138,12 @@ public class BlueprintReaderEditor : ModuleRules
 			// UAnimStateMachineGraph / UAnimStateNode / UAnimStateTransitionNode
 			// live in AnimGraph (editor-only). Required to walk state machine
 			// graphs in read_anim_blueprint / add_anim_state.
-			"AnimGraph"
+			"AnimGraph",
+			// TEST-2 P1b: ui_invoke_menu drives editor menu commands through
+			// UToolMenus (GenerateMenu + ConvertUIAction). The level editor's
+			// command list (FToolMenuContext source) comes from FLevelEditorModule.
+			"ToolMenus",
+			"LevelEditor"
 		});
 
 		// Phase 14 — get_active_cook_target queries ITargetPlatformManagerModule

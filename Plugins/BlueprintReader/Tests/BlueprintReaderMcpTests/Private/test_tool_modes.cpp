@@ -220,6 +220,7 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"stop_profile", "ui_click",   // TEST-2 P1b: injects real input
 	"ui_type",                    // TEST-2 P1b: injects real key events
 	"ui_focus_tab",               // TEST-2 P1b: changes the active editor tab
+	"ui_invoke_menu",             // TEST-2 P1b: executes an editor command
 };
 
 // ---------------------------------------------------------------------------

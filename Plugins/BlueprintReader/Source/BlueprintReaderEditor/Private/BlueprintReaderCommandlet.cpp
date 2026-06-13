@@ -93,6 +93,12 @@
 #include "Framework/Docking/TabManager.h" // Phase 17 — get_workspace_layout
 #include "Widgets/Docking/SDockTab.h"     // TEST-2 P1b: ui_focus_tab
 #include "ScopedTransaction.h"            // REL-5: per-op undo transaction
+#include "ToolMenus.h"                    // TEST-2 P1b: ui_invoke_menu
+#include "ToolMenuSection.h"              // TEST-2 P1b: ui_invoke_menu (FToolMenuSection)
+#include "ToolMenuEntry.h"                // TEST-2 P1b: ui_invoke_menu (FToolMenuEntry)
+#include "ToolMenuDelegates.h"            // TEST-2 P1b: FToolUIAction / FToolUIActionChoice
+#include "LevelEditor.h"                  // TEST-2 P1b: GetGlobalLevelEditorActions
+#include "Framework/Commands/UIAction.h"  // TEST-2 P1b: FUIAction execute
 #include "ProfilingDebugging/TraceAuxiliary.h" // Phase 17 — get_trace_state
 #include "Widgets/SWindow.h"
 #include "EditorModeManager.h"
@@ -557,6 +563,8 @@ namespace
 		UiType,
 		// TEST-2 P1b: focus an editor dock tab by its label (BP_READER_ALLOW_UI=1).
 		UiFocusTab,
+		// TEST-2 P1b: invoke an editor menu command via UToolMenus (BP_READER_ALLOW_UI=1).
+		UiInvokeMenu,
 	};
 
 	bool ParseOp(const FString& Params, EOp& OutOp)
@@ -813,6 +821,7 @@ namespace
 		if (OpStr.Equals(TEXT("UiClick"),          ESearchCase::IgnoreCase))      { OutOp = EOp::UiClick;          return true; }
 		if (OpStr.Equals(TEXT("UiType"),           ESearchCase::IgnoreCase))      { OutOp = EOp::UiType;           return true; }
 		if (OpStr.Equals(TEXT("UiFocusTab"),       ESearchCase::IgnoreCase))      { OutOp = EOp::UiFocusTab;       return true; }
+		if (OpStr.Equals(TEXT("UiInvokeMenu"),     ESearchCase::IgnoreCase))      { OutOp = EOp::UiInvokeMenu;     return true; }
 		UE_LOG(LogBlueprintReader, Error, TEXT("Unknown -Op=%s"), *OpStr);
 		return false;
 	}
@@ -8017,6 +8026,182 @@ namespace
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
 	}
 
+	// TEST-2 P1b: invoke an editor menu command by its registered UToolMenus
+	// `menu` name + `entry` name — the geometry-INDEPENDENT way to drive the
+	// editor (no clicking, no painted geometry, no open menu needed). Generates
+	// the menu (which bakes its sections + entries), finds the entry by Name
+	// (exact, case-insensitive) or Label (substring), then converts the entry
+	// to an FUIAction and Executes it through the same path a real click takes.
+	// Gated BP_READER_ALLOW_UI=1 (an ACTION). GAME THREAD ONLY.
+	int32 RunUiInvokeMenuOp(const FString& Params, const FString& OutputPath, bool bPretty)
+	{
+		auto Out = MakeShared<FJsonObject>();
+		const FString Gate = FPlatformMisc::GetEnvironmentVariable(TEXT("BP_READER_ALLOW_UI"));
+		if (!(Gate == TEXT("1") || Gate.Equals(TEXT("true"), ESearchCase::IgnoreCase)))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("ui_invoke_menu is gated: set BP_READER_ALLOW_UI=1 to enable editor "
+					 "UI interaction (off by default — it executes editor menu commands)."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!FSlateApplication::IsInitialized() || !IsValid(GEditor))
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("Slate/editor not initialized (headless) — no menus to invoke. Use a "
+					 "GUI or -RenderOffscreen editor."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		FString MenuName, EntryName;
+		FParse::Value(*Params, TEXT("Menu="),  MenuName);
+		FParse::Value(*Params, TEXT("Entry="), EntryName);
+		if (MenuName.IsEmpty() || EntryName.IsEmpty())
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"),
+				TEXT("ui_invoke_menu requires a non-empty menu (the registered UToolMenus "
+					 "name, e.g. 'LevelEditor.MainMenu.Window') and entry (the command "
+					 "name or label, e.g. 'OutputLog')."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		UToolMenus* ToolMenus = UToolMenus::Get();
+		if (!ToolMenus)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), TEXT("UToolMenus singleton unavailable."));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		// Build a context carrying the level editor's command list so
+		// command-bound entries (CanExecute/Execute) resolve. Generating the
+		// menu with this context bakes the executable FUIActions.
+		FToolMenuContext Context;
+		if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+		{
+			FLevelEditorModule& LevelEditor =
+				FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+			Context = FToolMenuContext(LevelEditor.GetGlobalLevelEditorActions());
+		}
+
+		UToolMenu* Menu = ToolMenus->GenerateMenu(FName(*MenuName), Context);
+		if (!Menu)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("no registered menu named '%s'. Menu names are dotted UToolMenus "
+					 "paths like 'LevelEditor.MainMenu.Window' or "
+					 "'LevelEditor.MainMenu.Tools'."), *MenuName));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		// Find the entry by Name (exact, case-insensitive) then Label (substring).
+		FToolMenuEntry* Found = nullptr;
+		TArray<TSharedPtr<FJsonValue>> Available;
+		for (FToolMenuSection& Section : Menu->Sections)
+		{
+			for (FToolMenuEntry& Block : Section.Blocks)
+			{
+				const FString BlockName = Block.Name.ToString();
+				const FString BlockLabel = Block.Label.IsSet() ? Block.Label.Get().ToString() : FString();
+				if (!Found &&
+					(BlockName.Equals(EntryName, ESearchCase::IgnoreCase) ||
+					 (!BlockLabel.IsEmpty() && BlockLabel.Contains(EntryName, ESearchCase::IgnoreCase))))
+				{
+					Found = &Block;
+				}
+				auto E = MakeShared<FJsonObject>();
+				E->SetStringField(TEXT("name"), BlockName);
+				E->SetStringField(TEXT("label"), BlockLabel);
+				Available.Add(MakeShared<FJsonValueObject>(E));
+			}
+		}
+
+		if (!Found)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("no entry matching '%s' in menu '%s' (matched by name or label "
+					 "substring). See available_entries."), *EntryName, *MenuName));
+			Out->SetArrayField(TEXT("available_entries"), Available);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		const FString FoundName = Found->Name.ToString();
+		const FString FoundLabel = Found->Label.IsSet() ? Found->Label.Get().ToString() : FString();
+
+		// Execute via the entry's PUBLIC API (its Action/Command fields and
+		// UToolMenus::ConvertUIAction are private). The public surface covers the
+		// two cases that matter for real editor menus:
+		//   1. command-bound entries (FUICommandInfo) — File/Edit/Build/Select/
+		//      Play and the like. GetActionForCommand resolves the FUIAction from
+		//      the context's command lists (we seed it with the level editor's
+		//      GLOBAL action list); honor its CanExecute then Execute. Entries
+		//      whose command lives in a module-specific list (e.g. Fab/Bridge in
+		//      the Window menu) won't resolve here — that's the documented limit.
+		//   2. context-aware FToolUIAction entries — TryExecuteToolUIAction runs
+		//      it with the context and returns whether it fired (CanExecute
+		//      internally). Plain-FUIAction / dynamic / script-object entries use
+		//      a private action field with no public executor; they fall through
+		//      to the "no executable action" path below (point the user at
+		//      ui_click for geometry-based invocation of those).
+		const FToolMenuContext& Ctx = Menu->Context;
+		bool bHadAction = false;     // an executable action was found
+		bool bCanExecute = true;     // and its CanExecute (if any) passed
+		bool bExecuted = false;
+
+		TSharedPtr<const FUICommandList> OutCmdList;
+		if (const FUIAction* CmdAction = Found->GetActionForCommand(Ctx, OutCmdList))
+		{
+			bHadAction = true;
+			bCanExecute = !CmdAction->CanExecuteAction.IsBound() ||
+						  CmdAction->CanExecuteAction.Execute();
+			if (bCanExecute && CmdAction->ExecuteAction.IsBound())
+			{
+				CmdAction->ExecuteAction.Execute();
+				bExecuted = true;
+			}
+		}
+		else if (Found->TryExecuteToolUIAction(Ctx))
+		{
+			bHadAction = true;
+			bExecuted = true;
+		}
+
+		if (!bHadAction)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("entry '%s' in '%s' could not be executed: no action resolved "
+					 "from this context. This is expected for submenus/separators, "
+					 "entries that use a non-command action type, or commands bound "
+					 "to a module-specific command list not reachable headlessly "
+					 "(only the level editor's global command list is seeded). For "
+					 "geometry-based invocation of such an entry, use ui_click."),
+				*FoundName, *MenuName));
+			Out->SetArrayField(TEXT("available_entries"), Available);
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+		if (!bCanExecute)
+		{
+			Out->SetBoolField(TEXT("ok"), false);
+			Out->SetStringField(TEXT("error"), FString::Printf(
+				TEXT("entry '%s' in '%s' is currently disabled (CanExecute=false) — "
+					 "its precondition isn't met right now."), *FoundName, *MenuName));
+			return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+		}
+
+		if (GEditor) { GEditor->RedrawLevelEditingViewports(true); }
+
+		Out->SetBoolField(TEXT("ok"), true);
+		Out->SetBoolField(TEXT("invoked"), bExecuted);
+		Out->SetStringField(TEXT("menu"), MenuName);
+		Out->SetStringField(TEXT("entry"), FoundName);
+		Out->SetStringField(TEXT("label"), FoundLabel);
+		return EmitJson(FBlueprintReaderWireJson::WriteString(Out, bPretty), OutputPath);
+	}
+
 	// TEST-2 P0/P1a: fill Out with the active modal's state — is_open, title,
 	// buttons[] ({path, label?}, nested-button-safe labels), buttons_truncated.
 	// Returns whether a modal is open. Shared by get_modal_state AND the P1a
@@ -14336,6 +14521,7 @@ int32 RunOneOp(const FString& Params)
 		{ EOp::UiClick,                    &RunUiClickOp },
 		{ EOp::UiType,                     &RunUiTypeOp },
 		{ EOp::UiFocusTab,                 &RunUiFocusTabOp },
+		{ EOp::UiInvokeMenu,               &RunUiInvokeMenuOp },
 	};
 	for (const auto& Entry : kDispatchTable)
 	{

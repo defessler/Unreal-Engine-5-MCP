@@ -78,6 +78,7 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"stop_profile", "ui_click",   // TEST-2 P1b: injects real input — don't click in the smoke
 	"ui_type",                    // TEST-2 P1b: injects real key events — don't type in the smoke
 	"ui_focus_tab",               // TEST-2 P1b: changes the active editor tab — don't in the smoke
+	"ui_invoke_menu",             // TEST-2 P1b: executes an editor command — don't in the smoke
 };
 
 // Best-effort placeholders for common required fields. A deliberately
@@ -154,7 +155,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 	bpr::tools::ToolRegistry registry;
 	bpr::tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
-	REQUIRE(spec.size() == 267);  // ListSpec() is backend-independent; matches the mock asserts: 267 after +1 ui_focus_tab (TEST-2 P1b).
+	REQUIRE(spec.size() == 268);  // ListSpec() is backend-independent; matches the mock asserts: 267 after +1 ui_focus_tab (TEST-2 P1b).
 
 	std::vector<std::string> broken;    // unreachable / not-supported / crash
 	std::vector<std::string> infra;     // transport/daemon issues (environmental)

@@ -3426,6 +3426,60 @@
   },
   {
     "category": "editor",
+    "description": "[editor] Execute an editor menu command by its registered UToolMenus `menu` name + `entry` — the most geometry-independent way to drive the editor (no clicking, no painted geometry, the menu need not be open). Generates the menu, finds the entry by command name (exact, case-insensitive) OR label (substring), and executes its bound action exactly as a click would. Works for command-bound level-editor entries — e.g. menu='LevelEditor.MainMenu.Select' entry='SelectAll'; menu='LevelEditor.MainMenu.Edit' entry='Undo'; menu='LevelEditor.MainMenu.File' entry='SaveAll'. The level editor's GLOBAL command list is seeded, so an entry whose command lives in a module-specific list (e.g. Fab/Bridge in the Window menu) or that uses a non-command action type won't resolve headlessly — the error then points you at ui_click for geometry-based invocation. GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it runs editor commands). If the menu or entry isn't found, the error lists the menu's `available_entries` ([{name,label}]) so you can correct it. Submenus and separators have no action — target the leaf command. Returns `{ok, invoked, menu, entry, label}` or `{ok:false, error, available_entries}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "entry": {
+          "description": "The entry's command name (exact, case-insensitive) or a label substring (e.g. 'SelectAll' or 'Select All').",
+          "type": "string"
+        },
+        "menu": {
+          "description": "The registered UToolMenus name (dotted path, e.g. 'LevelEditor.MainMenu.Select').",
+          "type": "string"
+        }
+      },
+      "required": [
+        "menu",
+        "entry"
+      ],
+      "type": "object"
+    },
+    "name": "ui_invoke_menu",
+    "output_schema": {
+      "properties": {
+        "available_entries": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "invoked": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "menu": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
     "description": "[editor] Slate widget the user is currently typing into / focused on. Finer-grained than get_focused_window: \"the user is in the BP graph search box\" vs \"the user is on the BP editor window\". Returns `{widget_type, parent_window_title}`. Both empty when no widget has focus. Requires a live editor.",
     "input_schema": {
       "properties": {},

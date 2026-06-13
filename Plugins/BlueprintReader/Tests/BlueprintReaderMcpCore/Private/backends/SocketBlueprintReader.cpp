@@ -1232,6 +1232,15 @@ nlohmann::json SocketBlueprintReader::UiFocusTab(std::string_view tabLabel) {
 	return RunOp(args);
 }
 
+nlohmann::json SocketBlueprintReader::UiInvokeMenu(std::string_view menu, std::string_view entry) {
+	std::vector<std::string> args = {
+		"-Op=UiInvokeMenu",
+		"-Menu=" + std::string(menu),
+		"-Entry=" + std::string(entry),
+	};
+	return RunOp(args);
+}
+
 namespace {
 IBlueprintReader::AssetRegistryListResult
 ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {

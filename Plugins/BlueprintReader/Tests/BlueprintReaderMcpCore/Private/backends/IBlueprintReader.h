@@ -2944,6 +2944,16 @@ public:
 		throw BlueprintReaderError("UiFocusTab not supported by this backend");
 	}
 
+	// TEST-2 P1b: invoke an editor menu command by its registered UToolMenus
+	// `menu` name + `entry` name (the geometry-independent way to drive the
+	// editor — no clicking, no open menu needed). Gated editor-side behind
+	// BP_READER_ALLOW_UI=1. Editor-only; an ACTION.
+	virtual nlohmann::json UiInvokeMenu(std::string_view menu, std::string_view entry)
+	{
+		(void)menu; (void)entry;
+		throw BlueprintReaderError("UiInvokeMenu not supported by this backend");
+	}
+
 	// UX-P4a: a liveness/health probe a live editor can answer ON ITS WORKER
 	// THREAD even when the game thread is halted — so a paused editor is a
 	// distinct, fast answer instead of a generic op timeout. `state` is one of
