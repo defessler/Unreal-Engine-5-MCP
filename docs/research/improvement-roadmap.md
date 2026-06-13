@@ -1159,8 +1159,34 @@ has no `EngineVersion`, and `VersionName: "0.1.0"` is never read or stamped.
 - **Why:** Direct path to better AI task success without any server code changes.
 
 ### MCP-8 — Tasks primitive for long-running ops {#mcp-8}
-- **Status:** ☐ Open · **Effort:** L
-- Mark `compile_blueprint`, `build_lighting`, `run_automation_tests`, `cook_content`, `package_project`, and large `apply_ops` batches with `execution: {taskSupport: "optional"}`. Implement basic `tasks/get` and `tasks/cancel` methods. Clients can call with `{"task":{"ttl":60000}}` to get a taskId and poll instead of blocking. **Note:** Tasks are experimental in 2025-11-25 and the 2026-07-28 RC redesigns them — implement conservatively or wait for 2026-07-28 stable GA.
+- **Status:** ✅ Done (2026-06-13) · **Effort:** L
+- **Full implementation (maintainer chose "full now" over wait-for-GA).** A
+  `tools/call` can carry a `task` augmentation (`{"task":{"ttl":60000}}` in the
+  params); the call then runs on a BACKGROUND THREAD and returns
+  `{"task":{"taskId","status":"working","ttl"}}` immediately instead of blocking
+  the request until the op finishes. `tasks/get` polls (returns the finished
+  CallToolResult envelope under `result`), `tasks/cancel` flips the cooperative
+  cancel flag, `tasks/list` enumerates. `capabilities.tasks` is advertised on
+  initialize, and the long-running tools (`build_lighting`, `cook_content`,
+  `package_project`, `run_automation_tests`, `compile_blueprint`, `apply_ops`,
+  …) carry `execution.taskSupport:"optional"` in `tools/list`.
+  **Single-task model:** the editor backend (one socket / one commandlet
+  subprocess) is exclusive, so at most one task runs at a time and the server
+  rejects other `tools/call`s with a clear busy error while one is active —
+  keeping the read loop responsive (tasks/get + tasks/cancel never touch the
+  backend). Cancellation reuses the existing `CallContext` + Server in-flight
+  registry (the worker registers its context under the taskId). New file
+  `tools/TaskManager.h` (detach-safe background execution: workers capture only
+  shared_ptrs, never `this`). **Tested:** `test_tasks.cpp` — TaskManager unit
+  tests (latch-gated busy/lifecycle/throw-→failed) + the MCP protocol flow
+  (capability, async dispatch, poll-to-completion, cancel, list); mock 884/884.
+  **Live-verified** (`Saved/verify-tasks-live.ps1`) end-to-end through the
+  shipping exe against a real editor: a `task`-augmented `list_blueprints` ran on
+  a background thread + `tasks/get` polled it to `completed` with the real
+  result envelope. **Caveat:** the 2025-11-25 tasks spec is experimental and is
+  redesigned in the 2026-07-28 GA — the wire shape here tracks 2025-11-25 and may
+  need a small update at GA; the infrastructure (registry/async/cancel) is
+  spec-version-independent.
 - **Why:** Long-running ops currently time out in some clients; async tasks fix this correctly.
 
 ### MCP-9 — Elicitation for destructive write confirmation {#mcp-9}
@@ -2000,6 +2026,17 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **MCP-8 SHIPPED: async Tasks primitive (full impl).** A
+  `tools/call` with a `task` augmentation runs on a background thread + returns a
+  taskId immediately; `tasks/get`/`tasks/cancel`/`tasks/list` + `capabilities.tasks`
+  + `execution.taskSupport` on the long-running tools. Single-task model (the
+  editor backend is exclusive → busy-rejects concurrent calls, keeping the read
+  loop responsive); cancel reuses CallContext + the in-flight registry. New
+  `tools/TaskManager.h` (detach-safe). Mock 884/884 (`test_tasks.cpp`);
+  live-verified end-to-end (`Saved/verify-tasks-live.ps1`: task-augmented
+  list_blueprints polled to completion with the real result). Maintainer chose
+  full-now over wait-for-GA; wire shape tracks the experimental 2025-11-25 spec
+  (may need a small GA update). No tool/hash change (adds methods, not tools).
 - **2026-06-13** — **UX-P4i b SHIPPED: `add_widget` insert-at-index.** Optional
   0-based `index` inserts the new widget at that child position of the parent
   panel (AddChild → ShiftChild, clamped); `-1`/omitted appends (back-compatible).

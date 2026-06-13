@@ -3,9 +3,12 @@
 #include "Env.h"
 #include "jsonrpc/CallContext.h"
 #include "tools/ToolAnnotations.h"  // IsDestructive (MCP-9 confirmation guard)
+#include "tools/TaskManager.h"      // MCP-8 async tasks primitive
 
 #include <chrono>
+#include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -116,6 +119,19 @@ void RegisterHandlersImpl(jr::Server& server,
 						  tools::resources::ResourceRegistry* resources,
 						  const ServerInfo& info,
 						  tools::EditorSubscriptions* editorSubs) {
+	// MCP-8: shared async-task manager. Held by shared_ptr so the value-captured
+	// copy in each handler lambda keeps it alive for the server's lifetime.
+	auto tasks = std::make_shared<tools::TaskManager>();
+	// Tools that legitimately run for minutes — advertised with
+	// execution.taskSupport and the prime users of the `task` augmentation.
+	// (The augmentation is honored for ANY tool; only these advertise support
+	// so clients know which ones benefit.)
+	static const std::set<std::string, std::less<>> kLongRunningTools = {
+		"build_lighting", "cook_content", "package_project",
+		"run_automation_tests", "compile_blueprint", "apply_ops",
+		"start_profile", "live_coding_compile",
+	};
+
 	// -------- initialize ---------------------------------------------------
 	server.Register("initialize", [info, prompts, logger, resources, editorSubs](const nlohmann::json& params) -> jr::Response {
 		// Echo the client's protocolVersion if we recognize it; fall back to
@@ -128,7 +144,7 @@ void RegisterHandlersImpl(jr::Server& server,
 			"2024-11-05", // initial public spec
 			"2025-03-26", // tool annotations / progress
 			"2025-06-18", // resources, etc.
-			"2025-11-25", // tasks primitive (optional cap — we don't advertise it)
+			"2025-11-25", // tasks primitive (MCP-8 — advertised + implemented)
 		};
 		std::string negotiated = info.protocolVersion;
 		if (params.is_object()) {
@@ -149,6 +165,10 @@ void RegisterHandlersImpl(jr::Server& server,
 		// don't pay any cost.
 		nlohmann::json capabilities = {
 			{"tools", {{"listChanged", true}}},
+			// MCP-8: experimental async tasks (2025-11-25). We support the
+			// `task` request augmentation on tools/call plus tasks/get,
+			// tasks/cancel, and tasks/list.
+			{"tasks", nlohmann::json::object()},
 		};
 		// Phase 3: advertise the prompts primitive when the host wired
 		// a non-empty registry. Older clients ignore the field; new
@@ -233,11 +253,24 @@ void RegisterHandlersImpl(jr::Server& server,
 
 	// -------- tools/list ---------------------------------------------------
 	server.Register("tools/list", [&registry](const nlohmann::json& /*params*/) -> jr::Response {
-		return jr::Response::Ok(nlohmann::json{ {"tools", registry.ListSpec()} });
+		auto spec = registry.ListSpec();
+		// MCP-8: advertise execution.taskSupport on the long-running tools so
+		// clients know which calls accept the `task` augmentation (kLongRunning
+		// Tools is a static local — visible here without capture).
+		for (auto& t : spec) {
+			if (t.is_object()) {
+				auto n = t.find("name");
+				if (n != t.end() && n->is_string() &&
+					kLongRunningTools.count(n->get<std::string>()) != 0) {
+					t["execution"] = {{"taskSupport", "optional"}};
+				}
+			}
+		}
+		return jr::Response::Ok(nlohmann::json{ {"tools", std::move(spec)} });
 	});
 
 	// -------- tools/call ---------------------------------------------------
-	server.Register("tools/call", [&registry, &server](const nlohmann::json& params) -> jr::Response {
+	server.Register("tools/call", [&registry, &server, tasks](const nlohmann::json& params) -> jr::Response {
 		if (!params.is_object()) {
 			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
 				"tools/call params must be an object");
@@ -257,6 +290,32 @@ void RegisterHandlersImpl(jr::Server& server,
 					R"(tools/call "arguments" must be an object)");
 			}
 			arguments = *argIt;
+		}
+
+		// MCP-8: detect the `task` augmentation (carried in tools/call params).
+		// When present, the call runs on a background thread and we return a
+		// taskId immediately so the client can poll tasks/get instead of
+		// blocking on this request. ttl (ms) is how long the finished result
+		// is retained; default 60s.
+		bool taskMode = false;
+		std::int64_t taskTtlMs = 60000;
+		if (auto taskIt = params.find("task"); taskIt != params.end() && taskIt->is_object()) {
+			taskMode = true;
+			if (auto ttlIt = taskIt->find("ttl"); ttlIt != taskIt->end() && ttlIt->is_number()) {
+				taskTtlMs = ttlIt->get<std::int64_t>();
+			}
+		}
+		// MCP-8: single-task model — the editor backend (one socket / one
+		// commandlet subprocess) is exclusive, so while a task runs we reject
+		// any tools/call (sync OR a second task) with a clear busy error. The
+		// read loop stays responsive because tasks/get + tasks/cancel never
+		// touch the backend.
+		if (tasks->HasActive()) {
+			return jr::Response::Ok(MakeToolTextContent(
+				"a background task is already running — the editor backend is "
+				"exclusive. Poll tasks/get or tasks/cancel it before issuing "
+				"another tool call.",
+				/*isError=*/true));
 		}
 
 		// Extract optional progressToken from _meta per MCP 2025-06-18.
@@ -325,96 +384,180 @@ void RegisterHandlersImpl(jr::Server& server,
 			}
 		}
 
-		const auto t0 = std::chrono::steady_clock::now();
-		auto elapsedMs = [&]() {
-			return std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::steady_clock::now() - t0).count();
+		// MCP-8: run-and-wrap — execute the tool fn (under whatever CallContext
+		// is ambient on the running thread) and produce the spec-shaped
+		// CallToolResult envelope. Shared by the synchronous path and the
+		// background-task worker so both yield an identical result shape.
+		auto executeAndWrap =
+			[&registry, &server, fn, name](const nlohmann::json& callArgs) -> nlohmann::json {
+			const auto t0 = std::chrono::steady_clock::now();
+			auto elapsedMs = [&]() {
+				return std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::steady_clock::now() - t0).count();
+			};
+			try {
+				nlohmann::json toolResult = (*fn)(callArgs);
+				nlohmann::json meta = {
+					{"elapsed_ms", elapsedMs()},
+					{"tool", name},
+				};
+				// Progressive disclosure: a tool that mutated the active surface
+				// (e.g. enable_tool_category) queues a tools/list_changed notif.
+				if (registry.TakeListChangedFlag()) {
+					server.QueueNotification("notifications/tools/list_changed",
+											 nlohmann::json::object());
+				}
+				// Rich-content opt-in: `{"_mcp":{"content":[...],
+				// "structuredContent":...}}` unpacks straight into the envelope.
+				if (toolResult.is_object()) {
+					if (auto mcpIt = toolResult.find("_mcp"); mcpIt != toolResult.end() && mcpIt->is_object()) {
+						nlohmann::json env;
+						if (auto contentIt = mcpIt->find("content"); contentIt != mcpIt->end()) {
+							env["content"] = *contentIt;
+						} else {
+							env["content"] = nlohmann::json::array();
+						}
+						if (auto scIt = mcpIt->find("structuredContent"); scIt != mcpIt->end()) {
+							env["structuredContent"] = *scIt;
+						}
+						env["isError"] = false;
+						env["_meta"] = std::move(meta);
+						return env;
+					}
+				}
+				// UX-P4e: object results carry the full payload exactly once as
+				// structuredContent; content[0].text is just a pointer note.
+				if (toolResult.is_object()) {
+					nlohmann::json env = MakeToolTextContent(
+						"structured result returned (see structuredContent)",
+						/*isError=*/false, std::move(meta));
+					env["structuredContent"] = std::move(toolResult);
+					return env;
+				}
+				return MakeToolTextContent(toolResult.dump(2),
+					/*isError=*/false, std::move(meta));
+			} catch (const std::exception& e) {
+				nlohmann::json meta = {
+					{"elapsed_ms", elapsedMs()},
+					{"tool", name},
+				};
+				if (!callArgs.empty()) {
+					meta["args"] = callArgs;
+				}
+				return MakeToolTextContent(
+					fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta));
+			}
 		};
 
-		try {
-			nlohmann::json toolResult = (*fn)(arguments);
-			// Convention: tools return canonical JSON. We dump it as text
-			// content so MCP clients (which expect a content array) can
-			// surface it; the underlying JSON shape is what Claude consumes.
-			nlohmann::json meta = {
-				{"elapsed_ms", elapsedMs()},
-				{"tool", name},
-			};
-			// Progressive disclosure: if the tool mutated the active
-			// surface (e.g. `enable_tool_category`), queue a
-			// tools/list_changed notification for the server's flush.
-			// Run() picks it up after this response is written.
-			if (registry.TakeListChangedFlag()) {
-				server.QueueNotification("notifications/tools/list_changed",
-										 nlohmann::json::object());
+		// MCP-8 task path: spawn the op on a background thread + return a taskId
+		// immediately. The worker sets up its OWN CallContext keyed by the
+		// taskId, so tasks/cancel (→ Server::FindInFlight(taskId)) flips the
+		// same cooperative cancel flag the tool polls. progressToken rides along
+		// so progress notifications still flow (drained on the next write).
+		if (taskMode) {
+			auto startedId = tasks->Start(name, taskTtlMs,
+				[&server, executeAndWrap, arguments, progressToken](const std::string& taskId) -> nlohmann::json {
+					jr::CallContext taskCtx(server, nlohmann::json(taskId), progressToken);
+					jr::CallContext::Scope taskScope(&taskCtx);
+					server.RegisterInFlight(&taskCtx);
+					struct UnregTask {
+						jr::Server& s; jr::CallContext* c;
+						~UnregTask() { s.UnregisterInFlight(c); }
+					} unregTask{server, &taskCtx};
+					return executeAndWrap(arguments);
+				});
+			if (!startedId) {
+				return jr::Response::Ok(MakeToolTextContent(
+					"a background task is already running.", /*isError=*/true));
 			}
-			// Rich-content opt-in: a tool that wants to emit image / audio
-			// / structuredContent / multi-block / audience-annotated
-			// results returns `{"_mcp": {"content": [...],
-			// "structuredContent": ...}}` via tools::content::Envelope().
-			// Detect that sentinel and unpack directly into the spec-shaped
-			// response without going through the dump-to-text path.
-			if (toolResult.is_object()) {
-				if (auto mcpIt = toolResult.find("_mcp"); mcpIt != toolResult.end() && mcpIt->is_object()) {
-					nlohmann::json env;
-					if (auto contentIt = mcpIt->find("content"); contentIt != mcpIt->end()) {
-						env["content"] = *contentIt;
-					} else {
-						env["content"] = nlohmann::json::array();
-					}
-					if (auto scIt = mcpIt->find("structuredContent"); scIt != mcpIt->end()) {
-						env["structuredContent"] = *scIt;
-					}
-					env["isError"] = false;
-					env["_meta"] = std::move(meta);
-					return jr::Response::Ok(std::move(env));
-				}
-			}
-			// Default path. UX-P4e: when the result is a JSON OBJECT, the
-			// FULL payload is carried exactly once — as `structuredContent`
-			// (the canonical, spec-typed channel) — and content[0].text holds
-			// only a short pointer note. Emitting the full JSON in BOTH fields
-			// (the previous behavior) meant a client that concatenates the two
-			// when spilling a large result to a temp file got two back-to-back
-			// JSON documents, which a strict parser (PowerShell ConvertFrom-Json)
-			// rejects. With a single full copy, any downstream spill yields one
-			// valid JSON document. Structured-content-aware clients already read
-			// structuredContent directly; text-only clients get the note and can
-			// widen via structuredContent. (A tool advertising an object-typed
-			// outputSchema SHOULD return a matching structuredContent.)
-			// Array-shaped results stay text-only: structuredContent is
-			// spec-typed as an object, so an array there would fail strict
-			// client validation — those keep the full dump in the text block.
-			if (toolResult.is_object()) {
-				nlohmann::json env = MakeToolTextContent(
-					"structured result returned (see structuredContent)",
-					/*isError=*/false, std::move(meta));
-				env["structuredContent"] = std::move(toolResult);
-				return jr::Response::Ok(std::move(env));
-			}
-			nlohmann::json env = MakeToolTextContent(toolResult.dump(2),
-				/*isError=*/false, std::move(meta));
-			return jr::Response::Ok(std::move(env));
-		} catch (const std::exception& e) {
-			// Enrich the error envelope with the call args so the agent
-			// can see what triggered the failure without re-driving the
-			// call. Helpful for "I called transpile_blueprint on
-			// /Game/X and got 'asset not found'" diagnostics.
-			nlohmann::json meta = {
-				{"elapsed_ms", elapsedMs()},
-				{"tool", name},
-			};
-			// Include the args verbatim — for agents debugging a tool
-			// failure, the "what did I pass" context is exactly what
-			// they need. No filtering: MCP tool args don't carry
-			// credentials in this server.
-			if (!arguments.empty())
-			{
-				meta["args"] = arguments;
-			}
-			return jr::Response::Ok(MakeToolTextContent(
-				fmt::format("tool error: {}", e.what()), /*isError=*/true, std::move(meta)));
+			return jr::Response::Ok(nlohmann::json{
+				{"task", {
+					{"taskId", *startedId},
+					{"status", "working"},
+					{"ttl",    taskTtlMs},
+				}},
+			});
 		}
+
+		// Synchronous path (default) — runs under the main-thread callCtx above.
+		return jr::Response::Ok(executeAndWrap(arguments));
+	});
+
+	// -------- tasks/get + tasks/cancel + tasks/list (MCP-8) ----------------
+	// Poll / cancel / enumerate background tasks started via the `task`
+	// augmentation on tools/call. These are registry-only (never touch the
+	// editor backend) so they stay responsive while a task is running.
+	server.Register("tasks/get", [tasks](const nlohmann::json& params) -> jr::Response {
+		if (!params.is_object()) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				"tasks/get params must be an object");
+		}
+		auto idIt = params.find("taskId");
+		if (idIt == params.end() || !idIt->is_string()) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				R"(tasks/get missing string "taskId")");
+		}
+		auto v = tasks->Get(idIt->get<std::string>());
+		if (!v) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				fmt::format("unknown taskId: {}", idIt->get<std::string>()));
+		}
+		nlohmann::json result = {
+			{"task", {
+				{"taskId", v->taskId},
+				{"status", v->status},
+				{"ttl",    v->ttlMs},
+			}},
+		};
+		// When the task has finished, return its CallToolResult under `result`
+		// (the same envelope a synchronous tools/call would have produced).
+		if (v->hasResult) {
+			result["result"] = v->result;
+		}
+		return jr::Response::Ok(std::move(result));
+	});
+
+	server.Register("tasks/cancel", [tasks, &server](const nlohmann::json& params) -> jr::Response {
+		if (!params.is_object()) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				"tasks/cancel params must be an object");
+		}
+		auto idIt = params.find("taskId");
+		if (idIt == params.end() || !idIt->is_string()) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				R"(tasks/cancel missing string "taskId")");
+		}
+		const std::string id = idIt->get<std::string>();
+		if (!tasks->MarkCancelRequested(id)) {
+			return jr::Response::Fail(jr::ErrorCode::InvalidParams,
+				fmt::format("unknown taskId: {}", id));
+		}
+		// Flip the cooperative cancel flag on the running task's CallContext
+		// (registered under the taskId by the worker). Cancellation is a HINT:
+		// the tool must poll CallContext::IsCancelled() at a safe point.
+		if (auto* ctx = server.FindInFlight(nlohmann::json(id))) {
+			ctx->MarkCancelled();
+		}
+		auto v = tasks->Get(id);
+		return jr::Response::Ok(nlohmann::json{
+			{"task", {
+				{"taskId", id},
+				{"status", v ? v->status : std::string("cancelled")},
+			}},
+		});
+	});
+
+	server.Register("tasks/list", [tasks](const nlohmann::json& /*params*/) -> jr::Response {
+		nlohmann::json arr = nlohmann::json::array();
+		for (const auto& v : tasks->List()) {
+			arr.push_back(nlohmann::json{
+				{"taskId", v.taskId},
+				{"tool",   v.tool},
+				{"status", v.status},
+				{"ttl",    v.ttlMs},
+			});
+		}
+		return jr::Response::Ok(nlohmann::json{{"tasks", std::move(arr)}});
 	});
 
 	// -------- logging/setLevel --------------------------------------------
