@@ -58,6 +58,11 @@ TEST_CASE("health_check: mock backend reports synthetic-healthy") {
 	CHECK(r["state"] == "healthy");
 	// UX-P5 e1: the default fixture is a plain (write-enabled) mock chain.
 	CHECK(r["write_enabled"] == true);
+	// UX-P5 e1 follow-up: server-config discoverable pre-flight. With no env
+	// set, the daemon defaults on and the plugin denylist is empty.
+	CHECK(r["daemon_enabled"] == true);
+	REQUIRE(r["disabled_plugins"].is_array());
+	CHECK(r["disabled_plugins"].empty());
 }
 
 // UX-P5 e1: write_enabled mirrors the read-only decorator so a client can

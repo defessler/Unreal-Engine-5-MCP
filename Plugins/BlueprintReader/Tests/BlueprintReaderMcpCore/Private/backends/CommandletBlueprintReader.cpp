@@ -875,7 +875,33 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	}
 	if (r.exitCode != 0) {
 		std::string tail = TrimLines(r.stderrTail.empty() ? r.stdoutTail : r.stderrTail, 250);
+		// UX-P5 e1 (follow-up): an op that fails via EmitError writes a
+		// STRUCTURED error to the output file even on a non-zero exit — e.g.
+		// NodeRefError's "ambiguous prefix … known node GUIDs: …" did-you-mean
+		// text. Prefer that detailed message over the generic exit-code tail so
+		// it survives to the agent and, through apply_ops's per-op
+		// {ok:false, error:…}, to the batch result instead of collapsing to a
+		// bare "exit=4". A bare `return 4` with no output file (genuine
+		// asset-not-found) still falls through to the AssetNotFound below.
+		std::string structured;
+		if (std::filesystem::exists(outFile)) {
+			std::ifstream in(outFile);
+			if (in.is_open()) {
+				try {
+					nlohmann::json j;
+					in >> j;
+					if (j.is_object()) {
+						if (auto eit = j.find("error"); eit != j.end() && eit->is_string()) {
+							structured = eit->get<std::string>();
+						}
+					}
+				} catch (...) { /* not JSON — fall back to the exit-code tail */ }
+			}
+		}
 		cleanup();
+		if (!structured.empty()) {
+			throw BlueprintReaderError(structured);
+		}
 		if (r.exitCode == 4) {
 			throw AssetNotFound(fmt::format(
 				"commandlet reported missing target (exit=4); tail:\n{}", tail));

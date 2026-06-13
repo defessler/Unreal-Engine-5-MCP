@@ -3604,7 +3604,11 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 			"reconnect (unreachable). Also reports `write_enabled` — whether "
 			"mutation tools are enabled (false in the default read-only mode, "
 			"BP_READER_READ_ONLY=1) — so a client can discover write-gating "
-			"PRE-FLIGHT instead of on the first rejected write.";
+			"PRE-FLIGHT instead of on the first rejected write. Also reports "
+			"`daemon_enabled` (whether the commandlet daemon is on, "
+			"BP_READER_DAEMON) and `disabled_plugins` (BP_READER_PLUGIN_DENYLIST "
+			"— plugins skipped on the editor spawn, which explains absent "
+			"functionality), so the server's config is discoverable pre-flight.";
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", nlohmann::json::object()},
@@ -3618,10 +3622,35 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				{"state", {{"type", "string"}}},
 				{"note", {{"type", "string"}}},
 				{"write_enabled", {{"type", "boolean"}}},
+				{"daemon_enabled", {{"type", "boolean"}}},
+				{"disabled_plugins", {{"type", "array"}, {"items", {{"type", "string"}}}}},
 			}},
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json&) {
 			const auto h = reader.HealthCheck();
+			// UX-P5 e1 (follow-up): server-side config a client can discover
+			// pre-flight, knowable without the editor.
+			const bool daemonEnabled =
+				bpr::env::GetOrDefault("BP_READER_DAEMON", "1") != "0";
+			nlohmann::json disabledPlugins = nlohmann::json::array();
+			{
+				const std::string denylist =
+					bpr::env::GetOrDefault("BP_READER_PLUGIN_DENYLIST", "");
+				std::string cur;
+				auto flush = [&]() {
+					// trim surrounding spaces
+					std::size_t b = cur.find_first_not_of(' ');
+					std::size_t e = cur.find_last_not_of(' ');
+					if (b != std::string::npos) {
+						disabledPlugins.push_back(cur.substr(b, e - b + 1));
+					}
+					cur.clear();
+				};
+				for (char c : denylist) {
+					if (c == ',') { flush(); } else { cur.push_back(c); }
+				}
+				flush();
+			}
 			return nlohmann::json{
 				{"reachable", h.reachable},
 				{"game_thread_responsive", h.gameThreadResponsive},
@@ -3631,6 +3660,8 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 				// UX-P5 e1: server-side write-gating, knowable without the
 				// editor — lets a client see read-only mode pre-flight.
 				{"write_enabled", reader.WritesEnabled()},
+				{"daemon_enabled", daemonEnabled},
+				{"disabled_plugins", std::move(disabledPlugins)},
 			};
 		});
 	}

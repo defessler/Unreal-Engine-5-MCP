@@ -573,9 +573,17 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
   mock-tested (`ReadOnly(Mock)`→false, `Mock`→true) and live-verified through
   the shipping exe (`BP_READER_READ_ONLY=1`→false, `BP_READER_ALLOW_WRITE=1`→
   true; `Saved/verify-health-writeenabled.ps1`). Description first-40 preserved →
-  no protocol-hash drift. *(Small optional follow-ups: daemon-mode + degraded-
-  plugin notes on the same channel; verify the detailed `NodeRefError` reaches
-  the `apply_ops` error envelope rather than collapsing to a bare code-4.)*
+  no protocol-hash drift. **Follow-ups also DONE (2026-06-13):** (1) `health_check`
+  now also reports `daemon_enabled` (BP_READER_DAEMON) + `disabled_plugins`
+  (BP_READER_PLUGIN_DENYLIST) — server config discoverable pre-flight. (2) Found
+  + fixed a real bug: `CommandletBlueprintReader::RunOp` discarded the op's
+  output file on a non-zero exit and threw a generic "exit=4", so a detailed
+  `NodeRefError` (did-you-mean GUIDs) written by `EmitError` was LOST through
+  `apply_ops`. Now it reads the structured `error` from the output file first
+  (the live/socket backend already did this). **Live-verified**
+  (`Saved/verify-e1-polish.ps1`): daemon/plugin notes correct; an apply_ops
+  bad-node op surfaces "node ref '…' not found in graph 'EventGraph' … Known node
+  GUIDs: …" per-op instead of a bare exit=4. Mock 884/884.
 - **Why:** UX-P5a/b restore the reader's trustworthiness for automated diagnosis
   (the report's central theme); the rest are friction the version-stamp fix
   largely dissolves by letting clients run a current build.
@@ -2026,6 +2034,13 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **UX-P5 e1 follow-ups SHIPPED.** (1) `health_check` reports
+  `daemon_enabled` + `disabled_plugins` (server config pre-flight). (2) Fixed a
+  real bug: the commandlet backend discarded an op's structured error file on a
+  non-zero exit, collapsing a detailed `NodeRefError` (did-you-mean GUIDs) to a
+  bare "exit=4" through `apply_ops`; now it reads the output file's `error` first
+  (the live backend already did). Live-verified (`Saved/verify-e1-polish.ps1`).
+  Mock 884/884; health_check first-40 preserved → no hash drift.
 - **2026-06-13** — **MCP-8 SHIPPED: async Tasks primitive (full impl).** A
   `tools/call` with a `task` augmentation runs on a background thread + returns a
   taskId immediately; `tasks/get`/`tasks/cancel`/`tasks/list` + `capabilities.tasks`
