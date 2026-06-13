@@ -192,6 +192,30 @@ TEST_CASE("TaskManager: cancel-requested + success = completed; + error = cancel
 	}
 }
 
+// MCP-8 (ttl reaper): finished tasks past their ttl are dropped when the next
+// task starts, so a long session doesn't accumulate them.
+TEST_CASE("TaskManager: a finished task past its ttl is reaped on the next Start") {
+	tools::TaskManager mgr;
+	auto quick = [](const std::string&, const std::function<void()>& markReady) {
+		markReady();
+		return json{{"ok", true}};
+	};
+	// ttl = 0 → eligible for reaping the moment it finishes.
+	auto id1 = mgr.Start("t1", 0, quick);
+	REQUIRE(id1.has_value());
+	for (int i = 0; i < 400 && mgr.HasActive(); ++i)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	CHECK(mgr.Get(*id1).has_value());    // Get/List don't reap — still present
+
+	// Starting another task runs the reaper → the expired id1 is gone.
+	auto id2 = mgr.Start("t2", 60000, quick);
+	REQUIRE(id2.has_value());
+	CHECK_FALSE(mgr.Get(*id1).has_value());    // reaped (ttl=0, finished)
+	CHECK(mgr.Get(*id2).has_value());          // fresh, retained
+	for (int i = 0; i < 400 && mgr.HasActive(); ++i)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+}
+
 // ---- MCP protocol-flow integration tests ------------------------------------
 
 namespace {

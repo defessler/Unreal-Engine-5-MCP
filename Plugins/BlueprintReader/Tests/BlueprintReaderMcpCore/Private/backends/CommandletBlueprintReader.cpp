@@ -3,6 +3,7 @@
 #include "Env.h"
 #include "backends/AutoBlueprintReader.h"  // REL-16: IsWriteMethod for the fallback guard
 #include "backends/CommandletArgEncoding.h"
+#include "backends/CommandletErrorParse.h"
 
 #include <chrono>
 #include <cstdint>
@@ -882,25 +883,12 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 		// it survives to the agent and, through apply_ops's per-op
 		// {ok:false, error:…}, to the batch result instead of collapsing to a
 		// bare "exit=4". A bare `return 4` with no output file (genuine
-		// asset-not-found) still falls through to the AssetNotFound below.
-		std::string structured;
-		if (std::filesystem::exists(outFile)) {
-			std::ifstream in(outFile);
-			if (in.is_open()) {
-				try {
-					nlohmann::json j;
-					in >> j;
-					if (j.is_object()) {
-						if (auto eit = j.find("error"); eit != j.end() && eit->is_string()) {
-							structured = eit->get<std::string>();
-						}
-					}
-				} catch (...) { /* not JSON — fall back to the exit-code tail */ }
-			}
-		}
+		// asset-not-found) yields nullopt and falls through to AssetNotFound.
+		// (Helper is unit-tested in test_commandlet_error_parse.cpp.)
+		const std::optional<std::string> structured = detail::ExtractStructuredError(outFile);
 		cleanup();
-		if (!structured.empty()) {
-			throw BlueprintReaderError(structured);
+		if (structured) {
+			throw BlueprintReaderError(*structured);
 		}
 		if (r.exitCode == 4) {
 			throw AssetNotFound(fmt::format(

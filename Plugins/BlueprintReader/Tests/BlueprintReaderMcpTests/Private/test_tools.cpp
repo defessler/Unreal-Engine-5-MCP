@@ -38,6 +38,22 @@ struct Fixture {
 }    // namespace test_tools_detail
 using namespace test_tools_detail;
 
+// UX-P4i b: lock the add_widget index/child_index contract on the advertised
+// surface so it can't silently disappear (the behavior itself is live-verified
+// in Saved/verify-addwidget-index.ps1; this is the engine-free CI guard).
+TEST_CASE("add_widget surface: index input + child_index output are advertised") {
+	Fixture f;
+	auto spec = f.registry.ListSpec();
+	const json* aw = nullptr;
+	for (const auto& t : spec) {
+		if (t.value("name", std::string{}) == "add_widget") { aw = &t; break; }
+	}
+	REQUIRE(aw != nullptr);
+	CHECK((*aw)["inputSchema"]["properties"]["index"]["type"] == "integer");
+	REQUIRE(aw->contains("outputSchema"));
+	CHECK((*aw)["outputSchema"]["properties"]["child_index"]["type"] == "integer");
+}
+
 TEST_CASE("ToolRegistry exposes 268 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();

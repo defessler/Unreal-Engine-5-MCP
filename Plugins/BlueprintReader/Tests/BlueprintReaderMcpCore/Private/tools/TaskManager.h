@@ -124,6 +124,10 @@ public:
 		std::string id;
 		{
 			std::lock_guard<std::mutex> lk(st->mu);
+			// Drop finished tasks whose result has outlived its ttl so a long
+			// session doesn't accumulate them (a reaped id reads back as the
+			// standard unknown-taskId). Lazy: runs whenever a task starts.
+			ReapExpiredLocked(*st);
 			if (!st->activeId.empty()) {
 				return std::nullopt;
 			}
@@ -170,6 +174,7 @@ public:
 				const bool errored = (status == "failed") ||
 					(t->result.is_object() && t->result.value("isError", false));
 				t->status = (t->cancelRequested && errored) ? "cancelled" : status;
+				t->completedAt = std::chrono::steady_clock::now();
 				st->activeId.clear();    // free the slot for the next task
 			});
 		}
@@ -228,6 +233,7 @@ private:
 		bool hasResult = false;
 		bool cancelRequested = false;
 		std::int64_t ttlMs = 0;
+		std::chrono::steady_clock::time_point completedAt{};    // set when finished
 		std::thread worker;
 	};
 	struct State {
@@ -246,6 +252,28 @@ private:
 		v.result = t.result;
 		v.ttlMs = t.ttlMs;
 		return v;
+	}
+
+	// Erase finished (non-working) tasks whose result has outlived ttlMs. Caller
+	// MUST hold State::mu. A finished worker's thread is joinable-but-done, so
+	// joining it here returns immediately — and is required before erasing the
+	// Task (destroying a joinable std::thread calls std::terminate). A task
+	// still "working" (including one whose terminal block is blocked on the lock
+	// we hold) is never reaped.
+	static void ReapExpiredLocked(State& st) {
+		const auto now = std::chrono::steady_clock::now();
+		for (auto it = st.tasks.begin(); it != st.tasks.end();) {
+			Task& t = *it->second;
+			if (t.status != "working" &&
+				(now - t.completedAt) > std::chrono::milliseconds(t.ttlMs)) {
+				if (t.worker.joinable()) {
+					t.worker.join();
+				}
+				it = st.tasks.erase(it);
+			} else {
+				++it;
+			}
+		}
 	}
 
 	std::shared_ptr<State> state_;

@@ -528,6 +528,58 @@ TEST_CASE("LiveBackend: op frame carries the canonical -Op=List shape") {
 	CHECK(frame["args"][1] == "-Path=/Game/AI");
 }
 
+TEST_CASE("SocketBackend: add_widget encodes -Index= only when set + parses child_index (UX-P4i b)") {
+	// Capture the op frame to assert the index wire contract engine-free.
+	auto run = [](int index, nlohmann::json resultJson) -> std::pair<nlohmann::json, IBlueprintReader::AddWidgetResult> {
+		std::string captured;
+		MockServer mock([&](SOCKET s) {
+			SendLine(s, R"({"type":"hello","version":"1"})");
+			ReadLine(s);    // auth
+			SendLine(s, R"({"type":"auth_ok"})");
+			captured = ReadLine(s);    // the op frame
+			auto op = nlohmann::json::parse(captured, nullptr, false);
+			const int id = op.is_object() ? op.value("id", 0) : 0;
+			SendLine(s, nlohmann::json{
+				{"type", "result"}, {"id", id}, {"code", 0}, {"json", resultJson}}.dump());
+		});
+		SocketBlueprintReader::Config cfg;
+		cfg.host = "127.0.0.1"; cfg.port = mock.port(); cfg.token = "t";
+		SocketBlueprintReader reader(cfg);
+		auto r = reader.AddWidget("/Game/WBP", "VBox", "TextBlock", "Label", index);
+		return {nlohmann::json::parse(captured), r};
+	};
+
+	auto hasArg = [](const nlohmann::json& frame, const std::string& want) {
+		if (!frame["args"].is_array()) return false;
+		for (const auto& a : frame["args"]) {
+			if (a.get<std::string>() == want) return true;
+		}
+		return false;
+	};
+	auto hasIndexArg = [](const nlohmann::json& frame) {
+		if (!frame["args"].is_array()) return false;
+		for (const auto& a : frame["args"]) {
+			if (a.get<std::string>().rfind("-Index=", 0) == 0) return true;
+		}
+		return false;
+	};
+
+	// index = -1 (append): NO -Index= arg; child_index from the result is parsed.
+	{
+		auto [frame, r] = run(-1, nlohmann::json{{"created", true}, {"child_index", 4}});
+		CHECK(hasArg(frame, "-Op=AddWidget"));
+		CHECK_FALSE(hasIndexArg(frame));
+		CHECK(r.created == true);
+		CHECK(r.childIndex == 4);    // parsed off the editor result
+	}
+	// index = 3 (insert): -Index=3 present.
+	{
+		auto [frame, r] = run(3, nlohmann::json{{"created", true}, {"child_index", 3}});
+		CHECK(hasArg(frame, "-Index=3"));
+		CHECK(r.childIndex == 3);
+	}
+}
+
 TEST_CASE("AutoBackend: prefers live when both handshakes are valid") {
 	// Stand up two mock servers (live + cmdlet). The live mock returns
 	// a valid result; the cmdlet mock sends auth_fail. If Auto
