@@ -6278,11 +6278,15 @@
   },
   {
     "category": "widget",
-    "description": "[widget] Add a UWidget node (Button, TextBlock, etc.) to a UWidgetBlueprint's UMG tree. For Blueprint graph nodes use `add_node`. `widget_class` is the short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, etc.). `parent_name` empty = becomes the new root (replaces the existing root only if the tree was empty). Otherwise appends as a child of `parent_name`.",
+    "description": "[widget] Add a UWidget node (Button, TextBlock, etc.) to a UWidgetBlueprint's UMG tree. For Blueprint graph nodes use `add_node`. `widget_class` is the short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, etc.). `parent_name` empty = becomes the new root (replaces the existing root only if the tree was empty). Otherwise appends as a child of `parent_name` — or pass `index` (0-based) to insert at a specific child position instead of appending (clamped into range). The response's `child_index` reports the final position under the parent.",
     "input_schema": {
       "properties": {
         "asset_path": {
           "type": "string"
+        },
+        "index": {
+          "description": "Optional 0-based child position under `parent_name`. Omit (or -1) to append as the last child. Clamped into range.",
+          "type": "integer"
         },
         "name": {
           "type": "string"
@@ -6309,6 +6313,10 @@
         },
         "asset_path": {
           "type": "string"
+        },
+        "child_index": {
+          "description": "Final 0-based index under the parent panel (-1 = root or unknown).",
+          "type": "integer"
         },
         "created": {
           "type": "boolean"

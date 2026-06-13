@@ -276,7 +276,7 @@ public:
 	// ----- UMG widget authoring ----------------------------------------
 	WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
 	AddWidgetResult AddWidget(std::string_view, std::string_view,
-		std::string_view, std::string_view) override;
+		std::string_view, std::string_view, int) override;
 	SetWidgetPropertyResult SetWidgetProperty(std::string_view, std::string_view,
 		std::string_view, std::string_view) override;
 	BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view,

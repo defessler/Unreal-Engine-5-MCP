@@ -3730,7 +3730,7 @@ SocketBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
 IBlueprintReader::AddWidgetResult
 SocketBlueprintReader::AddWidget(std::string_view assetPath,
 	std::string_view parentName, std::string_view widgetClass,
-	std::string_view name) {
+	std::string_view name, int index) {
 	std::vector<std::string> args = {"-Op=AddWidget",
 									 "-Asset=" + std::string(assetPath),
 									 "-Name="  + std::string(name),
@@ -3738,6 +3738,10 @@ SocketBlueprintReader::AddWidget(std::string_view assetPath,
 	if (!parentName.empty())
 	{
 		args.push_back("-Parent=" + std::string(parentName));
+	}
+	if (index >= 0)    // UX-P4i b: only send a real insert position; -1 = append
+	{
+		args.push_back("-Index=" + std::to_string(index));
 	}
 	auto j = RunOp(args);
 	AddWidgetResult out;
@@ -3747,6 +3751,7 @@ SocketBlueprintReader::AddWidget(std::string_view assetPath,
 	if (j.is_object()) {
 		out.alreadyExisted = j.value("already_existed", false);
 		out.created        = j.value("created", false);
+		out.childIndex     = j.value("child_index", -1);
 	}
 	return out;
 }

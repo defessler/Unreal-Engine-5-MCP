@@ -2530,7 +2530,7 @@ CommandletBlueprintReader::ReadWidgetBlueprint(std::string_view assetPath) {
 IBlueprintReader::AddWidgetResult
 CommandletBlueprintReader::AddWidget(std::string_view assetPath,
 	std::string_view parentName, std::string_view widgetClass,
-	std::string_view name) {
+	std::string_view name, int index) {
 	std::vector<std::wstring> args = {L"-Op=AddWidget",
 									   L"-Asset=" + Widen(assetPath),
 									   L"-Name="  + Widen(name),
@@ -2538,6 +2538,10 @@ CommandletBlueprintReader::AddWidget(std::string_view assetPath,
 	if (!parentName.empty())
 	{
 		args.push_back(L"-Parent=" + Widen(parentName));
+	}
+	if (index >= 0)    // UX-P4i b: only send a real insert position; -1 = append
+	{
+		args.push_back(L"-Index=" + std::to_wstring(index));
 	}
 	auto j = RunOp(args);
 	AddWidgetResult out;
@@ -2547,6 +2551,7 @@ CommandletBlueprintReader::AddWidget(std::string_view assetPath,
 	if (j.is_object()) {
 		out.alreadyExisted = j.value("already_existed", false);
 		out.created        = j.value("created", false);
+		out.childIndex     = j.value("child_index", -1);
 	}
 	return out;
 }

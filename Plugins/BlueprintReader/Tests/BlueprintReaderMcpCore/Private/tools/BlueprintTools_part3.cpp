@@ -264,7 +264,10 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			"short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, "
 			"etc.). `parent_name` empty = becomes the new root (replaces "
 			"the existing root only if the tree was empty). Otherwise "
-			"appends as a child of `parent_name`.";
+			"appends as a child of `parent_name` — or pass `index` (0-based) "
+			"to insert at a specific child position instead of appending "
+			"(clamped into range). The response's `child_index` reports the "
+			"final position under the parent.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
@@ -272,6 +275,9 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"parent_name",  {{"type","string"}}},
 				{"widget_class", {{"type","string"}}},
 				{"name",         {{"type","string"}}},
+				{"index",        {{"type","integer"},
+								  {"description","Optional 0-based child position under `parent_name`. "
+												 "Omit (or -1) to append as the last child. Clamped into range."}}},
 			}},
 			{"required", nlohmann::json::array(
 				{"asset_path","widget_class","name"})},
@@ -285,6 +291,8 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"widget_class",   {{"type","string"}}},
 				{"already_existed",{{"type","boolean"}}},
 				{"created",        {{"type","boolean"}}},
+				{"child_index",    {{"type","integer"},
+									{"description","Final 0-based index under the parent panel (-1 = root or unknown)."}}},
 			}},
 			{"required", nlohmann::json::array({"ok","asset_path","name","widget_class","already_existed","created"})},
 		};
@@ -293,7 +301,8 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 			std::string parent = OptString(args, "parent_name", "");
 			std::string cls    = RequireString(args, "widget_class");
 			std::string name   = RequireString(args, "name");
-			auto r = reader.AddWidget(asset, parent, cls, name);
+			int index          = args.value("index", -1);
+			auto r = reader.AddWidget(asset, parent, cls, name, index);
 			return nlohmann::json{
 				{"ok", true},
 				{"asset_path",      r.assetPath},
@@ -301,6 +310,7 @@ void RegisterTools_06(ToolRegistry& registry, backends::IBlueprintReader& reader
 				{"widget_class",    r.widgetClass},
 				{"already_existed", r.alreadyExisted},
 				{"created",         r.created},
+				{"child_index",     r.childIndex},
 			};
 		});
 	}

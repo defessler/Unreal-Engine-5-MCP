@@ -499,13 +499,19 @@ data-asset reads + multi-op `apply_ops` batches). Ordered roughly by impact.
 - **Why:** a clear error turns a learn-by-failure round-trip into a one-line fix.
 
 ### UX-P4i — minor lossy / confusing outputs {#ux-p4i}
-- **Status:** ✅ a+c implemented (uncommitted, 2026-06-08); b deferred · **Effort:** S · **Source:** 2026-06-07 live-session feedback
+- **Status:** ✅ a+b+c done (b 2026-06-13) · **Effort:** S · **Source:** 2026-06-07 live-session feedback
 - *Shipped: (a) `save_all` filters un-saveable packages (`/Script/*`, transient,
   `PKG_CompiledIn`) from `failed_assets` + adds `nothing_to_save` — live-verified
   no `/Script` noise. (c) `list_blueprints` attaches a `_hint` pointing at
   `find_asset` when a path query returns ≤1 rows — mock-verified. (b)
-  `add_widget` insert-at-index DEFERRED (full backend-chain cost for a cosmetic
-  child-position feature; the client noted theirs "landed correctly" anyway).*
+  `add_widget` insert-at-index DONE (2026-06-13): optional 0-based `index` arg
+  inserts the new widget at that child position of the parent panel (AddChild
+  then ShiftChild, clamped); `-1`/omitted appends (back-compatible). The response
+  reports the final `child_index`. Full backend chain (signature + 5 overrides;
+  Mock inherits the throwing default) + plugin op + registration; description
+  first-40 preserved → no hash drift. **Live-verified** (`Saved/verify-addwidget-
+  index.ps1`, real render editor): appends land 0/1/2, `index=1`→1, `index=0`→0,
+  `index=99`→5 (clamped to last) — final order [E,A,D,B,C,F]. Mock 879/879.*
 - Three small honesty/affordance nits from the same session:
   - **`save_all` reports `saved_count:0` with `failed_assets:[/Script/*]`** that
     looks like a failure but isn't — the assets were already persisted by the
@@ -1994,6 +2000,16 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **UX-P4i b SHIPPED: `add_widget` insert-at-index.** Optional
+  0-based `index` inserts the new widget at that child position of the parent
+  panel (AddChild → ShiftChild, clamped); `-1`/omitted appends (back-compatible).
+  Response reports final `child_index`. Full backend chain (interface signature +
+  5 overrides; Mock keeps the throwing default) + plugin op (ShiftChild) +
+  registration; description first-40 preserved → no hash drift. Live-verified on
+  a real render editor (`Saved/verify-addwidget-index.ps1`): appends 0/1/2,
+  index=1→1, index=0→0, index=99→5 (clamp). Mock 879/879. Gotcha: the run_python
+  setup needs BP_READER_ALLOW_PYTHON on the EDITOR (gate is editor-side) — the
+  render editor must be launched with it inherited.
 - **2026-06-13** — **TEST-1 render sweep CODIFIED: `BP_READER_SMOKE_RENDER` live
   smoke — TEST-1 COMPLETE.** `test_tool_smoke_render_live.cpp` drives the
   render/interactive surface against a real `-RenderOffscreen` editor and

@@ -626,12 +626,17 @@ public:
 		std::string widgetClass;
 		bool alreadyExisted = false;
 		bool created = false;
+		int childIndex = -1;    // UX-P4i b: final 0-based index under the parent
+		                        // panel (-1 = root or unknown).
 	};
+	// UX-P4i b: `index` inserts the new widget at that 0-based child position of
+	// the parent panel; -1 (default) appends as the last child (back-compatible).
 	virtual AddWidgetResult AddWidget(std::string_view assetPath,
 									   std::string_view parentName,
 									   std::string_view widgetClass,
-									   std::string_view name) {
-		(void)assetPath; (void)parentName; (void)widgetClass; (void)name;
+									   std::string_view name,
+									   int index = -1) {
+		(void)assetPath; (void)parentName; (void)widgetClass; (void)name; (void)index;
 		throw BlueprintReaderError("AddWidget not supported by this backend");
 	}
 

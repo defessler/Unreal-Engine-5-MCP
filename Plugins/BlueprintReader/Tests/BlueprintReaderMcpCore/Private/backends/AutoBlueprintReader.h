@@ -296,7 +296,7 @@ public:
 	AddMaterialExpressionResult AddMaterialExpression(std::string_view, std::string_view, int, int) override;
 	AddSequenceTrackResult AddSequenceTrack(std::string_view, std::string_view, std::string_view) override;
 	AddStateTreeStateResult AddStateTreeState(std::string_view, std::string_view, std::string_view) override;
-	AddWidgetResult AddWidget(std::string_view, std::string_view, std::string_view, std::string_view) override;
+	AddWidgetResult AddWidget(std::string_view, std::string_view, std::string_view, std::string_view, int) override;
 	AttachComponentResult AttachComponent(std::string_view assetPath, std::string_view name, std::string_view newParentName, std::string_view socket) override;
 	BindWidgetEventResult BindWidgetEvent(std::string_view, std::string_view, std::string_view, std::string_view) override;
 	BuildLightingResult BuildLighting(std::string_view quality) override;

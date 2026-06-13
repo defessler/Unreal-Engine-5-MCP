@@ -307,7 +307,7 @@ TEST_CASE("Auto: editor-action + asset-type ops forward (not base-class 'not sup
 	forwards("add_material_expression", [&] { reader.AddMaterialExpression("/Game/M", "MaterialExpressionConstant3Vector", 0, 0); });
 	forwards("list_materials",          [&] { reader.ListMaterials("/Game"); });
 	forwards("read_data_table",         [&] { reader.ReadDataTable("/Game/DT"); });
-	forwards("add_widget",              [&] { reader.AddWidget("/Game/WBP", "Root", "TextBlock", "Label"); });
+	forwards("add_widget",              [&] { reader.AddWidget("/Game/WBP", "Root", "TextBlock", "Label", -1); });
 	forwards("spawn_actor",             [&] { reader.SpawnActor("/Game/BP_A", 0, 0, 0, 0, 0, 0, 1, 1, 1); });
 	forwards("console_command",         [&] { reader.ConsoleCommand("stat fps"); });
 	forwards("get_editor_state",        [&] { reader.GetEditorState(); });

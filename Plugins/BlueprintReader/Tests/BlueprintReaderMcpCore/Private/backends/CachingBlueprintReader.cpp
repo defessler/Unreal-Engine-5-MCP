@@ -1110,8 +1110,8 @@ CachingBlueprintReader::ReadWidgetBlueprint(std::string_view a) {
 }
 IBlueprintReader::AddWidgetResult
 CachingBlueprintReader::AddWidget(std::string_view a, std::string_view p,
-	std::string_view c, std::string_view n) {
-	auto out = inner_->AddWidget(a, p, c, n);
+	std::string_view c, std::string_view n, int index) {
+	auto out = inner_->AddWidget(a, p, c, n, index);
 	InvalidateAsset(a);
 	return out;
 }

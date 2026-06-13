@@ -751,7 +751,7 @@ ReadOnlyBlueprintReader::ReadWidgetBlueprint(std::string_view a) {
 }
 IBlueprintReader::AddWidgetResult
 ReadOnlyBlueprintReader::AddWidget(std::string_view, std::string_view,
-	std::string_view, std::string_view) {
+	std::string_view, std::string_view, int) {
 	Reject("add_widget");
 }
 IBlueprintReader::SetWidgetPropertyResult

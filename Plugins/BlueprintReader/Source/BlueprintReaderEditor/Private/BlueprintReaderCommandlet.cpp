@@ -4775,6 +4775,10 @@ namespace
 		FParse::Value(*Params, TEXT("Parent="), ParentName);
 		FParse::Value(*Params, TEXT("Class="),  ClassName);
 		FParse::Value(*Params, TEXT("Name="),   Name);
+		// UX-P4i b: optional 0-based insert position under the parent panel
+		// (-1 = append, the back-compatible default).
+		int32 InsertIndex = -1;
+		FParse::Value(*Params, TEXT("Index="),  InsertIndex);
 
 		UWidgetBlueprint* WBP = LoadObject<UWidgetBlueprint>(nullptr, *AssetPath);
 		if (!WBP || !WBP->WidgetTree)
@@ -4820,6 +4824,7 @@ namespace
 		}
 
 		bool bCreated = false;
+		int32 ChildIndex = -1;    // UX-P4i b: final position under the parent.
 		if (ParentName.IsEmpty())
 		{
 			// Become the root if tree is empty.
@@ -4834,7 +4839,15 @@ namespace
 			UWidget* Parent = WBP->WidgetTree->FindWidget(FName(*ParentName));
 			if (UPanelWidget* Panel = Cast<UPanelWidget>(Parent))
 			{
+				// AddChild always appends; ShiftChild then moves it to the
+				// requested 0-based slot (clamped). Index < 0 leaves it appended.
 				Panel->AddChild(NewWidget);
+				if (InsertIndex >= 0)
+				{
+					const int32 Count = Panel->GetChildrenCount();
+					Panel->ShiftChild(FMath::Clamp(InsertIndex, 0, Count - 1), NewWidget);
+				}
+				ChildIndex = Panel->GetChildIndex(NewWidget);
 				bCreated = true;
 			}
 			else
@@ -4861,6 +4874,7 @@ namespace
 		Obj->SetStringField(TEXT("widget_class"),  ClassName);
 		Obj->SetBoolField(TEXT("already_existed"), false);
 		Obj->SetBoolField(TEXT("created"),         bCreated);
+		Obj->SetNumberField(TEXT("child_index"),   ChildIndex);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 

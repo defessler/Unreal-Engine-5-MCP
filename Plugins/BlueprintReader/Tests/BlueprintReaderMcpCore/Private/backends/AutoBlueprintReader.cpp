@@ -1033,8 +1033,8 @@ IBlueprintReader::AddSequenceTrackResult AutoBlueprintReader::AddSequenceTrack(s
 IBlueprintReader::AddStateTreeStateResult AutoBlueprintReader::AddStateTreeState(std::string_view assetPath, std::string_view parentStateId, std::string_view name) {
 	FORWARD(AddStateTreeState, assetPath, parentStateId, name);
 }
-IBlueprintReader::AddWidgetResult AutoBlueprintReader::AddWidget(std::string_view assetPath, std::string_view parentName, std::string_view widgetClass, std::string_view name) {
-	FORWARD(AddWidget, assetPath, parentName, widgetClass, name);
+IBlueprintReader::AddWidgetResult AutoBlueprintReader::AddWidget(std::string_view assetPath, std::string_view parentName, std::string_view widgetClass, std::string_view name, int index) {
+	FORWARD(AddWidget, assetPath, parentName, widgetClass, name, index);
 }
 IBlueprintReader::AttachComponentResult AutoBlueprintReader::AttachComponent(std::string_view assetPath, std::string_view name, std::string_view newParentName, std::string_view socket) {
 	FORWARD(AttachComponent, assetPath, name, newParentName, socket);
