@@ -35,9 +35,20 @@ public:
 // from a tool-level error the editor returned. AutoBlueprintReader catches
 // this to fall back to the commandlet instead of stranding the session on
 // an unreachable or auth-broken socket route.
+//
+// REL-16: `requestDispatched` records whether the op frame was FULLY SENT
+// before the failure. When true, the editor may have already EXECUTED the op
+// (only the response was lost) — so fallback layers must NOT re-dispatch a
+// WRITE op (double-add / double-delete hazard); they surface the error and
+// let the caller verify state with a read. Pre-dispatch failures (connect /
+// hello / auth / partial send, which never delivers the newline-terminated
+// frame) stay safely retryable.
 class SocketTransportError : public BlueprintReaderError {
 public:
 	using BlueprintReaderError::BlueprintReaderError;
+	SocketTransportError(const std::string& msg, bool dispatched)
+		: BlueprintReaderError(msg), requestDispatched(dispatched) {}
+	bool requestDispatched = false;
 };
 
 class IBlueprintReader {
@@ -252,12 +263,19 @@ public:
 	// (default), packages that aren't marked dirty are skipped — fast no-op
 	// when nothing's changed. Live backend hits the editor's save path;
 	// commandlet daemon walks loaded packages.
+	//
+	// REL-20 `scope`: "touched" (default) saves only packages THIS bp-reader
+	// session loaded-for-write or saved — in a live editor the user's own
+	// half-edited packages are dirty too, and the old editor-wide sweep
+	// persisted THEIR work-in-progress without consent. "all" opts back into
+	// the full sweep.
 	struct SaveAllResult {
 		int savedCount = 0;
 		std::vector<std::string> failedAssets;
 	};
-	virtual SaveAllResult SaveAll(bool dirtyOnly = true) {
-		(void)dirtyOnly;
+	virtual SaveAllResult SaveAll(bool dirtyOnly = true,
+								  std::string_view scope = "touched") {
+		(void)dirtyOnly; (void)scope;
 		throw BlueprintReaderError("SaveAll not supported by this backend");
 	}
 

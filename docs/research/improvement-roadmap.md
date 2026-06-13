@@ -1837,46 +1837,84 @@ refute pass.
   through the new path, no `.tmp` residue.
 
 ### Phase C — transport & process lifecycle
-- **REL-16** (P1, fleet) Auto backend write ops can double-execute on
-  socket→commandlet fallback after dispatch · **Status:** ☐ Open · **Effort:** M
-- **REL-17** (P1, fleet) LiveServer ReadFrame unbounded buffer growth (OOM via
-  oversized frame) · **Status:** ☐ Open · **Effort:** S
-- **REL-6** (P1) no Job Object on spawned editors (orphan guard is timers only)
-  · **Status:** ☐ Open · **Effort:** M
-- **REL-7** (P1) daemon shutdown is hard TerminateProcess + spawn-retry storms
-  · **Status:** ☐ Open · **Effort:** M
-- **REL-12** (P2) updater Stop-Process kills live MCP sessions of every project
-  · **Status:** ☐ Open · **Effort:** S
-- **REL-24** (P2, fleet) transport robustness batch (stdout-failure exit,
-  Content-Length validation, constant-time token compare, env-parse warnings)
-  · **Status:** ☐ Open · **Effort:** M
+- **REL-16** (P1, fleet) Auto backend write ops could double-execute on
+  socket→commandlet fallback after dispatch · **Status:** ✅ Done (2026-06-12) —
+  `SocketTransportError` now carries `requestDispatched` (true once the op frame
+  is fully sent); Auto's `GuardWriteFallback` + the commandlet daemon→one-shot
+  fallback refuse to re-run a WRITE method after dispatch (surface the error +
+  "verify with a read" instead). Write classification is a normalized name set
+  shared with the ReadOnly Reject list (unit-tested: `IsWriteMethod`).
+- **REL-17** (P1, fleet) LiveServer/CmdletServer ReadFrame unbounded buffer
+  growth · **Status:** ✅ Done (2026-06-12) — 10 MB per-frame cap → log +
+  disconnect, in both servers. Live-verified: an ~11 MB newline-less frame
+  dropped the connection, the daemon stayed alive and served a fresh client.
+- **REL-6** (P1) no Job Object on spawned editors · **Status:** ✅ Done
+  (2026-06-12) — every spawned editor (one-shot + daemon) is assigned to a
+  process-lifetime Job Object with `KILL_ON_JOB_CLOSE`; the idle/grace/lifetime
+  timers stay as fallback. Live-verified: killing the MCP server reaped its
+  daemon within 10s (not the 300s idle timer).
+- **REL-7** (P1) daemon shutdown is hard TerminateProcess + spawn-retry storms ·
+  **Status:** ✅ Done (2026-06-12) — `shutdown_daemon`/`TerminateDaemon` now send
+  a TCP `Quit` op (acked on the daemon's WORKER thread, so it works even while a
+  long op holds the game thread); `TerminateProcess` only as a 5s-timeout
+  fallback. Plus a spawn-failure cooldown (`BP_READER_DAEMON_SPAWN_COOLDOWN_SECONDS`,
+  default 60) so a persistently-failing spawn can't boot an editor per tool call.
+  Live-verified: Quit reached the handler + `RequestShutdown`; daemon exited
+  near-instantly (not the 5s hammer), handshake file cleaned up, flushed
+  "clean shutdown" line present.
+- **REL-12** (P2) updater Stop-Process kills live MCP sessions of every project ·
+  **Status:** ✅ Done (2026-06-12) — the swap now stops only servers whose exe
+  path matches the target project's install dir.
+- **REL-24** (P2, fleet) transport robustness batch · **Status:** ✅ Done
+  (2026-06-12) — stdio loop exits on a failed stdout write (dead client pipe);
+  HTTP Content-Length parsed with `from_chars` + bounds (no silent
+  overflow/negative); constant-time token compare in both servers;
+  non-numeric `BP_READER_*` ints warn to stderr.
 
 ### Phase D — policy & install integrity
-- **REL-19** (P2, fleet) read-only-mode bypass via console_command /
-  run_python_script · **Status:** ☐ Open · **Effort:** S
+- **REL-19** (P2, fleet) read-only-mode bypass via console_command · **Status:**
+  ✅ Done (2026-06-12) — `console_command` now rejects in read-only mode
+  (`BP_READER_RO_ALLOW_CONSOLE=1` escape hatch); `run_python_script` was already
+  rejected. Live-verified: rejected by default, allowed with the env override.
 - **REL-20** (P2, fleet) save_all persists the user's own half-done manual
-  edits (scope to connection-touched by default) · **Status:** ☐ Open ·
-  **Effort:** M
-- **REL-22** (P2, fleet) BPRSeed silently overwrites user assets at the fixed
-  seed paths · **Status:** ☐ Open · **Effort:** S
+  edits · **Status:** ✅ Done (2026-06-12) — `save_all` defaults to
+  `scope:"touched"` (only packages this session loaded-for-write or saved, via a
+  SessionTouchedPackages set fed by LoadMutableBlueprint + SaveAssetPackage);
+  `scope:"all"` restores the editor-wide sweep. Live-verified: a
+  python-dirtied (untouched) BP was skipped by default and saved under
+  scope:all. Wired through all six backends.
+- **REL-22** (P2, fleet) BPRSeed silently overwrites user assets · **Status:**
+  ✅ Done (2026-06-12) — the seeder refuses to overwrite an existing asset that
+  lacks the seed's `BPRSeedMarker` variable (a user asset at the seed path)
+  unless `-Force`; seeds now stamp the marker so re-seeding stays idempotent.
 - **REL-23** (P2, fleet) runtime console commands live in SHIPPING builds ·
-  **Status:** ☐ Open · **Effort:** S
+  **Status:** ✅ Done (2026-06-12) — `bp_reader.list/read` registration is
+  `#if !UE_BUILD_SHIPPING` (compiled out of packaged games; no BP-internals leak
+  to players).
 - **REL-10** (P2) robocopy /MIR purges a plain git checkout in Plugins/ ·
-  **Status:** ☐ Open · **Effort:** S
-- **REL-11** (P2) release artifacts unverified (no SHA256SUMS) · **Status:**
-  ☐ Open · **Effort:** S–M
+  **Status:** ✅ Done (2026-06-12) — Install-Plugin refuses to mirror over a
+  dest that has `.git` and isn't a junction ("git pull instead").
+- **REL-11** (P2) release artifacts unverified · **Status:** ✅ Done
+  (2026-06-12) — release.yml emits a `SHA256SUMS` asset; Update-Plugin verifies
+  the downloaded zip/exe against it before extraction (older releases without it
+  skip with a log line).
+
 ### Phase E — caching correctness
-- **REL-18** (P1/P2, fleet) invalidation completeness (ImplementInterface,
-  GameFeature toggles, MoveAsset global list, TTL-only staleness after external
-  saves) · **Status:** ☐ Open · **Effort:** M
+- **REL-18** (P1/P2, fleet) invalidation completeness · **Status:** ✅ Done
+  (2026-06-12) — `ImplementInterface` now also invalidates the interface asset
+  (its referencer queries); `Activate/DeactivateGameFeature` invalidate the
+  whole cache (a feature toggle mounts/unmounts many assets). (MoveAsset's
+  global-list + the TTL-vs-external-Ctrl+S staleness were already covered by the
+  existing global-key eviction + mtime check.)
 
 ### Phase F — small robustness + verification debt
-- **REL-25** (P3, fleet) commandlet-backend polish (ifstream open check,
-  thread-unique temp names, output-file validation) · **Status:** ☐ Open ·
-  **Effort:** S
-- **REL-13** verification debt — every phase ships with mock doctests +
-  real-editor live verification (`Saved/verify-rel-a.ps1` is the Phase A
-  harness) · **Status:** ◑ ongoing discipline
+- **REL-25** (P3, fleet) commandlet-backend polish · **Status:** ✅ Done
+  (2026-06-12) — `ifstream.is_open()` checked before parse; temp-file names
+  carry thread id + a process counter (no RNG-collision races); JSON parse
+  failures report file size + the last 200 bytes.
+- **REL-13** verification debt — every phase shipped with mock doctests +
+  real-editor live verification (`Saved/verify-rel-{a,b1,b2,b3,c,c7,d}.ps1`) ·
+  **Status:** ◑ ongoing discipline
 
 ---
 
@@ -1884,6 +1922,21 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-12** — **REL Phases C+D+E+F SHIPPED — §10 reliability plan COMPLETE
+  (REL-1..25 all done).** C (transport/process): REL-16 no-double-execute write
+  fallback (SocketTransportError.requestDispatched + IsWriteMethod guard, unit-
+  tested), REL-17 10MB frame cap (both servers), REL-6 Job Object
+  KILL_ON_JOB_CLOSE on every spawned editor, REL-7 graceful TCP-Quit daemon
+  shutdown + spawn cooldown, REL-12 project-scoped updater Stop-Process, REL-24
+  transport robustness (stdout-fail exit, Content-Length from_chars bounds,
+  constant-time token compare, env-parse warnings). D (policy/install): REL-19
+  read-only console gate, REL-20 save_all scope:"touched" default, REL-22 seed
+  collision marker guard, REL-23 !UE_BUILD_SHIPPING runtime-console gate, REL-10
+  git-checkout /MIR guard, REL-11 SHA256SUMS emit+verify. E: REL-18 interface +
+  game-feature cache invalidation. F: REL-25 commandlet-backend polish.
+  Live-verified: C via verify-rel-c.ps1 (frame cap, job-object reap) +
+  verify-rel-c7.ps1 (graceful quit: handshake deleted + flushed clean-shutdown
+  line); D via verify-rel-d.ps1. Mock 877/877.
 - **2026-06-12** — **REL Phase B slice 3 SHIPPED: REL-3 + REL-21 + REL-8 —
   Phase B complete.** Every user-owned/status file now publishes atomically
   (temp+rename): Check-Update cache, Toolbox project.json, all four

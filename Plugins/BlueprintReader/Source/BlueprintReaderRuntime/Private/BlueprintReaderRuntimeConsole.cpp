@@ -12,6 +12,13 @@
 #include "HAL/IConsoleManager.h"
 #include "Misc/OutputDevice.h"
 
+// REL-23: triage commands are for DEVELOPMENT builds. In a SHIPPING game
+// they'd hand any player with console access a full dump of every
+// Blueprint's variables/functions/defaults (game design, balance data,
+// any secrets someone unwisely baked into a default) — so they're
+// compiled out entirely there.
+#if !UE_BUILD_SHIPPING
+
 namespace
 {
 	// `bp_reader.list <Path>` — dumps every BP under <Path> as
@@ -62,3 +69,5 @@ namespace
 			 "bp_reader.read <AssetPath>"),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&Cmd_Read));
 }
+
+#endif    // !UE_BUILD_SHIPPING

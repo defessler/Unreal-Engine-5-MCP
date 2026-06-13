@@ -3289,13 +3289,20 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.description =
 			"[asset] Save every dirty package the editor has loaded. With "
 			"`dirty_only=true` (default), clean packages are skipped — fast "
-			"no-op when nothing's changed. Returns count saved + any failed "
-			"asset paths.";
+			"no-op when nothing's changed. `scope` defaults to \"touched\": "
+			"only packages THIS bp-reader session loaded-for-write or saved "
+			"are persisted — in a live editor the user's own half-edited "
+			"packages are dirty too, and saving them without consent would "
+			"persist their work-in-progress. Pass scope:\"all\" for the "
+			"editor-wide sweep. Returns count saved + any failed asset paths.";
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
 				{"dirty_only", {{"type","boolean"},
 								{"description","Default true. Set false to save every loaded package, dirty or not."}}},
+				{"scope", {{"type","string"},
+						   {"enum", nlohmann::json::array({"touched","all"})},
+						   {"description","Default \"touched\" (only packages this session mutated). \"all\" = every dirty package, including the user's own unsaved edits."}}},
 			}},
 		};
 		d.output_schema = {
@@ -3309,11 +3316,13 @@ void RegisterTools_02b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		};
 		registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 			bool dirtyOnly = args.value("dirty_only", true);
-			auto r = reader.SaveAll(dirtyOnly);
+			std::string scope = args.value("scope", "touched");
+			auto r = reader.SaveAll(dirtyOnly, scope);
 			return nlohmann::json{
 				{"ok", true},
 				{"saved_count",    r.savedCount},
 				{"failed_assets",  r.failedAssets},
+				{"scope",          scope},
 			};
 		});
 	}

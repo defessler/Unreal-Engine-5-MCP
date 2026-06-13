@@ -229,7 +229,7 @@ ReadOnlyBlueprintReader::HealthCheck() {
 	return inner_->HealthCheck();  // a read — pass through
 }
 
-IBlueprintReader::SaveAllResult ReadOnlyBlueprintReader::SaveAll(bool) {
+IBlueprintReader::SaveAllResult ReadOnlyBlueprintReader::SaveAll(bool, std::string_view) {
 	Reject("save_all");
 }
 
@@ -292,9 +292,29 @@ ReadOnlyBlueprintReader::SetComponentProperty(std::string_view, std::string_view
 
 // ----- Live editor ops ----------------------------------------------------
 
-// Reads through.
+// REL-19: console_command and run_python_script were read-only BYPASSES — a
+// console exec like `obj savepackage` or arbitrary editor Python can mutate
+// assets from "read-only" mode, defeating its concurrent-write protection.
+// Both now reject in read-only mode unless BP_READER_RO_ALLOW_CONSOLE=1
+// explicitly re-opens them (for read-only sessions that still need console
+// diagnostics and accept the policy hole).
+namespace {
+bool RoConsoleEscapeHatch() {
+	static const bool kAllowed = []() {
+		const char* v = std::getenv("BP_READER_RO_ALLOW_CONSOLE");
+		return v && (std::string_view(v) == "1" ||
+					 std::string_view(v) == "true" ||
+					 std::string_view(v) == "TRUE");
+	}();
+	return kAllowed;
+}
+}    // namespace
+
 IBlueprintReader::ConsoleCommandResult
 ReadOnlyBlueprintReader::ConsoleCommand(std::string_view c) {
+	if (!RoConsoleEscapeHatch()) {
+		Reject("console_command");
+	}
 	return inner_->ConsoleCommand(c);
 }
 IBlueprintReader::CVarValue

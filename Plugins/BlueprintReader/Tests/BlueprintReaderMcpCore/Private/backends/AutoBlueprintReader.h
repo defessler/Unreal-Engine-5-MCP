@@ -354,7 +354,8 @@ public:
 	WidgetBlueprintInfo ReadWidgetBlueprint(std::string_view) override;
 	RemoveComponentResult RemoveComponent(std::string_view assetPath, std::string_view name) override;
 	AutomationRunResult RunAutomationTests(std::string_view pattern) override;
-	SaveAllResult SaveAll(bool dirtyOnly) override;
+	SaveAllResult SaveAll(bool dirtyOnly,
+	                      std::string_view scope = "touched") override;
 	void SetActorTransform(std::string_view actorName, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) override;
 	SetBTNodePropertyResult SetBTNodeProperty(std::string_view, std::string_view, std::string_view, std::string_view) override;
 	SetCameraResult SetCameraTransform(double, double, double, double, double, double) override;
@@ -398,6 +399,19 @@ private:
 	// transport/auth layer, drop it, switch to the commandlet for a cooldown
 	// window, and return that commandlet to retry the call on. Caller holds mu_.
 	IBlueprintReader& FallBackToCommandlet(const SocketTransportError& e);
+
+	// REL-16: refuse the fallback retry for a WRITE method whose op frame was
+	// already dispatched (the editor may have executed it; only the response
+	// was lost). Drops the socket route + throws. No-op for reads or
+	// pre-dispatch failures. Caller holds mu_.
+	void GuardWriteFallback(const char* method, const SocketTransportError& e);
+
+public:
+	// Exposed for tests: normalized write-method classification (the C++
+	// method token AddBTNode matches the tool name add_bt_node).
+	static bool IsWriteMethod(std::string_view method);
+
+private:
 
 	// Recompute the routing decision (file read + TCP probe). Caller
 	// holds mu_.

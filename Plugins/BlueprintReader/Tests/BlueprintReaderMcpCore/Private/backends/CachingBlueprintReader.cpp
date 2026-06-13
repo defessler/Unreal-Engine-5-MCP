@@ -426,6 +426,10 @@ void CachingBlueprintReader::ImplementInterface(std::string_view assetPath,
 												std::string_view interfacePath) {
 	inner_->ImplementInterface(assetPath, interfacePath);
 	InvalidateAsset(assetPath);
+	// REL-18: the INTERFACE asset's cached queries are stale too — most
+	// notably get_referencers(interface), which should now include the
+	// implementing BP. Cheap to evict; the interface re-reads on demand.
+	InvalidateAsset(interfacePath);
 }
 
 void CachingBlueprintReader::SetPinDefault(std::string_view assetPath,
@@ -543,10 +547,10 @@ CachingBlueprintReader::HealthCheck() {
 }
 
 IBlueprintReader::SaveAllResult
-CachingBlueprintReader::SaveAll(bool dirtyOnly) {
+CachingBlueprintReader::SaveAll(bool dirtyOnly, std::string_view scope) {
 	// SaveAll doesn't change in-memory asset state, just persists it —
 	// no invalidation needed.
-	return inner_->SaveAll(dirtyOnly);
+	return inner_->SaveAll(dirtyOnly, scope);
 }
 
 IBlueprintReader::MoveAssetResult
@@ -957,11 +961,18 @@ IBlueprintReader::LiveCodingStateResult CachingBlueprintReader::GetLiveCodingSta
 }
 IBlueprintReader::GameFeatureActionResult
 CachingBlueprintReader::ActivateGameFeature(std::string_view p) {
-	return inner_->ActivateGameFeature(p);
+	auto r = inner_->ActivateGameFeature(p);
+	// REL-18: toggling a game feature mounts/unmounts a whole plugin's worth
+	// of assets — every cached list/find/read may now be wrong. Nuke it all;
+	// feature toggles are rare and the cache refills on demand.
+	InvalidateAll();
+	return r;
 }
 IBlueprintReader::GameFeatureActionResult
 CachingBlueprintReader::DeactivateGameFeature(std::string_view p) {
-	return inner_->DeactivateGameFeature(p);
+	auto r = inner_->DeactivateGameFeature(p);
+	InvalidateAll();  // REL-18 (see ActivateGameFeature)
+	return r;
 }
 IBlueprintReader::RecentAssetsResult CachingBlueprintReader::GetRecentlyOpenedAssets() {
 	return inner_->GetRecentlyOpenedAssets();

@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include "backends/AutoBlueprintReader.h"   // REL-16: IsWriteMethod classification
 #include "backends/MockBlueprintReader.h"
 #include "tools/BlueprintTools.h"
 #include "tools/ToolRegistry.h"
@@ -236,6 +237,43 @@ TEST_CASE("ui_focus_tab: mock backend throws not-supported") {
 		f.Call("ui_focus_tab", json{{"tab_label", "Details"}}),
 		doctest::Contains("requires the live backend"),
 		bpr::backends::BlueprintReaderError);
+}
+
+// REL-16: write-method classification drives the no-double-dispatch fallback
+// guard. The C++ method token must match its snake_case tool name through
+// normalization, and reads must stay retryable.
+TEST_CASE("REL-16: AutoBlueprintReader::IsWriteMethod classification") {
+	using bpr::backends::AutoBlueprintReader;
+	// Writes — CamelCase method tokens as the FORWARD macro stringifies them.
+	CHECK(AutoBlueprintReader::IsWriteMethod("AddVariable"));
+	CHECK(AutoBlueprintReader::IsWriteMethod("AddBTNode"));        // acronym
+	CHECK(AutoBlueprintReader::IsWriteMethod("SetCVar"));          // acronym
+	CHECK(AutoBlueprintReader::IsWriteMethod("WirePins"));
+	CHECK(AutoBlueprintReader::IsWriteMethod("DeleteAsset"));
+	CHECK(AutoBlueprintReader::IsWriteMethod("EndBatch"));         // flush saves
+	CHECK(AutoBlueprintReader::IsWriteMethod("UiClick"));          // editor action
+	CHECK(AutoBlueprintReader::IsWriteMethod("ConsoleCommand"));   // can mutate
+	CHECK(AutoBlueprintReader::IsWriteMethod("WriteGeneratedSource"));
+	// Snake_case (the daemon fallback guard passes wire op names).
+	CHECK(AutoBlueprintReader::IsWriteMethod("add_variable"));
+	CHECK(AutoBlueprintReader::IsWriteMethod("set_cvar"));
+	// Reads — must remain freely retryable.
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("ReadBlueprint"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("ListBlueprints"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("GetGraph"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("FindNode"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("HealthCheck"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("UiListWidgets"));
+	CHECK_FALSE(AutoBlueprintReader::IsWriteMethod("BeginBatch"));  // idempotent
+}
+
+// REL-16: the transport error's dispatch flag defaults false (pre-dispatch
+// failures stay retryable) and carries true when tagged.
+TEST_CASE("REL-16: SocketTransportError requestDispatched flag") {
+	bpr::backends::SocketTransportError preDispatch("connect refused");
+	CHECK_FALSE(preDispatch.requestDispatched);
+	bpr::backends::SocketTransportError postDispatch("read failed", true);
+	CHECK(postDispatch.requestDispatched);
 }
 
 TEST_CASE("ValidateToolName accepts spec-compliant names, rejects others") {

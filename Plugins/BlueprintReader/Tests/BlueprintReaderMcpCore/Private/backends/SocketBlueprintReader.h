@@ -155,7 +155,8 @@ public:
 
 	// ----- Project + Content Browser ops --------------------------------
 	ProjectMetadata GetProjectMetadata() override;
-	SaveAllResult SaveAll(bool dirtyOnly) override;
+	SaveAllResult SaveAll(bool dirtyOnly,
+	                      std::string_view scope = "touched") override;
 	MoveAssetResult MoveAsset(std::string_view sourcePath,
 							  std::string_view destPath) override;
 	DeleteAssetResult DeleteAsset(std::string_view assetPath,

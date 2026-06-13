@@ -7,6 +7,7 @@
 #include "tools/EditorSubscriptions.h"
 
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -97,8 +98,18 @@ std::string ReadRequest(SocketType s) {
 		}
 		const std::size_t p = head.find("content-length:");
 		if (p != std::string::npos) {
-			contentLength = static_cast<std::size_t>(
-				std::strtoul(head.c_str() + p + std::strlen("content-length:"), nullptr, 10));
+			// REL-24: parse with explicit overflow/sign/garbage detection —
+			// strtoul silently wraps huge values and accepts negatives, which
+			// could turn `needed` below into a wild target (read-forever or
+			// short-read). Reject anything non-numeric or > kMaxRequest.
+			const char* start = head.c_str() + p + std::strlen("content-length:");
+			while (*start == ' ' || *start == '\t') { ++start; }
+			unsigned long long parsed = 0;
+			const auto rc = std::from_chars(start, head.c_str() + head.size(), parsed);
+			if (rc.ec != std::errc() || parsed > kMaxRequest) {
+				return buf;  // malformed/oversized declaration — serve what we have
+			}
+			contentLength = static_cast<std::size_t>(parsed);
 		}
 	}
 	const std::size_t needed = bodyStart + contentLength;

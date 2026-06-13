@@ -940,6 +940,19 @@ namespace
 		~FOpUndoScope() { CloseOpUndoTransaction(); }
 	};
 
+	// ----- REL-20: which packages THIS bp-reader session touched ------------
+	// save_all's default scope. In a live editor the user's own half-edited
+	// packages are dirty too — saving them without consent persists THEIR
+	// work-in-progress. Recording every package bp-reader loaded-for-write
+	// (LoadMutableBlueprint) or saved (SaveAssetPackage / CompileAndSave)
+	// lets save_all default to "only what the agent touched"; scope="all"
+	// opts back into the old editor-wide sweep. Game-thread only.
+	TSet<FString>& SessionTouchedPackages()
+	{
+		static TSet<FString> Touched;
+		return Touched;
+	}
+
 	// Cross-session BP write-lock side channel. When LoadMutableBlueprint
 	// detects that another connection has the BP locked for its own
 	// batch, it can't return a useful UBlueprint*. Returning nullptr is
@@ -1034,6 +1047,10 @@ namespace
 		// no extra logging either way.
 		UBlueprint* BP = LoadObject<UBlueprint>(
 			nullptr, *Resolved, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (IsValid(BP) && BP->GetOutermost())
+		{
+			SessionTouchedPackages().Add(BP->GetOutermost()->GetName());  // REL-20
+		}
 		if (!IsValid(BP))
 		{
 			// Diagnostic lives in BlueprintIntrospector — see header. We
@@ -1520,6 +1537,7 @@ namespace
 		{
 			return false;
 		}
+		SessionTouchedPackages().Add(Package->GetName());  // REL-20
 		const FString FileName = FPackageName::LongPackageNameToFilename(
 			Package->GetName(), FPackageName::GetAssetPackageExtension());
 		BackupAssetFileOnce(FileName, Package->GetName());  // REL-4
@@ -2358,25 +2376,48 @@ namespace
 			return true;
 		};
 
+		// REL-20: default scope = packages THIS bp-reader session touched. In
+		// a live editor the user's own half-edited packages are dirty too —
+		// the old editor-wide sweep persisted THEIR work-in-progress without
+		// consent. -Scope=all opts back into the full sweep.
+		FString Scope = TEXT("touched");
+		FParse::Value(*Params, TEXT("Scope="), Scope);
+		const bool bScopeAll = Scope.Equals(TEXT("all"), ESearchCase::IgnoreCase);
+
 		// Capture dirty packages BEFORE the save so we can report what we
 		// touched. Walk the loaded-packages set; UE doesn't expose a "list
 		// dirty packages" helper directly.
 		TArray<UPackage*> DirtyBefore;
+		int32 SkippedUntouched = 0;
 		for (TObjectIterator<UPackage> It; It; ++It)
 		{
 			UPackage* Pkg = *It;
-			if (Pkg && Pkg->IsDirty() && IsUserSaveable(Pkg))
+			if (!Pkg || !Pkg->IsDirty() || !IsUserSaveable(Pkg))
 			{
-				DirtyBefore.Add(Pkg);
+				continue;
 			}
+			if (!bScopeAll && !SessionTouchedPackages().Contains(Pkg->GetName()))
+			{
+				++SkippedUntouched;
+				continue;
+			}
+			DirtyBefore.Add(Pkg);
 		}
 
-		// UEditorLoadingAndSavingUtils::SaveDirtyPackages(bSaveMapPackages,
-		// bSaveContentPackages) handles the actual save loop with proper
-		// SCC + checkpoint awareness.
-		const bool bSaved = UEditorLoadingAndSavingUtils::SaveDirtyPackages(
-			/*bSaveMapPackages=*/true, /*bSaveContentPackages=*/true);
-		(void)bSaved;
+		if (bScopeAll)
+		{
+			// UEditorLoadingAndSavingUtils::SaveDirtyPackages handles the
+			// editor-wide save loop with proper SCC + checkpoint awareness.
+			const bool bSaved = UEditorLoadingAndSavingUtils::SaveDirtyPackages(
+				/*bSaveMapPackages=*/true, /*bSaveContentPackages=*/true);
+			(void)bSaved;
+		}
+		else if (DirtyBefore.Num() > 0)
+		{
+			// Targeted save of just the touched dirty packages.
+			(void)UEditorLoadingAndSavingUtils::SavePackages(
+				DirtyBefore, /*bOnlyDirty=*/true);
+		}
 
 		TArray<TSharedPtr<FJsonValue>> FailedJson;
 		int32 SavedCount = 0;
@@ -2404,6 +2445,10 @@ namespace
 		// (failed_assets would be non-empty in the latter).
 		Obj->SetBoolField(TEXT("nothing_to_save"), DirtyBefore.Num() == 0);
 		Obj->SetArrayField(TEXT("failed_assets"), FailedJson);
+		Obj->SetStringField(TEXT("scope"), bScopeAll ? TEXT("all") : TEXT("touched"));
+		// How many dirty user packages were left alone because this session
+		// never touched them (the user's own work-in-progress).
+		Obj->SetNumberField(TEXT("skipped_untouched"), SkippedUntouched);
 		return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 	}
 
@@ -14874,6 +14919,14 @@ int32 RunDaemon()
 	Server.Stop();
 	UE_LOG(LogBlueprintReader, Display,
 		TEXT("BlueprintReader daemon: clean shutdown"));
+	// REL-7: flush so the clean-shutdown line actually reaches the log file
+	// before the engine tears down — UE otherwise drops the last buffered
+	// lines on a fast commandlet exit, making graceful-vs-hammered
+	// indistinguishable from the log.
+	if (GLog)
+	{
+		GLog->Flush();
+	}
 	return 0;
 }
 } // namespace

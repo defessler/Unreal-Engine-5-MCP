@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -82,6 +83,12 @@ int IntOrDefault(const char* key, int fallback) {
 	try {
 		return std::stoi(*v);
 	} catch (...) {
+		// REL-24: a typo'd numeric env var (BP_READER_TIMEOUT_SECONDS=abc)
+		// silently used the default — warn so the misconfiguration is
+		// visible instead of mystifying.
+		std::fprintf(stderr,
+			"[bp-reader-mcp] warning: %s=%s is not a number; using default %d\n",
+			key, v->c_str(), fallback);
 		return fallback;
 	}
 }

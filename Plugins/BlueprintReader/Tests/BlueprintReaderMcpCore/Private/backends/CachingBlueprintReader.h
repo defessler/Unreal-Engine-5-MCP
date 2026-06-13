@@ -147,7 +147,8 @@ public:
 	// would add complexity without much value. Save/move/delete also
 	// invalidate the global list cache (asset enumeration changes).
 	ProjectMetadata GetProjectMetadata() override;
-	SaveAllResult SaveAll(bool dirtyOnly) override;
+	SaveAllResult SaveAll(bool dirtyOnly,
+	                      std::string_view scope = "touched") override;
 	MoveAssetResult MoveAsset(std::string_view sourcePath,
 							  std::string_view destPath) override;
 	DeleteAssetResult DeleteAsset(std::string_view assetPath,

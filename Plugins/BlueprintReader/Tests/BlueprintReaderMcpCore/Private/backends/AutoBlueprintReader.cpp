@@ -1,11 +1,14 @@
 #include "backends/AutoBlueprintReader.h"
 
+#include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -351,6 +354,72 @@ std::string AutoBlueprintReader::SelectBackendForTesting() {
 // where needed). On Pick, we may rebuild live_ / probe — that's the
 // blocking section.
 
+// REL-16: write methods must NOT silently re-dispatch on the commandlet when
+// the socket attempt failed AFTER the op frame was fully sent — the editor
+// may have already executed the mutation (the response was lost, not the
+// request), so a retry double-executes (double-add, double-delete, second
+// click). GuardWriteFallback drops the dead socket route either way; for a
+// post-dispatch WRITE failure it throws instead of retrying, telling the
+// caller to verify with a read first.
+bool AutoBlueprintReader::IsWriteMethod(std::string_view method) {
+	// Normalized (lowercase, alphanumerics only) so the C++ method token
+	// (AddBTNode) matches the snake_case tool name (add_bt_node) without a
+	// hand-maintained spelling map. Mirrors ReadOnlyBlueprintReader's Reject
+	// set + the batch flush + the editor-action ops — update BOTH when adding
+	// a write tool (CLAUDE.md "Adding a new tool" step 4).
+	static const std::set<std::string> kWrites = []() {
+		const char* names[] = {
+			"activate_game_feature", "add_anim_state", "add_bt_node",
+			"add_component", "add_data_row", "add_function",
+			"add_function_input", "add_function_output", "add_gameplay_tag",
+			"add_material_expression", "add_node", "add_sequence_track",
+			"add_state_tree_state", "add_variable", "add_widget",
+			"attach_component", "bind_widget_event", "clone_graph",
+			"compile_anim_blueprint", "compile_behavior_tree",
+			"compile_material", "compile_state_tree", "compile_widget_blueprint",
+			"connect_material_expressions", "create_blueprint",
+			"create_data_asset", "create_folder", "create_material",
+			"create_material_instance", "create_niagara_system",
+			"deactivate_game_feature", "delete_actor", "delete_asset",
+			"delete_function", "delete_node", "delete_variable",
+			"duplicate_blueprint", "implement_interface", "move_asset",
+			"pie_start", "pie_stop", "remove_component", "rename_variable",
+			"retype_variable", "run_python_script", "save_all",
+			"set_actor_transform", "set_actor_visibility",
+			"set_bt_node_property", "set_component_property",
+			"set_config_value", "set_cvar", "set_data_asset_property",
+			"set_data_row_value", "set_layer_visibility",
+			"set_material_instance_parameter", "set_material_parameter",
+			"set_niagara_parameter", "set_node_position", "set_pin_default",
+			"set_plugin_enabled", "set_project_setting", "set_selection",
+			"set_sequence_playback_range", "set_state_tree_transition",
+			"set_variable_category", "set_variable_default",
+			"set_widget_property", "spawn_actor", "wire_pins",
+			"write_generated_source",
+			// Non-Reject-set members that still must not double-dispatch:
+			"end_batch",          // flushes compiles + saves
+			"console_command",    // arbitrary exec can mutate
+			"ui_click", "ui_type", "ui_focus_tab",  // editor-input actions
+			"build_lighting", "live_coding_compile",
+		};
+		std::set<std::string> out;
+		for (const char* n : names) {
+			std::string norm;
+			for (const char* p = n; *p; ++p) {
+				if (*p != '_') { norm.push_back(static_cast<char>(std::tolower(*p))); }
+			}
+			out.insert(std::move(norm));
+		}
+		return out;
+	}();
+	std::string norm;
+	norm.reserve(method.size());
+	for (char ch : method) {
+		if (ch != '_') { norm.push_back(static_cast<char>(std::tolower(ch))); }
+	}
+	return kWrites.count(norm) > 0;
+}
+
 #define FORWARD(method, ...) \
 	do { \
 		std::lock_guard<std::mutex> lock(mu_); \
@@ -361,6 +430,7 @@ std::string AutoBlueprintReader::SelectBackendForTesting() {
 		try { \
 			return picked.method(__VA_ARGS__); \
 		} catch (const SocketTransportError& bprTransportErr) { \
+			GuardWriteFallback(#method, bprTransportErr); \
 			return FallBackToCommandlet(bprTransportErr).method(__VA_ARGS__); \
 		} \
 	} while (0)
@@ -375,10 +445,34 @@ std::string AutoBlueprintReader::SelectBackendForTesting() {
 			try { \
 				picked.method(__VA_ARGS__); \
 			} catch (const SocketTransportError& bprTransportErr) { \
+				GuardWriteFallback(#method, bprTransportErr); \
 				FallBackToCommandlet(bprTransportErr).method(__VA_ARGS__); \
 			} \
 		} \
 	} while (0)
+
+void AutoBlueprintReader::GuardWriteFallback(const char* method,
+											 const SocketTransportError& e) {
+	if (!e.requestDispatched || !IsWriteMethod(method)) {
+		return;  // pre-dispatch failure or read op — safe to retry below
+	}
+	// Drop the dead socket route exactly like FallBackToCommandlet would, so
+	// the NEXT call routes cleanly — but refuse to re-run THIS write.
+	std::fprintf(stderr,
+		"[bp-reader-mcp][auto] transport failed AFTER the write op was "
+		"dispatched (%s) — NOT retrying on the commandlet: %s\n",
+		method, e.what());
+	live_.reset();
+	cmdletSocket_.reset();
+	route_ = Route::Commandlet;
+	lastProbe_ = std::chrono::steady_clock::now();
+	throw BlueprintReaderError(fmt::format(
+		"transport to the editor failed AFTER the write op '{}' was dispatched "
+		"— the editor may have already applied it, so it was NOT retried "
+		"(double-execution hazard). Verify the asset state with a read, then "
+		"re-issue the op if needed. Underlying: {}",
+		method, e.what()));
+}
 
 IBlueprintReader& AutoBlueprintReader::FallBackToCommandlet(const SocketTransportError& e) {
 	// The probed socket route (live editor or daemon) connected but then
@@ -1114,8 +1208,9 @@ IBlueprintReader::RemoveComponentResult AutoBlueprintReader::RemoveComponent(std
 IBlueprintReader::AutomationRunResult AutoBlueprintReader::RunAutomationTests(std::string_view pattern) {
 	FORWARD(RunAutomationTests, pattern);
 }
-IBlueprintReader::SaveAllResult AutoBlueprintReader::SaveAll(bool dirtyOnly) {
-	FORWARD(SaveAll, dirtyOnly);
+IBlueprintReader::SaveAllResult AutoBlueprintReader::SaveAll(bool dirtyOnly,
+		std::string_view scope) {
+	FORWARD(SaveAll, dirtyOnly, scope);
 }
 void AutoBlueprintReader::SetActorTransform(std::string_view actorName, double locX, double locY, double locZ, double rotPitch, double rotYaw, double rotRoll, double scaleX, double scaleY, double scaleZ) {
 	FORWARD_VOID(SetActorTransform, actorName, locX, locY, locZ, rotPitch, rotYaw, rotRoll, scaleX, scaleY, scaleZ);

@@ -167,7 +167,8 @@ public:
 
 	// ----- Project + Content Browser ops --------------------------------
 	ProjectMetadata GetProjectMetadata() override;
-	SaveAllResult SaveAll(bool dirtyOnly) override;
+	SaveAllResult SaveAll(bool dirtyOnly,
+	                      std::string_view scope = "touched") override;
 	MoveAssetResult MoveAsset(std::string_view sourcePath,
 							  std::string_view destPath) override;
 	DeleteAssetResult DeleteAsset(std::string_view assetPath,
@@ -496,6 +497,10 @@ private:
 #endif    // defined(_WIN32)
 
 	std::mutex daemonMutex_;  // serializes EnsureDaemonAttached + spawn/respawn
+	// REL-7: when the last full spawn cycle failed; EnsureDaemonAttached
+	// fast-fails (one-shot fallback) within the cooldown window instead of
+	// booting another editor per call. Guarded by daemonMutex_.
+	std::chrono::steady_clock::time_point lastSpawnFailure_{};
 	std::thread prewarmThread_;  // joined in destructor
 	Config cfg_;
 	std::filesystem::path editorCmdExe_;

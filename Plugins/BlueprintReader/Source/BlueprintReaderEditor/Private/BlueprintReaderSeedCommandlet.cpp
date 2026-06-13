@@ -16,6 +16,10 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "HAL/FileManager.h"   // REL-22: read existing .uasset bytes (no load)
+#include "Misc/CommandLine.h"  // REL-22: -Force overwrite check
+#include "Misc/FileHelper.h"   // REL-22: LoadFileToArray
+#include "Misc/Paths.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 
@@ -42,6 +46,61 @@ namespace
 	bool CreateBlueprint(const FString& PackageName, const FString& AssetName,
 	                     UClass* ParentClass, FNewBlueprint& Out)
 	{
+		// REL-22: the seeder writes at FIXED /Game/AI paths. If a USER asset
+		// already lives at one of them, FactoryCreateNew would silently
+		// replace it. A prior SEED is fine to overwrite (re-seeding is the
+		// documented workflow) — we recognize our own output by the marker
+		// variable every seed BP carries.
+		//
+		// CRUCIAL: do NOT LoadObject the existing asset to inspect it. Loading
+		// pulls it into memory under this exact name, and FactoryCreateNew
+		// below then fatal-errors ("renaming on top of an existing object")
+		// when the BP reinstancer tries to move the old generated class aside.
+		// Instead, read the marker variable's NAME straight out of the
+		// existing .uasset's name table on disk (a UBlueprint stores every
+		// member-variable name verbatim there) — lock-free, load-free, and it
+		// never perturbs the object graph the factory is about to build.
+		const FString ExistingFile = FPackageName::LongPackageNameToFilename(
+			PackageName, FPackageName::GetAssetPackageExtension());
+		if (IFileManager::Get().FileExists(*ExistingFile))
+		{
+			bool bLooksLikeOurSeed = false;
+			TArray<uint8> Bytes;
+			if (FFileHelper::LoadFileToArray(Bytes, *ExistingFile))
+			{
+				static const char* kMarker = "BPRSeedMarker";
+				const int32 NeedleLen = 13;  // strlen("BPRSeedMarker")
+				for (int32 i = 0; i + NeedleLen <= Bytes.Num(); ++i)
+				{
+					if (FMemory::Memcmp(&Bytes[i], kMarker, NeedleLen) == 0)
+					{
+						bLooksLikeOurSeed = true;
+						break;
+					}
+				}
+			}
+			const bool bForce = FParse::Param(FCommandLine::Get(), TEXT("Force"));
+			if (!bLooksLikeOurSeed && !bForce)
+			{
+				UE_LOG(LogBlueprintReaderSeed, Error,
+					TEXT("REFUSING to overwrite %s — an asset already exists there "
+						 "and does not look like a previous seed (no BPRSeedMarker "
+						 "variable). Move your asset or pass -Force to overwrite."),
+					*ExistingFile);
+				return false;
+			}
+			// Proceeding to overwrite our own prior seed (or -Force). The seed
+			// RECREATES the asset wholesale, and FactoryCreateNew fatal-asserts
+			// if a BP of this name already exists in the package — so give it a
+			// clean slate: delete the on-disk file. (A fresh commandlet has
+			// nothing of /Game/AI loaded into memory, so the package name is
+			// free once the file is gone. This is also why we never LoadObject
+			// the existing asset above — loading is exactly what would make the
+			// name un-free and crash the factory.)
+			IFileManager::Get().Delete(*ExistingFile, /*RequireExists=*/false,
+				/*EvenReadOnly=*/true);
+		}
+
 		UPackage* Package = CreatePackage(*PackageName);
 		if (!IsValid(Package))
 		{
@@ -62,6 +121,16 @@ namespace
 			return false;
 		}
 		BP->MarkPackageDirty();
+
+		// REL-22: stamp every seed BP with a marker variable so a future
+		// re-seed can tell "previous seed output (safe to overwrite)" from
+		// "user asset that happens to share the name" (refused above).
+		{
+			FEdGraphPinType MarkerType;
+			MarkerType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+			FBlueprintEditorUtils::AddMemberVariable(
+				BP, TEXT("BPRSeedMarker"), MarkerType, TEXT("true"));
+		}
 
 		Out.Blueprint = BP;
 		Out.Package = Package;

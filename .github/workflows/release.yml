@@ -137,6 +137,17 @@ jobs:
             Write-Host "Toolbox exe: $toolboxDst ($([math]::Round($toolboxInstaller.Length/1MB,1)) MB)"
           }
 
+          # ── Asset 3 (REL-11): SHA256SUMS over every release asset ─────────
+          # Downloaders (Update-Plugin.ps1) verify the zip/exe against this
+          # before extraction, so a corrupted or substituted asset is refused.
+          $sums = @()
+          foreach ($f in (Get-ChildItem "BlueprintReader-$tag-*")) {
+            $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLower()
+            $sums += "$h  $($f.Name)"
+          }
+          Set-Content "SHA256SUMS" -Value ($sums -join "`n")
+          Write-Host "SHA256SUMS:`n$($sums -join "`n")"
+
       # ── 4. Upload workflow artifacts (always — even on workflow_dispatch) ──
       - name: Upload plugin ZIP artifact
         uses: actions/upload-artifact@v4
@@ -160,6 +171,7 @@ jobs:
           files: |
             BlueprintReader-*-plugin.zip
             BlueprintReader-*-toolbox-win64.exe
+            SHA256SUMS
           fail_on_unmatched_files: false
           generate_release_notes: true
           body: |

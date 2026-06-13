@@ -102,7 +102,7 @@ public:
 	// Reads pass through; writes (save/move/delete/create) throw the
 	// read-only error.
 	ProjectMetadata GetProjectMetadata() override;
-	SaveAllResult SaveAll(bool) override;
+	SaveAllResult SaveAll(bool, std::string_view scope = "touched") override;
 	MoveAssetResult MoveAsset(std::string_view, std::string_view) override;
 	DeleteAssetResult DeleteAsset(std::string_view, bool) override;
 	CreateFolderResult CreateFolder(std::string_view) override;

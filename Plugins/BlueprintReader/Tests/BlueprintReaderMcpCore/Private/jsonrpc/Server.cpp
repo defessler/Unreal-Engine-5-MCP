@@ -458,6 +458,17 @@ void Server::Run(std::istream& in, std::ostream& out, std::ostream& log) {
 		for (const auto& notif : TakePendingNotifications()) {
 			WriteFrame(out, notif, clientFormat);
 		}
+
+		// REL-24: a dead client pipe makes every WriteFrame silently fail —
+		// the loop would keep reading and processing requests whose responses
+		// go nowhere. Once stdout is broken, exit cleanly (the parent-death
+		// watchdog covers the harder crash cases; this covers plain
+		// closed-stdout).
+		if (out.fail()) {
+			log << "[bp-reader-mcp] stdout write failed (client pipe closed) — "
+				   "exiting\n";
+			return;
+		}
 	}
 }
 

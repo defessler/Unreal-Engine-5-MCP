@@ -67,6 +67,16 @@ if ($pluginSrc -ieq $destResolved) {
     New-Item -ItemType SymbolicLink -Path $dest -Target $pluginSrc | Out-Null
     Write-Host "$tag Symlinked plugin -> $dest"
 } else {
+    # REL-10: a plain (non-junction) git checkout living at the destination
+    # would be silently MIRRORED OVER by the /MIR below — uncommitted local
+    # changes gone. Junction installs are guarded upstream (Update-Plugin
+    # skips redeploy); guard the copied-checkout case here the same way.
+    if ((Test-Path (Join-Path $dest '.git')) -and
+        -not ((Get-Item -LiteralPath $dest -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw ("$tag $dest is a git checkout (.git present) - refusing to mirror over it " +
+               "(uncommitted changes would be lost). 'git pull' that checkout instead, " +
+               "or remove .git if it is not a working copy.")
+    }
     New-Item -ItemType Directory -Force $dest | Out-Null
     # Two-pass mount so a /MIR mirror never PURGES an already-installed
     # precompiled server when the SOURCE lacks it. (The Update/Setup-from-source

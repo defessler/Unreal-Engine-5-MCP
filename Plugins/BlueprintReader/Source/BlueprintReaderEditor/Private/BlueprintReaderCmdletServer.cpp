@@ -113,9 +113,23 @@ public:
 		}
 		TSharedPtr<FJsonObject> AuthMsg = ParseJson(AuthRaw);
 		FString PresentedToken;
+		// REL-24: constant-time compare (see LiveServer — same rationale).
+		auto TokensEqualConstantTime = [](const FString& A, const FString& B)
+		{
+			if (A.Len() != B.Len())
+			{
+				return false;
+			}
+			uint32 Diff = 0;
+			for (int32 i = 0; i < A.Len(); ++i)
+			{
+				Diff |= static_cast<uint32>(A[i]) ^ static_cast<uint32>(B[i]);
+			}
+			return Diff == 0;
+		};
 		if (!AuthMsg.IsValid() ||
 			!AuthMsg->TryGetStringField(TEXT("token"), PresentedToken) ||
-			PresentedToken != ExpectedToken)
+			!TokensEqualConstantTime(PresentedToken, ExpectedToken))
 		{
 			UE_LOG(LogBlueprintReaderCmdlet, Warning, TEXT("Auth failed; closing connection"));
 			SendFrame(TEXT("{\"type\":\"auth_fail\"}"));
@@ -228,6 +242,26 @@ public:
 					}
 					Params.Append(Arg);
 				}
+			}
+
+			// REL-7: graceful daemon shutdown. Handled HERE on the worker
+			// thread — deliberately NOT via the game-thread dispatch below —
+			// so the MCP server's quit request works even while a long op has
+			// the game thread busy. The polling loop notices WantsShutdown()
+			// as soon as it comes back around; a truly wedged game thread is
+			// covered by the caller's terminate-after-timeout fallback.
+			// (The LIVE editor server has no such op — a tool must never be
+			// able to close the user's editor.)
+			if (Params.StartsWith(TEXT("-Op=Quit")) && Server)
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Display,
+					TEXT("REL-7: Quit op received — requesting graceful shutdown"));
+				Server->RequestShutdown();
+				SendRaw(FString::Printf(
+					TEXT("{\"type\":\"result\",\"id\":%d,\"code\":0,")
+					TEXT("\"json\":{\"ok\":true,\"quitting\":true}}\n"),
+					RequestId));
+				continue;
 			}
 
 			// PERF-1: use an in-memory sentinel path instead of a temp file.
@@ -373,6 +407,9 @@ private:
 	// Read a newline-delimited frame. Buffers data across reads.
 	bool ReadFrame(FString& Out)
 	{
+		// REL-17: hard cap on a single frame — an endless newline-less stream
+		// would otherwise grow PendingBuffer until the daemon OOMs.
+		constexpr int32 MaxFrameChars = 10 * 1024 * 1024;
 		Out.Reset();
 		// Drain any leftover from prior reads first (line feed boundary).
 		while (true)
@@ -384,6 +421,13 @@ private:
 				PendingBuffer = PendingBuffer.RightChop(NewlineIdx + 1);
 				Out.TrimStartAndEndInline();
 				return true;
+			}
+			if (PendingBuffer.Len() > MaxFrameChars)
+			{
+				UE_LOG(LogBlueprintReaderCmdlet, Warning,
+					TEXT("Client sent an oversized frame (>%d chars, no newline) "
+						 "— disconnecting to protect the daemon."), MaxFrameChars);
+				return false;  // treated as connection-closed by the caller
 			}
 			// Read more bytes.
 			uint8 Buf[4096];

@@ -214,6 +214,35 @@ try {
                     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipTmp `
                         -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 120 -ErrorAction Stop
                     $ProgressPreference = $oldPref
+                    # REL-11: verify against the release's SHA256SUMS when it
+                    # ships one (releases from 2026-06-12 on). A mismatch means
+                    # a corrupted or substituted asset - refuse it. Older
+                    # releases without sums skip the check (logged).
+                    $sumsAsset = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS' } | Select-Object -First 1
+                    if ($sumsAsset) {
+                        $sumsTmp = "$zipTmp.sums"
+                        Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsTmp `
+                            -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 60 -ErrorAction Stop
+                        $expected = $null
+                        foreach ($line in (Get-Content -LiteralPath $sumsTmp)) {
+                            if ($line -match '^([0-9a-fA-F]{64})\s+(.+)$' -and $Matches[2].Trim() -ieq $asset.name) {
+                                $expected = $Matches[1].ToLower(); break
+                            }
+                        }
+                        Remove-Item -LiteralPath $sumsTmp -ErrorAction SilentlyContinue
+                        if ($expected) {
+                            $actual = (Get-FileHash -LiteralPath $zipTmp -Algorithm SHA256).Hash.ToLower()
+                            if ($actual -ne $expected) {
+                                Remove-Item -LiteralPath $zipTmp -ErrorAction SilentlyContinue
+                                throw "$tag SHA256 mismatch for $($asset.name) (expected $expected, got $actual) - refusing the download."
+                            }
+                            Write-Host "$tag SHA256 verified for $($asset.name)."
+                        } else {
+                            Write-Host "$tag SHA256SUMS present but has no entry for $($asset.name); skipping verification."
+                        }
+                    } else {
+                        Write-Host "$tag Release ships no SHA256SUMS (pre-2026-06-12) - skipping checksum verification."
+                    }
                     # Extract to a temp dir, verify --version, then move.
                     $unzipTmp = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-prebuilt-$([guid]::NewGuid().ToString('N').Substring(0,8))"
                     Expand-Archive -LiteralPath $zipTmp -DestinationPath $unzipTmp -Force
@@ -223,9 +252,17 @@ try {
                         $newVer = $null
                         try { $vl = & $candidateExe.FullName --version 2>$null | Select-Object -First 1; if ($vl -match 'bp-reader-mcp\s+(\S+)') { $newVer = $Matches[1] } } catch {}
                         if ($newVer) {
-                            # Stop any running server so we can overwrite the locked exe.
-                            Get-Process BlueprintReaderMcp -ErrorAction SilentlyContinue | Stop-Process -Force
-                            Start-Sleep -Seconds 1
+                            # REL-12: stop ONLY the server(s) running THIS project's exe —
+                            # an unscoped kill took down live MCP sessions of every other
+                            # project on the machine. Path-match against the install dir.
+                            $targetExe = (Join-Path $binDir 'BlueprintReaderMcp.exe')
+                            $running = Get-Process BlueprintReaderMcp -ErrorAction SilentlyContinue |
+                                Where-Object { $_.Path -and ($_.Path -ieq $targetExe) }
+                            if ($running) {
+                                Write-Host "$tag Stopping $(@($running).Count) running server instance(s) for this project to swap the exe."
+                                $running | Stop-Process -Force
+                                Start-Sleep -Seconds 1
+                            }
                             New-Item -ItemType Directory -Force $binDir | Out-Null
                             Copy-Item -LiteralPath $candidateExe.FullName -Destination (Join-Path $binDir 'BlueprintReaderMcp.exe') -Force
                             # Copy fixtures alongside the exe if present.

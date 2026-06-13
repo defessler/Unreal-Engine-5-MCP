@@ -1,6 +1,7 @@
 #include "backends/CommandletBlueprintReader.h"
 
 #include "Env.h"
+#include "backends/AutoBlueprintReader.h"  // REL-16: IsWriteMethod for the fallback guard
 #include "backends/CommandletArgEncoding.h"
 
 #include <chrono>
@@ -252,6 +253,38 @@ private:
 };
 template <typename F> ScopeGuard<F> MakeScopeGuard(F f) { return ScopeGuard<F>(std::move(f)); }
 
+// REL-6: a process-lifetime Job Object with KILL_ON_JOB_CLOSE. Every editor
+// we spawn (one-shot AND daemon) is assigned to it, so if THIS process dies
+// for any reason — crash, Stop-Process, task manager — the OS reaps the whole
+// editor tree instantly. The daemon's idle/grace/lifetime timers remain as
+// belt-and-suspenders for the attach-to-existing-daemon case (which we did
+// not spawn and deliberately do not own).
+HANDLE EditorJobObject() {
+	static HANDLE job = []() -> HANDLE {
+		HANDLE h = CreateJobObjectW(nullptr, nullptr);
+		if (!h) {
+			return nullptr;
+		}
+		JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+		info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+		if (!SetInformationJobObject(h, JobObjectExtendedLimitInformation,
+									 &info, sizeof(info))) {
+			CloseHandle(h);
+			return nullptr;
+		}
+		return h;
+	}();
+	return job;
+}
+
+void AssignToEditorJob(HANDLE process) {
+	if (HANDLE job = EditorJobObject()) {
+		// Can fail if the child is already in an incompatible job (rare on
+		// Win10+ where nesting is supported) — non-fatal; timers still apply.
+		(void)AssignProcessToJobObject(job, process);
+	}
+}
+
 ProcResult RunChild(const std::wstring& exe,
 					const std::vector<std::wstring>& args,
 					std::chrono::seconds timeout,
@@ -305,6 +338,7 @@ ProcResult RunChild(const std::wstring& exe,
 		CloseHandle(errR);
 		return res;
 	}
+	AssignToEditorJob(pi.hProcess);  // REL-6: dies with us
 	res.launched = true;
 
 	auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -463,8 +497,14 @@ std::filesystem::path TempJsonPath(std::string_view projectTag) {
 	std::random_device rd;
 	std::mt19937_64 rng(rd());
 	std::uniform_int_distribution<uint64_t> dist;
+	// REL-25: thread id + a process-lifetime counter make the name unique
+	// even under an RNG seed collision across concurrent tool calls (two
+	// identical names would race on the same output file).
+	static std::atomic<uint64_t> counter{0};
 	std::ostringstream name;
-	name << "bp-reader-" << prefix << "-" << std::hex << dist(rng) << ".json";
+	name << "bp-reader-" << prefix << "-" << std::hex << dist(rng)
+		 << "-" << std::this_thread::get_id()
+		 << "-" << std::dec << counter.fetch_add(1) << ".json";
 	return tmp / name.str();
 }
 
@@ -741,6 +781,31 @@ nlohmann::json CommandletBlueprintReader::RunOp(const std::vector<std::wstring>&
 #if defined(_WIN32)
 			TerminateDaemon();
 #endif    // defined(_WIN32)
+			// REL-16: same double-dispatch hazard as Auto's socket→commandlet
+			// fallback — if the op frame was fully sent to the daemon, the
+			// daemon may have EXECUTED the write before dying (only the
+			// response was lost). Refuse to re-run a write via one-shot.
+			if (e.requestDispatched && !opArgs.empty()) {
+				std::string opName;
+				{
+					std::wstring first(opArgs[0]);
+					const std::wstring prefix = L"-Op=";
+					if (first.rfind(prefix, 0) == 0) {
+						for (wchar_t wc : first.substr(prefix.size())) {
+							opName.push_back(static_cast<char>(wc));
+						}
+					}
+				}
+				if (!opName.empty() && AutoBlueprintReader::IsWriteMethod(opName)) {
+					throw BlueprintReaderError(fmt::format(
+						"transport to the daemon failed AFTER the write op '{}' "
+						"was dispatched — the daemon may have already applied it, "
+						"so it was NOT retried via a one-shot (double-execution "
+						"hazard). Verify the asset state with a read, then "
+						"re-issue the op if needed. Underlying: {}",
+						opName, e.what()));
+				}
+			}
 			return RunOpOneShot(opArgs);
 		}
 		// AssetNotFound / BlueprintReaderError (and any other app-level error
@@ -827,11 +892,34 @@ nlohmann::json CommandletBlueprintReader::RunOpOneShot(const std::vector<std::ws
 	nlohmann::json parsed;
 	try {
 		std::ifstream in(outFile);
+		if (!in.is_open()) {
+			// REL-25: an unopenable file (locked, ACL) previously fell through
+			// to operator>> which silently left `parsed` empty — surface it.
+			throw BlueprintReaderError(fmt::format(
+				"could not open commandlet output file {}", outFile.string()));
+		}
 		in >> parsed;
 	} catch (const std::exception& e) {
+		// REL-25: include the file size + content tail so a truncated/garbled
+		// output is diagnosable from the error alone.
+		std::error_code ec;
+		const auto size = std::filesystem::file_size(outFile, ec);
+		std::string tail;
+		{
+			std::ifstream tf(outFile, std::ios::binary);
+			if (tf) {
+				tf.seekg(0, std::ios::end);
+				const std::streamoff end = static_cast<std::streamoff>(tf.tellg());
+				const std::streamoff from = end > 200 ? end - 200 : 0;
+				tf.seekg(from, std::ios::beg);
+				tail.assign(std::istreambuf_iterator<char>(tf), std::istreambuf_iterator<char>());
+			}
+		}
 		cleanup();
 		throw BlueprintReaderError(fmt::format(
-			"failed to parse commandlet JSON ({}): {}", outFile.string(), e.what()));
+			"failed to parse commandlet JSON ({}, {} bytes): {} — tail: {}",
+			outFile.string(), ec ? 0 : static_cast<unsigned long long>(size),
+			e.what(), tail));
 	}
 	cleanup();
 	return parsed;
@@ -1011,6 +1099,32 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 		return *socket_;
 	}
 
+	// REL-7: spawn-failure cooldown. A persistently failing spawn (broken
+	// plugin, project that can't load) used to retry the FULL spawn cycle on
+	// every tool call — an editor-boot attempt per call on top of the
+	// one-shot fallback. After a failed cycle, skip straight to the one-shot
+	// fallback for a cooldown window. BP_READER_DAEMON_SPAWN_COOLDOWN_SECONDS
+	// (default 60; 0 disables).
+	{
+		static const int cooldownSec = []() {
+			auto raw = bpr::env::GetOrDefault("BP_READER_DAEMON_SPAWN_COOLDOWN_SECONDS", "");
+			if (!raw.empty()) {
+				const int n = std::atoi(raw.c_str());
+				if (n >= 0) { return n; }
+			}
+			return 60;
+		}();
+		if (cooldownSec > 0 &&
+			lastSpawnFailure_.time_since_epoch().count() != 0 &&
+			std::chrono::steady_clock::now() - lastSpawnFailure_ <
+				std::chrono::seconds(cooldownSec)) {
+			throw BlueprintReaderError(fmt::format(
+				"commandlet daemon: last spawn attempt failed <{}s ago — cooling "
+				"down before retrying (each attempt boots a full editor). Calls "
+				"fall back to one-shot mode meanwhile.", cooldownSec));
+		}
+	}
+
 	// No daemon found — race for the inter-process spawn lock to
 	// coordinate with other MCP servers that might also be trying to
 	// spawn. Two locks at play (per "Daemon lifecycle" in the
@@ -1095,6 +1209,7 @@ CommandletBlueprintReader::EnsureDaemonAttached() {
 #if defined(_WIN32)
 		TerminateDaemon();
 #endif    // defined(_WIN32)
+		lastSpawnFailure_ = std::chrono::steady_clock::now();  // REL-7 cooldown
 		const std::string logTail = ReadEditorLogTail(cfg_.uproject, 40);
 		throw BlueprintReaderError(fmt::format(
 			"commandlet daemon: spawn-lock {}, handshake never appeared "
@@ -1134,12 +1249,34 @@ void CommandletBlueprintReader::TerminateDaemon() {
 	{
 		return;
 	}
-	// Force termination of the child we spawned. The daemon's own
-	// TCP-shutdown path is not wired yet (Phase 4) — TerminateProcess
-	// is a hammer but reliable, and the daemon's lifetime lock cleans
-	// up on process exit.
-	TerminateProcess(daemonProcess_, 0);
-	WaitForSingleObject(daemonProcess_, 1000);
+	// REL-7: graceful first — send the TCP Quit op (the daemon acks it on its
+	// WORKER thread, so this round-trip is fast even while a long op has the
+	// game thread busy; the poll loop then exits cleanly: batch salvage flush,
+	// handshake-file cleanup, normal engine shutdown). Hammer only if the
+	// process is still alive after a bounded wait — a truly wedged game
+	// thread can't exit its poll loop.
+	if (socket_) {
+		try {
+			(void)socket_->RunOpRaw({"-Op=Quit"});
+		} catch (...) {
+			// Dead/unresponsive socket — fall through to the hammer.
+		}
+		socket_.reset();
+	}
+	// The Quit ack means the daemon already ran its CLEAN cleanup (deleted the
+	// handshake file, released the lifetime lock, salvaged any open batch, ran
+	// RequestShutdown) on its worker thread — those are the data-integrity bits.
+	// The PROCESS then lingers a few seconds in UE engine teardown (GC, module
+	// unload). Give that natural exit room (10s) so we usually don't terminate
+	// at all; the hammer only fires if the game thread is genuinely wedged — and
+	// by then the on-disk state is already clean, so it's a safe husk-kill.
+	if (WaitForSingleObject(daemonProcess_, 10000) != WAIT_OBJECT_0) {
+		std::fprintf(stderr,
+			"[bp-reader-mcp][commandlet][daemon] graceful quit still tearing down "
+			"after 10s; terminating the (already-cleaned-up) daemon husk\n");
+		TerminateProcess(daemonProcess_, 0);
+		WaitForSingleObject(daemonProcess_, 1000);
+	}
 	CloseHandle(daemonProcess_);
 	daemonProcess_ = nullptr;
 }
@@ -1232,6 +1369,7 @@ void CommandletBlueprintReader::SpawnDaemon() {
 			"CreateProcessW(daemon) failed (err={})", err));
 	}
 	CloseHandle(pi.hThread);
+	AssignToEditorJob(pi.hProcess);  // REL-6: daemon dies with us
 	daemonProcess_ = pi.hProcess;
 
 	if (env::VerboseLoggingEnabled()) {
@@ -1895,12 +2033,15 @@ CommandletBlueprintReader::GetProjectMetadata() {
 }
 
 IBlueprintReader::SaveAllResult
-CommandletBlueprintReader::SaveAll(bool dirtyOnly) {
+CommandletBlueprintReader::SaveAll(bool dirtyOnly, std::string_view scope) {
 	std::vector<std::wstring> args;
 	args.push_back(L"-Op=SaveAll");
 	if (!dirtyOnly)
 	{
 		args.push_back(L"-IncludeClean");
+	}
+	if (!scope.empty()) {
+		args.push_back(L"-Scope=" + Widen(scope));  // REL-20
 	}
 	auto j = RunOp(args);
 	SaveAllResult out;
@@ -5146,15 +5287,15 @@ nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
 	// to an externally-launched daemon or spawns a fresh process.
 	std::lock_guard<std::mutex> lock(daemonMutex_);
 	bool hadSocket = (socket_ != nullptr);
-	// Drop the socket first so its destructor releases the TCP
-	// connection before we terminate the child. The daemon's side
-	// will notice the disconnect and clean up its per-connection state.
-	socket_.reset();
 #if defined(_WIN32)
 	bool wasRunning = hadSocket || (daemonProcess_ != nullptr);
 	if (daemonProcess_ != nullptr) {
+		// REL-7: keep socket_ alive into TerminateDaemon — it sends the
+		// graceful TCP Quit through it (and resets it) before falling back
+		// to TerminateProcess.
 		TerminateDaemon();
 	}
+	socket_.reset();  // daemon we merely attached to: just drop our connection
 	return nlohmann::json{
 		{"ok", true},
 		{"was_running", wasRunning},
@@ -5162,6 +5303,7 @@ nlohmann::json CommandletBlueprintReader::ShutdownDaemon() {
 	};
 #else    // defined(_WIN32)
 	(void)hadSocket;
+	socket_.reset();
 	return nlohmann::json{
 		{"ok", true},
 		{"was_running", false},

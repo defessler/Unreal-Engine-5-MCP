@@ -475,6 +475,10 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 			throw;
 		}
 	}
+	// REL-16: the full newline-terminated frame is now in flight — the editor
+	// may execute the op even if we never see the response. Any transport
+	// failure from here on is tagged requestDispatched=true so fallback layers
+	// refuse to re-dispatch WRITE ops (double-execution hazard).
 
 	auto& buf = BufFor(s).b;
 	// Read frames until the terminal result/error. The daemon may precede the
@@ -494,6 +498,10 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 		// on demand via the health_check tool (a separate worker-thread connection
 		// that answers even while the game thread is wedged).
 		response = RecvLine(s, buf);
+	} catch (const SocketTransportError& e) {
+		Disconnect();
+		// REL-16: response-read failure AFTER a fully-sent frame.
+		throw SocketTransportError(e.what(), /*dispatched=*/true);
 	} catch (...) {
 		Disconnect();
 		throw;
@@ -507,7 +515,8 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 		// daemon down and retries via a one-shot rather than surfacing it as
 		// an application error.
 		throw SocketTransportError(
-			"SocketBlueprintReader: server response wasn't a JSON object");
+			"SocketBlueprintReader: server response wasn't a JSON object",
+			/*dispatched=*/true);  // REL-16: frame was sent; op may have run
 	}
 	if (j.value("type", "") == "progress") {
 		// Mid-op progress; forward (if a sink is set) and keep reading.
@@ -1328,11 +1337,14 @@ SocketBlueprintReader::GetProjectMetadata() {
 }
 
 IBlueprintReader::SaveAllResult
-SocketBlueprintReader::SaveAll(bool dirtyOnly) {
+SocketBlueprintReader::SaveAll(bool dirtyOnly, std::string_view scope) {
 	std::vector<std::string> args = {"-Op=SaveAll"};
 	if (!dirtyOnly)
 	{
 		args.push_back("-IncludeClean");
+	}
+	if (!scope.empty()) {
+		args.push_back("-Scope=" + std::string(scope));  // REL-20
 	}
 	auto j = RunOp(args);
 	SaveAllResult out;

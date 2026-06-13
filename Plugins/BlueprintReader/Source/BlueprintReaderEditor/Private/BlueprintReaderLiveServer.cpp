@@ -117,9 +117,25 @@ public:
 		}
 		TSharedPtr<FJsonObject> AuthMsg = ParseJson(AuthRaw);
 		FString PresentedToken;
+		// REL-24: constant-time compare — an early-out string compare leaks
+		// the matching-prefix length to a timing observer. Localhost-only +
+		// 256-bit token makes the attack impractical, but the fix is free.
+		auto TokensEqualConstantTime = [](const FString& A, const FString& B)
+		{
+			if (A.Len() != B.Len())
+			{
+				return false;
+			}
+			uint32 Diff = 0;
+			for (int32 i = 0; i < A.Len(); ++i)
+			{
+				Diff |= static_cast<uint32>(A[i]) ^ static_cast<uint32>(B[i]);
+			}
+			return Diff == 0;
+		};
 		if (!AuthMsg.IsValid() ||
 			!AuthMsg->TryGetStringField(TEXT("token"), PresentedToken) ||
-			PresentedToken != ExpectedToken)
+			!TokensEqualConstantTime(PresentedToken, ExpectedToken))
 		{
 			UE_LOG(LogBlueprintReaderLive, Warning, TEXT("Auth failed; closing connection"));
 			SendFrame(TEXT("{\"type\":\"auth_fail\"}"));
@@ -345,6 +361,11 @@ private:
 	// Read a newline-delimited frame. Buffers data across reads.
 	bool ReadFrame(FString& Out)
 	{
+		// REL-17: hard cap on a single frame. Without it, one connection
+		// streaming bytes with no newline grows PendingBuffer without bound
+		// and OOMs the whole editor. 10 MB comfortably exceeds any real op
+		// frame (the largest are batch op arrays).
+		constexpr int32 MaxFrameChars = 10 * 1024 * 1024;
 		Out.Reset();
 		// Drain any leftover from prior reads first (line feed boundary).
 		while (true)
@@ -356,6 +377,14 @@ private:
 				PendingBuffer = PendingBuffer.RightChop(NewlineIdx + 1);
 				Out.TrimStartAndEndInline();
 				return true;
+			}
+			if (PendingBuffer.Len() > MaxFrameChars)
+			{
+				UE_LOG(LogBlueprintReaderLive, Warning,
+					TEXT("Connection %llu sent an oversized frame (>%d chars, no "
+						 "newline) — disconnecting to protect the editor."),
+					(unsigned long long)ConnectionId, MaxFrameChars);
+				return false;  // treated as connection-closed by the caller
 			}
 			// Read more bytes.
 			uint8 Buf[4096];

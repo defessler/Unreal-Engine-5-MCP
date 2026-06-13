@@ -28,7 +28,7 @@
 | `get_referencers` | Return every asset (package path) that REFERENCES this asset. Useful for impact analysis before renaming, deleting, or refactoring. Sourced from the asset registry's dependency graph (in-memory; fa... |
 | `move_asset` | Move or rename an asset. `dest_asset_path` is the full destination package path — pass the same folder with a different leaf for a rename, or a different folder to move. Both must be under `/Game... |
 | `read_config_value` | Read a UE config (.ini) value. `file` is one of "Engine" (default), "Game", "Input", "Editor", "EditorPerProjectIni", or a full path. Returns `{exists, value}` — `exists:false` if the key isn't s... |
-| `save_all` | Save every dirty package the editor has loaded. With `dirty_only=true` (default), clean packages are skipped — fast no-op when nothing's changed. Returns count saved + any failed asset paths. |
+| `save_all` | Save every dirty package the editor has loaded. With `dirty_only=true` (default), clean packages are skipped — fast no-op when nothing's changed. `scope` defaults to "touched": only packages THIS... |
 | `set_config_value` | Write a UE config (.ini) value + flush to disk. `file` defaults to Engine (DefaultEngine.ini). Returns `{previous_value, value}` so the caller can verify the change. **Destructive** — writes the ... |
 
 ## assets  (3)
