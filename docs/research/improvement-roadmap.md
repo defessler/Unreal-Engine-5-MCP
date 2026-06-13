@@ -2034,6 +2034,23 @@ refute pass.
 
 Newest first. One line per change to this file.
 
+- **2026-06-13** — **Ultracode completeness audit → 10 gaps found + ALL fixed.** A
+  7-dimension adversarial audit (roadmap / recipe / test-coverage / docs-sync /
+  build-invariants / 2× correctness) of the recently-shipped work, each finding
+  independently verified (1 refuted). Fixes across 3 commits: **docs-sync**
+  (b0c02373) — regenerated stale `tools.json` (health_check daemon/plugin fields;
+  the staleness was breaking CI's drift gate), made serverInfo count-agnostic,
+  fixed a `267` comment + ~6 wiki counts. **MCP-8 concurrency** (dd441c64) — 3
+  REAL bugs the mock tests missed: shutdown use-after-free (detached workers →
+  now join deadlock-safely + Server member reorder), tasks/cancel registration
+  TOCTOU + contradictory cancelled-with-success status (markReady latch + status
+  reconciliation), and a ToolRegistry data-race on the task path (registry-
+  mutators refused task mode). **Test-coverage + reaper** (259a3d74) — engine-
+  free CI guards for add_widget index (schema + socket arg-frame) and the
+  NodeRefError-through-apply_ops parse (extracted CommandletErrorParse.h helper +
+  unit test), plus an MCP-8 ttl reaper. Mock 891/891. The audit's value: it
+  caught 2 genuine concurrency bugs in MCP-8 + a CI-breaking catalog drift that
+  manual review had missed.
 - **2026-06-13** — **UX-P5 e1 follow-ups SHIPPED.** (1) `health_check` reports
   `daemon_enabled` + `disabled_plugins` (server config pre-flight). (2) Fixed a
   real bug: the commandlet backend discarded an op's structured error file on a
