@@ -22,6 +22,26 @@ namespace decompile_detail {
 // inverse for serialization. Common cases handled; weird ones fall back
 // to a canonical object form embedded as a JSON string (callers can
 // still consume it via ParseTypeArg's object path).
+// Identifier-safe 8-char tag from a node GUID: the first 8 hex chars, '0'-padded.
+std::string GuidTag8(std::string_view id) {
+	std::string tag;
+	tag.reserve(8);
+	for (char c : id) {
+		if (tag.size() == 8) {
+			break;
+		}
+		if ((c >= '0' && c <= '9') ||
+			(c >= 'a' && c <= 'f') ||
+			(c >= 'A' && c <= 'F')) {
+			tag.push_back(c);
+		}
+	}
+	while (tag.size() < 8) {
+		tag.push_back('0');
+	}
+	return tag;
+}
+
 std::string TypeToShorthand(const BPPinType& t) {
 	auto sub = t.SubCategory.value_or("");
 	auto subObj = t.SubCategoryObject.value_or("");
@@ -1239,22 +1259,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		n.Class.find("K2Node_AsyncAction")           != std::string::npos ||
 		n.Class.find("K2Node_LatentAbilityCall")     != std::string::npos ||
 		n.Class.find("K2Node_LatentGameplayTaskCall") != std::string::npos) {
-		// Identifier-safe 8-char tag from the node GUID.
-		std::string tag;
-		tag.reserve(8);
-		for (char c : n.Id) {
-			if (tag.size() == 8) {
-				break;
-			}
-			if ((c >= '0' && c <= '9') ||
-				(c >= 'a' && c <= 'f') ||
-				(c >= 'A' && c <= 'F')) {
-				tag.push_back(c);
-			}
-		}
-		while (tag.size() < 8) {
-			tag.push_back('0');
-		}
+		const std::string tag = GuidTag8(n.Id);
 
 		const std::string parentName = w.function.Name;
 
@@ -1925,21 +1930,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		// Multiple Gate instances in the same class get distinct flags
 		// via the per-node-GUID tag.
 		if (isGate) {
-			std::string tag;
-			tag.reserve(8);
-			for (char c : n.Id) {
-				if (tag.size() == 8) {
-					break;
-				}
-				if ((c >= '0' && c <= '9') ||
-					(c >= 'a' && c <= 'f') ||
-					(c >= 'A' && c <= 'F')) {
-					tag.push_back(c);
-				}
-			}
-			while (tag.size() < 8) {
-				tag.push_back('0');
-			}
+			const std::string tag = GuidTag8(n.Id);
 			const std::string flagName = fmt::format("bBPRGate_{}_IsOpen", tag);
 
 			// Honor bStartClosed when present (true → init flag false).
@@ -2302,24 +2293,7 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 		if (fnName == "Delay" || fnName == "RetriggerableDelay" ||
 			fnName == "DelayUntilNextTick") {
 			// 1) Identifier-safe tag from the node GUID.
-			std::string tag;
-			tag.reserve(8);
-			for (char c : n.Id) {
-				if (tag.size() == 8)
-				{
-					break;
-				}
-				if ((c >= '0' && c <= '9') ||
-					(c >= 'a' && c <= 'f') ||
-					(c >= 'A' && c <= 'F'))
-				{
-					tag.push_back(c);
-				}
-			}
-			while (tag.size() < 8)
-			{
-				tag.push_back('0');
-			}
+			const std::string tag = GuidTag8(n.Id);
 
 			// 2) Names. Parent function name prefixes both so two delays
 			//    in different parents don't collide.
