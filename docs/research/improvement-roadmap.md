@@ -2086,12 +2086,20 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
   `EmitCallStatement` extraction (codegen surface), the editor-TU duplicate
   `#include`s (cosmetic — header guards make them harmless), `ToPackagePath`
   cross-TU dedup (editor-module). · **Status:** ◑ substantively done
-- **HARD-D2 (test, M)** — running the live apply_ops/write coverage against Lyra is
-  gated by the daemon-handshake flakiness (a one-shot can't hold batch state; the
-  Lyra daemon reliably falls back to slow one-shot). The gated test exists; routine
-  CI runs need that handshake root-caused + fixed (separate from this sweep). The
-  real-data smoke (read_blueprint vs the rebuilt editor) passed, confirming the
-  overall path. · **Status:** ☐ Open
+- **HARD-D2 (test, M)** — **ROOT-CAUSED + made routine.** The "daemon never
+  handshakes for Lyra even at 600s" was the ONE-TIME cold shader/DDC compile on the
+  first 5.8 open of 5.6 content, not a handshake bug: measured warm = handshake 15s,
+  MCP-server attach <1s, full gated `[live]` doctest pass 1s. Fix is operational —
+  keep one warm daemon and ATTACH instead of auto-spawning per process, via
+  `Scripts/Run-LiveTests.ps1` (85217f9e). · **Status:** ✅ Done (85217f9e, 2026-06-14)
+- **HARD-D3 (editor, P2)** — `DeleteAsset` inside a live daemon session removes the
+  `.uasset` FILE but returns `deleted=false` and leaves the asset in the editor's
+  in-memory asset registry, so a later `DuplicateBlueprint`/create to that path
+  reports already-existing within the same session. Editor-side eviction gap
+  (`BlueprintReaderCommandlet.cpp` DeleteAsset op — likely needs an explicit
+  `UObjectRedirector`/registry unload after `ObjectTools::DeleteAssets`). Found via
+  the live apply_ops re-run; worked around in the test with a unique per-run name.
+  · **Status:** ☐ Open
 
 ---
 
@@ -2099,6 +2107,11 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 Newest first. One line per change to this file.
 
+- **2026-06-14** — **Daemon-handshake root-caused (HARD-D2 ✅ Done).** Measured: the
+  "never handshakes for Lyra" was the one-time cold shader compile, not a bug (warm
+  = 15s handshake / <1s attach / 1s live pass). Added `Scripts/Run-LiveTests.ps1`
+  (pre-warm + attach) so live tests are routine. New HARD-D3: `DeleteAsset` doesn't
+  evict from the in-session registry. (85217f9e)
 - **2026-06-14** — **Hardening sweep (§11).** Four-area ultracode audit →
   HARD-1..4 shipped (server bounded-recv hang-detection 287f22fc; daemon
   watchdog/live-shutdown 37d61b9c; Toolbox hang/version/restart e59a1aeb;
