@@ -45,7 +45,7 @@ struct ScopedEnv {
 		_putenv_s(key, value ? value : "");
 #else
 		if (auto pVal = bpr::env::Get(key); pVal) {
-			prev_ = p;
+			prev_ = *pVal;
 		}
 		if (value && *value) {
 			setenv(key, value, 1);
