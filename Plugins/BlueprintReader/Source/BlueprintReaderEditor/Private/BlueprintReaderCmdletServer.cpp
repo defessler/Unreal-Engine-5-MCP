@@ -61,6 +61,12 @@ namespace
 // Module-level singleton.
 TUniquePtr<FCmdletServer> GCmdletServer;
 
+// Count of ops currently executing on the game thread. An in-flight op blocks
+// the game-thread heartbeat (the main loop can't run while the op holds the
+// thread), so a stale heartbeat means "busy" — not "wedged" — while this is
+// non-zero. The watchdog reads it to avoid force-killing the editor mid-op.
+FThreadSafeCounter GOpsInFlight;
+
 // Per-connection state — owned by the worker FRunnable for its lifetime.
 class FCmdletConnectionRunnable : public FRunnable
 {
@@ -288,6 +294,9 @@ public:
 			// Register a progress queue for this op so the game-thread dispatch
 			// (FScopedProgressCapture) can push FScopedSlowTask progress to us.
 			BlueprintReader::RegisterProgressQueue(ConnId);
+			// An executing op blocks the game-thread heartbeat; mark it in-flight
+			// so the watchdog reads that as "busy", not "wedged" (F3).
+			GOpsInFlight.Increment();
 			AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
 			{
 				Code = RunOneOpFromLiveServer(ConnId, Params);
@@ -317,6 +326,7 @@ public:
 			}
 			DrainAndSendProgress();
 			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+			GOpsInFlight.Decrement();
 			BlueprintReader::UnregisterProgressQueue(ConnId);
 
 			// PERF-1: JsonBody was written directly by EmitJson via the
@@ -507,10 +517,18 @@ public:
 					MaxLifetime, static_cast<long long>(Now - Started));
 				bForce = true;
 			}
-			if (!bForce && WedgeSecs > 0 && LastTick > 0 && Now - LastTick >= WedgeSecs)
+			// An op actively executing on the game thread blocks the heartbeat —
+			// that's "busy", not "wedged". Apply the tight wedge timeout only when
+			// idle (a stale heartbeat then means the game thread died between ops);
+			// a genuinely stuck op is still caught, just on a much larger budget,
+			// and the max-lifetime backstop above stays the final guard.
+			const bool  bOpInFlight    = GOpsInFlight.GetValue() > 0;
+			const int32 EffectiveWedge = bOpInFlight ? FMath::Max(WedgeSecs, 1800) : WedgeSecs;
+			if (!bForce && EffectiveWedge > 0 && LastTick > 0 && Now - LastTick >= EffectiveWedge)
 			{
 				UE_LOG(LogBlueprintReaderCmdlet, Warning,
-					TEXT("FDaemonWatchdog: game thread wedged (%lld s silent) - force-exiting"),
+					TEXT("FDaemonWatchdog: game thread %s (%lld s silent) - force-exiting"),
+					bOpInFlight ? TEXT("op wedged") : TEXT("died between ops"),
 					static_cast<long long>(Now - LastTick));
 				bForce = true;
 			}

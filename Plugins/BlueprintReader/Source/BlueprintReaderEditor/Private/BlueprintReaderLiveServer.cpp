@@ -268,16 +268,38 @@ public:
 			// the connection id so per-session batch state lands in the
 			// right registry slot (RunOneOpFromLiveServer installs the
 			// FConnectionScope internally).
-			int32 Code = -1;
+			// Heap-owned result + event, captured BY VALUE by the game-thread
+			// task, so it can publish safely even if this worker stops waiting
+			// early on shutdown. A flat Wait() here would otherwise block a clean
+			// quit behind a wedged game-thread op. The client's own per-op timeout
+			// is the authority on a hung op; here we just stay shutdown-responsive.
+			TSharedRef<FThreadSafeCounter64, ESPMode::ThreadSafe> CodeBox =
+				MakeShared<FThreadSafeCounter64, ESPMode::ThreadSafe>(static_cast<int64>(-1));
 			FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
 			const uint64 ConnId = ConnectionId;
-			AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
+			AsyncTask(ENamedThreads::GameThread, [CodeBox, Params, DoneEvent, ConnId]()
 			{
-				Code = RunOneOpFromLiveServer(ConnId, Params);
+				CodeBox->Set(static_cast<int64>(RunOneOpFromLiveServer(ConnId, Params)));
 				DoneEvent->Trigger();
 			});
-			DoneEvent->Wait();
-			FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+			bool bCompleted = false;
+			while (!bStopRequested)
+			{
+				if (DoneEvent->Wait(50))
+				{
+					bCompleted = true;
+					break;
+				}
+			}
+			int32 Code = -1;
+			if (bCompleted)
+			{
+				Code = static_cast<int32>(CodeBox->GetValue());
+				FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+			}
+			// On shutdown (!bCompleted) the game-thread task still owns CodeBox +
+			// DoneEvent by value, so its later completion is harmless — we
+			// deliberately leak the event rather than recycle one it may still fire.
 
 			// Read the JSON the dispatch wrote to OutPath.
 			FString JsonBody;
