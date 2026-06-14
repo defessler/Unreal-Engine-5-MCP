@@ -1368,17 +1368,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		};
 			// Paginated envelope. Default limit=200; clients walk with next_cursor.
 			// Each result item is a BPNode (same shape as get_node).
-			d.output_schema = {
-				{"type","object"},
-				{"properties", {
-					{"total",       {{"type","integer"}}},
-					{"count",       {{"type","integer"}}},
-					{"has_more",    {{"type","boolean"}}},
-					{"next_cursor", {{"type",nlohmann::json::array({"string","null"})}}},
-					{"results",     {{"type","array"}, {"items",{{"type","object"}}}}},
-				}},
-				{"required", nlohmann::json::array({"total","count","has_more","results"})},
-			};
+			d.output_schema = PaginatedSchema();
 			registry.Add(std::move(d), [&reader](const nlohmann::json& args) {
 				std::string asset = RequireAssetPath(args);
 				std::string q = RequireString(args, "query");

@@ -414,9 +414,9 @@ void RegisterHandlersImpl(jr::Server& server,
 					server.QueueNotification("notifications/tools/list_changed",
 											 nlohmann::json::object());
 				}
-				// Rich-content opt-in: `{"_mcp":{"content":[...],
-				// "structuredContent":...}}` unpacks straight into the envelope.
 				if (toolResult.is_object()) {
+					// Rich-content opt-in: `{"_mcp":{"content":[...],
+					// "structuredContent":...}}` unpacks straight into the envelope.
 					if (auto mcpIt = toolResult.find("_mcp"); mcpIt != toolResult.end() && mcpIt->is_object()) {
 						nlohmann::json env;
 						if (auto contentIt = mcpIt->find("content"); contentIt != mcpIt->end()) {
@@ -431,10 +431,8 @@ void RegisterHandlersImpl(jr::Server& server,
 						env["_meta"] = std::move(meta);
 						return env;
 					}
-				}
-				// UX-P4e: object results carry the full payload exactly once as
-				// structuredContent; content[0].text is just a pointer note.
-				if (toolResult.is_object()) {
+					// Otherwise the object payload travels exactly once as
+					// structuredContent; content[0].text is just a pointer note.
 					nlohmann::json env = MakeToolTextContent(
 						"structured result returned (see structuredContent)",
 						/*isError=*/false, std::move(meta));
