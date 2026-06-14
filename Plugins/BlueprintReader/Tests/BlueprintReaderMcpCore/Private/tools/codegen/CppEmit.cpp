@@ -557,6 +557,16 @@ struct Emitter {
 	void Line(std::string_view s) { Indent(); out << s << "\n"; }
 	void RawLine(std::string_view s) { out << s << "\n"; }
 
+	// Unwrap a {"lit":"<text>"} expression node to its raw string (empty if not
+	// that shape). The __bpr_* call-sentinel lowering uses literals for bare
+	// identifiers (action / factory / callback / timer names).
+	static std::string UnwrapLit(const nlohmann::json& v) {
+		if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
+			return v["lit"].get<std::string>();
+		}
+		return {};
+	}
+
 	// ----- Expression emitters ------------------------------------------
 	std::string EmitExpr(const nlohmann::json& e) {
 		std::string form = DetectExpressionForm(e);
@@ -1264,14 +1274,8 @@ struct Emitter {
 							 ? s["args"] : nlohmann::json::object();
 				std::string actionExpr = a.contains("Action")
 					? EmitExpr(a["Action"]) : "/* missing */";
-				auto unwrapLit = [](const nlohmann::json& v) -> std::string {
-					if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
-						return v["lit"].get<std::string>();
-					}
-					return {};
-				};
-				std::string trigger  = SanitizeIdentifier(unwrapLit(a.value("Trigger",  nlohmann::json{})));
-				std::string callback = SanitizeIdentifier(unwrapLit(a.value("Callback", nlohmann::json{})));
+				std::string trigger  = SanitizeIdentifier(UnwrapLit(a.value("Trigger",  nlohmann::json{})));
+				std::string callback = SanitizeIdentifier(UnwrapLit(a.value("Callback", nlohmann::json{})));
 				Line(fmt::format(
 					"EIC->BindAction({}, ETriggerEvent::{}, this, &ThisClass::{});",
 					actionExpr, trigger, callback));
@@ -1285,18 +1289,12 @@ struct Emitter {
 			// All three use {lit: "<ident>"} for action/factory/callback
 			// names so the validator's expression-form check passes; we
 			// unwrap them as bare identifiers here.
-			auto unwrapLit = [](const nlohmann::json& v) -> std::string {
-				if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
-					return v["lit"].get<std::string>();
-				}
-				return {};
-			};
 			if (fnName == "__bpr_async_factory") {
 				auto a = (s.contains("args") && s["args"].is_object())
 							 ? s["args"] : nlohmann::json::object();
-				const std::string actionLocal  = SanitizeIdentifier(unwrapLit(a.value("Action",       nlohmann::json{})));
-				const std::string factoryClass = unwrapLit(a.value("FactoryClass", nlohmann::json{}));
-				const std::string factoryFn    = SanitizeIdentifier(unwrapLit(a.value("Factory",      nlohmann::json{})));
+				const std::string actionLocal  = SanitizeIdentifier(UnwrapLit(a.value("Action",       nlohmann::json{})));
+				const std::string factoryClass = UnwrapLit(a.value("FactoryClass", nlohmann::json{}));
+				const std::string factoryFn    = SanitizeIdentifier(UnwrapLit(a.value("Factory",      nlohmann::json{})));
 				// Emit each FactoryArg expression positionally —
 				// args are JSON-object so iteration order is alphabetical.
 				std::string argList;
@@ -1317,9 +1315,9 @@ struct Emitter {
 			if (fnName == "__bpr_async_bind") {
 				auto a = (s.contains("args") && s["args"].is_object())
 							 ? s["args"] : nlohmann::json::object();
-				const std::string actionLocal = SanitizeIdentifier(unwrapLit(a.value("Action",   nlohmann::json{})));
-				const std::string delegate    = SanitizeIdentifier(unwrapLit(a.value("Delegate", nlohmann::json{})));
-				const std::string callback    = SanitizeIdentifier(unwrapLit(a.value("Callback", nlohmann::json{})));
+				const std::string actionLocal = SanitizeIdentifier(UnwrapLit(a.value("Action",   nlohmann::json{})));
+				const std::string delegate    = SanitizeIdentifier(UnwrapLit(a.value("Delegate", nlohmann::json{})));
+				const std::string callback    = SanitizeIdentifier(UnwrapLit(a.value("Callback", nlohmann::json{})));
 				Line(fmt::format("{}->{}.AddDynamic(this, &ThisClass::{});",
 								 actionLocal, delegate, callback));
 				return;
@@ -1327,7 +1325,7 @@ struct Emitter {
 			if (fnName == "__bpr_async_activate") {
 				auto a = (s.contains("args") && s["args"].is_object())
 							 ? s["args"] : nlohmann::json::object();
-				const std::string actionLocal = SanitizeIdentifier(unwrapLit(a.value("Action", nlohmann::json{})));
+				const std::string actionLocal = SanitizeIdentifier(UnwrapLit(a.value("Action", nlohmann::json{})));
 				Line(fmt::format("{}->Activate();", actionLocal));
 				return;
 			}
@@ -1343,14 +1341,8 @@ struct Emitter {
 				std::string duration = a.contains("Duration")
 					? EmitExpr(a["Duration"]) : "0.0f";
 				// Handle / Callback come over as {lit: "<ident>"}.
-				auto unwrap = [](const nlohmann::json& v) -> std::string {
-					if (v.is_object() && v.contains("lit") && v["lit"].is_string()) {
-						return v["lit"].get<std::string>();
-					}
-					return {};
-				};
-				std::string handle   = SanitizeIdentifier(unwrap(a.value("Handle",   nlohmann::json{})));
-				std::string callback = SanitizeIdentifier(unwrap(a.value("Callback", nlohmann::json{})));
+				std::string handle   = SanitizeIdentifier(UnwrapLit(a.value("Handle",   nlohmann::json{})));
+				std::string callback = SanitizeIdentifier(UnwrapLit(a.value("Callback", nlohmann::json{})));
 				bool looping = false;
 				if (auto lit = a.find("Looping"); lit != a.end()
 					&& lit->is_object() && lit->contains("lit")

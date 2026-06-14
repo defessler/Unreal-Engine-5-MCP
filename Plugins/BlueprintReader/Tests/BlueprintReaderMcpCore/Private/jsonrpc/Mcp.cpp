@@ -75,6 +75,14 @@ nlohmann::json MakeToolTextContent(const std::string& text, bool isError,
 	return env;
 }
 
+// RAII: unregister an in-flight CallContext from the server on scope exit —
+// shared by the synchronous tools/call path and the async task worker.
+struct InFlightGuard {
+	jr::Server& s;
+	jr::CallContext* c;
+	~InFlightGuard() { s.UnregisterInFlight(c); }
+};
+
 }    // namespace mcp_detail
 using namespace mcp_detail;
 
@@ -354,10 +362,7 @@ void RegisterHandlersImpl(jr::Server& server,
 		// cancellation window by the time the registry would be consulted,
 		// but the future async/HTTP path needs this hook.
 		server.RegisterInFlight(&callCtx);
-		struct UnregisterOnExit {
-			jr::Server& s; jr::CallContext* c;
-			~UnregisterOnExit() { s.UnregisterInFlight(c); }
-		} unreg{server, &callCtx};
+		InFlightGuard unreg{server, &callCtx};
 
 		const tools::ToolFn* fn = registry.Find(name);
 		if (fn == nullptr) {
@@ -470,10 +475,7 @@ void RegisterHandlersImpl(jr::Server& server,
 					// returned taskId is immediately cancellable (no registration
 					// TOCTOU vs. a fast tasks/cancel).
 					markReady();
-					struct UnregTask {
-						jr::Server& s; jr::CallContext* c;
-						~UnregTask() { s.UnregisterInFlight(c); }
-					} unregTask{server, &taskCtx};
+					InFlightGuard unregTask{server, &taskCtx};
 					return executeAndWrap(arguments);
 				});
 			if (!startedId) {
