@@ -2070,14 +2070,17 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 ### Deferred (confirmed-safe, fully specified)
 
-- **HARD-D1 (cleanup, S)** — 14 remaining behavior-preserving de-dups the cleanup
-  audit confirmed (8 of 22 shipped in HARD-4): move the json→result-struct parsers +
-  `ParseAssetRegistryRows` + `WriteGeneratedSource` temp-marshalling into a shared
-  `CommandletResultParse.h`; `Env::ParseBool` for the 5 truthy-predicate sites; an
-  `AssetPathProperty()` / `PaginatedSchema()` reuse in BlueprintTools; the two
-  in-flight RAII structs in Mcp.cpp; `EmitCallStatement` extraction; the editor-TU
-  duplicate includes + `ToPackagePath` dedup. Mock-verifiable; no behavior change.
-  · **Status:** ☐ Open
+- **HARD-D1 (cleanup, S)** — remaining behavior-preserving de-dups (9 of 22 shipped
+  in HARD-4 + `ParseAssetRegistryRows` into the new shared `CommandletResultParse.h`,
+  3c285eb6): `WriteGeneratedSource` temp-marshalling into a shared RAII helper;
+  `Env::ParseBool` for the 5 truthy-predicate sites; `AssetPathProperty()` /
+  `PaginatedSchema()` reuse in BlueprintTools; the two in-flight RAII structs in
+  Mcp.cpp; `EmitCallStatement` extraction; the editor-TU duplicate includes +
+  `ToPackagePath` dedup. **Dropped:** the audit's "move 5 result-struct parsers"
+  item — on inspection they are NOT byte-identical (Socket's CloneGraph has an
+  `is_object()` guard the commandlet lacks; differing var names), so extracting them
+  would normalize away a real behavior difference. Mock-verifiable; no behavior
+  change. · **Status:** ☐ Open
 - **HARD-D2 (test, M)** — running the live apply_ops/write coverage against Lyra is
   gated by the daemon-handshake flakiness (a one-shot can't hold batch state; the
   Lyra daemon reliably falls back to slow one-shot). The gated test exists; routine
