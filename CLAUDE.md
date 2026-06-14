@@ -116,10 +116,11 @@ UE5_MCP/                                      ← repo root (tracks plugin + doc
                                                 (manually pushed to <repo>.wiki.git)
 ```
 
-The source-built engine is a sibling of this project at
-`D:\Projects\Unreal Engine 5\` — outside this repo by design. Three
-engine `.Build.cs` patches we depend on stay as documented patches to
-re-apply, not committed engine files (see README.md).
+The engine lives outside this repo by design — currently an installed UE 5.8 at
+`D:\Games\Epic Games\UE_5.8`. On a **source** engine, three `.Build.cs` patches
+we depend on stay as documented patches to re-apply, not committed engine files
+(see README.md); they don't apply to an installed engine, which builds the editor
+module as-is and the server/tests via the CMake fallback.
 
 ## Backend selection
 
@@ -164,34 +165,32 @@ explicit command below. (Earlier versions auto-built it via a `.uplugin`
 server doesn't need the engine.) Building the editor target therefore
 builds **only the editor module**; build the server separately:
 
+The maintainer's current host is an **installed** UE 5.8 at
+`D:\Games\Epic Games\UE_5.8` (it ships `InstalledBuild.txt`). The editor module
+builds against it via UBT as below; the server/tests are **Program targets,
+which an installed engine refuses**, so build those via the CMake fallback
+(`Saved\build-mcp-cmake.ps1` — see "Installed-engine fallback (CMake)" below).
+On a **source** engine the UBT Program-target commands work directly — substitute
+your source-engine path for the `-EngineDir` / `Build.bat` prefix.
+
 ```bat
 :: Editor module / plugin DLLs (does NOT build the MCP server anymore):
-"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+"D:\Games\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
   LyraEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4 -waitmutex
-
-:: MCP server exe (build separately — or use the prebuilt one from a release):
-"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
-  BlueprintReaderMcp Win64 Development ^
-  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
-  -NoUba -MaxParallelActions=4 -waitmutex
-
-:: doctest suite (859+ cases) — not pulled in automatically:
-"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
-  BlueprintReaderMcpTests Win64 Development ^
-  -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
-  -NoUba -MaxParallelActions=4 -waitmutex
 ```
-
-Or both Program targets at once via the wrapper script:
 
 ```pwsh
-Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
-  -EngineDir "D:\Projects\Unreal Engine 5" `
-  -ProjectFile "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
-  -ExtraArgs "-NoUba -MaxParallelActions=4"
+:: MCP server exe + doctest suite — installed-engine host (the maintainer's):
+:: UBT refuses Program targets, so build them engine-free via CMake/Ninja+MSVC.
+& 'D:\Projects\UE5_MCP\Saved\build-mcp-cmake.ps1'
 ```
+
+On a **source** engine you can instead build both Program targets via UBT
+(same `Build.bat` invocation as the editor, with `BlueprintReaderMcp` /
+`BlueprintReaderMcpTests` as the target) or the `Build-MCPServer.ps1` wrapper
+(`-EngineDir <source-engine>`).
 
 `-NoUba -MaxParallelActions=4` is required on this machine to fit the
 build inside a small page file (UBA allocates large VAS chunks per
@@ -314,7 +313,7 @@ engine source — not set up.
 
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
-$env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
+$env:BP_READER_ENGINE_DIR  = "D:\Games\Epic Games\UE_5.8"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
@@ -327,7 +326,7 @@ ground. For an interactive smoke, stream JSON-RPC frames against
 ### Reseed test BPs
 
 ```bat
-"D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+"D:\Games\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
