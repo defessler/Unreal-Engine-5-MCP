@@ -2030,9 +2030,74 @@ refute pass.
 
 ---
 
+## 11. Hardening sweep — server never-stuck / Toolbox / cleanup (2026-06-14)
+
+A four-area ultracode audit (server hang-detection + editor/commandlet detection;
+Toolbox e2e / no-overwrite / versioning / updates; test validity with real-editor
+priority; conventions + Lyra-version check) drove this sweep. Lyra-on-UE-5.8 was
+re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
+`D:\Games\Epic Games\UE_5.8`).
+
+### Shipped
+
+- **HARD-1 (server, P1)** — the live/daemon op recv, TCP connect, and handshake
+  reads were unbounded blocking calls, so a paused/wedged editor hung the whole
+  `tools/call` forever (and wedged single-threaded dispatch + the MCP-8 task slot).
+  `RecvLine` is now deadline-bounded (re-armed per frame, so progress-emitting long
+  ops never trip) + cancel-aware; `ConnectOnce` is a bounded non-blocking connect;
+  known-long ops get a larger floor. The general hang-detection the maintainer
+  asked for. MockServer timeout/cancel doctests added. · **Status:** ✅ Done
+  (287f22fc, 2026-06-14)
+- **HARD-2 (daemon, P1)** — the cmdlet wedge-watchdog force-killed the editor on a
+  legit >120s game-thread op (heartbeat only bumped by the blocked main pump). It
+  now tracks ops in-flight and applies the tight timeout only when idle; the live
+  server's flat `DoneEvent->Wait()` became a shutdown-responsive poll with a
+  heap-owned result. Compiled against UE 5.8. · **Status:** ✅ Done (37d61b9c)
+- **HARD-3 (Toolbox, P1)** — plugin update could hang forever (robocopy 1M-retry on
+  a locked exe); now `/R:2 /W:2` + a path-scoped pre-kill of this project's server.
+  A release fails fast unless tag == .uplugin VersionName == package.json. An update
+  now prompts to restart the MCP client. Tester mock auto-spawn opens SSE; port
+  range widened; `$tag` log-prefix un-clobbered. · **Status:** ✅ Done (e59a1aeb)
+- **HARD-4 (tests/docs/conventions)** — doctor git-HEAD nag → Info; tagged comment
+  blocks collapsed (TaskManager.h / CommandletErrorParse.h / Mcp.cpp); tautological
+  analytics tests trimmed; dead code removed (SecondsFromEnv, SpawnLock::IsHeld,
+  StripClassPrefix, AudioBase64/ResourceLink, unused includes) + C4100 fixes;
+  GuidTag8 de-dup; CLAUDE.md build/test commands repointed at the real
+  installed-engine host (the documented live-test path was absent → the live suite
+  silently auto-skipped); a gated live write-roundtrip test now covers the real
+  apply_ops save path. · **Status:** ✅ Done (0542ba65 / 07b7aa43 / 666324c6 /
+  cd869451 / 75f1cd62)
+
+### Deferred (confirmed-safe, fully specified)
+
+- **HARD-D1 (cleanup, S)** — 14 remaining behavior-preserving de-dups the cleanup
+  audit confirmed (8 of 22 shipped in HARD-4): move the json→result-struct parsers +
+  `ParseAssetRegistryRows` + `WriteGeneratedSource` temp-marshalling into a shared
+  `CommandletResultParse.h`; `Env::ParseBool` for the 5 truthy-predicate sites; an
+  `AssetPathProperty()` / `PaginatedSchema()` reuse in BlueprintTools; the two
+  in-flight RAII structs in Mcp.cpp; `EmitCallStatement` extraction; the editor-TU
+  duplicate includes + `ToPackagePath` dedup. Mock-verifiable; no behavior change.
+  · **Status:** ☐ Open
+- **HARD-D2 (test, M)** — running the live apply_ops/write coverage against Lyra is
+  gated by the daemon-handshake flakiness (a one-shot can't hold batch state; the
+  Lyra daemon reliably falls back to slow one-shot). The gated test exists; routine
+  CI runs need that handshake root-caused + fixed (separate from this sweep). The
+  real-data smoke (read_blueprint vs the rebuilt editor) passed, confirming the
+  overall path. · **Status:** ☐ Open
+
+---
+
 ## Revision log
 
 Newest first. One line per change to this file.
+
+- **2026-06-14** — **Hardening sweep (§11).** Four-area ultracode audit →
+  HARD-1..4 shipped (server bounded-recv hang-detection 287f22fc; daemon
+  watchdog/live-shutdown 37d61b9c; Toolbox hang/version/restart e59a1aeb;
+  conventions/doctor/cleanup/docs/live-test 0542ba65/07b7aa43/666324c6/cd869451/
+  75f1cd62). HARD-D1 (14 remaining de-dups) + HARD-D2 (live-run blocked by daemon
+  flakiness) deferred. Mock 891/0; UE 5.8 editor compile clean; real-data
+  read_blueprint smoke passed.
 
 - **2026-06-13** — **Ultracode completeness audit → 10 gaps found + ALL fixed.** A
   7-dimension adversarial audit (roadmap / recipe / test-coverage / docs-sync /
