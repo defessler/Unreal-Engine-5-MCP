@@ -6,12 +6,16 @@
 #include <doctest/doctest.h>
 
 #include "backends/CommandletErrorParse.h"
+#include "backends/CommandletResultParse.h"
 
 #include <filesystem>
 #include <fstream>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 using bpr::backends::detail::ExtractStructuredError;
+using bpr::backends::detail::ParseAssetRegistryRows;
 
 namespace {
 std::filesystem::path WriteTemp(const std::string& name, const std::string& content) {
@@ -54,4 +58,26 @@ TEST_CASE("ExtractStructuredError: nullopt for the asset-not-found fallback case
 	auto p4 = WriteTemp("bpr_err_empty.json", R"({"error":""})");
 	CHECK_FALSE(ExtractStructuredError(p4).has_value());
 	std::filesystem::remove(p4);
+}
+
+TEST_CASE("ParseAssetRegistryRows: maps rows under the named key") {
+	const nlohmann::json j = {
+		{"assets", nlohmann::json::array({
+			{{"asset_path", "/Game/AI/BP_A"}, {"name", "BP_A"}, {"class_name", "/Script/Engine.Blueprint"}},
+			{{"asset_path", "/Game/AI/BP_B"}, {"name", "BP_B"}, {"class_name", "/Script/Engine.Blueprint"}},
+		})},
+	};
+	const auto r = ParseAssetRegistryRows(j, "assets");
+	REQUIRE(r.entries.size() == 2);
+	CHECK(r.entries[0].assetPath == "/Game/AI/BP_A");
+	CHECK(r.entries[1].name == "BP_B");
+	CHECK(r.entries[0].className == "/Script/Engine.Blueprint");
+}
+
+TEST_CASE("ParseAssetRegistryRows: empty for a missing/wrong key, a non-object, or a non-array value") {
+	const nlohmann::json withAssets = {{"assets", nlohmann::json::array()}};
+	CHECK(ParseAssetRegistryRows(withAssets, "matches").entries.empty());          // wrong key
+	CHECK(ParseAssetRegistryRows(nlohmann::json::array(), "assets").entries.empty()); // not an object
+	const nlohmann::json notArray = {{"assets", 42}};
+	CHECK(ParseAssetRegistryRows(notArray, "assets").entries.empty());             // value isn't an array
 }

@@ -1,4 +1,5 @@
 #include "backends/SocketBlueprintReader.h"
+#include "backends/CommandletResultParse.h"
 
 #include <fmt/core.h>
 
@@ -1350,30 +1351,6 @@ nlohmann::json SocketBlueprintReader::UiInvokeMenu(std::string_view menu, std::s
 	return RunOp(args);
 }
 
-namespace {
-IBlueprintReader::AssetRegistryListResult
-ParseAssetRegistryRows(const nlohmann::json& j, const char* arrayKey) {
-	IBlueprintReader::AssetRegistryListResult out;
-	if (!j.is_object()) {
-		return out;
-	}
-	auto it = j.find(arrayKey);
-	if (it == j.end() || !it->is_array()) {
-		return out;
-	}
-	out.entries.reserve(it->size());
-	for (const auto& row : *it) {
-		if (!row.is_object()) continue;
-		IBlueprintReader::AssetRegistryEntry e;
-		e.assetPath = row.value("asset_path", std::string{});
-		e.name      = row.value("name",       std::string{});
-		e.className = row.value("class_name", std::string{});
-		out.entries.push_back(std::move(e));
-	}
-	return out;
-}
-}    // namespace
-
 IBlueprintReader::AssetRegistryListResult
 SocketBlueprintReader::ListAssets(std::string_view path, bool recursive) {
 	std::vector<std::string> args = {"-Op=ListAssets"};
@@ -1383,7 +1360,7 @@ SocketBlueprintReader::ListAssets(std::string_view path, bool recursive) {
 	if (!recursive) {
 		args.push_back("-NonRecursive");
 	}
-	return ParseAssetRegistryRows(RunOp(args), "assets");
+	return detail::ParseAssetRegistryRows(RunOp(args), "assets");
 }
 
 IBlueprintReader::AssetRegistryListResult
@@ -1395,7 +1372,7 @@ SocketBlueprintReader::FindAsset(std::string_view query, std::string_view path) 
 	if (!path.empty()) {
 		args.push_back("-Path=" + std::string(path));
 	}
-	return ParseAssetRegistryRows(RunOp(args), "matches");
+	return detail::ParseAssetRegistryRows(RunOp(args), "matches");
 }
 
 // ----- batch sentinels ---------------------------------------------------
