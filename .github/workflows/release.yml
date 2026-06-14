@@ -189,34 +189,20 @@ jobs:
             SHA256SUMS
           fail_on_unmatched_files: false
           generate_release_notes: true
+          # Keep the static body to a short intro only — a standing "Highlights"
+          # block here repeats the same generic text on every release (the noise
+          # that made historical releases worthless). generate_release_notes adds
+          # the range-specific "What's Changed" below; enrich a milestone's notes
+          # by hand afterward when it warrants a grouped narrative.
           body: |
-            BlueprintReader is a standalone MCP server that gives AI coding assistants
-            (Claude, Copilot, Cursor, Gemini, Codex) deep read/write access to every
-            asset type inside a running Unreal Engine project — Blueprints, Materials,
-            DataTables, AnimBPs, Niagara, Sequencer, and more — without requiring any
-            C++ or editor scripting knowledge.
+            BlueprintReader — a standalone MCP server + two-module UE editor plugin +
+            desktop Toolbox that give AI coding assistants deep read/write access to a
+            running Unreal Engine project (Blueprints, Materials, DataTables, AnimBPs,
+            Niagara, Sequencer, …), no C++ or editor scripting required.
 
-            ## Highlights
-
-            A standalone MCP server + a two-module UE editor plugin that give AI
-            coding assistants deep read/write access to a running Unreal Engine
-            project — Blueprints, Materials, DataTables, AnimBPs, Niagara, Sequencer,
-            and more — plus a desktop **Toolbox** GUI for one-click install, AI-client
-            configuration, and live tool testing.
-
-            - **Toolbox GUI** — guided installer, provider configuration for every
-              supported client (Claude, Copilot/VS Code, Cursor, Windsurf, Gemini,
-              Codex, JetBrains), and an interactive MCP tester.
-            - **Blueprint authoring at diff=0** — the read/write tool surface can
-              reproduce any Blueprint from scratch with zero structural residuals.
-            - **UE 5.8 + installed-engine support** — an engine-free CMake fallback
-              builds the standalone server/tests on Launcher installs.
-            - **MCP 2025-11-25 + typed output schemas** — `structuredContent`
-              responses with a full `output_schema` per tool.
-            - **`auto` backend** — routes to a live editor over TCP or a headless
-              commandlet per call, with transparent reconnect.
-
-            The per-release changelog is generated automatically below.
+            See the [README](https://github.com/defessler/Unreal-Engine-5-MCP#readme)
+            for the full capability overview and install instructions. The changes in
+            this release are listed below.
 
             ---
 
