@@ -188,11 +188,14 @@ Report RunSetupChecks(const backends::BackendConfig& cfg) {
 			const std::string head = GitHeadShort(pluginDir);
 			if (!head.empty() && std::string(BPR_GIT_HASH) != "unknown" &&
 				head != std::string(BPR_GIT_HASH)) {
-				r.findings.push_back(Warning(
-					"server exe is stale vs the plugin's git HEAD",
-					fmt::format("exe built from commit {}, plugin source is now at {}",
-								BPR_GIT_HASH, head),
-					"Rebuild the MCP server to pick up the latest plugin source."));
+				// Info, not Warning: HEAD moves on EVERY commit (docs, unrelated
+				// files), so a mismatch rarely means the server needs a rebuild —
+				// the VersionName warning above is the actionable stale-exe signal.
+				r.findings.push_back(Info(
+					"server exe was built from an earlier git commit",
+					fmt::format("exe built from commit {}, plugin tree is now at {} — "
+								"rebuild only if you changed server/test sources",
+								BPR_GIT_HASH, head)));
 			}
 		}
 	}

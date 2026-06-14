@@ -1,30 +1,9 @@
-// MCP-8: async Tasks primitive (MCP 2025-11-25, experimental).
-//
-// A long-running tool call (cook_content, package_project, build_lighting,
-// run_automation_tests, a big apply_ops) can be augmented with a `task`
-// object. Instead of blocking the client until the op finishes — which trips
-// some clients' own request timeouts — the server returns a taskId
-// immediately and runs the op on a BACKGROUND THREAD. The client then polls
-// `tasks/get` (and can `tasks/cancel`) without holding the connection open on
-// a single in-flight request.
-//
-// SINGLE-TASK MODEL. The backend (one socket to the editor / one commandlet
-// subprocess) is a shared, non-reentrant resource — two ops running at once
-// would corrupt its wire state. So at most one task runs at a time, and while
-// it runs the server rejects other tool calls with a clear "busy" error (but
-// tasks/get + tasks/cancel + tasks/list stay responsive, since they never
-// touch the backend). This keeps the stdio read loop responsive: starting a
-// task returns instantly, and the poll/cancel methods are registry-only.
-//
-// Cancellation reuses the existing CallContext + Server in-flight registry:
-// the WorkFn (built in Mcp.cpp) registers its CallContext under the taskId, so
-// tasks/cancel → Server::FindInFlight(taskId)->MarkCancelled() flips the same
-// cooperative flag a synchronous call would see.
-//
-// NOTE: the 2025-11-25 tasks spec is experimental and is redesigned in the
-// 2026-07-28 GA; the wire shape here tracks 2025-11-25 and may need a small
-// update at GA. The infrastructure (registry, background execution, cancel)
-// is spec-version-independent.
+// Async Tasks primitive: a long op runs on a background thread and is polled via
+// tasks/get instead of blocking the client (which trips some clients' timeouts).
+// Single-task model because the backend (one editor socket / commandlet) is shared
+// and non-reentrant — a second concurrent op would corrupt its wire state, so while
+// a task runs other tool calls are rejected "busy" (poll/cancel stay responsive).
+// Cancel reuses the CallContext in-flight registry keyed by taskId.
 #pragma once
 
 #include <chrono>

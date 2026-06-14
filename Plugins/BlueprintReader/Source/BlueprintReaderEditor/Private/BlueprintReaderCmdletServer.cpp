@@ -295,7 +295,7 @@ public:
 			// (FScopedProgressCapture) can push FScopedSlowTask progress to us.
 			BlueprintReader::RegisterProgressQueue(ConnId);
 			// An executing op blocks the game-thread heartbeat; mark it in-flight
-			// so the watchdog reads that as "busy", not "wedged" (F3).
+			// so the watchdog reads that as "busy", not "wedged".
 			GOpsInFlight.Increment();
 			AsyncTask(ENamedThreads::GameThread, [&Code, Params, DoneEvent, ConnId]()
 			{

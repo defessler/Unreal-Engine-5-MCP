@@ -165,9 +165,8 @@ void RegisterHandlersImpl(jr::Server& server,
 		// don't pay any cost.
 		nlohmann::json capabilities = {
 			{"tools", {{"listChanged", true}}},
-			// MCP-8: experimental async tasks (2025-11-25). We support the
-			// `task` request augmentation on tools/call plus tasks/get,
-			// tasks/cancel, and tasks/list.
+			// Experimental async-tasks capability (2025-11-25): the `task`
+			// augmentation on tools/call plus tasks/get, tasks/cancel, tasks/list.
 			{"tasks", nlohmann::json::object()},
 		};
 		// Phase 3: advertise the prompts primitive when the host wired

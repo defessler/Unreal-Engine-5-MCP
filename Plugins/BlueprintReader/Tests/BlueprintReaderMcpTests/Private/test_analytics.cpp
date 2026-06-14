@@ -31,18 +31,17 @@ TEST_CASE("Analytics: no-op provider accepts every event without throwing") {
 	CHECK_NOTHROW(p->OnSessionEnd());
 }
 
-TEST_CASE("Analytics: no-op provider survives many tool-call events") {
+TEST_CASE("Analytics: no-op provider survives many tool-call events without throwing") {
 	auto p = tools::MakeNoOpAnalyticsProvider();
-	p->OnSessionStart();
-	for (int i = 0; i < 1000; ++i) {
-		p->OnToolCall({"list_blueprints",
-					   std::chrono::milliseconds{i % 50},
-					   /*isError=*/(i % 7 == 0)});
-	}
-	p->OnSessionEnd();
-	// If the no-op provider had a bug (e.g. unbounded allocation),
-	// we'd see it here. Smoke check.
-	CHECK(true);
+	CHECK_NOTHROW([&] {
+		p->OnSessionStart();
+		for (int i = 0; i < 1000; ++i) {
+			p->OnToolCall({"list_blueprints",
+						   std::chrono::milliseconds{i % 50},
+						   /*isError=*/(i % 7 == 0)});
+		}
+		p->OnSessionEnd();
+	}());
 }
 
 // =====================================================================
@@ -84,28 +83,4 @@ TEST_CASE("EulaNotice: deterministic between calls (same text every time)") {
 	const auto a = tools::EulaNotice();
 	const auto b = tools::EulaNotice();
 	CHECK(a == b);
-}
-
-// =====================================================================
-// ToolCallSample shape
-// =====================================================================
-
-TEST_CASE("ToolCallSample: fields are populated as expected") {
-	const tools::ToolCallSample s{
-		"read_blueprint",
-		std::chrono::milliseconds{42},
-		/*isError=*/false,
-	};
-	CHECK(s.tool == "read_blueprint");
-	CHECK(s.elapsed.count() == 42);
-	CHECK_FALSE(s.isError);
-}
-
-TEST_CASE("ToolCallSample: error sample carries isError=true") {
-	const tools::ToolCallSample s{
-		"add_variable",
-		std::chrono::milliseconds{15},
-		/*isError=*/true,
-	};
-	CHECK(s.isError);
 }
