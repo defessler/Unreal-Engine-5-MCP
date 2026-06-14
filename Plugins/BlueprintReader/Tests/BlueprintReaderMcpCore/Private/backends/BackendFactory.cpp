@@ -261,6 +261,8 @@ std::unique_ptr<IBlueprintReader> Create(const BackendConfig& cfg) {
 			lc.host = cfg.liveHost;
 			lc.port = cfg.liveProcPort;
 			lc.token = cfg.liveToken;
+				lc.opTimeout   = std::chrono::seconds(cfg.timeoutSeconds);
+				lc.cancelCheck = cfg.cancelCheck;
 			// Wire the handshake-file path so the reader can self-
 			// refresh on connect failure (issue #9 — editor restart
 			// changes port + token, MCP server was stuck on stale

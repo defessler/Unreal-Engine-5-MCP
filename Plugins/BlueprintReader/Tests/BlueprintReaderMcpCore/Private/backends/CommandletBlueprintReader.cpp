@@ -984,6 +984,7 @@ CommandletBlueprintReader::TryAttachExistingDaemon() const {
 	}
 	sc.connectTimeout    = std::chrono::seconds(5);
 	sc.opTimeout         = cfg_.timeout;
+	sc.cancelCheck       = cfg_.cancelCheck;
 
 	// TCP probe with a short timeout. AutoBlueprintReader's TcpProbe is
 	// not visible from here (TU-private), so do a quick non-blocking

@@ -211,6 +211,8 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildLive() {
 			(cfg_.uproject.parent_path() / "Saved" / "bp-reader-live.json").string();
 		lc.projectPath = cfg_.uproject.string();
 	}
+	lc.opTimeout   = cfg_.commandletConfig.timeout;
+	lc.cancelCheck = cfg_.commandletConfig.cancelCheck;
 	return std::make_unique<SocketBlueprintReader>(std::move(lc));
 }
 
@@ -242,6 +244,8 @@ std::unique_ptr<SocketBlueprintReader> AutoBlueprintReader::TryBuildCmdlet() {
 	{
 		return nullptr;
 	}
+	sc.opTimeout   = cfg_.commandletConfig.timeout;
+	sc.cancelCheck = cfg_.commandletConfig.cancelCheck;
 	return std::make_unique<SocketBlueprintReader>(std::move(sc));
 }
 

@@ -2,8 +2,12 @@
 
 #include <fmt/core.h>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -21,6 +25,11 @@
 	using SocketType = SOCKET;
 	static constexpr SocketType kInvalidSocket = INVALID_SOCKET;
 #else    // defined(_WIN32)
+	#include <cerrno>
+	#include <fcntl.h>
+	#include <sys/select.h>
+	#include <sys/socket.h>
+	#include <unistd.h>
 	using SocketType = int;
 	static constexpr SocketType kInvalidSocket = -1;
 #endif    // defined(_WIN32)
@@ -90,6 +99,28 @@ std::string ExtractFlag(const std::vector<std::string>& args, std::string_view f
 	return {};
 }
 
+// Per-op recv budget in seconds. Normal ops get `baseBudget`; known long,
+// possibly-silent ops (cook/package/lighting/automation/compile/batch-flush)
+// get a much larger floor so a legitimately slow op isn't mistaken for a wedge
+// — they also emit progress frames, each of which re-arms the budget per frame.
+// baseBudget <= 0 → unbounded (the opt-out).
+long OpRecvBudgetSeconds(const std::vector<std::string>& args, long baseBudget) {
+	if (baseBudget <= 0) {
+		return 0;
+	}
+	static const std::set<std::string, std::less<>> kLongOps = {
+		"SaveAll", "BuildLighting", "RunAutomationTests", "CompileMaterial",
+		"CompileWidgetBlueprint", "CompileBehaviorTree", "CompileStateTree",
+		"CompileAnimBlueprint", "CookContent", "PackageProject", "EndBatch",
+	};
+	std::string op = args.empty() ? std::string() : args[0];
+	if (const std::string p = "-Op="; op.rfind(p, 0) == 0) {
+		op = op.substr(p.size());
+	}
+	constexpr long kLongOpFloorSec = 1800;
+	return kLongOps.count(op) ? std::max(baseBudget, kLongOpFloorSec) : baseBudget;
+}
+
 // On Windows, WSAStartup is required before any socket call. We refcount
 // across SocketBlueprintReader instances so the startup/cleanup pair is
 // balanced even if multiple readers exist (rare, but cheap to be right).
@@ -123,9 +154,38 @@ void SendAll(SocketType s, const char* data, std::size_t len) {
 	}
 }
 
-// Read a newline-terminated frame. Buffers extra bytes (the next frame
-// may have arrived in the same recv) into `pending` for later reads.
-std::string RecvLine(SocketType s, std::string& pending) {
+// Block up to `timeoutSeconds` for the socket to become readable. Returns true
+// if a frame is on the way, false on timeout or select error. Used to BOUND a
+// recv so a wedged editor game thread (which sends no frame at all) can't hang
+// the worker forever.
+bool WaitReadable(SocketType s, long timeoutSeconds) {
+	if (s == kInvalidSocket) {
+		return false;
+	}
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(s, &rfds);
+	timeval tv{};
+	tv.tv_sec = timeoutSeconds;
+	tv.tv_usec = 0;
+	const int rc = ::select(static_cast<int>(s) + 1, &rfds, nullptr, nullptr, &tv);
+	return rc > 0;
+}
+
+// Read a newline-terminated frame, bounded by an optional deadline and an
+// optional cancel poll. Buffers extra bytes (the next frame may have arrived in
+// the same recv) into `pending` for later reads. When timeoutSeconds > 0, the
+// wait for readability is sliced into ~1s polls and a clean classified timeout
+// is thrown once the deadline passes with no frame — converting a hang-forever
+// on a paused/wedged editor into a recoverable error. cancelCheck, when set,
+// aborts the same way so tasks/cancel can interrupt a stalled read.
+// timeoutSeconds <= 0 with no cancelCheck preserves the old unbounded recv.
+std::string RecvLine(SocketType s, std::string& pending,
+					 long timeoutSeconds = 0,
+					 const std::function<bool()>& cancelCheck = {}) {
+	using clock = std::chrono::steady_clock;
+	const bool bounded = timeoutSeconds > 0;
+	const auto deadline = clock::now() + std::chrono::seconds(bounded ? timeoutSeconds : 0);
 	while (true) {
 		auto nl = pending.find('\n');
 		if (nl != std::string::npos) {
@@ -136,6 +196,28 @@ std::string RecvLine(SocketType s, std::string& pending) {
 				line.pop_back();
 			}
 			return line;
+		}
+		if (bounded || cancelCheck) {
+			// Re-arm a short readability wait before each recv so the deadline is
+			// honored across partial frames and cancel stays responsive (~1s).
+			for (;;) {
+				if (cancelCheck && cancelCheck()) {
+					throw SocketTransportError(
+						"SocketBlueprintReader: op cancelled while awaiting the "
+						"editor's response (notifications/cancelled)");
+				}
+				if (bounded && clock::now() >= deadline) {
+					throw SocketTransportError(fmt::format(
+						"SocketBlueprintReader: no response frame within {}s — the "
+						"editor's game thread may be paused (a breakpoint/modal) or "
+						"wedged. Run health_check to check liveness, or raise "
+						"BP_READER_TIMEOUT_SECONDS for a legitimately long op.",
+						timeoutSeconds));
+				}
+				if (WaitReadable(s, 1)) {
+					break;    // readable → the recv below won't block long
+				}
+			}
 		}
 		char buf[4096];
 		int n = ::recv(s, buf, sizeof(buf), 0);
@@ -278,7 +360,25 @@ bool SocketBlueprintReader::RefreshFromHandshakeFile() {
 // CloseSocketCompat + ScopedSocket helpers live in the anonymous
 // namespace above so Disconnect (declared earlier) can reach them.
 namespace socket_blueprint_reader_detail2 {
-SocketType ConnectOnce(const std::string& host, int port) {
+// Portably flip a socket's blocking mode.
+void SetSocketBlocking(SocketType s, bool blocking) {
+#if defined(_WIN32)
+	u_long mode = blocking ? 0 : 1;
+	::ioctlsocket(s, FIONBIO, &mode);
+#else
+	int flags = ::fcntl(s, F_GETFL, 0);
+	if (flags >= 0) {
+		::fcntl(s, F_SETFL, blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK));
+	}
+#endif
+}
+
+// Open a TCP connection to host:port, bounded by `timeoutSeconds`. A blocking
+// ::connect to a black-holed / half-open editor port can hang indefinitely, so
+// we connect non-blocking and select() for writability with a deadline, then
+// restore blocking mode for the framed I/O that follows. Returns kInvalidSocket
+// on refuse/timeout/error.
+SocketType ConnectOnce(const std::string& host, int port, long timeoutSeconds = 5) {
 	ScopedSocket sock(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
 	if (!sock)
 	{
@@ -288,9 +388,35 @@ SocketType ConnectOnce(const std::string& host, int port) {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(static_cast<uint16_t>(port));
 	inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
-	if (::connect(sock.s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-		return kInvalidSocket;  // ScopedSocket closes on scope exit
+
+	SetSocketBlocking(sock.s, false);
+	const int rc = ::connect(sock.s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+	if (rc != 0) {
+#if defined(_WIN32)
+		const bool inProgress = (WSAGetLastError() == WSAEWOULDBLOCK);
+#else
+		const bool inProgress = (errno == EINPROGRESS);
+#endif
+		if (!inProgress) {
+			return kInvalidSocket;    // refused / unreachable straight away
+		}
+		fd_set wfds;
+		FD_ZERO(&wfds);
+		FD_SET(sock.s, &wfds);
+		timeval tv{};
+		tv.tv_sec = timeoutSeconds > 0 ? timeoutSeconds : 5;
+		tv.tv_usec = 0;
+		if (::select(static_cast<int>(sock.s) + 1, nullptr, &wfds, nullptr, &tv) <= 0) {
+			return kInvalidSocket;    // connect timed out or select error
+		}
+		int soErr = 0;
+		socklen_t len = sizeof(soErr);
+		if (::getsockopt(sock.s, SOL_SOCKET, SO_ERROR,
+						 reinterpret_cast<char*>(&soErr), &len) != 0 || soErr != 0) {
+			return kInvalidSocket;    // connect completed with an error
+		}
 	}
+	SetSocketBlocking(sock.s, true);
 	return sock.release();
 }
 
@@ -315,24 +441,6 @@ bool SocketStillAlive(SocketType s) {
 	return rc == 0;
 }
 
-// UX-P4a: block up to `timeout` seconds for the socket to become readable.
-// Returns true if a frame is on the way, false on timeout (nothing arrived) or
-// select error. Used to BOUND a recv so a wedged editor game thread (which sends
-// no frame at all) can't hang the worker forever — distinct from the {0,0} poll
-// in SocketStillAlive, which only peeks.
-bool WaitReadable(SocketType s, long timeoutSeconds) {
-	if (s == kInvalidSocket) {
-		return false;
-	}
-	fd_set rfds;
-	FD_ZERO(&rfds);
-	FD_SET(s, &rfds);
-	timeval tv{};
-	tv.tv_sec = timeoutSeconds;
-	tv.tv_usec = 0;
-	const int rc = ::select(static_cast<int>(s) + 1, &rfds, nullptr, nullptr, &tv);
-	return rc > 0;
-}
 }    // namespace socket_blueprint_reader_detail2
 using namespace socket_blueprint_reader_detail2;
 
@@ -346,7 +454,8 @@ using namespace socket_blueprint_reader_detail2;
 // fd; we only `release()` once the handshake fully succeeds and the
 // caller takes ownership.
 SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandshake() {
-	ScopedSocket sock(ConnectOnce(cfg_.host, cfg_.port));
+	const long handshakeBudget = static_cast<long>(cfg_.connectTimeout.count());
+	ScopedSocket sock(ConnectOnce(cfg_.host, cfg_.port, handshakeBudget));
 	if (!sock) {
 		return {false, /*retryWorthwhile=*/true, fmt::format(
 			"connect to {}:{} failed", cfg_.host, cfg_.port)};
@@ -357,7 +466,7 @@ SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandsha
 
 	std::string hello;
 	try {
-		hello = RecvLine(sock.s, buf);
+		hello = RecvLine(sock.s, buf, handshakeBudget);
 	} catch (const std::exception& e) {
 		// Protocol-level failure on a fresh connect typically means the
 		// server we connected to isn't the editor — a refresh probably
@@ -381,7 +490,7 @@ SocketBlueprintReader::AttemptResult SocketBlueprintReader::TryConnectAndHandsha
 
 	std::string authResp;
 	try {
-		authResp = RecvLine(sock.s, buf);
+		authResp = RecvLine(sock.s, buf, handshakeBudget);
 	} catch (const std::exception& e) {
 		return {false, true, fmt::format("auth response read failed: {}", e.what())};
 	}
@@ -486,18 +595,18 @@ nlohmann::json SocketBlueprintReader::RunOp(const std::vector<std::string>& args
 	// (cook/package/automation/lighting); forward each to progressSink_ and
 	// keep reading. A normal op sends exactly one result frame, so this loops
 	// once.
+	//
+	// The recv is bounded by opBudget, re-armed per frame — so a progressing long
+	// op never trips, while a wedged/paused editor that goes fully silent throws a
+	// clean classified timeout instead of hanging the call forever. Known-long ops
+	// get a much larger floor (OpRecvBudgetSeconds); health_check still answers on
+	// a separate worker-thread connection even while this op's game thread is wedged.
+	const long opBudget =
+		OpRecvBudgetSeconds(args, static_cast<long>(cfg_.opTimeout.count()));
 	for (;;) {
 	std::string response;
 	try {
-		// NOTE (UX-P4a): we deliberately do NOT bound this recv with a per-op
-		// timeout. A long live op (BuildLighting / Cook / Package / big SaveAll)
-		// can run for minutes on the game thread emitting no frame at all over the
-		// live transport, and a busy game thread is indistinguishable from a paused
-		// one to a heartbeat — so auto-aborting here would both kill legitimate
-		// long ops and misclassify them as "paused". Liveness is instead probed
-		// on demand via the health_check tool (a separate worker-thread connection
-		// that answers even while the game thread is wedged).
-		response = RecvLine(s, buf);
+		response = RecvLine(s, buf, opBudget, cfg_.cancelCheck);
 	} catch (const SocketTransportError& e) {
 		Disconnect();
 		// REL-16: response-read failure AFTER a fully-sent frame.
@@ -614,14 +723,14 @@ IBlueprintReader::HealthResult SocketBlueprintReader::HealthCheck() {
 		return r;
 	};
 
-	ScopedSocket sock(ConnectOnce(host, port));
+	constexpr long kHealthTimeoutSec = 5;
+	ScopedSocket sock(ConnectOnce(host, port, kHealthTimeoutSec));
 	if (!sock) {
 		return unreachable(fmt::format(
 			"connect to {}:{} failed — editor not running, or its port isn't "
 			"published in Saved/bp-reader-live.json", host, port), /*authed=*/false);
 	}
 
-	constexpr long kHealthTimeoutSec = 5;
 	std::string buf;
 	try {
 		// Minimal handshake: hello → auth → auth_ok (the LiveServer requires auth
@@ -629,7 +738,7 @@ IBlueprintReader::HealthResult SocketBlueprintReader::HealthCheck() {
 		if (!WaitReadable(sock.s, kHealthTimeoutSec)) {
 			return unreachable("no hello frame from the editor within 5s", false);
 		}
-		const std::string hello = RecvLine(sock.s, buf);
+		const std::string hello = RecvLine(sock.s, buf, kHealthTimeoutSec);
 		const auto hj = nlohmann::json::parse(hello, nullptr, false);
 		if (!hj.is_object() || hj.value("type", "") != "hello") {
 			return unreachable(fmt::format("expected a hello frame, got: {}", hello), false);
@@ -641,7 +750,7 @@ IBlueprintReader::HealthResult SocketBlueprintReader::HealthCheck() {
 		if (!WaitReadable(sock.s, kHealthTimeoutSec)) {
 			return unreachable("no auth response from the editor within 5s", false);
 		}
-		const std::string authResp = RecvLine(sock.s, buf);
+		const std::string authResp = RecvLine(sock.s, buf, kHealthTimeoutSec);
 		const auto aj = nlohmann::json::parse(authResp, nullptr, false);
 		if (!aj.is_object() || aj.value("type", "") != "auth_ok") {
 			return unreachable(fmt::format("auth rejected: {}", authResp), false);
@@ -664,7 +773,7 @@ IBlueprintReader::HealthResult SocketBlueprintReader::HealthCheck() {
 					 "frame within 5s (process wedged below the connection layer)";
 			return r;
 		}
-		const std::string resp = RecvLine(sock.s, buf);
+		const std::string resp = RecvLine(sock.s, buf, kHealthTimeoutSec);
 		const auto j = nlohmann::json::parse(resp, nullptr, false);
 		r.reachable = true;
 		r.gameThreadAgeMs = j.is_object()

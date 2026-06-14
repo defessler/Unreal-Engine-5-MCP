@@ -652,3 +652,67 @@ TEST_CASE("AutoBackend: prefers live when both handshakes are valid") {
 	CHECK_NOTHROW((void)reader.ListBlueprints("/Game"));
 	std::filesystem::remove_all(tempDir);
 }
+
+TEST_CASE("LiveBackend: a silent (wedged) editor trips a bounded op timeout, doesn't hang") {
+	// Never-stuck guarantee: the editor handshakes, then goes fully silent
+	// mid-op (a paused/wedged game thread sends no frame). The op recv must
+	// abort with a classified timeout within ~opTimeout instead of blocking
+	// forever. The mock holds the connection open (no FIN) and sleeps —
+	// modelling silence, not a clean close.
+	MockServer mock([](SOCKET s) {
+		SendLine(s, R"({"type":"hello","version":"1"})");
+		(void)ReadLine(s);                  // auth
+		SendLine(s, R"({"type":"auth_ok"})");
+		(void)ReadLine(s);                  // op frame — then stay silent
+		std::this_thread::sleep_for(2s);
+	});
+
+	SocketBlueprintReader::Config cfg;
+	cfg.host = "127.0.0.1";
+	cfg.port = mock.port();
+	cfg.token = "tok";
+	cfg.opTimeout = 1s;                     // tiny budget so the test is fast
+	SocketBlueprintReader reader(cfg);
+
+	const auto t0 = std::chrono::steady_clock::now();
+	try {
+		(void)reader.ListBlueprints("/Game");
+		FAIL("expected a bounded timeout throw");
+	} catch (const BlueprintReaderError& e) {
+		const std::string msg = e.what();
+		CHECK(msg.find("health_check") != std::string::npos);
+	}
+	const auto elapsed = std::chrono::steady_clock::now() - t0;
+	CHECK(elapsed < 3s);                    // bounded near 1s, nowhere near hang
+}
+
+TEST_CASE("LiveBackend: cancelCheck interrupts a stalled op recv") {
+	// A long-silent op must be interruptible by tasks/cancel: when the cancel
+	// poll flips true, the recv aborts promptly rather than waiting out opTimeout.
+	MockServer mock([](SOCKET s) {
+		SendLine(s, R"({"type":"hello","version":"1"})");
+		(void)ReadLine(s);
+		SendLine(s, R"({"type":"auth_ok"})");
+		(void)ReadLine(s);                  // op frame — then stay silent
+		std::this_thread::sleep_for(2s);
+	});
+
+	std::atomic<bool> cancelled{false};
+	SocketBlueprintReader::Config cfg;
+	cfg.host = "127.0.0.1";
+	cfg.port = mock.port();
+	cfg.token = "tok";
+	cfg.opTimeout = 30s;                    // long — the cancel must win the race
+	cfg.cancelCheck = [&] { return cancelled.load(); };
+	SocketBlueprintReader reader(cfg);
+
+	std::thread flip([&] {
+		std::this_thread::sleep_for(300ms);
+		cancelled = true;
+	});
+	const auto t0 = std::chrono::steady_clock::now();
+	CHECK_THROWS_AS((void)reader.ListBlueprints("/Game"), BlueprintReaderError);
+	const auto elapsed = std::chrono::steady_clock::now() - t0;
+	flip.join();
+	CHECK(elapsed < 3s);                    // cancel fired at ~300ms, not 30s
+}

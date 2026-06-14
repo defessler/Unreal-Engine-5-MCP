@@ -49,7 +49,17 @@ public:
 		int         port = 0;            // 0 → throw at construct time
 		std::string token;               // required (auth)
 		std::chrono::seconds connectTimeout{5};
-		std::chrono::seconds opTimeout{60};   // reserved; the op recv is intentionally unbounded (see RunOp)
+		// Per-op response budget. If the editor sends no frame within this many
+		// seconds the op recv aborts with a classified timeout instead of hanging
+		// forever on a wedged/paused game thread. Each progress frame re-arms it,
+		// so a progressing long op never trips; known-long ops also get a larger
+		// floor. <=0 disables the bound (the old unbounded behavior).
+		std::chrono::seconds opTimeout{120};
+
+		// Cooperative-cancel poll. When set and it returns true while a recv is
+		// blocked, the read aborts so tasks/cancel can interrupt a stalled op
+		// rather than waiting out the full opTimeout. Empty → no cancel polling.
+		std::function<bool()> cancelCheck;
 
 		// Optional path to `<Project>/Saved/bp-reader-live.json`. When
 		// set, the reader will re-read this file on connect failure
