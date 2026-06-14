@@ -47,18 +47,6 @@ nlohmann::json ImageBase64(std::string base64, std::string mime_type,
 nlohmann::json Image(const std::vector<uint8_t>& bytes, std::string mime_type,
 					 Audience aud = Audience::User);
 
-// Create a `type: "audio"` content block from already-base64-encoded data.
-// `mime_type` per MCP spec — e.g. "audio/wav", "audio/mpeg".
-nlohmann::json AudioBase64(std::string base64, std::string mime_type,
-						   Audience aud = Audience::Both);
-
-// Create a `type: "resource_link"` content block that references a URI
-// previously listed via resources/list. Use for tools that point the
-// client at an existing resource rather than emitting content inline.
-nlohmann::json ResourceLink(std::string uri, std::string name = {},
-							std::string description = {},
-							Audience aud = Audience::User);
-
 // Build the rich-content envelope a tool returns to opt out of the
 // default "dump to text" behaviour.
 //

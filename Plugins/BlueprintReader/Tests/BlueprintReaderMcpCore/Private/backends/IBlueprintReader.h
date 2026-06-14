@@ -2888,6 +2888,7 @@ public:
 		std::string_view assetB,
 		std::string_view depth = "structural")
 	{
+		(void)assetA; (void)assetB; (void)depth;
 		throw BlueprintReaderError("diff_asset not supported by this backend");
 	}
 
@@ -2900,6 +2901,7 @@ public:
 		std::string_view theirs,
 		std::string_view target = "")
 	{
+		(void)base; (void)mine; (void)theirs; (void)target;
 		throw BlueprintReaderError("prepare_merge not supported by this backend");
 	}
 

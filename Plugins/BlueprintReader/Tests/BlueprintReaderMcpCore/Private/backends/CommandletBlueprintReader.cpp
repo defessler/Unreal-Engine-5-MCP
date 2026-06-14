@@ -509,25 +509,6 @@ std::filesystem::path TempJsonPath(std::string_view projectTag) {
 	return tmp / name.str();
 }
 
-std::string SecondsFromEnv(const char* key, std::string fallback) {
-#if defined(_MSC_VER)
-	char* buf = nullptr;
-	std::size_t len = 0;
-	if (_dupenv_s(&buf, &len, key) == 0 && buf != nullptr) {
-		std::string out(buf);
-		std::free(buf);
-		return out.empty() ? fallback : out;
-	}
-	return fallback;
-#else    // defined(_MSC_VER)
-	if (const char* v = std::getenv(key); v != nullptr && *v != '\0')
-	{
-		return std::string(v);
-	}
-	return fallback;
-#endif    // defined(_MSC_VER)
-}
-
 // RAII exclusive file lock used to coordinate daemon spawn attempts
 // across MCP-server processes. Held only while one MCP server is
 // trying to bring up a daemon; OS auto-releases on process exit so a
@@ -551,7 +532,6 @@ public:
 	// or `blockFor` elapses. Returns true on success.
 	bool TryAcquire(std::chrono::seconds blockFor);
 
-	bool IsHeld() const { return held_; }
 	void Release();
 
 private:

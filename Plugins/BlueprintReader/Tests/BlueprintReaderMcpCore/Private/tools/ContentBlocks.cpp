@@ -86,27 +86,6 @@ nlohmann::json Image(const std::vector<uint8_t>& bytes, std::string mime_type, A
 	return ImageBase64(Base64Encode(bytes), std::move(mime_type), aud);
 }
 
-nlohmann::json AudioBase64(std::string base64, std::string mime_type, Audience aud) {
-	nlohmann::json block = {
-		{"type", "audio"},
-		{"data", std::move(base64)},
-		{"mimeType", std::move(mime_type)},
-	};
-	AttachAudience(block, aud);
-	return block;
-}
-
-nlohmann::json ResourceLink(std::string uri, std::string name, std::string description, Audience aud) {
-	nlohmann::json block = {
-		{"type", "resource_link"},
-		{"uri", std::move(uri)},
-	};
-	if (!name.empty())        block["name"] = std::move(name);
-	if (!description.empty()) block["description"] = std::move(description);
-	AttachAudience(block, aud);
-	return block;
-}
-
 nlohmann::json Envelope(std::vector<nlohmann::json> blocks, nlohmann::json structured) {
 	nlohmann::json inner = {
 		{"content", nlohmann::json::array()},

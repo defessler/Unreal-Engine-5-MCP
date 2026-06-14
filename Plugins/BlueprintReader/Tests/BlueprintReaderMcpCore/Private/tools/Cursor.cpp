@@ -1,12 +1,10 @@
 #include "tools/Cursor.h"
 
-#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
 #include <array>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace bpr::tools {
 

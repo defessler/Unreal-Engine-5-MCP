@@ -205,15 +205,6 @@ const std::map<std::string, std::string>& ParentHeaderMap() {
 	return m;
 }
 
-std::string StripClassPrefix(std::string_view name) {
-	if (name.size() >= 2 &&
-		(name[0] == 'A' || name[0] == 'U') &&
-		name[1] >= 'A' && name[1] <= 'Z') {
-		return std::string(name.substr(1));
-	}
-	return std::string(name);
-}
-
 // Determine whether a parent class is in the Actor lineage (uses A
 // prefix) vs. plain UObject lineage (U prefix). Falls back to U for
 // unknowns, which matches UE convention for non-Actor objects.
