@@ -2070,17 +2070,22 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 ### Deferred (confirmed-safe, fully specified)
 
-- **HARD-D1 (cleanup, S)** — remaining behavior-preserving de-dups (9 of 22 shipped
-  in HARD-4 + `ParseAssetRegistryRows` into the new shared `CommandletResultParse.h`,
-  3c285eb6): `WriteGeneratedSource` temp-marshalling into a shared RAII helper;
-  `Env::ParseBool` for the 5 truthy-predicate sites; `AssetPathProperty()` /
-  `PaginatedSchema()` reuse in BlueprintTools; the two in-flight RAII structs in
-  Mcp.cpp; `EmitCallStatement` extraction; the editor-TU duplicate includes +
-  `ToPackagePath` dedup. **Dropped:** the audit's "move 5 result-struct parsers"
-  item — on inspection they are NOT byte-identical (Socket's CloneGraph has an
-  `is_object()` guard the commandlet lacks; differing var names), so extracting them
-  would normalize away a real behavior difference. Mock-verifiable; no behavior
-  change. · **Status:** ☐ Open
+- **HARD-D1 (cleanup)** — **15 of 22 de-dups shipped** across HARD-4 and a second
+  pass (3c285eb6 `ParseAssetRegistryRows`→shared `CommandletResultParse.h`;
+  6187d5ab `env::IsTruthy` unifies the 5 truthiness sites + fixes the
+  `ParseResponseControls` `!= "0"` inconsistency + `AssetPathProperty()` for 8
+  asset_path literals; 42994084 merged the duplicate `is_object` branch in
+  `executeAndWrap` + `find_node`→`PaginatedSchema()`). **Dropped as NOT safe** (on
+  inspection, not the clean de-dups the audit assumed): "move 5 result-struct
+  parsers" — backends differ (Socket's CloneGraph has an `is_object()` guard the
+  commandlet lacks); the `-Op=` label-strip — `std::string` vs `std::wstring` across
+  backends; the `toPackage` lambda — only a subset of `NormalizeAssetPath` (no
+  trim/backslash), so swapping changes did-you-mean behavior. **Remaining (genuinely
+  marginal, deferred):** `WriteGeneratedSource` temp-marshalling RAII (~8 lines,
+  differs by string/wstring args), the two 4-line in-flight RAII structs in Mcp.cpp,
+  `EmitCallStatement` extraction (codegen surface), the editor-TU duplicate
+  `#include`s (cosmetic — header guards make them harmless), `ToPackagePath`
+  cross-TU dedup (editor-module). · **Status:** ◑ substantively done
 - **HARD-D2 (test, M)** — running the live apply_ops/write coverage against Lyra is
   gated by the daemon-handshake flakiness (a one-shot can't hold batch state; the
   Lyra daemon reliably falls back to slow one-shot). The gated test exists; routine
