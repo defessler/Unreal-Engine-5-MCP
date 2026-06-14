@@ -24,14 +24,7 @@ std::unique_ptr<IAnalyticsProvider> MakeNoOpAnalyticsProvider() {
 }
 
 bool AnalyticsEnabled() {
-	auto v = env::Get("BP_READER_ANALYTICS");
-	if (!v.has_value()) {
-		return false;
-	}
-	std::string lower(*v);
-	std::transform(lower.begin(), lower.end(), lower.begin(),
-		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+	return env::IsTruthy(env::Get("BP_READER_ANALYTICS").value_or(""));
 }
 
 std::string EulaNotice() {

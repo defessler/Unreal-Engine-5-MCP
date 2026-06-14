@@ -163,13 +163,7 @@ constexpr uint32_t kInlineImageMaxDim = 1280;
 // untrusted C++, and shells out to UBT downstream, so opt-in is
 // the safer default.
 bool TranspileEnabled() {
-	auto raw = bpr::env::Get("BP_READER_ALLOW_TRANSPILE");
-	if (!raw) { return false; }
-	std::string v = *raw;
-	for (char& c : v) {
-		c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-	}
-	return v == "1" || v == "true" || v == "yes" || v == "on";
+	return bpr::env::IsTruthy(bpr::env::Get("BP_READER_ALLOW_TRANSPILE").value_or(""));
 }
 
 nlohmann::json TranspileDisabledResponse(std::string_view toolName) {
@@ -229,6 +223,12 @@ nlohmann::json FieldsProperty() {
 		 "`rep_notify_func`. Common shorthands are aliased (`editable`, "
 		 "`replicated`, `exposed`, and any bare `foo` for an `is_foo` flag), "
 		 "but an unrecognized name still projects nothing."},
+	};
+}
+nlohmann::json AssetPathProperty() {
+	return {
+		{"type", "string"},
+		{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"},
 	};
 }
 nlohmann::json LimitProperty() {
@@ -360,8 +360,7 @@ ResponseControls ParseResponseControls(const nlohmann::json& args) {
 	// Lean mode: strip null/empty fields and dedup connection data.  Default on;
 	// set BP_READER_VERBOSE=1 (or pass verbose:true) to opt out session-wide.
 	{
-		auto envVerbose = bpr::env::Get("BP_READER_VERBOSE");
-		if (envVerbose && *envVerbose != "0") {
+		if (bpr::env::IsTruthy(bpr::env::Get("BP_READER_VERBOSE").value_or(""))) {
 			ctl.lean = false;
 		}
 		if (args.is_object() && args.value("verbose", false)) {

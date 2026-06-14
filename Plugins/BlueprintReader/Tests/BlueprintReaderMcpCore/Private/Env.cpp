@@ -48,21 +48,31 @@ std::string GetOrDefault(const char* key, std::string fallback) {
 	return fallback;
 }
 
+bool IsTruthy(std::string_view value) {
+	std::string lower;
+	lower.reserve(value.size());
+	for (char c : value)
+	{
+		lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+	}
+	return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+}
+
 bool BoolOrDefault(const char* key, bool fallback, std::ostream& log) {
 	auto v = Get(key);
 	if (!v)
 	{
 		return fallback;
 	}
+	if (IsTruthy(*v))
+	{
+		return true;
+	}
 	std::string lower;
 	lower.reserve(v->size());
 	for (char c : *v)
 	{
 		lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-	}
-	if (lower == "1" || lower == "true" || lower == "yes" || lower == "on")
-	{
-		return true;
 	}
 	if (lower == "0" || lower == "false" || lower == "no" || lower == "off")
 	{
@@ -94,21 +104,9 @@ int IntOrDefault(const char* key, int fallback) {
 }
 
 bool VerboseLoggingEnabled() {
-	// Cached on first call. Read directly (don't reuse BoolOrDefault)
-	// because BoolOrDefault writes to an ostream, and we don't have one
-	// — plus this is supposed to stay silent unless explicitly enabled.
-	static const bool kEnabled = [] {
-		auto v = Get("BP_READER_VERBOSE");
-		if (!v) {
-			return false;
-		}
-		std::string lower;
-		lower.reserve(v->size());
-		for (char c : *v) {
-			lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-		}
-		return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
-	}();
+	// Cached on first call — the env var doesn't change at runtime, and this
+	// gates per-tool-call telemetry. Stays silent (IsTruthy never warns).
+	static const bool kEnabled = IsTruthy(Get("BP_READER_VERBOSE").value_or(""));
 	return kEnabled;
 }
 
@@ -118,18 +116,7 @@ bool NeverInlineImages() {
 	// security-conscious deployment force-disable image-in-response paths
 	// without rebuilding. Cached for the same reason as
 	// VerboseLoggingEnabled — env vars don't change at runtime.
-	static const bool kEnabled = [] {
-		auto v = Get("BP_READER_NEVER_INLINE_IMAGES");
-		if (!v) {
-			return false;
-		}
-		std::string lower;
-		lower.reserve(v->size());
-		for (char c : *v) {
-			lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-		}
-		return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
-	}();
+	static const bool kEnabled = IsTruthy(Get("BP_READER_NEVER_INLINE_IMAGES").value_or(""));
 	return kEnabled;
 }
 

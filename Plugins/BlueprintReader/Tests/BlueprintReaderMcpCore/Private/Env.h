@@ -6,8 +6,14 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace bpr::env {
+
+// The single source of truth for env-var truthiness: true iff `value` is a
+// recognized truthy token (1/true/yes/on, case-insensitive). Everything else
+// (empty or unrecognized) is false.
+bool IsTruthy(std::string_view value);
 
 // Read an env var. Returns fallback when the var is unset or empty.
 std::string GetOrDefault(const char* key, std::string fallback = "");

@@ -317,8 +317,7 @@ void RegisterTools_00(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"fields",     FieldsProperty()},
 			}},
 			{"required", nlohmann::json::array({"asset_path"})},
@@ -1053,8 +1052,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"graph_name", {{"type", "string"},
 								{"description", "Graph name. Defaults to \"EventGraph\"."}}},
 				{"summary", {{"type", "boolean"},
@@ -1139,8 +1137,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"graph_name", {{"type", "string"},
 								{"description", "Graph name. Defaults to \"EventGraph\"."}}},
 			}},
@@ -1210,8 +1207,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"function_name", {{"type", "string"},
 								   {"description", "Function name as it appears in the blueprint."}}},
 				{"summary", {{"type", "boolean"},
@@ -1292,8 +1288,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
 				{"cursor", CursorProperty()},
@@ -1323,8 +1318,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"limit",  LimitProperty()},
 				{"offset", OffsetProperty()},
 				{"cursor", CursorProperty()},
@@ -1358,8 +1352,7 @@ void RegisterTools_00b(ToolRegistry& registry, backends::IBlueprintReader& reade
 		d.input_schema = {
 			{"type", "object"},
 			{"properties", {
-				{"asset_path", {{"type", "string"},
-								{"description", "UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"query", {{"type", "string"},
 						   {"description", "Substring matched against node class or title. "
 										   "Pass an empty string to match ANY node (optionally narrowed by `kind`); "
@@ -2081,8 +2074,7 @@ void RegisterTools_01(ToolRegistry& registry, backends::IBlueprintReader& reader
 		d.input_schema = {
 			{"type","object"},
 			{"properties", {
-				{"asset_path", {{"type","string"},
-								{"description","UE asset path, e.g. /Game/AI/BP_Enemy"}}},
+				{"asset_path", AssetPathProperty()},
 				{"include_top_level", {{"type","boolean"},
 									   {"description","Also fetch + scan top-level graphs "
 										"(EventGraph, ConstructionScript). Costs N×get_graph "
