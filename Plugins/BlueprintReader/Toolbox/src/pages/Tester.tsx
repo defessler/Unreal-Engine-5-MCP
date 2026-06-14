@@ -61,7 +61,10 @@ function loadHistoryStore(): HistoryEntry[] {
   } catch { return []; }
 }
 
-function randomPort() { return 7800 + Math.floor(Math.random() * 100); }
+// Wide range so a second Toolbox window or a quick restart is very unlikely to
+// collide (the old 7800-7899 span of 100 ports collided in practice). Avoids the
+// OS ephemeral/dynamic range (49152+) and well-known service ports.
+function randomPort() { return 20000 + Math.floor(Math.random() * 20000); }
 
 // Read the Settings-page env overrides (localStorage['bpr-env-overrides']) and
 // strip the keys the Tester UI controls itself, so a stored value can't fight
@@ -177,6 +180,7 @@ export default function Tester() {
       const port = randomPort();
       const pid = await bridge.startServer({ backend: 'mock', port, env: readSettingsEnv() });
       setServerPid(pid); setServerStatus('running'); setServerPort(port);
+      startSse(port);    // match startServer() — else server-pushed notifications are dropped
       const c = new McpClient(port);
       clientRef.current = c;
       return c;

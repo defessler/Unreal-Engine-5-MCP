@@ -31,6 +31,21 @@ jobs:
         with:
           fetch-depth: 0   # full history + tags so the git-hash stamp resolves
 
+      # Single source of truth is the .uplugin VersionName; the git tag and the
+      # Toolbox package.json must agree with it, or the updater mis-detects.
+      # Fail the release fast on any drift (tag builds only — dispatch has no tag).
+      - name: Verify version sync (tag == .uplugin VersionName == Toolbox package.json)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v',''
+          $uplugin = (Get-Content 'Plugins/BlueprintReader/BlueprintReader.uplugin' -Raw | ConvertFrom-Json).VersionName
+          $pkg = (Get-Content 'Plugins/BlueprintReader/Toolbox/package.json' -Raw | ConvertFrom-Json).version
+          Write-Host "tag=$tag  uplugin=$uplugin  package.json=$pkg"
+          if ($uplugin -ne $tag) { Write-Host "::error::.uplugin VersionName ($uplugin) != tag ($tag)"; exit 1 }
+          if ($pkg -ne $tag) { Write-Host "::error::Toolbox package.json version ($pkg) != tag ($tag)"; exit 1 }
+          Write-Host "Version sync OK: $tag"
+
       - name: Set up MSVC toolchain
         uses: ilammy/msvc-dev-cmd@v1
 

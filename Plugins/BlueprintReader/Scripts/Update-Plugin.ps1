@@ -174,10 +174,10 @@ try {
     # Check GitHub releases API for a prebuilt asset matching the new source version.
     $prebuiltSwapped = $false
     if ($srcVersionName) {
-        $tag = "v$srcVersionName"
+        $relTag = "v$srcVersionName"
         try {
             $base     = ($Repo -replace '\.git/?$', '').TrimEnd('/')
-            $apiUrl   = "https://api.github.com/repos/$($base -replace 'https://github.com/','')/releases/tags/$tag"
+            $apiUrl   = "https://api.github.com/repos/$($base -replace 'https://github.com/','')/releases/tags/$relTag"
             # Try direct tag lookup; fall back to /releases/latest (e.g. a -Ref
             # main update where no v<version> tag exists yet).
             try {
@@ -207,7 +207,7 @@ try {
                 # *win64*.zip if one is ever published.
                 $asset = $release.assets | Where-Object { $_.name -like '*-plugin.zip' -or $_.name -like '*win64*.zip' } | Select-Object -First 1
                 if ($asset) {
-                    Write-Host "[BlueprintReader/Update] Downloading prebuilt exe from $tag ..."
+                    Write-Host "[BlueprintReader/Update] Downloading prebuilt exe from $relTag ..."
                     $zipTmp = Join-Path ([System.IO.Path]::GetTempPath()) "bpr-prebuilt-$([guid]::NewGuid().ToString('N').Substring(0,8)).zip"
                     $binDir = Join-Path $destPlugin 'Binaries\Win64'
                     $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
@@ -281,7 +281,6 @@ try {
         } catch {
             Write-Warning "[BlueprintReader/Update] Could not download prebuilt exe (network/release error): $($_.Exception.Message)"
         }
-        $tag = '[BlueprintReader/Update]'  # restore the outer $tag
     }
 
     # ---- Accurate rebuild detection ----------------------------------------
@@ -299,6 +298,7 @@ try {
             Write-Host "$tag Update complete. Server exe is current ($exeVersion)."
         }
     }
+    Write-Host "$tag Restart your MCP client (Claude Code / Cursor / VS Code) or reload its MCP servers so it launches the updated server."
     exit 0
 }
 finally {

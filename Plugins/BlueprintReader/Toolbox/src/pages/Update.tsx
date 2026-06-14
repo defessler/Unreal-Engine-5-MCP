@@ -87,6 +87,7 @@ export default function Update() {
     const res = await bridge.installPluginFromRelease({ uproject, client: 'All' });
     unsubRef.current?.(); unsubRef.current = null;
     if (!res.ok && res.error) appendLog(`[error] ${res.error}`);
+    if (res.ok) appendLog(`Plugin updated${res.tag ? ` to ${res.tag}` : ''}. Restart your MCP client (Claude Code / Cursor / VS Code) or reload its MCP servers so it launches the new server.`);
     setRunning(false);
     await refresh();
     await readPluginVersion(pluginDir);

@@ -97,7 +97,7 @@ if ($pluginSrc -ieq $destResolved) {
     & robocopy $pluginSrc $dest /MIR `
         /XD (Join-Path $pluginSrc 'Binaries') (Join-Path $dest 'Binaries') `
             (Join-Path $pluginSrc 'Intermediate') (Join-Path $pluginSrc '.git') `
-        /NFL /NDL /NJH /NJS /NP | Out-Null
+        /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "$tag robocopy failed (exit $LASTEXITCODE)" }
     # Pass 2: additively copy the precompiled server payload from source IF it
     #   carries one (a release plugin ZIP does; a source archive does not — then
@@ -106,11 +106,22 @@ if ($pluginSrc -ieq $destResolved) {
     #   transpile-dump scratch dir so the install stays lean.
     $srcBin = Join-Path $pluginSrc 'Binaries\Win64'
     if (Test-Path -LiteralPath $srcBin) {
+        # Free a running server before overwriting its exe so the copy can't block
+        # (and a live client picks up the new build on its next launch). Scope the
+        # kill to THIS project's exe path only — never other projects' sessions.
+        $targetExe = Join-Path $dest 'Binaries\Win64\BlueprintReaderMcp.exe'
+        $holding = Get-Process BlueprintReaderMcp -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -and ($_.Path -ieq $targetExe) }
+        if ($holding) {
+            Write-Host "$tag Stopping $(@($holding).Count) running server instance(s) for this project to swap the exe."
+            $holding | Stop-Process -Force
+            Start-Sleep -Seconds 1
+        }
         & robocopy $srcBin (Join-Path $dest 'Binaries\Win64') /E `
             /XD "transpile-dump" `
             /XF "UnrealEditor-*.dll" "BlueprintReaderMcpTests.exe" "*.pdb" "*.modules" "*.lib" "*.exp" "*.ilk" `
-            /NFL /NDL /NJH /NJS /NP | Out-Null
-        if ($LASTEXITCODE -ge 8) { throw "$tag robocopy (server payload) failed (exit $LASTEXITCODE)" }
+            /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "$tag robocopy (server payload) failed (exit $LASTEXITCODE). If BlueprintReaderMcp.exe is in use, stop your MCP client (or the Toolbox) and retry." }
     }
     $global:LASTEXITCODE = 0
     Write-Host "$tag Copied plugin -> $dest"
