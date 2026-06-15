@@ -2882,9 +2882,25 @@ namespace
 			// as a run-to-run flake (first recreate over an existing target lost
 			// event names, a second pass succeeded). A full purge here makes
 			// recreate-over-existing deterministic.
+			//
+			// The synchronous FULL purge is REQUIRED for that HARD-D3
+			// delete -> recreate determinism, but it's only safe to run it
+			// inline under the headless daemon (a commandlet): inside a live
+			// interactive editor a full purge on the game thread can
+			// use-after-free editor panels that hold raw UObject*. Gate on
+			// IsRunningCommandlet() so the daemon keeps the exact full purge,
+			// and fall back to a DEFERRED GC in the interactive editor (runs at
+			// the next safe point on the game thread).
 			if (bDeleted)
 			{
-				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, /*bPerformFullPurge=*/true);
+				if (IsRunningCommandlet())
+				{
+					CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, /*bPerformFullPurge=*/true);
+				}
+				else if (GEngine)
+				{
+					GEngine->ForceGarbageCollection(/*bFullPurge=*/false);
+				}
 			}
 
 			// Authoritative success signal: the asset is 'deleted' iff it no

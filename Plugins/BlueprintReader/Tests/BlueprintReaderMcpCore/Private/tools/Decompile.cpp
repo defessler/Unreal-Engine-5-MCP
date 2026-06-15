@@ -78,7 +78,20 @@ std::string TypeToShorthand(const BPPinType& t) {
 	if (t.Category == "object" || t.Category == "class" ||
 		t.Category == "softobject" || t.Category == "softclass" ||
 		t.Category == "interface" || t.Category == "struct") {
+		// Normalize UE's no-underscore soft-ref categories (PC_SoftObject /
+		// PC_SoftClass) to the canonical BPIR underscore shorthand that the
+		// consumers (CppEmit's MapBpirTypeToCpp, the default-return path
+		// below) expect — otherwise every TSoftObjectPtr/TSoftClassPtr BP
+		// variable would emit an unmapped, uncompilable type.
 		std::string inner = t.Category;
+		if (inner == "softobject")
+		{
+			inner = "soft_object";
+		}
+		else if (inner == "softclass")
+		{
+			inner = "soft_class";
+		}
 		if (!subObj.empty()) {
 			inner += ":";
 			inner += subObj;
@@ -994,9 +1007,14 @@ DecompileResult DecompileStatement(const Walker& w, const BPNode& n,
 			}
 		}
 
-		std::set<std::string> branchVisited;
-		nlohmann::json thenBody = DecompileStatementsFrom(w, thenStart, merge, branchVisited);
-		nlohmann::json elseBody = DecompileStatementsFrom(w, elseStart, merge, branchVisited);
+		// Each arm gets its own visited set. Sharing one set lets a node
+		// reachable from BOTH arms (legal BP diamond flow that reconverges
+		// only past `merge`) trip the cycle-guard on the second arm, which
+		// would silently drop all of that arm's downstream statements.
+		std::set<std::string> thenVisited;
+		std::set<std::string> elseVisited;
+		nlohmann::json thenBody = DecompileStatementsFrom(w, thenStart, merge, thenVisited);
+		nlohmann::json elseBody = DecompileStatementsFrom(w, elseStart, merge, elseVisited);
 		r.statement = {{"if", cond}, {"then", thenBody}, {"else", elseBody}};
 		r.next = merge;  // continue from the merge point (or null = end)
 		return r;

@@ -265,6 +265,35 @@ nlohmann::json OpAddNode(backends::IBlueprintReader& reader,
 	put("event_name",     "EventName");
 	put("target_class",   "TargetClass");
 	put("struct_type",    "StructType");
+	put("subsystem_class", "SubsystemClass");
+	put("comment",        "Comment");
+	put("macro_graph",    "MacroGraph");
+	put("variable_class", "VariableClass");
+	// Integer / bool extras serialize to the string form the commandlet's
+	// FParse expects (Comment box size, variadic Sequence/operator pin
+	// counts, GetArrayItem ref/copy mode). Mirror the add_node tool handler
+	// in BlueprintTools.cpp — accept JSON-native int/bool, else a string.
+	auto putInt = [&](const char* mcpKey, const char* flagKey) {
+		if (op.contains(mcpKey) && op.at(mcpKey).is_number_integer()) {
+			extras.emplace(flagKey, std::to_string(op.at(mcpKey).get<int>()));
+		} else {
+			std::string v = OptStr(op, mcpKey, "");
+			if (!v.empty()) { extras.emplace(flagKey, std::move(v)); }
+		}
+	};
+	auto putBool = [&](const char* mcpKey, const char* flagKey) {
+		if (op.contains(mcpKey) && op.at(mcpKey).is_boolean()) {
+			extras.emplace(flagKey, op.at(mcpKey).get<bool>() ? "true" : "false");
+		} else {
+			std::string v = OptStr(op, mcpKey, "");
+			if (!v.empty()) { extras.emplace(flagKey, std::move(v)); }
+		}
+	};
+	putInt("w",           "W");
+	putInt("h",           "H");
+	putInt("num_outputs", "NumOutputs");
+	putInt("num_inputs",  "NumInputs");
+	putBool("returns_ref", "ReturnsRef");
 	std::string newId = reader.AddNode(asset, graph, kind, x, y, extras);
 
 	// Bind to slot if `id` is set.

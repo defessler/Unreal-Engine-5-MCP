@@ -66,6 +66,13 @@ FThreadSafeCounter64 GLiveNextConnectionId;
 // thread is wedged. FThreadSafeCounter64 is atomic on both sides. 0 = never bumped.
 FThreadSafeCounter64 GLastGameThreadHeartbeatMs;
 
+// Shutdown gate. Set true at the top of FLiveServer::Stop(), reset on a
+// successful Start(); the connection worker's FFlushOnExit dtor and
+// OnIncomingConnection read it to skip the game-thread round-trip during editor
+// teardown (mirrors FCmdletServer's bShuttingDown). Defined HERE so it precedes
+// FLiveConnectionRunnable, which uses it. (Fuller rationale near the namespace tail.)
+FThreadSafeBool GLiveShuttingDown = false;
+
 // Per-connection state — owned by the worker FRunnable for its lifetime.
 class FLiveConnectionRunnable : public FRunnable
 {
@@ -99,7 +106,22 @@ public:
 		struct FFlushOnExit
 		{
 			uint64 ConnId;
-			~FFlushOnExit() { FlushBatchForConnection(ConnId); }
+			~FFlushOnExit()
+			{
+				// Skip the flush during shutdown. FlushBatchForConnection
+				// dispatches via AsyncTask(ENamedThreads::GameThread, ...) and
+				// blocks on the result; during shutdown the game thread is parked
+				// in FLiveServer::Stop() joining THIS connection thread, so the
+				// flush would deadlock (game thread waits for this thread, this
+				// thread waits for an AsyncTask only the game thread can pump).
+				// Sacrificing in-flight pending edits is acceptable here — the
+				// editor is exiting and that BP state lives only in memory anyway.
+				// Mirrors FCmdletServer::OnClientDisconnected's identical guard.
+				if (!GLiveShuttingDown)
+				{
+					FlushBatchForConnection(ConnId);
+				}
+			}
 		} FlushGuard{ConnectionId};
 
 		// 1. Send hello.
@@ -445,6 +467,22 @@ struct FServerState
 };
 TUniquePtr<FServerState> GState;
 
+// Live-server shutdown flag. Set at the top of FLiveServer::Stop() before any
+// teardown; read from a connection WORKER thread. Mirrors the cmdlet server's
+// FCmdletServer::bShuttingDown (which lives on the object + is reached via a
+// back-pointer the runnable holds). The live server's runnable has no such
+// back-pointer, so the flag lives at file scope alongside GState — the same
+// place the rest of the live server's process-wide singleton state already
+// sits. FThreadSafeBool so the worker thread's read can't be hoisted/reordered.
+// Guards two shutdown hazards that the cmdlet server already guards:
+//   (a) FFlushOnExit on a connection-thread exit must NOT call into
+//       FlushBatchForConnection while Stop() is parked on the game thread
+//       joining that very thread (AsyncTask(GameThread)+Wait would deadlock).
+//   (b) OnIncomingConnection must early-out so a socket accepted mid-teardown
+//       isn't handed to a worker we can't track (use-after-free).
+// (Defined near the TOP of this anonymous namespace — it must precede
+//  FLiveConnectionRunnable, whose FFlushOnExit dtor reads it.)
+
 } // anonymous namespace
 
 FLiveServer::FLiveServer() {}
@@ -608,6 +646,12 @@ bool FLiveServer::Start(int32 Port)
 	Listener->OnConnectionAccepted().BindRaw(this, &FLiveServer::OnIncomingConnection);
 
 	GState = MakeUnique<FServerState>();
+	// Clear any sticky shutdown flag from a prior Stop() — the file-scope flag
+	// survives across server-instance lifetimes, so a fresh successful Start()
+	// must re-open the gate or every new connection would be rejected by the
+	// OnIncomingConnection early-out. Set only after the listener is bound +
+	// GState is live, so the accept callback never observes a half-built state.
+	GLiveShuttingDown = false;
 	UE_LOG(LogBlueprintReaderLive, Display,
 		TEXT("FLiveServer listening on 127.0.0.1:%d"), BoundPort);
 
@@ -630,6 +674,12 @@ bool FLiveServer::Start(int32 Port)
 
 void FLiveServer::Stop()
 {
+	// Signal teardown BEFORE touching anything else so any connection worker
+	// that races this (its FFlushOnExit dtor, or an accept callback firing
+	// mid-shutdown) sees the flag immediately. Mirrors FCmdletServer::Stop()'s
+	// bShuttingDown set-first ordering.
+	GLiveShuttingDown = true;
+
 	// Drop the handshake file FIRST so MCP-server probes immediately
 	// start failing rather than racing the listener teardown.
 	if (HandshakeWritten)
@@ -821,6 +871,22 @@ bool FLiveServer::OnIncomingConnection(FSocket* Socket, const FIPv4Endpoint& End
 	}
 	UE_LOG(LogBlueprintReaderLive, Display,
 		TEXT("Live client connected from %s"), *Endpoint.ToString());
+
+	// Early-out if the live server is tearing down: don't spawn a worker we
+	// can't track. Without this check, a thread could start with the socket
+	// and runnable, then have the runnable + socket destructed under it (the
+	// Connections.Add below is skipped once GState goes invalid, so `Conn`
+	// unwinds and frees them) while it's actively using them — use-after-free.
+	// Mirrors FCmdletServer::OnIncomingConnection's identical guard. We own
+	// the socket on the reject path, so destroy it here.
+	if (GLiveShuttingDown || !GState.IsValid())
+	{
+		if (ISocketSubsystem* Sub = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM))
+		{
+			Sub->DestroySocket(Socket);
+		}
+		return false;
+	}
 
 	// Allocate a unique ConnectionId for this client's batch state.
 	// Post-increment so the first connection gets 1 (0 = "no session").

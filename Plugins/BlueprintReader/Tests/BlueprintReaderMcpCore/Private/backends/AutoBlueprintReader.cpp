@@ -404,6 +404,9 @@ bool AutoBlueprintReader::IsWriteMethod(std::string_view method) {
 			"end_batch",          // flushes compiles + saves
 			"console_command",    // arbitrary exec can mutate
 			"ui_click", "ui_type", "ui_focus_tab",  // editor-input actions
+			"ui_invoke_menu",     // executes an editor command
+			"set_camera_transform",  // re-runs an editor command
+			"cook_content", "package_project",  // non-idempotent build actions
 			"build_lighting", "live_coding_compile",
 		};
 		std::set<std::string> out;
