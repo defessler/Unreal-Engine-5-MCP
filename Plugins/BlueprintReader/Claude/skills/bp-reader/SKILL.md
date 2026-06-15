@@ -69,10 +69,10 @@ paths (`/Game/AI/BP_Foo.BP_Foo`) and never disk paths.
 | `"enum:EWeaponType"`              | `{category:"enum", sub_category_object:"<UEnum path>"}` |
 | `"[]float"` / `"{}int"` / `"{string:int}"` | array / set / map of the inner type |
 
-**Map type readback order:** when a variable is typed as a map (e.g.
-`{string:int}`), the wire response has `category` = **value** type and
-`sub_category` = **key** type. So `{string:int}` reads back as
-`{category:"int", sub_category:"string", is_map:true}`.
+**Map type readback:** when a variable is typed as a map (e.g.
+`{string:int}`), `category`/`sub_category` describe the map **KEY**, and a
+nested `value_type` object describes the **value**. So `{string:int}` reads
+back as `{category:"string", is_map:true, value_type:{category:"int"}}`.
 
 **Pin IDs are GUIDs** (e.g. `8255EA22-4BA1-...`). Prefer them over
 names when wiring across multiple calls — they're stable. For a wire

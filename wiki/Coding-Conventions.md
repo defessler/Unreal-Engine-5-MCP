@@ -165,9 +165,11 @@ the output.
 - New tools require two new tests: a mock case (asserts shape or
   throws-as-expected) and a live case if the op needs a real BP.
 - The tool-count assertion in
-  [`test_tools.cpp:36`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp#L36)
+  [`test_tools.cpp:60`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp#L60)
   (`CHECK(spec.size() == N);`) needs bumping every time a tool is
-  added or removed. Same in `test_mcp.cpp`.
+  added or removed (also pinned in `test_protocol_compat.cpp`,
+  `test_phase_d.cpp`, and `test_tool_smoke_live.cpp`; `test_mcp.cpp` pins the
+  endpoint count, not the tool count).
 
 ## Documentation
 

@@ -210,9 +210,11 @@ Plugins\BlueprintReader\Scripts\Verify-Build.bat
 
 It checks both halves of the plugin:
 
-- `BlueprintReaderMcp.exe` — built by UBT as a Program target
-  (`Build.bat BlueprintReaderMcp ...`); output at
-  `<Project>/Binaries/Win64/BlueprintReaderMcp.exe`.
+- `BlueprintReaderMcp.exe` — a UE Program target. An installed engine refuses
+  Program targets, so on the maintainer's host it's built engine-free via CMake
+  (`Saved\build-mcp-cmake.ps1`); on a source engine, via UBT
+  (`Build.bat BlueprintReaderMcp ...`). Output at
+  `Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcp.exe`.
 - `UnrealEditor-BlueprintReaderEditor.dll` — built by UBT during an
   editor-target build
 

@@ -98,8 +98,12 @@ Categories: `read`, `write` (asset-mutating), `live_only` (PIE/viewport/editor-s
   GC-timing flake). [established this cycle]
 
 ## 8. Build/test invariants
-- `LyraEditor.Target.cs`: `BuildSettingsVersion.V6`, `TargetBuildEnvironment.Unique`;
-  launch `LyraEditor-Cmd.exe` (not `UnrealEditor-Cmd.exe`). [established]
+- `LyraEditor.Target.cs`: `BuildSettingsVersion.V6`. On a SOURCE engine,
+  `TargetBuildEnvironment.Unique` → launch `LyraEditor-Cmd.exe`. On an INSTALLED
+  engine (which forbids a Unique env), drop Unique and add
+  `bOverrideBuildEnvironment = true` after `ApplySharedLyraTargetSettings` → the
+  modules build as `UnrealEditor-Lyra*.dll`, launched by the engine's
+  `UnrealEditor-Cmd.exe`. [established]
 - Three engine `.Build.cs` patches re-applied after a fresh engine clone. [established]
 - On this machine: `-NoUba -MaxParallelActions=4`. The MCP server is built only on demand
   (`Build-MCPServer.ps1` / Toolbox "Rebuild MCP server") or shipped precompiled — the editor
