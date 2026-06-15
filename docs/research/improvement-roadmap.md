@@ -2121,17 +2121,32 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
   class") — a fatal that kills the whole daemon, not a recoverable tool error.
   Reproduced live: `create_material` then `create_material_instance` at the same
   path fatals (surfaced by the §11 every-tool smoke, which used to share one path).
-  The smoke harness was fixed to isolate each tool (198c2f22), but the underlying
-  tool gap stands: create/duplicate ops should pre-check for an existing
-  different-class object at the destination and return a clean error instead of
-  letting the engine `appError`. Audit all `create_*`/`duplicate_*` handlers.
-  · **Status:** ☐ Open
+  The smoke harness was fixed to isolate each tool (198c2f22). Fix: a shared
+  `DestClassConflict` guard runs after each create op's typed idempotency probe —
+  if a resident OR on-disk object of an incompatible class occupies the canonical
+  destination path, it writes a descriptive error body and returns op code 6
+  (`DestClassConflict`), so the backend's existing non-zero-code path
+  (`Socket::RunOp`/`RunOpOneShot`) throws a clean `BlueprintReaderError` instead
+  of the create method parsing the body as a misleading success. Wired into
+  `create_blueprint`, `create_material`, `create_material_instance`,
+  `create_data_asset`, `duplicate_blueprint` (niagara create is a no-op stub).
+  Live-verified (`Saved/verify-hardd4.ps1`): a create over a resident Blueprint
+  returns `isError` "DestClassConflict (code=6): a Blueprint already exists
+  (loaded in the editor) at …" and the daemon SURVIVES; a fresh path still
+  creates (no false positive). · **Status:** ✅ Done (89e048c3, 2026-06-14)
 
 ---
 
 ## Revision log
 
 Newest first. One line per change to this file.
+
+- **2026-06-14** — **HARD-D4 ✅ Done.** Create/duplicate ops now refuse a cross-class
+  destination collision (shared `DestClassConflict` guard → op code 6 → backend
+  throws a clean error) instead of letting UE's `StaticAllocateObject` fatally
+  crash the editor. Wired into the 5 asset-creating ops + error code 6 in the
+  backend table. Live-verified: conflict → `isError` + daemon survives; fresh path
+  still creates. Mock 893/0. (89e048c3)
 
 - **2026-06-14** — **§11 verified by a live smoke; new HARD-D4 found.** Ran the full
   gated `[live]` doctests + every-tool sweep on a warm Lyra daemon: HARD-1 (bounded
