@@ -6,6 +6,7 @@
 #include "BlueprintReaderCmdletServer.h"
 #include "BlueprintReaderJson.h"
 #include "BlueprintReaderLogSink.h"
+#include "BlueprintReaderPathUtils.h"
 #include "BlueprintReaderWireJson.h"
 #include "BlueprintStructuralDiff.h"
 #include "Engine/SCS_Node.h"
@@ -127,7 +128,6 @@
 #if PLATFORM_WINDOWS
 #include "ILiveCodingModule.h"                          // Phase 17 — live coding state
 #endif
-#include "AssetRegistry/IAssetRegistry.h" // Phase 14 — registry scan state
 #include "WorldPartition/DataLayer/DataLayerManager.h"  // Phase 14 — data layers
 #include "WorldPartition/DataLayer/DataLayerInstance.h"
 #include "WorldPartition/WorldPartitionSubsystem.h"      // Phase 14 — streaming sources
@@ -144,7 +144,6 @@
 #include "Tools/UEdMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/Selection.h"
-#include "Engine/World.h"
 #include "EngineUtils.h"               // TActorIterator
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Factories/BlueprintFactory.h"
@@ -161,7 +160,6 @@
 #include "Misc/StringOutputDevice.h"
 #include "ObjectTools.h"
 #include "PythonScriptTypes.h"
-#include "Subsystems/AssetEditorSubsystem.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectIterator.h"
 #if PLATFORM_WINDOWS
@@ -213,25 +211,21 @@
 #include "Misc/UObjectToken.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 // Material authoring (Stage 1).
 #include "MaterialEditingLibrary.h"
 #include "Factories/MaterialFactoryNew.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
-#include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
-#include "Materials/MaterialInstanceConstant.h"
 #include "Engine/Texture.h"
 // UMG widget authoring (Stage 1).
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
-#include "WidgetBlueprint.h"
 // Behavior Tree authoring (Stage 2).
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BTCompositeNode.h"
@@ -2637,7 +2631,33 @@ namespace
 		bool bDeleted = false;
 		if (Referencers.Num() == 0 || bForce)
 		{
+			// Canonical object path. AssetPath may arrive as a package-only path
+			// ("/Game/AI/Foo"); the asset's object path is "/Game/AI/Foo.Foo"
+			// (leaf repeated) — the same resolve LoadMutableBlueprint /
+			// create_blueprint / duplicate_blueprint use. Derive it from
+			// PackageName, NOT AssetData.AssetName: a same-session create->delete
+			// can hand back a degenerate FAssetData whose AssetName is the full
+			// path and whose GetAsset() returns null (GetAssetByObjectPath was
+			// given a package-only FSoftObjectPath). Using AssetName here built a
+			// malformed re-probe path ("Pkg./Game/AI/Pkg") that never matched, so
+			// the in-memory corpse went unseen and a recreate resurrected it.
+			FString CanonLeaf;
+			AssetData.PackageName.ToString().Split(TEXT("/"), nullptr, &CanonLeaf,
+				ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+			const FString CanonObjPath = FString::Printf(TEXT("%s.%s"),
+				*AssetData.PackageName.ToString(), *CanonLeaf);
+
 			UObject* Obj = AssetData.GetAsset();
+			if (!IsValid(Obj))
+			{
+				// Degenerate FAssetData (GetAsset()==null) — fall back to a direct
+				// in-memory lookup by canonical path so a resident corpse from a
+				// same-session create is still found and evicted below. Without
+				// this the in-memory UBlueprint survives the "delete" and the next
+				// create/duplicate idempotency probe (LoadObject) resurrects it
+				// (already_existed=true even though the .uasset is purged).
+				Obj = StaticFindObject(UObject::StaticClass(), nullptr, *CanonObjPath);
+			}
 			if (IsValid(Obj))
 			{
 				TArray<UObject*> ToDelete = { Obj };
@@ -2658,7 +2678,15 @@ namespace
 			// and let the full-purge GC below finish the job.
 			if (!bDeleted && IsValid(Obj))
 			{
+				// Notify the asset registry while Obj is still valid + correctly
+				// named. The Trash below renames it into the transient package
+				// and MarkAsGarbage()es it, after which AssetDeleted(Obj) is a
+				// no-op (IsValid==false) and list/find would keep showing a ghost
+				// FAssetData for the rest of this daemon session. The
+				// ForceDeleteObjects>0 path notifies the registry internally, so
+				// this manual branch is the only one that needs it.
 				AR.AssetDeleted(Obj);
+
 				auto Trash = [](UObject* O)
 				{
 					if (!IsValid(O))
@@ -2685,6 +2713,41 @@ namespace
 					TEXT("DeleteAsset: ForceDeleteObjects no-op headless; manual in-memory eviction of %s"),
 					*AssetPath);
 			}
+
+			// HARD-D3 residue fix (PATH-INDEPENDENT — runs for BOTH the
+			// ForceDeleteObjects>0 success path and the headless manual-eviction
+			// path; ForceDeleteObjects removes the object but leaves the package
+			// behind, so this can't live inside the manual branch). Removing the
+			// object isn't enough: its UPackage and the package's still-attached
+			// FLinkerLoad survive the full-purge GC below, and StaticLoadObject
+			// (LoadObject — used by the create_blueprint / duplicate_blueprint
+			// idempotency probes) re-materializes the Blueprint export straight
+			// from that lingering linker even though the .uasset is already purged
+			// from disk. That made a same-session delete -> recreate wrongly
+			// report already_existed=true. Re-find the package by name (the object
+			// may already be gone via ForceDeleteObjects), detach its linker, and
+			// evict it — freeing the name so a re-create resolves to nothing
+			// instead of resurrecting the corpse. ResetLoaders MUST precede the
+			// disk-purge below so the linker's file handle is closed first.
+			if (bDeleted)
+			{
+				if (UPackage* DeadPkg = FindPackage(nullptr, *AssetData.PackageName.ToString()))
+				{
+					ResetLoaders(DeadPkg);
+					DeadPkg->ClearFlags(RF_Public | RF_Standalone);
+					DeadPkg->SetFlags(RF_Transient);
+					DeadPkg->RemoveFromRoot();
+					// Rename aside (new top-level name; nullptr outer keeps it
+					// top-level) so the original package name is free immediately;
+					// the GC purge below reclaims the renamed corpse.
+					DeadPkg->Rename(
+						*MakeUniqueObjectName(nullptr, UPackage::StaticClass(),
+							FName(*FString::Printf(TEXT("%s_DELETED"), *DeadPkg->GetName()))).ToString(),
+						nullptr, REN_NonTransactional | REN_DontCreateRedirectors);
+					DeadPkg->MarkAsGarbage();
+				}
+			}
+
 			// ForceDeleteObjects removes the in-memory UObject + asset-
 			// registry entry, but in commandlet mode it doesn't persist
 			// a deletion to disk — the .uasset file lingers. A next-run
@@ -2722,6 +2785,21 @@ namespace
 			{
 				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, /*bPerformFullPurge=*/true);
 			}
+
+			// Authoritative success signal: the asset is 'deleted' iff it no
+			// longer resolves in memory AND its package file is gone on disk. The
+			// bDeleted flag above is only the attempt result — ForceDeleteObjects
+			// can report success while leaving the object resolvable (the HARD-D3
+			// symptom). StaticFindObject is the in-memory half (it never touches
+			// disk); bFileGone is the on-disk half. The package-eviction above is
+			// what keeps these two honest with the create/duplicate idempotency
+			// probe — those use disk-loading LoadObject, which without the
+			// ResetLoaders+package-rename would re-materialize the export from the
+			// lingering linker and contradict a deleted=true result.
+			const bool bStillResolves =
+				StaticFindObject(UObject::StaticClass(), nullptr, *CanonObjPath) != nullptr;
+			const bool bFileGone = !FPaths::FileExists(PackageFilename);
+			bDeleted = !bStillResolves && bFileGone;
 		}
 
 		auto Out = MakeShared<FJsonObject>();
@@ -3073,19 +3151,6 @@ namespace
 	// Returns active asset + open assets + current level + viewport camera
 	// + actor selection + PIE state in a single response so the agent
 	// doesn't have to coordinate 6 separate calls before its first edit.
-	// Local helper: convert /Game/AI/BP_Foo.BP_Foo → /Game/AI/BP_Foo.
-	// Wire format always uses package paths. Mirrors the same-named
-	// helper anon-ns'd inside BlueprintReaderWireJson.cpp — kept inline
-	// here to avoid widening that header just for this op.
-	FString EditorStateToPackagePath(const FString& In)
-	{
-		int32 DotIdx = INDEX_NONE;
-		if (In.FindChar(TEXT('.'), DotIdx))
-		{
-			return In.Left(DotIdx);
-		}
-		return In;
-	}
 
 	int32 RunGetEditorStateOp(const FString&, const FString& OutputPath, bool bPretty)
 	{
@@ -3144,7 +3209,7 @@ namespace
 					}
 					auto Entry = MakeShared<FJsonObject>();
 					Entry->SetStringField(TEXT("package_path"),
-						EditorStateToPackagePath(Obj->GetPathName()));
+						BlueprintReaderPaths::ToPackagePath(Obj->GetPathName()));
 					Entry->SetStringField(TEXT("class"),
 						Obj->GetClass() ? Obj->GetClass()->GetName() : TEXT(""));
 					const bool bIsActive = (Obj == ActiveAsset);
@@ -3173,7 +3238,7 @@ namespace
 			{
 				LevelJson = MakeShared<FJsonObject>();
 				LevelJson->SetStringField(TEXT("package_path"),
-					EditorStateToPackagePath(World->GetPathName()));
+					BlueprintReaderPaths::ToPackagePath(World->GetPathName()));
 				LevelJson->SetStringField(TEXT("name"), World->GetMapName());
 				const bool bDirty = World->GetOutermost() && World->GetOutermost()->IsDirty();
 				LevelJson->SetBoolField(TEXT("is_dirty"), bDirty);

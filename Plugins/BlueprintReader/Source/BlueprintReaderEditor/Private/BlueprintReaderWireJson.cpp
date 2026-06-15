@@ -1,4 +1,5 @@
 #include "BlueprintReaderWireJson.h"
+#include "BlueprintReaderPathUtils.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -13,17 +14,9 @@
 
 namespace
 {
-	// Strip the object suffix to convert /Game/Foo/Bar.Bar -> /Game/Foo/Bar.
-	// Wire format consistently uses package paths, not object paths.
-	FString ToPackagePath(const FString& Maybe)
-	{
-		int32 DotIdx = INDEX_NONE;
-		if (Maybe.FindChar(TEXT('.'), DotIdx))
-		{
-			return Maybe.Left(DotIdx);
-		}
-		return Maybe;
-	}
+	// ToPackagePath (object->package suffix strip) is shared via the Private
+	// BlueprintReaderPathUtils.h; alias it so call sites stay unqualified.
+	using BlueprintReaderPaths::ToPackagePath;
 
 	TSharedPtr<FJsonValue> StringOrNull(const FString& Str)
 	{
