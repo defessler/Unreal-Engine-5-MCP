@@ -1902,11 +1902,11 @@ namespace
 		Obj->SetStringField(TEXT("existing_class"), ExistingName);
 		Obj->SetStringField(TEXT("intended_class"), IntendedClass->GetName());
 		EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
-		// Return a NON-ZERO op code (6 = DestClassConflict) so the body is
-		// surfaced as a thrown error rather than parsed as a (misleading)
-		// success by the create method. The full-purge GC / fatal never happens
-		// because the caller returns here before its factory runs.
-		OutCode = 6;
+		// Return a NON-ZERO op code (7 = DestClassConflict; 6 is already taken by
+		// blueprint_locked_by_other_session) so the body is surfaced as a thrown
+		// error rather than parsed as a (misleading) success by the create
+		// method. The factory / fatal never runs — the caller returns here first.
+		OutCode = 7;
 		UE_LOG(LogBlueprintReader, Warning,
 			TEXT("Create refused (HARD-D4 guard): %s already a %s — would fatal on "
 			     "create of %s"), *AssetPath, *ExistingName, *IntendedClass->GetName());

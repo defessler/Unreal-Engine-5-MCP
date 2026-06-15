@@ -84,6 +84,12 @@ const ErrorCodeInfo* LookupErrorCode(int code) {
 			"errors that surfaced"
 		}; return &i; }
 		case 6: { static const ErrorCodeInfo i = {
+			"BlueprintLocked",
+			"another MCP session holds a write lock on this Blueprint (it has an "
+			"open batch) — retry after that session ends its batch, or use a "
+			"different session"
+		}; return &i; }
+		case 7: { static const ErrorCodeInfo i = {
 			"DestClassConflict",
 			"a different-class object already exists at the destination path — "
 			"the create/duplicate op refused rather than overwrite it (which "
