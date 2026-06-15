@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Sidebar from './components/Sidebar';
+import ModeSwitch from './components/ModeSwitch';
 import ErrorBoundary from './components/ErrorBoundary';
 import Install from './pages/Install';
 import Providers from './pages/Providers';
@@ -54,6 +55,9 @@ function TitleBar() {
 }
 
 export default function App() {
+  // Always launch on the Install tab — the natural starting point (first-time
+  // setup). The page is intentionally NOT persisted across launches, so every
+  // open lands here regardless of where the last session ended.
   const [page, setPage] = useState<Page>('install');
 
   return (
@@ -62,6 +66,11 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar current={page} onNav={setPage} />
         <main className="flex-1 overflow-auto bg-ue-dark">
+          {/* Prominent Install↔Update mode switch, shown on both those pages so
+              the current mode — and that you can flip — is always obvious. */}
+          {(page === 'install' || page === 'update') && (
+            <ModeSwitch current={page} onNav={setPage} />
+          )}
           {/* Remount the boundary per page so dismissing an error on one page
               doesn't suppress a real error on the next (P1). */}
           <ErrorBoundary key={page}>
