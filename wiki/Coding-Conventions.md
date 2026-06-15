@@ -164,12 +164,12 @@ the output.
   `BP_READER_BACKEND=commandlet|live` + project envs).
 - New tools require two new tests: a mock case (asserts shape or
   throws-as-expected) and a live case if the op needs a real BP.
-- The tool-count assertion in
-  [`test_tools.cpp:60`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp#L60)
-  (`CHECK(spec.size() == N);`) needs bumping every time a tool is
-  added or removed (also pinned in `test_protocol_compat.cpp`,
-  `test_phase_d.cpp`, and `test_tool_smoke_live.cpp`; `test_mcp.cpp` pins the
-  endpoint count, not the tool count).
+- The tool count is a single constant —
+  [`bpr::test::kExpectedToolCount`](https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_helpers.h)
+  in `test_helpers.h`. Bump it once when adding/removing a tool; every count
+  check (`test_tools`, `test_mcp`, `test_phase_d`, `test_progressive_default`,
+  `test_protocol_compat`, `test_tool_smoke_live`) references it. `Dump-Tools.ps1
+  -Check` / `docs/TOOLS.md` are the wire-level oracle.
 
 ## Documentation
 

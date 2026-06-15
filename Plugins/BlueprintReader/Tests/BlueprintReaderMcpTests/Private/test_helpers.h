@@ -14,6 +14,13 @@
 
 namespace bpr::test {
 
+// Single source of truth for the registered-tool count. Bump this ONE constant
+// when adding/removing a tool — every count assertion across the suite
+// (test_tools, test_mcp, test_phase_d, test_progressive_default,
+// test_protocol_compat, test_tool_smoke_live) references it instead of a local
+// literal, and `Dump-Tools.ps1 -Check` / docs/TOOLS.md are the wire-level oracle.
+inline constexpr int kExpectedToolCount = 268;
+
 inline std::filesystem::path TestExecutableDir() {
 #if defined(_WIN32)
 	wchar_t buf[MAX_PATH];

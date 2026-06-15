@@ -57,7 +57,7 @@ TEST_CASE("add_widget surface: index input + child_index output are advertised")
 TEST_CASE("ToolRegistry exposes 268 tools with input schemas") {
 	Fixture f;
 	auto spec = f.registry.ListSpec();
-	CHECK(spec.size() == 268);
+	CHECK(spec.size() == bpr::test::kExpectedToolCount);
 	for (const auto& t : spec) {
 		CHECK(t["inputSchema"]["type"] == "object");
 	}

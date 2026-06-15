@@ -34,6 +34,7 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+#include "test_helpers.h"
 
 namespace {
 using nlohmann::json;
@@ -162,7 +163,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 	bpr::tools::ToolRegistry registry;
 	bpr::tools::RegisterBlueprintTools(registry, reader);
 	auto spec = registry.ListSpec();
-	REQUIRE(spec.size() == 268);  // ListSpec() is backend-independent; matches the mock asserts: 267 after +1 ui_focus_tab (TEST-2 P1b).
+	REQUIRE(spec.size() == bpr::test::kExpectedToolCount);  // ListSpec() is backend-independent; matches the mock asserts: 267 after +1 ui_focus_tab (TEST-2 P1b).
 
 	std::vector<std::string> broken;    // unreachable / not-supported / crash
 	std::vector<std::string> infra;     // transport/daemon issues (environmental)

@@ -2157,8 +2157,9 @@ base, a generated table) rather than documented.
   `kWrites` entry (`…/backends/AutoBlueprintReader.cpp:374`), a `ToolCategories`
   entry (`…/tools/ToolCategories.cpp`), the `list_node_kinds` ↔ `KnownNodeKinds`
   pair, a `ParseOp` string + a `kDispatchTable` entry (the editor commandlet),
-  the `add_node` extras tunnel, and the tool-count literal in **7 test files**.
-  None are enforced at compile time. `IBlueprintReader.h` carries **~204
+  the `add_node` extras tunnel, and the tool-count literal (**✅ done** — now a
+  single `bpr::test::kExpectedToolCount` constant in `test_helpers.h`, one edit
+  instead of 7). The remaining edits are still unenforced at compile time. `IBlueprintReader.h` carries **~204
   throwing-default virtuals** (`…/backends/IBlueprintReader.h` — "not supported by
   this backend"), so a **missed `override` silently 404s the production `auto`
   backend** even though a real backend implements the op. This has already burned

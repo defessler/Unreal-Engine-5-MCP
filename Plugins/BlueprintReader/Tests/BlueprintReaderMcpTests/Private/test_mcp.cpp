@@ -160,7 +160,7 @@ TEST_CASE("MCP handshake + tools/list + tools/call list_blueprints") {
 	CHECK(frames[1]["id"] == 2);
 	auto& list = frames[1]["result"]["tools"];
 	REQUIRE(list.is_array());
-	CHECK(list.size() == 268);  // … + 1 ui_focus_tab + 1 ui_invoke_menu (TEST-2 P1b)
+	CHECK(list.size() == bpr::test::kExpectedToolCount);  // … + 1 ui_focus_tab + 1 ui_invoke_menu (TEST-2 P1b)
 	std::vector<std::string> names;
 	for (auto& t : list)
 	{
@@ -378,7 +378,7 @@ TEST_CASE("Lazy discovery: tool search mode advertises just 4 tools but call_too
 	auto reader = test::MakeMockReader();
 	tools::ToolRegistry registry;
 	tools::RegisterBlueprintTools(registry, reader);
-	REQUIRE(registry.TotalRegistered() == 268);
+	REQUIRE(registry.TotalRegistered() == bpr::test::kExpectedToolCount);
 
 	tools::RegisterToolsetMetaTools(registry);
 	REQUIRE(registry.TotalRegistered() == 271);  // 268 + 3 meta-tools
