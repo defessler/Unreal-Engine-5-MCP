@@ -17,7 +17,7 @@ A comment earns its line when it captures one of:
 
 - A hidden constraint (`// Must run on game thread — the editor's
   KismetCompiler isn't thread-safe.`)
-- A workaround for a specific upstream bug (`// UE 5.7
+- A workaround for a specific upstream bug (`// UE 5.8
   AddFunctionOutput silently no-ops when no K2Node_FunctionResult
   exists — spawn one first.`)
 - A subtle invariant a future editor would otherwise break (`// pinId
