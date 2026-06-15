@@ -220,6 +220,11 @@ discovered (e.g. running against Lyra), set:
 
 - **`AssetNotFound`** — asset/graph/function/node missing. Treat as
   user error (typo) rather than infra failure.
+- **Writes are read-only by default on ALL backends** (not just mock).
+  `BP_READER_READ_ONLY=1` is the global default — a write rejection on a
+  real `commandlet` or `live` backend means set `BP_READER_ALLOW_WRITE=1`
+  (or `BP_READER_READ_ONLY=0`). The mock backend *also* rejects writes
+  with its own message; surface both clearly — don't silently fail.
 - **Mock backend is read-only.** Write tools throw with a message
   pointing at `BP_READER_BACKEND=commandlet`. Surface that — don't
   silently fail.

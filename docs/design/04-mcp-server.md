@@ -12,7 +12,7 @@ UE plugins can't host stdio servers cleanly. The editor process owns
 stdout for its log device, the commandlet entry points don't keep
 running between calls, and shipping the editor on every developer's
 machine is a non-starter for "I want Copilot in VS Code to read my
-blueprints". The MCP server is a 4-MB executable with no UE
+blueprints". The MCP server is a small, self-contained executable with no UE
 dependency, vendored deps, and a fixed surface.
 
 The trade is that anything the server learns about a `.uasset` has to
@@ -65,7 +65,7 @@ Plugins/BlueprintReader/Tests/
 │           └── ReadOnlyBlueprintReader.{h,cpp}
 ├── BlueprintReaderMcpTests/                      Program target → BlueprintReaderMcpTests.exe
 │   ├── BlueprintReaderMcpTests.{Target,Build}.cs
-│   ├── Private/                                  doctest cases (~461 mock + live)
+│   ├── Private/                                  doctest cases (~893 mock + live)
 │   └── fixtures/                                 BP_*.json mock data
 └── ThirdParty/                                   vendored, header-only
     ├── nlohmann_json/
@@ -109,9 +109,9 @@ int main(int argc, char** argv) {
    — env vars + path auto-discovery from the exe location
    (`BackendFactory.cpp:73-194`).
 
-3. **Acquire single-instance lock**
-   (`main.cpp:267-290`). Project-keyed; see "Single-instance lock"
-   below.
+3. **Single-instance lock** (superseded — the lifetime lock now sits on
+   the daemon; see [05-backends.md](05-backends.md). The MCP-server-level
+   lock described below was removed in the multi-session work.)
 
 4. **Run setup checks** (`diag::RunSetupChecks`). Logged immediately
    so users see actionable hints instead of a silent hang.
@@ -430,50 +430,21 @@ discoverable, `mock` otherwise. See
 [03-plugin-internals.md → "Live TCP server"](03-plugin-internals.md#live-tcp-server)
 for what the live backend connects to.
 
-## Single-instance lock
+## Single-instance lock (superseded)
 
-Two `BlueprintReaderMcp.exe` processes against the same project would
-spawn two commandlet daemons; both would hold open the same
-`.uasset` files; one would lose `SavePackage` to a sharing
-violation; DDC corruption is on the table. The lock prevents it.
+> **Note:** The MCP-server-level single-instance lock described here was
+> removed in the multi-session work. The lifetime lock now sits on the
+> daemon side — see [05-backends.md](05-backends.md) for the current
+> behavior. The section below is retained as historical context only.
 
-`util::SingleInstanceLock` (`util/SingleInstanceLock.cpp`):
-
-```cpp
-SingleInstanceLock instanceLock(cfg.uproject);
-if (!instanceLock.IsHeld() && !allowMulti) { /* refuse to start */ }
-```
-
-The lock path is derived from the project path via FNV-1a 64
-(`SingleInstanceLock.cpp:25-60`):
-
-```cpp
-uint64_t Fnv1a64(std::string_view s) {
-    uint64_t h = 0xcbf29ce484222325ULL;
-    for (unsigned char c : s) { h ^= c; h *= 0x100000001b3ULL; }
-    return h;
-}
-```
-
-The path is lowercased on Windows so `C:\Foo` and `c:\foo` resolve
-to the same key, then weakly canonicalized, then hashed. The lock
-file is `%TEMP%/bp-reader-mcp-<hex>.lock`.
-
-On Windows the lock is taken via `CreateFileW` with `dwShareMode=0`
-— exclusive open. Subsequent opens from another process get
-`ERROR_SHARING_VIOLATION`. The PID is written into the file body
-(`SingleInstanceLock.cpp:67-108`) so diagnostics can name the
-holder, though Windows' exclusive open denies the read from a
-competing process until the holder closes. The path string is
-exposed via `LockPath()` so the error message can show the user
-which file to inspect.
-
-POSIX uses `flock(LOCK_EX | LOCK_NB)` on `O_CREAT|O_RDWR` instead
-(`SingleInstanceLock.cpp:109-132`). The kernel cleans up
-automatically on `SIGKILL`.
-
-`BP_READER_ALLOW_MULTI=1` skips the check — caller is responsible
-for not wedging the project state.
+The original design used `util::SingleInstanceLock` to prevent two
+`BlueprintReaderMcp.exe` processes from spawning competing commandlet
+daemons against the same project. The lock was project-keyed via FNV-1a
+64 hash of the `.uproject` path, stored as an exclusive `CreateFileW`
+open on `%TEMP%/bp-reader-mcp-<hex>.lock`. This was superseded by
+daemon-side lifetime management — the daemon's idle/grace/max-lifetime
+timers and per-project handshake file now govern process lifetime.
+`BP_READER_ALLOW_MULTI=1` still bypasses any remaining guard.
 
 ## Build
 
@@ -526,25 +497,24 @@ default works without env vars.
 
 ## Testing
 
-`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:32-36` and `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp:94` both pin
-`spec.size() == 127`. Bumping the tool count requires updating
-both. The descriptive comment on `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp:32` notes the
-shipping increments from each PR (this is more useful than a
-per-category breakdown that drifts the moment a new tool joins
-one of the categories):
-
-```cpp
-TEST_CASE("ToolRegistry exposes 127 tools (121 prior + 5 quick-win
-    additions from issue #83: get_referencers, get_dependencies,
-    read_config_value, set_config_value, build_lighting) with input
-    schemas")
-```
+`Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_tools.cpp`
+(~line 60) pins `spec.size() == 268` (authoritative tool count;
+see also `docs/TOOLS.md` generated by `Scripts/Dump-Tools.ps1`).
+The count is also pinned in `test_protocol_compat.cpp`,
+`test_phase_d.cpp`, and `test_tool_smoke_live.cpp`.
+`test_mcp.cpp` pins the *endpoint* count (`== 4`: initialize,
+notifications/initialized, ping, tools/list + tools/call),
+not the tool count. Bumping the tool count requires updating
+`test_tools.cpp` and the other pinning files, plus regenerating
+`docs/TOOLS.md` via `Dump-Tools.ps1` (CI's `-Check` flag gates on it).
 
 Test layout: doctest cases live in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/`. Mock-only
 runs need no env (these are the CI default). Live cases auto-skip
 when `BP_READER_PROJECT` / `BP_READER_ENGINE_DIR` aren't set;
-setting both enables the live integration suite. CI runs only the
-mock subset; live cases run locally on developer machines.
+setting both enables the live integration suite. CI (`.github/workflows/mcp-tests.yml`)
+builds via engine-free CMake on `windows-latest` and runs the mock
+suite plus the `Dump-Tools.ps1 -Check` drift gate; live cases run
+locally on developer machines.
 
 ## See also
 
@@ -553,7 +523,7 @@ mock subset; live cases run locally on developer machines.
   lifecycle, threading.
 - [03-plugin-internals.md](03-plugin-internals.md) — the UE-side
   counterpart of every protocol described here.
-- `(removed in the UBT migration: roundtrip.ps1` — shows end-to-end framing
-  against a running `BlueprintReaderMcp.exe`.
+- `roundtrip.ps1` (removed in the UBT migration) — showed end-to-end framing
+  against a running `BlueprintReaderMcp.exe`; the doctest suite covers this ground now.
 - `Plugins/BlueprintReader/Tests/BlueprintReaderMcpTests/Private/test_mcp.cpp` — the canonical example of an
   in-process MCP handshake + `tools/list` + `tools/call`.

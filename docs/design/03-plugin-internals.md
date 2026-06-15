@@ -218,7 +218,7 @@ HANDLE hIn  = GetStdHandle(STD_INPUT_HANDLE);
 ```
 
 We can't use `fputs(stdout, …)`, `FPlatformMisc::LocalPrint`, or
-`UE_LOG` for daemon I/O. UE 5.7 redirects the C stdio streams through
+`UE_LOG` for daemon I/O. UE redirects the C stdio streams through
 its log device in some configurations, so a `fputs` to "stdout" can
 end up in the log file instead of the pipe. The MCP-side scanner
 reading the pipe would never see the `__BPR_DONE` sentinel and would
@@ -456,7 +456,7 @@ The plugin emits all wire-shape JSON through one helper module,
 
 ## Construction script naming
 
-UE 5.7's actual graph name for the construction script is
+UE 5.8's actual graph name for the construction script is
 `UserConstructionScript`, not `ConstructionScript`. The introspector
 (`BlueprintIntrospector.cpp:464-468`) classifies both names as
 `WireType="Construction"` so callers don't have to know which

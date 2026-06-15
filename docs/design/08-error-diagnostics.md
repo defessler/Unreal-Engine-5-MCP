@@ -68,6 +68,8 @@ output JSON file, not the exit code.
 | 3    | Crash / fatal in handler             | `return 3` (line 394) |
 | 4    | Missing target (asset, graph, node)  | `return 4` sites at 803, 869, 871, 877, 908, 916, 939, 944, 998 |
 | 5    | Compile or save failed               | `return 5` sites at 815, 828, 837, 886, 919, 952, 1011 |
+| 6    | Blueprint locked by other session    | `return 6` — `BlueprintLocked`; another process holds a write lock on the asset |
+| 7    | Destination class conflict           | `return 7` — `DestClassConflict`; a create/duplicate op refused a cross-class destination collision (HARD-D4) rather than fatally crashing the editor |
 
 `CommandletBlueprintReader::RunOpOneShot` reads the exit code and maps
 back to exceptions (`CommandletBlueprintReader.cpp:480-490`):

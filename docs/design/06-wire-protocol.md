@@ -75,7 +75,7 @@ Wire JSON (`BlueprintReaderTypes.h:395-414`):
 }
 ```
 
-The combination `category="real"`, `sub_category="float"` is UE5.7's
+The combination `category="real"`, `sub_category="float"` is UE5's
 canonical float type (5.0 promoted "float" to a sub-category of "real"
 so that double-precision pins could share the same machinery). Object
 references look like `category="object"`,
@@ -210,7 +210,7 @@ truth for the signature; the introspector reads them and emits
 ```
 
 `type` is one of `"EventGraph" | "Function" | "Macro" | "Construction"`
-(`:184` enumerates these). UE 5.7's actual graph name for the
+(`:184` enumerates these). UE 5.8's actual graph name for the
 construction script is `UserConstructionScript`; the introspector
 classifies both names as `WireType="Construction"` so consumers don't
 need to know.

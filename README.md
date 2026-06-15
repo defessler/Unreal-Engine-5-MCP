@@ -263,31 +263,36 @@ The MCP server is a UE Program target, but it's engine-independent.
 source engine, or an engine-free CMake + MSVC fallback on an
 installed/Launcher engine (UBT refuses Program targets there).
 
-```pwsh
-# From a project that has BlueprintReader in its Plugins/:
-"<Engine>\Engine\Build\BatchFiles\Build.bat" `
-  BlueprintReaderMcp Win64 Development `
-  -project="<Absolute>\MyGame.uproject"
-```
+> **Installed / Launcher engine** (including the maintainer's UE 5.8):
+> UBT refuses to build Program targets — use the CMake fallback:
+> ```pwsh
+> & 'D:\Projects\UE5_MCP\Saved\build-mcp-cmake.ps1'
+> # or: cmake -S Plugins/BlueprintReader/Tests -B Saved/mcp-build -G Ninja && cmake --build Saved/mcp-build
+> ```
+> Both exes land at `Plugins/BlueprintReader/Binaries/Win64/`.
 
-The exe lands at `<ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe`.
+> **Source engine** — UBT builds both Program targets directly:
+> ```pwsh
+> "<Engine>\Engine\Build\BatchFiles\Build.bat" `
+>   BlueprintReaderMcp Win64 Development `
+>   -project="<Absolute>\MyGame.uproject"
+> ```
 
-Both binaries (`BlueprintReaderMcp` + `BlueprintReaderMcpTests`) can be
-built in one shot via `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`:
+Both binaries (`BlueprintReaderMcp` + `BlueprintReaderMcpTests`) can also
+be built in one shot via `Plugins/BlueprintReader/Scripts/Build-MCPServer.ps1`
+(it auto-picks the right toolchain):
 
 ```pwsh
 .\Plugins\BlueprintReader\Scripts\Build-MCPServer.ps1 `
-  -EngineDir "D:\Path\To\UnrealEngine" `
+  -EngineDir "<Engine>" `
   -ProjectFile "$PWD\MyGame.uproject"
 ```
 
 Third-party deps (nlohmann_json, fmt, doctest) are vendored under
 `Plugins/BlueprintReader/Tests/ThirdParty/`, so this works with no
-network access and no extra package manager — UBT is the only build
-tool required.
+network access and no extra package manager.
 
-> **Tests:** `Build.bat BlueprintReaderMcpTests Win64 Development -project=...`
-> produces `<ProjectDir>/Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcpTests.exe` —
+> **Tests exe:** produces `Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcpTests.exe` —
 > 800+ doctest cases, ~5 s to run; the live-only cases auto-skip when
 > the UE editor env vars aren't set.
 
@@ -446,8 +451,8 @@ UE5_MCP\
 │       │   └── Private\                   800+ cases (mock + live commandlet)
 │       └── ThirdParty\                    vendored: nlohmann_json, fmt, doctest
 ├── Content\AI\                            BP_TestEnemy.uasset, BP_TestPickup.uasset (tracked)
-                                           (engine source lives outside this repo
-                                            at D:\Projects\Unreal Engine 5\)
+                                           (engine lives outside this repo
+                                            at D:\Games\Epic Games\UE_5.8 — installed build)
 └── README.md
 ```
 
@@ -500,30 +505,45 @@ If you have the editor built and the test BPs seeded:
 
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
-$env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
+$env:BP_READER_ENGINE_DIR  = "D:\Games\Epic Games\UE_5.8"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 
 Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe   # the full suite (live-only cases auto-skip)
 ```
 
-The legacy smoke scripts that lived under `mcp-server/scripts/` were
-removed alongside the CMake build. The doctest suite covers the same
-ground (and more); for an interactive smoke run, build with
-`-Config Development` and stream stdin/stdout against the exe directly.
+The legacy smoke scripts that lived under `mcp-server/scripts/` were removed.
+The doctest suite covers the same ground (and more); for an interactive smoke
+run, stream stdin/stdout against the exe directly.
 
 (Re)seed the test BPs:
 
 ```pwsh
-& "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
+& "D:\Games\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
     LyraStarterGame.uproject -run=BPRSeed `
     -nullrhi -nosplash -unattended -nopause
 ```
 
 ## Build pipeline
 
-The MCP server is a pair of UE Program targets that live under
-`Plugins/BlueprintReader/Tests/`. UBT builds them with the same
-pipeline (UBA, ninja, shared compile cache) as the editor target:
+The MCP server (`BlueprintReaderMcp`) and test suite (`BlueprintReaderMcpTests`)
+are UE **Program targets** that live under `Plugins/BlueprintReader/Tests/`.
+**Installed / Launcher engines refuse Program targets** ("Program targets are
+not currently supported from this engine distribution"), so on the maintainer's
+installed UE 5.8 host they are built engine-free via CMake + Ninja + MSVC:
+
+```pwsh
+# Installed-engine hosts (incl. the maintainer's UE 5.8):
+& 'D:\Projects\UE5_MCP\Saved\build-mcp-cmake.ps1'
+# or equivalently:
+# cmake -S Plugins/BlueprintReader/Tests -B Saved/mcp-build -G Ninja
+# cmake --build Saved/mcp-build
+```
+
+Both exes land at `Plugins/BlueprintReader/Binaries/Win64/`.
+The must-have CMake flag is `/Zc:preprocessor` (the conforming preprocessor —
+without it the doctest raw-string literals mis-parse under the legacy MSVC preprocessor).
+
+On a **source engine** UBT can build the Program targets directly:
 
 ```
 Build.bat BlueprintReaderMcp     Win64 Development -project=…  →  Plugins/BlueprintReader/Binaries/Win64/BlueprintReaderMcp.exe
@@ -531,8 +551,9 @@ Build.bat BlueprintReaderMcpTests Win64 Development -project=…  →  Plugins/B
 Build.bat LyraEditor          Win64 Development -project=…  →  the editor (independent target)
 ```
 
-The MCP server is **engine-independent and decoupled from the editor
-build** — building the editor target builds *only* the editor module, not
+The **editor module** always builds via UBT (it is a normal plugin module, not
+a Program target). The MCP server is **engine-independent and decoupled from the
+editor build** — building the editor target builds *only* the editor module, not
 the server. Build the server on demand with `Build-MCPServer.ps1` (it
 auto-picks UBT on a source engine or the CMake fallback on an
 installed/Launcher engine), use the Toolbox's "Rebuild MCP server" option,
@@ -568,29 +589,27 @@ The mock backend works against a fresh clone with no UE setup. To run the
 + this project's editor target compiled. **Either a source build or an
 installed / Launcher build works:**
 
-- **Source engine** — UBT builds everything (editor module *and* the MCP
-  server's Program targets). The full path below.
-- **Installed / Launcher engine** — UBT refuses Program targets, so build the
-  MCP server with the **CMake fallback** (`cmake -S Plugins/BlueprintReader/Tests
-  -B Saved/mcp-build -G Ninja && cmake --build Saved/mcp-build`); the editor
-  module still builds via your installed engine's UBT. Details:
+- **Installed / Launcher engine** (the maintainer's host — UE 5.8 installed at
+  `D:\Games\Epic Games\UE_5.8`) — UBT builds the editor module normally; UBT
+  **refuses** Program targets, so build the MCP server with the CMake fallback
+  (`Saved\build-mcp-cmake.ps1`). Details:
   [wiki Installation → CMake fallback](https://github.com/defessler/Unreal-Engine-5-MCP/wiki/Installation#installed--launcher-engine-build-the-mcp-server-with-cmake).
+- **Source engine** — UBT builds everything (editor module *and* the MCP
+  server's Program targets). Follow the source-engine steps below.
 
-The source-engine build below is the maintainer's host setup.
+### Engine build (source engine)
 
-### Engine build
-
-The engine source is checked out at `D:\Projects\Unreal Engine 5\` —
-a *sibling* of the project, intentionally outside this repo so the
-~100 GB of engine source never lands in the project's git history.
+The engine source is checked out at a location of your choice outside this
+repo (e.g. `D:\Projects\Unreal Engine 5\`) so the ~100 GB of engine source
+never lands in the project's git history.
 
 ```bat
-cd "D:\Projects\Unreal Engine 5"
+cd "<EngineSourceDir>"
 Setup.bat
 GenerateProjectFiles.bat
 ```
 
-Open `D:\Projects\Unreal Engine 5\UE5.sln` in Visual Studio 2022
+Open `<EngineSourceDir>\UE5.sln` in Visual Studio 2022
 (Game Development with C++ workload + Windows 10/11 SDK) and build the
 **`UnrealEditor`** target in *Development Editor / Win64*. First build
 is 1–3 hours; `Setup.bat` pulls ~70–80 GB of binary dependencies.
@@ -598,10 +617,10 @@ is 1–3 hours; `Setup.bat` pulls ~70–80 GB of binary dependencies.
 ### Engine association
 
 ```pwsh
-& "D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
+& "<EngineDir>\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" `
     /switchversionsilent `
     "D:\Projects\UE5_MCP\LyraStarterGame.uproject" `
-    "D:\Projects\Unreal Engine 5"
+    "<EngineDir>"
 ```
 
 This writes a stable GUID-style entry under
@@ -612,7 +631,7 @@ Rider / VS / UBT all want the canonical format.
 Generate project files:
 
 ```bat
-"D:\Projects\Unreal Engine 5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" ^
+"<EngineDir>\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe" ^
   -projectfiles -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -game -rocket -progress
 ```
@@ -620,17 +639,24 @@ Generate project files:
 Build the editor target:
 
 ```bat
-"D:\Projects\Unreal Engine 5\Engine\Build\BatchFiles\Build.bat" ^
+"<EngineDir>\Engine\Build\BatchFiles\Build.bat" ^
   LyraEditor Win64 Development ^
   -project="D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -NoUba -MaxParallelActions=4
 ```
 
-### Engine source patches required
+> **Installed engine** — substitute `"D:\Games\Epic Games\UE_5.8"` for
+> `<EngineDir>` and add `bOverrideBuildEnvironment = true;` to
+> `LyraEditor.Target.cs` instead of `BuildEnvironment = Unique` (installed
+> engines forbid `Unique`; with `Shared` env the exe is `UnrealEditor-Cmd.exe`
+> not `LyraEditor-Cmd.exe`).
+
+### Engine source patches required (source engine only)
 
 The 5.8 GitHub source has three modules whose `Build.cs` declares
 `PrivateIncludePaths` relative to `Engine/Source/` instead of the module dir.
 That breaks project-target builds with `fatal error C1083`.
+**These patches are not needed for installed / Launcher engines.**
 
 **Easy path:** the plugin ships an idempotent script that applies all
 three patches:
@@ -638,11 +664,11 @@ three patches:
 ```pwsh
 # Dry-run first to see what would change:
 .\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
-    -EngineDir "D:\Projects\Unreal Engine 5"
+    -EngineDir "<EngineDir>"
 
 # Apply:
 .\Plugins\BlueprintReader\Scripts\Patch-Engine.ps1 `
-    -EngineDir "D:\Projects\Unreal Engine 5" -Apply
+    -EngineDir "<EngineDir>" -Apply
 ```
 
 The script adds `using System.IO;` (if missing) and rewrites each
@@ -653,9 +679,8 @@ relative `PrivateIncludePaths` entry to `Path.Combine(ModuleDirectory,
 - `Engine/Source/Developer/IOS/TVOSTargetPlatformSettings/TVOSTargetPlatformSettings.Build.cs`
 - `Engine/Platforms/VisionOS/Source/Developer/VisionOSTargetPlatformSettings/VisionOSTargetPlatformSettings.Build.cs`
 
-These patches live inside the sibling engine checkout (e.g.
-`D:\Projects\Unreal Engine 5\`), which isn't tracked by this repo — re-run
-the script after a fresh engine clone.
+These patches live inside the engine checkout, which isn't tracked by this
+repo — re-run the script after a fresh engine clone.
 
 ### Required project target settings
 
@@ -678,7 +703,7 @@ can saturate a 20 GB page file even on 64 GB RAM machines).
 ## Automation tests (UE side)
 
 ```bat
-"D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+"D:\Games\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   LyraStarterGame.uproject ^
   -ExecCmds="Automation RunTests BlueprintReader.Editor; Quit" ^
   -TestExit="Automation Test Queue Empty" ^
@@ -691,17 +716,28 @@ plus `index.html`.
 
 ## CI
 
-The prior `.github/workflows/mcp-server.yml` (CMake-on-Windows-2022) was
-removed when the MCP server moved into the UE build pipeline. UBT-based
-CI needs a runner with the source-built engine available, which is
-heavier than the prior mock-only CI was — not yet set up.
+Two workflows run on GitHub Actions:
 
-For local pre-push verification, run the test target:
+- **`.github/workflows/mcp-tests.yml`** — triggers on `Tests/**` changes.
+  Builds the MCP server + doctest suite engine-free via CMake on
+  `windows-latest` (no UE install needed) and runs the full mock suite
+  plus the tool-catalog drift check (`Dump-Tools.ps1 -Check`). This is
+  the primary CI gate and runs on every PR that touches server or test code.
+- **`.github/workflows/editor-build.yml`** — self-hosted scaffold that
+  compile-smokes the editor plugin module against a real engine. Requires
+  a runner labelled `ue5` with `UE_ENGINE_DIR` / `UE_PROJECT` /
+  `UE_EDITOR_TARGET` set. Until a runner is provisioned, a local editor
+  build on each targeted engine version remains the guard for editor-module
+  regressions (hosted CI doesn't compile the editor module).
+
+For local pre-push verification, build and run the test exe:
 
 ```pwsh
-"<Engine>\Engine\Build\BatchFiles\Build.bat" `
-  BlueprintReaderMcpTests Win64 Development `
-  -project="$PWD\LyraStarterGame.uproject"
+# Installed engine: use CMake
+& 'D:\Projects\UE5_MCP\Saved\build-mcp-cmake.ps1'
+# Source engine: use UBT
+# "<Engine>\Engine\Build\BatchFiles\Build.bat" BlueprintReaderMcpTests Win64 Development -project="$PWD\LyraStarterGame.uproject"
+
 Plugins\BlueprintReader\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 

@@ -22,7 +22,7 @@ deep-dives are in [03-plugin-internals.md](03-plugin-internals.md)
                                           |  mcp::Register…           |
                                           |     initialize / tools/*   |
                                           |  tools::ToolRegistry       |
-                                          |     127 descriptors        |
+                                          |     268 descriptors        |
                                           |  IBlueprintReader (iface)  |
                                           +-------------------------+
                                                        |
@@ -55,11 +55,11 @@ factory wiring in `Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/
 In production there are typically two processes:
 
 1. **`BlueprintReaderMcp.exe`** — the MCP server. One per project. Started
-   by the MCP client. Lives for the client's session. Enforces a
-   project-keyed single-instance lock so two clients (e.g. Claude Code
-   + Copilot) don't both spawn competing editor daemons against the
-   same `.uproject`. Lock-file naming + the FNV-1a project key:
-   `(deleted in PR #68's multi-session work — file removed; behavior superseded by daemon-side lifetime lock at Source/BlueprintReaderEditor/Private/BlueprintReaderCmdletServer.cpp:25-60`. Override with
+   by the MCP client. Lives for the client's session. The MCP-server-level
+   single-instance lock was removed in the multi-session work (PR #68);
+   the lifetime lock now sits on the daemon side (see
+   `Source/BlueprintReaderEditor/Private/BlueprintReaderCmdletServer.cpp:25-60`
+   and [05-backends.md](05-backends.md)). Override with
    `BP_READER_ALLOW_MULTI=1`.
 
 2. **Backend process** depends on the backend:
@@ -245,15 +245,15 @@ delimited (MCP spec), anything else → LSP-style `Content-Length`
 headers. Both client and server use the detected format for the rest
 of the session (`Server.cpp:117-159`, `Server.cpp:285-292`).
 
-### Single-instance lock per project
+### Single-instance lock per project (superseded — see 05-backends.md)
 
-Two `BlueprintReaderMcp.exe` processes for the same `.uproject` would
-spawn two commandlet daemons fighting for the same `.uasset` files
-and the same DDC. The single-instance lock uses an exclusive
-`CreateFileW` open on a file in `%TEMP%` named
-`bp-reader-mcp-<fnv1a64-of-project-path>.lock`. Different projects
-get different lock files and run in parallel fine
-(`SingleInstanceLock.cpp:36-107`).
+The original MCP-server-level single-instance lock (exclusive
+`CreateFileW` on `%TEMP%/bp-reader-mcp-<fnv1a64>.lock`) was removed in
+the multi-session work. The concern it guarded against — two processes
+competing for the same `.uasset` files and DDC — is now handled by the
+daemon-side lifetime lock and idle/grace timers. See
+[05-backends.md](05-backends.md) for the current behavior. Different
+projects still get independent daemons and run in parallel fine.
 
 ## See also
 

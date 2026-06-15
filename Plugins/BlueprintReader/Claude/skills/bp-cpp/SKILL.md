@@ -5,6 +5,10 @@ description: Use this skill when the user wants to convert Blueprints to or from
 
 # bp-cpp — BP ↔ C++ round-trip pipeline
 
+> **Prerequisite:** the six BP↔C++ tools are **off by default**. Set
+> `BP_READER_ALLOW_TRANSPILE=1` in the MCP server's environment to enable
+> them. A rejection from any of these tools means that flag isn't set.
+
 Six tools, one shared pivot: **BPIR**, a versioned JSON AST
 (`{kind, body: [stmts...], inputs, outputs, ...}`). BP graphs lower
 into BPIR, BPIR lowers into source, source parses back into BPIR.

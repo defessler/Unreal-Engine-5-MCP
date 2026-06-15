@@ -83,12 +83,19 @@ one save on success), so you never get a half-edited graph.
    kinds; say so if what you need isn't supported.
 2. **Don't dump whole graphs into context** — project with `fields`, paginate
    lists.
-3. **Don't treat the mock backend as writable** — write tools throw a clear
-   message; surface it (set `BP_READER_ALLOW_WRITE=1` / use a real backend).
-4. **Don't hardcode tool counts or fixture asset names** — both rotate; read
+3. **Don't assume writes are allowed** — `BP_READER_READ_ONLY=1` is the global
+   default on **all** backends (not just mock). Write tools are rejected until
+   you set `BP_READER_ALLOW_WRITE=1`. The mock backend *also* rejects writes
+   with a clear message; surface it to the user rather than silently failing.
+4. **Don't expect transpile tools to work by default** — the six BP↔C++ tools
+   (`transpile_function`, `decompile_function`, `parse_cpp_function`, and the
+   three class-level variants) are **off by default**; set
+   `BP_READER_ALLOW_TRANSPILE=1` to enable them. A transpile-tool rejection
+   means that flag isn't set.
+5. **Don't hardcode tool counts or fixture asset names** — both rotate; read
    `tools/list` (or the generated catalog at
    <https://github.com/defessler/Unreal-Engine-5-MCP/blob/main/docs/TOOLS.md>).
-5. **Don't invent a multi-tool workaround for an unsupported op** — state
+6. **Don't invent a multi-tool workaround for an unsupported op** — state
    what *is* supported.
 
 ## Staying current
@@ -102,7 +109,7 @@ MCP client config + Claude assets.
 You can also check manually:
 ```
 Scripts\Check-Update.bat            # prints "vX.Y.Z available" or "up to date"
-Scripts\Update-Plugin.bat           # no-build refresh + reconfigure
+Scripts\Update-Plugin.ps1           # no-build refresh + reconfigure
 Scripts\Build-MCPServer.bat         # rebuild the server exe (after a source update)
 ```
 
@@ -120,3 +127,4 @@ new skills or changed tool descriptions.
   Configuration, Usage, Troubleshooting):
   <https://github.com/defessler/Unreal-Engine-5-MCP>.
 <!-- blueprintreader:end -->
+

@@ -36,9 +36,9 @@ That's it. doctest supplies `int main()`. Every other `tests/*.cpp`
 file just `#include <doctest/doctest.h>` and writes `TEST_CASE(...)`
 blocks; the linker collects them.
 
-There are ~440 test cases across the files in `tests/`. The full suite
-runs in well under 5 seconds on a dev box when only mock cases are
-active.
+There are ~893 test cases / ~34444 assertions across the files in `tests/`.
+The full suite runs in well under 5 seconds on a dev box when only mock
+cases are active.
 
 ### File layout
 
@@ -152,10 +152,14 @@ TEST_CASE("MockBlueprintReader loads all 3 fixtures") {
 }
 ```
 
-The pin-count assertion at `test_tools.cpp:36` (`CHECK(spec.size() == 127);`)
-is a tool-count check — keep this aligned with `BlueprintTools.cpp`
-registrations. Bumping it is part of the "Adding a new tool" checklist
-in CLAUDE.md.
+The tool-count assertion at `test_tools.cpp` (~line 60,
+`CHECK(spec.size() == 268);`) pins the current tool count — keep this
+aligned with `BlueprintTools.cpp` registrations and the generated
+`docs/TOOLS.md` catalog. Bumping it is part of the "Adding a new tool"
+checklist in CLAUDE.md. The count is also pinned in
+`test_protocol_compat.cpp`, `test_phase_d.cpp`, and
+`test_tool_smoke_live.cpp`; `test_mcp.cpp` pins the endpoint count
+(`== 4`), not the tool count.
 
 
 ## Layer 2: live commandlet
@@ -289,34 +293,32 @@ the probe correctly routes to live.
 
 ## Continuous integration
 
-CI is currently **not configured.** The prior
-`.github/workflows/mcp-server.yml` (mock-only on `windows-2022`,
-CMake-based) was removed when the MCP server moved to a UE Program
-target. UBT-based CI requires a runner with the source-built engine
-available — a heavier infra step than the prior mock-only workflow
-needed.
+CI **is configured.** Two workflows:
 
-Local pre-push verification runs the same test exe CI would have:
+- **`.github/workflows/mcp-tests.yml`** — runs on any `Tests/**` change.
+  Builds the MCP server and doctest suite via the engine-free CMake
+  build on `windows-latest` (no UE needed; server + tests are standalone
+  C++20). Runs the full mock suite (~893 cases / ~34444 assertions) plus
+  the `Dump-Tools.ps1 -Check` tool-catalog drift gate. This is the
+  primary CI gate.
+
+- **`.github/workflows/editor-build.yml`** — a self-hosted scaffold that
+  compile-smokes the editor module against a real engine. Requires a
+  runner labelled `ue5` with `UE_ENGINE_DIR` / `UE_PROJECT` /
+  `UE_EDITOR_TARGET` env vars set. Until a runner is provisioned, a
+  local editor build on each targeted engine version is the only guard
+  (CI does not compile the editor module on hosted runners).
+
+Local pre-push verification:
 
 ```pwsh
-"<Engine>\Engine\Build\BatchFiles\Build.bat" `
-  BlueprintReaderMcpTests Win64 Development `
-  -project="<Project>\<Game>.uproject"
 Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
 
-461 cases / 29K+ assertions; 12 live-only cases auto-skip when the
+~893 cases / ~34444 assertions; live-only cases auto-skip when the
 UE editor env vars aren't set.
 
-If you set up UBT-on-CI later, two reasonable paths:
-
-- **Self-hosted runner with the engine pre-installed.** Cheapest
-  ongoing cost; one-time setup.
-- **GitHub-hosted runner pulling the engine each job.** Slow (the
-  source engine is ~70 GB) but no infrastructure to maintain. Use
-  caching to amortize.
-
-Why CI matters less than for many projects:
+Why the mock suite is the primary gate:
 
 - Mock coverage is already substantial — the entire server logic,
   every wire shape, every BPIR validator path, every codegen test.
@@ -439,9 +441,13 @@ When adding a tool:
    `test_commandlet_backend.cpp`. Use the daemon (`useDaemon=true`)
    so the cost amortizes with neighboring tests.
 
-3. **Tool count assertions** in `test_tools.cpp:36` and
-   `test_mcp.cpp` need to be bumped (`spec.size() == N`). This is
-   listed in the "Adding a new tool" checklist in CLAUDE.md.
+3. **Tool count assertions** in `test_tools.cpp` (~line 60),
+   `test_protocol_compat.cpp`, `test_phase_d.cpp`, and
+   `test_tool_smoke_live.cpp` need to be bumped (`spec.size() == N`).
+   `test_mcp.cpp` pins the endpoint count (`== 4`), not the tool count
+   — do not bump it when adding a tool. Also regenerate `docs/TOOLS.md`
+   via `Scripts/Dump-Tools.ps1` (CI's `-Check` flag gates on it). All of
+   this is in the "Adding a new tool" checklist in CLAUDE.md.
 
 The mock test pins what the dispatcher promises agents; the live
 test confirms the plugin actually delivers it. Don't ship one

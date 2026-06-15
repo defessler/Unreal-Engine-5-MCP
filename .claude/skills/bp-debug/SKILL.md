@@ -16,6 +16,8 @@ Pull these signals from the failure before guessing:
    - `3` — crashed during op (callstack in the tail).
    - `4` — asset / graph / function / node not found.
    - `5` — compile error after a write op.
+   - `6` — `blueprint_locked_by_other_session` — another MCP session holds a write lock; retry after it ends.
+   - `7` — `DestClassConflict` — create/duplicate refused a cross-class destination collision; fix = pick a different dest path or delete the conflicting asset.
 3. **`_meta.elapsed_ms`** in the MCP envelope — per-call timing.
 4. **Backend in use** — `tools/list` + server stderr; or set
    `BP_READER_BACKEND` explicitly while debugging.
@@ -126,7 +128,7 @@ current build guards this at the op level and returns a clean error
 instead, but older builds let it crash.
 - The daemon auto-respawns after the crash; the next tool call works.
 - If this keeps happening, confirm `BP_READER_BACKEND=auto` is set
-  and the editor is running (check the handshake file `Saved/bp-reader-live.json`).
+  and the editor is running (check the commandlet-daemon handshake file `Saved/bp-reader-cmdlet.json`; the live-backend handshake is `Saved/bp-reader-live.json`).
 - Use `list_open_assets` / `get_active_asset` to query open editors
   without triggering this path.
 
@@ -181,6 +183,28 @@ What to do:
 - This only fires when YOUR session is inside a batch. Single-op
   writes (no `begin_batch`) skip the lock entirely — they commit
   immediately, so there's no interleave window for them to lose.
+
+### `DestClassConflict` (exit code 7)
+A `create_blueprint` or `duplicate_blueprint` op refused because the
+destination path already holds an asset of a **different** class. The
+server declines rather than fatally corrupting the editor's asset
+registry. Response carries:
+- `asset_path` — the conflicting destination
+- `existing_class` — the class of the asset already at that path
+
+What to do:
+- **Pick a different dest path** (`/Game/AI/BP_EnemyV2` instead of
+  `/Game/AI/BP_Enemy`), or
+- **Delete the conflicting asset first** (`delete_asset dest_path`) and
+  then retry.
+- Do not attempt to overwrite cross-class — the editor will reject it
+  even if forced.
+
+Note: both code 6 (`blueprint_locked_by_other_session`) and code 7
+(`DestClassConflict`) are write-refusals. Branch on the error class
+name/string in the response body rather than on the numeric exit code
+alone — the names are stable across versions; the codes are
+implementation details.
 
 ### `wire_pins` schema rejection
 Error includes both pin types so you can self-correct in one turn:
