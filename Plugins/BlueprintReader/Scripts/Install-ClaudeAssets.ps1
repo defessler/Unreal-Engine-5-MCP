@@ -56,6 +56,21 @@ $ErrorActionPreference = 'Stop'
 #                            -> replace wholesale (one-time migration)
 #   * Consumer-owned file (no marker) -> append our block, keep theirs
 # Honors $DryRun (read from the script scope).
+#
+# UTF-8 (no BOM) I/O. Windows PowerShell 5.1's default Get-Content/Set-Content
+# read as ANSI and write a BOM, which silently corrupted the deployed AGENTS.md
+# / copilot-instructions.md (em-dashes -> mojibake, leading BOM) when this script
+# ran under 5.1 instead of pwsh 7. Go through .NET so the bytes are identical
+# UTF-8-no-BOM on BOTH shells.
+$script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+function Read-BprText([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    return [System.IO.File]::ReadAllText($Path)   # BOM-aware; no-BOM treated as UTF-8
+}
+function Write-BprText([string]$Path, [string]$Text) {
+    [System.IO.File]::WriteAllText($Path, $Text, $script:Utf8NoBom)
+}
+
 function Merge-BprSection {
     param(
         [Parameter(Mandatory)] [string]$TargetPath,
@@ -75,12 +90,12 @@ function Merge-BprSection {
             if ($parent -and -not (Test-Path $parent)) {
                 New-Item -ItemType Directory -Path $parent -Force | Out-Null
             }
-            Set-Content -LiteralPath $TargetPath -Value $block -Encoding utf8
+            Write-BprText $TargetPath ($block + "`n")
         }
         return
     }
 
-    $existing = Get-Content -LiteralPath $TargetPath -Raw -ErrorAction SilentlyContinue
+    $existing = Read-BprText $TargetPath
     if ($null -eq $existing) { $existing = '' }
 
     $startIdx = $existing.IndexOf($startTag)
@@ -112,7 +127,7 @@ function Merge-BprSection {
     }
     Write-Host ("  {0,-7} {1}: {2}" -f $verb, $Kind, $TargetPath)
     if (-not $DryRun) {
-        Set-Content -LiteralPath $TargetPath -Value $updated -Encoding utf8
+        Write-BprText $TargetPath ($updated + "`n")
     }
 }
 
@@ -216,7 +231,7 @@ if ($plan.Count -eq 0) {
 foreach ($item in $plan) {
     # Shared guidance files are section-merged so consumer edits survive.
     if ($item.Kind -eq 'merge') {
-        $sourceContent = (Get-Content -LiteralPath $item.Source -Raw).TrimEnd()
+        $sourceContent = (Read-BprText $item.Source).TrimEnd()
         Merge-BprSection -TargetPath $item.Target -SourceContent $sourceContent -Kind $item.Kind
         continue
     }
