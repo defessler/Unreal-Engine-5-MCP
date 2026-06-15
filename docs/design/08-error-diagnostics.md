@@ -47,8 +47,8 @@ the front-line agent-facing message.
 
 `AssetNotFound` is a subclass so callers can distinguish "you typed
 the path wrong" from "I couldn't talk to the engine". The commandlet
-backend maps exit code 4 to this; the live backend maps `code=4` from
-the op-result frame to it. Tools that take an asset path and want to
+backend maps exit code 4 to this; the live/socket backend maps `code=2`
+(`BlueprintNotFound`) from the op-result frame to it. Tools that take an asset path and want to
 return a richer error (e.g. "did you mean X?") should catch
 `AssetNotFound` specifically and let other exceptions pass through.
 
@@ -64,9 +64,10 @@ output JSON file, not the exit code.
 | Code | Meaning                              | Plugin source |
 |------|--------------------------------------|---------------|
 | 0    | Success                              | every `EmitOk` path |
-| 1    | Generic failure (bad args, parse)    | `return 1` sites at 778, 784, 864, 905, 936, 976, 989 |
-| 3    | Crash / fatal in handler             | `return 3` (line 394) |
-| 4    | Missing target (asset, graph, node)  | `return 4` sites at 803, 869, 871, 877, 908, 916, 939, 944, 998 |
+| 1    | Generic failure (bad args, parse)    | `return 1` (`BadRequest`) — various arg/parse-rejection sites |
+| 2    | Blueprint load failed (`LoadObject<UBlueprint>` returned null) | `return 2` (`BlueprintNotFound`) — the `if (!BP) return 2` sites |
+| 3    | Output write failed (couldn't save the result JSON to disk) | `return 3` (`WriteFailed`) — `SaveStringToFile` failed (line 868) |
+| 4    | Missing target (asset, graph, node)  | `return 4` (`NotFound`) — the missing sub-resource sites |
 | 5    | Compile or save failed               | `return 5` sites at 815, 828, 837, 886, 919, 952, 1011 |
 | 6    | Blueprint locked by other session    | `return 6` — `BlueprintLocked`; another process holds a write lock on the asset |
 | 7    | Destination class conflict           | `return 7` — `DestClassConflict`; a create/duplicate op refused a cross-class destination collision (HARD-D4) rather than fatally crashing the editor |
@@ -391,17 +392,17 @@ warning, instead of having to bisect.
 
 ## Live backend self-refresh
 
-Source: `LiveBlueprintReader.cpp:176-301`.
+Source: `SocketBlueprintReader.cpp:176-301`.
 
 When the editor restarts, two things can change: the ephemeral port
 (new listener, different number) and the auth token (rotated each
 launch). The MCP server caches the values from its initial handshake
 read, so a stale cache would make every following call fail.
 
-`EnsureConnected` (`LiveBlueprintReader.cpp:283-301`) handles both:
+`EnsureConnected` (`SocketBlueprintReader.cpp:283-301`) handles both:
 
 ```cpp
-void LiveBlueprintReader::EnsureConnected() {
+void SocketBlueprintReader::EnsureConnected() {
     if (handshakeOk_) return;
 
     // Up to two attempts: first with current cfg_, second after re-
@@ -413,14 +414,14 @@ void LiveBlueprintReader::EnsureConnected() {
     }
     if (!r.ok) {
         throw BlueprintReaderError(fmt::format(
-            "LiveBlueprintReader: {} — is the editor running with "
+            "SocketBlueprintReader: {} — is the editor running with "
             "BP_READER_LIVE_PORT/TOKEN published in Saved/bp-reader-live.json?",
             r.error));
     }
 }
 ```
 
-`AttemptResult::retryWorthwhile` (`LiveBlueprintReader.h:299-303`)
+`AttemptResult::retryWorthwhile` (`SocketBlueprintReader.h:299-303`)
 distinguishes failure modes:
 
 | Failure                            | retryWorthwhile | Reasoning |
@@ -430,7 +431,7 @@ distinguishes failure modes:
 | Auth send failed                   | true            | Connection state may be off; refresh and retry. |
 | `auth_fail` response               | true            | Token rotated on stable-port restart; refresh and retry. |
 
-`RefreshFromHandshakeFile` (`LiveBlueprintReader.cpp:176-198`) returns
+`RefreshFromHandshakeFile` (`SocketBlueprintReader.cpp:176-198`) returns
 `true` only when the on-disk values actually differ from the cached
 ones — same values = nothing to retry with. This avoids a spin loop
 when the file exists but the editor is wedged.

@@ -96,7 +96,9 @@ const std::vector<std::string>& StatementFormsImpl() {
     static const std::vector<std::string> forms = {
         "if", "set", "call", "comment",
         "return", "cast", "switch", "for_each", "while", "sequence",
-        "break", "continue", "unsupported",
+        "break", "continue",
+        "broadcast", "bind_delegate", "unbind_delegate", "clear_delegate",
+        "unsupported",
     };
     return forms;
 }
@@ -147,6 +149,7 @@ const std::vector<std::string>& ExpressionFormsImpl() {
     static const std::vector<std::string> forms = {
         "var", "lit", "call",
         "cast", "member", "index", "self", "new_array", "new_struct",
+        "new_set", "new_map",
     };
     return forms;
 }
@@ -157,8 +160,11 @@ const std::vector<std::string>& ExpressionFormsImpl() {
 `call` is a function call as an rvalue. `cast` is a pure DynamicCast
 (no exec branches — for the statement form with success/fail use the
 statement `cast`). `member` is property access. `index` is
-array/map subscript. `self` is the K2 self node. `new_array` and
-`new_struct` mirror `K2Node_MakeArray` / `K2Node_MakeStruct`.
+array/map subscript. `self` is the K2 self node. `new_array`,
+`new_struct`, `new_set`, and `new_map` mirror `K2Node_MakeArray` /
+`K2Node_MakeStruct` / `K2Node_MakeSet` / `K2Node_MakeMap`. (The four
+delegate statement forms — `broadcast`, `bind_delegate`, `unbind_delegate`,
+`clear_delegate` — mirror the matching `K2Node_*Delegate` nodes.)
 
 ### Types
 

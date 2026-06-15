@@ -52,8 +52,8 @@ maintain.
 The full list of test files (`tests/test_*.cpp`):
 
 ```
-test_apply_ops.cpp          test_jsonrpc.cpp                test_single_instance_lock.cpp
-test_auto_backend.cpp       test_live_backend.cpp           test_soak.cpp
+test_apply_ops.cpp          test_jsonrpc.cpp                test_commandlet_backend.cpp
+test_auto_backend.cpp       test_socket_backend.cpp           test_soak.cpp
 test_bpir.cpp               test_main.cpp                   test_tools.cpp
 test_caching_reader.cpp     test_mcp.cpp                    test_transpile_roundtrip.cpp
 test_commandlet_arg_encoding.cpp  test_mock_backend.cpp     test_type_shorthand.cpp
@@ -125,7 +125,10 @@ shape the production backends return. A real opener
 (`Plugins/BlueprintReader/Tests/BlueprintReaderMcpCore/Private/backends/MockBlueprintReader.cpp:59-65`) reads every
 `.json` file in the directory, parses each into a `FixtureEntry`
 through the nlohmann adapters in `BlueprintReaderTypes.h`, and keys
-the result by `summary.asset_path`. Three fixtures ship with the repo:
+the result by `summary.asset_path`. Seven fixtures ship with the repo
+(three representative ones shown below; the rest —
+`BP_ExampleCharacter`, `BP_Inherited`, `BP_InputDemo`,
+`BP_StatefulMacros` — cover inheritance, input bindings, and macro graphs):
 
 | File                     | Asset path                          | Use |
 |--------------------------|-------------------------------------|-----|
@@ -146,9 +149,9 @@ without having to set up a corresponding UE asset.
 Real shape (`tests/test_mock_backend.cpp:10-13`):
 
 ```cpp
-TEST_CASE("MockBlueprintReader loads all 3 fixtures") {
+TEST_CASE("MockBlueprintReader loads all 7 fixtures") {
     auto reader = bpr::test::MakeMockReader();
-    CHECK(reader.FixtureCount() == 3);
+    CHECK(reader.FixtureCount() == 7);
 }
 ```
 
@@ -218,7 +221,7 @@ synthesizes the two BPs every live test depends on:
 Run with:
 
 ```bat
-"D:\Projects\Unreal Engine 5\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
+"D:\Games\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" ^
   "D:\Projects\UE5_MCP\LyraStarterGame.uproject" ^
   -run=BPRSeed -nullrhi -nosplash -unattended -nopause
 ```
@@ -232,7 +235,7 @@ you commit the regenerated `.uasset`s.
 
 ```pwsh
 $env:BP_READER_BACKEND     = "commandlet"
-$env:BP_READER_ENGINE_DIR  = "D:\Projects\Unreal Engine 5"
+$env:BP_READER_ENGINE_DIR  = "D:\Games\Epic Games\UE_5.8"
 $env:BP_READER_PROJECT     = "D:\Projects\UE5_MCP\LyraStarterGame.uproject"
 .\Binaries\Win64\BlueprintReaderMcpTests.exe
 ```
@@ -250,7 +253,7 @@ amortize across multiple test cases sharing one daemon process.
 
 ## Layer 3: live in-process (TCP)
 
-Source: `tests/test_live_backend.cpp`,
+Source: `tests/test_socket_backend.cpp`,
 `tests/test_auto_backend.cpp`.
 
 `LiveBlueprintReader` talks to an editor over TCP. The tests don't
@@ -258,7 +261,7 @@ require a real editor — they spin up a mock TCP server in-process
 that speaks the same wire protocol, which is enough to exercise the
 backend's handshake, framing, refresh, and retry logic.
 
-The mock at `test_live_backend.cpp:45+` (`MockServer`) accepts one
+The mock at `test_socket_backend.cpp:45+` (`MockServer`) accepts one
 connection per script:
 
 ```cpp
@@ -409,11 +412,13 @@ suite stays under a second; soak takes a few seconds to a minute. It
 exists for shaking out transport-layer changes — most changes don't
 need it but it's available when one does.
 
-### Single-instance lock
+### Single-instance lock (superseded)
 
-`test_single_instance_lock.cpp` tests the project-singleton mutex
-behavior — ensures two MCP-server processes against the same project
-don't fight for resources. This pins behavior the wiki / README
+> **Superseded.** The MCP-server-level single-instance lock and its
+> `test_single_instance_lock.cpp` were removed in the multi-session work;
+> the lifetime lock now sits on the daemon (see `05-backends.md`). The
+> original design ensured two MCP-server processes against the same project
+> didn't fight for resources. This pins behavior the wiki / README
 documents for users running both Claude Code and Claude Desktop
 against the same project.
 
