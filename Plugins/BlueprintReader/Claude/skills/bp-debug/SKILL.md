@@ -13,7 +13,8 @@ Pull these signals from the failure before guessing:
    `CppParseError`, `std::invalid_argument`.
 2. **Commandlet exit code** (in the tail of commandlet errors):
    - `1` — generic UE failure (bad command line, missing module).
-   - `3` — crashed during op (callstack in the tail).
+   - `2` — blueprint load failed (`LoadObject<UBlueprint>` returned null — wrong path, not loaded, or not a Blueprint).
+   - `3` — output write failed (the editor couldn't save the result JSON to disk).
    - `4` — asset / graph / function / node not found.
    - `5` — compile error after a write op.
    - `6` — `blueprint_locked_by_other_session` — another MCP session holds a write lock; retry after it ends.

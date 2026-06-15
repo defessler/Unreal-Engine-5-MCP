@@ -46,8 +46,11 @@ halves:
     Wired through two console commands for in-game triage:
     `bp_reader.list <Path>` and `bp_reader.read <AssetPath>`.
 - **`Plugins/BlueprintReader/Tests/BlueprintReaderMcp*/`** — C++20
-  MCP server as a pair of UE Program targets (BlueprintReaderMcp,
-  BlueprintReaderMcpCore, BlueprintReaderMcpTests). JSON-RPC 2.0 over
+  MCP server as two UE Program targets (BlueprintReaderMcp — the
+  production exe; BlueprintReaderMcpTests — the doctest suite) plus a
+  shared static-lib module (BlueprintReaderMcpCore) that both link;
+  BlueprintReaderMcpCore has no `.Target.cs` and is never built as an exe
+  on its own. JSON-RPC 2.0 over
   stdio. Backends: `mock` (fixtures only, no UE), `commandlet` (drives
   the plugin via `UnrealEditor-Cmd.exe`), `live` (talks to a running
   editor via TCP), and `auto` (probes per call, picks live or

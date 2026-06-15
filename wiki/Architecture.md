@@ -291,8 +291,10 @@ classDiagram
 ```
 
 `IBlueprintReader` carries roughly one virtual per tool family (~240).
-`AutoBlueprintReader` forwards every op through a `FORWARD` macro, so new
-tools are picked up automatically. Adding one tool touches all of:
+`AutoBlueprintReader` forwards every op through a `FORWARD` macro, so it's the
+one backend that needs no per-tool code — but every *other* backend needs a
+hand-written `override` (there is no auto-generation; a missing override means
+that backend throws "not supported"). Adding one tool touches all of:
 `IBlueprintReader` (virtual) → Mock/Commandlet/Socket/Caching/ReadOnly/Auto
 (impl) → `BlueprintTools.cpp` (descriptor + handler) → plugin `RunXxxOp`.
 
