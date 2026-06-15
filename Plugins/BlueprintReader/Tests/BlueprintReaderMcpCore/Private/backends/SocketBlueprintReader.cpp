@@ -83,6 +83,12 @@ const ErrorCodeInfo* LookupErrorCode(int code) {
 			"save step failed — check the engine log for the compile "
 			"errors that surfaced"
 		}; return &i; }
+		case 6: { static const ErrorCodeInfo i = {
+			"DestClassConflict",
+			"a different-class object already exists at the destination path — "
+			"the create/duplicate op refused rather than overwrite it (which "
+			"would fatally crash the editor); delete it or choose another path"
+		}; return &i; }
 		default: return nullptr;
 	}
 }

@@ -1833,6 +1833,86 @@ namespace
 		return nullptr;
 	}
 
+	// HARD-D4 guard. A create op's typed idempotency probe (LoadObject<ThisClass>)
+	// returns null when an object of a DIFFERENT, incompatible class already
+	// occupies the destination object path — so the op falls through to its
+	// factory, whose StaticAllocateObject then appError()s ("Cannot replace
+	// existing object of a different class"). That appError is FATAL: it tears
+	// down the whole editor/daemon rather than returning a recoverable tool
+	// error (found by the every-tool live smoke: create_material then
+	// create_material_instance at one path killed the daemon). Call this right
+	// after the typed idempotency check. Returns true + writes an ok:false body
+	// (OutCode = EmitJson's result) when a conflicting object/asset exists, so
+	// the caller can `return OutCode;`. Returns false when the path is free or
+	// holds a same/compatible-class asset (the caller's own idempotency owns
+	// that case). Checks both the in-memory resident (the direct appError
+	// trigger) and the on-disk asset (which would conflict once loaded).
+	bool DestClassConflict(const FString& AssetPath, const UClass* IntendedClass,
+		const FString& OutputPath, bool bPretty, int32& OutCode)
+	{
+		if (!IntendedClass)
+		{
+			return false;
+		}
+		// Canonical object path: a package-only "/Game/Foo" -> "/Game/Foo.Foo".
+		FString ObjPath = AssetPath;
+		if (!ObjPath.Contains(TEXT(".")))
+		{
+			ObjPath = AssetPath + TEXT(".") + FPackageName::GetShortName(AssetPath);
+		}
+		const UClass* ExistingClass = nullptr;
+		const TCHAR* Where = TEXT("");
+		if (const UObject* Resident = StaticFindObject(UObject::StaticClass(), nullptr, *ObjPath))
+		{
+			ExistingClass = Resident->GetClass();
+			Where = TEXT("loaded in the editor");
+		}
+		else
+		{
+			const FAssetData AD = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(
+				TEXT("AssetRegistry")).Get().GetAssetByObjectPath(FSoftObjectPath(ObjPath));
+			if (AD.IsValid())
+			{
+				ExistingClass = AD.GetClass();
+				Where = TEXT("on disk");
+			}
+		}
+		// No conflict when the path is free, the class is unresolved, or the
+		// existing class is compatible (same/subclass) — that last case is the
+		// caller's own already_existed idempotency. Conflict iff the existing
+		// class is NOT a child of the intended one: exactly StaticAllocateObject's
+		// fatal condition.
+		if (!ExistingClass || ExistingClass->IsChildOf(IntendedClass))
+		{
+			return false;
+		}
+		const FString ExistingName = ExistingClass->GetName();
+		// `error` is what the MCP backend surfaces to the client: Socket::RunOp /
+		// RunOpOneShot throw a BlueprintReaderError carrying the body's `error`
+		// field when the op returns a non-zero code. Make it the full message.
+		const FString Msg = FString::Printf(
+			TEXT("a %s already exists (%s) at %s; delete it or pick a different path "
+			     "before creating a %s there"),
+			*ExistingName, Where, *AssetPath, *IntendedClass->GetName());
+		auto Obj = MakeShared<FJsonObject>();
+		Obj->SetBoolField(TEXT("ok"), false);
+		Obj->SetStringField(TEXT("error"), Msg);
+		Obj->SetStringField(TEXT("error_code"), TEXT("destination_class_conflict"));
+		Obj->SetStringField(TEXT("asset_path"), AssetPath);
+		Obj->SetStringField(TEXT("existing_class"), ExistingName);
+		Obj->SetStringField(TEXT("intended_class"), IntendedClass->GetName());
+		EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		// Return a NON-ZERO op code (6 = DestClassConflict) so the body is
+		// surfaced as a thrown error rather than parsed as a (misleading)
+		// success by the create method. The full-purge GC / fatal never happens
+		// because the caller returns here before its factory runs.
+		OutCode = 6;
+		UE_LOG(LogBlueprintReader, Warning,
+			TEXT("Create refused (HARD-D4 guard): %s already a %s — would fatal on "
+			     "create of %s"), *AssetPath, *ExistingName, *IntendedClass->GetName());
+		return true;
+	}
+
 	int32 RunCreateBlueprintOp(const FString& Params, const FString& OutputPath, bool bPretty)
 	{
 		const FString AssetPath = ResolveAssetPath(Params);
@@ -1886,6 +1966,13 @@ namespace
 			Obj->SetBoolField(TEXT("already_existed"), true);
 			Obj->SetStringField(TEXT("asset_path"), AssetPath);
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+		// HARD-D4: refuse cleanly if a different-class object squats the path
+		// (else the factory below appError()s and kills the editor).
+		int32 ConflictCode = 0;
+		if (DestClassConflict(AssetPath, UBlueprint::StaticClass(), OutputPath, bPretty, ConflictCode))
+		{
+			return ConflictCode;
 		}
 
 		// Resolve the parent. A Blueprint Interface may omit -ParentClass= and
@@ -2006,6 +2093,12 @@ namespace
 			Obj->SetStringField(TEXT("asset_path"), AssetPath);
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
 		}
+		// HARD-D4: refuse cleanly if a different-class object squats the path.
+		int32 ConflictCode = 0;
+		if (DestClassConflict(AssetPath, UMaterial::StaticClass(), OutputPath, bPretty, ConflictCode))
+		{
+			return ConflictCode;
+		}
 
 		const FString PackageName = AssetPath;
 		const FString AssetName   = FPackageName::GetShortName(AssetPath);
@@ -2072,6 +2165,14 @@ namespace
 			Obj->SetBoolField(TEXT("already_existed"), true);
 			Obj->SetStringField(TEXT("asset_path"), AssetPath);
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+		// HARD-D4: refuse cleanly if a different-class object squats the path —
+		// this is the exact pair (Material then MaterialInstanceConstant) that
+		// the live smoke proved fatal.
+		int32 ConflictCode = 0;
+		if (DestClassConflict(AssetPath, UMaterialInstanceConstant::StaticClass(), OutputPath, bPretty, ConflictCode))
+		{
+			return ConflictCode;
 		}
 
 		const FString PackageName = AssetPath;
@@ -5671,6 +5772,15 @@ namespace
 			return 4;
 		}
 
+		// HARD-D4: refuse cleanly if a different-class object squats the path
+		// (a non-UDataAsset, or an incompatible DataAsset subclass) instead of
+		// letting NewObject below appError() the editor.
+		int32 ConflictCode = 0;
+		if (DestClassConflict(AssetPath, AssetClass, OutputPath, bPretty, ConflictCode))
+		{
+			return ConflictCode;
+		}
+
 		// Convert package path to disk path + create the asset.
 		FString PackageName = AssetPath;
 		FString AssetName = FPackageName::GetShortName(PackageName);
@@ -7151,6 +7261,13 @@ namespace
 			Obj->SetBoolField(TEXT("already_existed"), true);
 			Obj->SetStringField(TEXT("asset_path"), DestAsset);
 			return EmitJson(FBlueprintReaderWireJson::WriteString(Obj, bPretty), OutputPath);
+		}
+		// HARD-D4: refuse cleanly if a different-class object squats the dest
+		// (DuplicateAsset would otherwise appError() the editor on the clash).
+		int32 ConflictCode = 0;
+		if (DestClassConflict(DestAsset, UBlueprint::StaticClass(), OutputPath, bPretty, ConflictCode))
+		{
+			return ConflictCode;
 		}
 
 		UBlueprint* SourceBP = LoadMutableBlueprint(SourceAsset);
