@@ -2325,12 +2325,20 @@
   },
   {
     "category": "asset",
-    "description": "[asset] Save every dirty package the editor has loaded. With `dirty_only=true` (default), clean packages are skipped — fast no-op when nothing's changed. Returns count saved + any failed asset paths.",
+    "description": "[asset] Save every dirty package the editor has loaded. With `dirty_only=true` (default), clean packages are skipped — fast no-op when nothing's changed. `scope` defaults to \"touched\": only packages THIS bp-reader session loaded-for-write or saved are persisted — in a live editor the user's own half-edited packages are dirty too, and saving them without consent would persist their work-in-progress. Pass scope:\"all\" for the editor-wide sweep. Returns count saved + any failed asset paths.",
     "input_schema": {
       "properties": {
         "dirty_only": {
           "description": "Default true. Set false to save every loaded package, dirty or not.",
           "type": "boolean"
+        },
+        "scope": {
+          "description": "Default \"touched\" (only packages this session mutated). \"all\" = every dirty package, including the user's own unsaved edits.",
+          "enum": [
+            "touched",
+            "all"
+          ],
+          "type": "string"
         }
       },
       "type": "object"
@@ -2608,7 +2616,7 @@
   },
   {
     "category": "editor",
-    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable).",
+    "description": "[editor] Probe whether the live editor is responsive. Answered on the editor's worker thread WITHOUT touching the game thread, so it returns immediately even when the game thread is halted — distinguishing a PAUSED editor (debugger breakpoint, modal dialog, or long synchronous task: reachable but game thread stalled) from an UNREACHABLE one (process gone / port not published). Returns `state` (\"healthy\"|\"paused\"|\"unreachable\"), `reachable`, `game_thread_responsive`, and `game_thread_age_ms` (how long since the game thread last advanced; -1 = unknown, e.g. the commandlet one-shot backend which has no persistent editor). Call this when a normal tool call is hanging to learn whether to wait (paused) or reconnect (unreachable). Also reports `write_enabled` — whether mutation tools are enabled (false in the default read-only mode, BP_READER_READ_ONLY=1) — so a client can discover write-gating PRE-FLIGHT instead of on the first rejected write. Also reports `daemon_enabled` (whether the commandlet daemon is on, BP_READER_DAEMON) and `disabled_plugins` (BP_READER_PLUGIN_DENYLIST — plugins skipped on the editor spawn, which explains absent functionality), so the server's config is discoverable pre-flight.",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -2616,6 +2624,15 @@
     "name": "health_check",
     "output_schema": {
       "properties": {
+        "daemon_enabled": {
+          "type": "boolean"
+        },
+        "disabled_plugins": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "game_thread_age_ms": {
           "type": "integer"
         },
@@ -2630,6 +2647,9 @@
         },
         "state": {
           "type": "string"
+        },
+        "write_enabled": {
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -3408,6 +3428,60 @@
         },
         "tab_label": {
           "type": "string"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "category": "editor",
+    "description": "[editor] Execute an editor menu command by its registered UToolMenus `menu` name + `entry` — the most geometry-independent way to drive the editor (no clicking, no painted geometry, the menu need not be open). Generates the menu, finds the entry by command name (exact, case-insensitive) OR label (substring), and executes its bound action exactly as a click would. Works for command-bound level-editor entries — e.g. menu='LevelEditor.MainMenu.Select' entry='SelectAll'; menu='LevelEditor.MainMenu.Edit' entry='Undo'; menu='LevelEditor.MainMenu.File' entry='SaveAll'. The level editor's GLOBAL command list is seeded, so an entry whose command lives in a module-specific list (e.g. Fab/Bridge in the Window menu) or that uses a non-command action type won't resolve headlessly — the error then points you at ui_click for geometry-based invocation. GATED: returns an error unless the editor was started with BP_READER_ALLOW_UI=1 (off by default — it runs editor commands). If the menu or entry isn't found, the error lists the menu's `available_entries` ([{name,label}]) so you can correct it. Submenus and separators have no action — target the leaf command. Returns `{ok, invoked, menu, entry, label}` or `{ok:false, error, available_entries}`. Requires a GUI / -RenderOffscreen editor.",
+    "input_schema": {
+      "properties": {
+        "entry": {
+          "description": "The entry's command name (exact, case-insensitive) or a label substring (e.g. 'SelectAll' or 'Select All').",
+          "type": "string"
+        },
+        "menu": {
+          "description": "The registered UToolMenus name (dotted path, e.g. 'LevelEditor.MainMenu.Select').",
+          "type": "string"
+        }
+      },
+      "required": [
+        "menu",
+        "entry"
+      ],
+      "type": "object"
+    },
+    "name": "ui_invoke_menu",
+    "output_schema": {
+      "properties": {
+        "available_entries": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "invoked": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "menu": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -6213,11 +6287,15 @@
   },
   {
     "category": "widget",
-    "description": "[widget] Add a UWidget node (Button, TextBlock, etc.) to a UWidgetBlueprint's UMG tree. For Blueprint graph nodes use `add_node`. `widget_class` is the short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, etc.). `parent_name` empty = becomes the new root (replaces the existing root only if the tree was empty). Otherwise appends as a child of `parent_name`.",
+    "description": "[widget] Add a UWidget node (Button, TextBlock, etc.) to a UWidgetBlueprint's UMG tree. For Blueprint graph nodes use `add_node`. `widget_class` is the short class name (`Button`, `TextBlock`, `Image`, `VerticalBox`, etc.). `parent_name` empty = becomes the new root (replaces the existing root only if the tree was empty). Otherwise appends as a child of `parent_name` — or pass `index` (0-based) to insert at a specific child position instead of appending (clamped into range). The response's `child_index` reports the final position under the parent.",
     "input_schema": {
       "properties": {
         "asset_path": {
           "type": "string"
+        },
+        "index": {
+          "description": "Optional 0-based child position under `parent_name`. Omit (or -1) to append as the last child. Clamped into range.",
+          "type": "integer"
         },
         "name": {
           "type": "string"
@@ -6244,6 +6322,10 @@
         },
         "asset_path": {
           "type": "string"
+        },
+        "child_index": {
+          "description": "Final 0-based index under the parent panel (-1 = root or unknown).",
+          "type": "integer"
         },
         "created": {
           "type": "boolean"
