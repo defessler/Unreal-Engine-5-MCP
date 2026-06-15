@@ -81,11 +81,18 @@ const std::set<std::string, std::less<>> kActionDenylist = {
 	"ui_invoke_menu",             // TEST-2 P1b: executes an editor command — don't in the smoke
 };
 
-// Best-effort placeholders for common required fields. A deliberately
-// non-existent asset path makes every asset-scoped tool (read OR write OR
-// delete) dispatch and return a benign not-found with zero side effects.
-json SmokeArgs(const json& inputSchema) {
-	static const char* kMissingAsset = "/Game/__bpr_smoke_missing__";
+// Best-effort placeholders for common required fields. The asset path is
+// made UNIQUE PER TOOL ("/Game/__bpr_smoke_<tool>__"): for read/delete tools
+// it's still a non-existent path (benign not-found), but for create-type tools
+// (create_material, create_material_instance, duplicate_*, ...) it prevents a
+// fatal cross-class collision. Sharing ONE path made create_material leave a
+// resident Material and create_material_instance then hit UE's
+// StaticAllocateObject fatal ("Cannot replace existing object of a different
+// class"), killing the editor mid-sweep. Per-tool paths keep every tool
+// dispatching while isolating each create. (Any .uasset a create tool saves
+// lands at Content/__bpr_smoke_<tool>__.uasset — the runner prunes those.)
+json SmokeArgs(const std::string& toolName, const json& inputSchema) {
+	const std::string kMissingAsset = "/Game/__bpr_smoke_" + toolName + "__";
 	json args = json::object();
 	if (!inputSchema.is_object() || !inputSchema.contains("required")) {
 		return args;
@@ -169,7 +176,7 @@ TEST_CASE("[live][smoke] every tool dispatches against a real editor"
 			++denylisted;
 			continue;
 		}
-		const json args = SmokeArgs(t.value("inputSchema", json::object()));
+		const json args = SmokeArgs(name, t.value("inputSchema", json::object()));
 		++dispatched;
 		try {
 			(void)(*fn)(args);

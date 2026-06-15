@@ -75,4 +75,14 @@ $rt0 = Get-Date
 & $ExePath @tcArgs
 $code = $LASTEXITCODE
 Write-Host ("[live-tests] done in {0:n0}s (exit $code)" -f ((Get-Date)-$rt0).TotalSeconds)
+
+# Prune throwaway assets the [live][smoke] create-type tools materialize at
+# their unique smoke paths (a couple of create_* tools, e.g. create_material /
+# create_material_instance, actually save Content/__bpr_smoke_<tool>__.uasset).
+# Bounded + deterministic, but pruning keeps re-runs and the working tree clean.
+$smokeLitter = Get-ChildItem (Join-Path $projDir "Content") -Recurse -Filter "__bpr_smoke_*" -ErrorAction SilentlyContinue
+if ($smokeLitter) {
+  $smokeLitter | Remove-Item -Force -ErrorAction SilentlyContinue
+  Write-Host "[live-tests] pruned $($smokeLitter.Count) smoke scratch asset(s)"
+}
 exit $code
