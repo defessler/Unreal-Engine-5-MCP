@@ -2114,12 +2114,32 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
   Live-verified on a warm `-nullrhi` daemon (`Saved/verify-hardd3.ps1`):
   dup→del→dup→del = `already_existed` false×2, `deleted` true×2, file absent on disk
   after each delete. · **Status:** ✅ Done (58d62149, 2026-06-14)
+- **HARD-D4 (editor, P2)** — create-type tools can **hard-crash the editor** on a
+  cross-class path collision. If an object of a different class already exists at
+  the target path, the create proceeds into UE's `StaticAllocateObject`, which
+  `appError`s (`UObjectGlobals.cpp` "Cannot replace existing object of a different
+  class") — a fatal that kills the whole daemon, not a recoverable tool error.
+  Reproduced live: `create_material` then `create_material_instance` at the same
+  path fatals (surfaced by the §11 every-tool smoke, which used to share one path).
+  The smoke harness was fixed to isolate each tool (198c2f22), but the underlying
+  tool gap stands: create/duplicate ops should pre-check for an existing
+  different-class object at the destination and return a clean error instead of
+  letting the engine `appError`. Audit all `create_*`/`duplicate_*` handlers.
+  · **Status:** ☐ Open
 
 ---
 
 ## Revision log
 
 Newest first. One line per change to this file.
+
+- **2026-06-14** — **§11 verified by a live smoke; new HARD-D4 found.** Ran the full
+  gated `[live]` doctests + every-tool sweep on a warm Lyra daemon: HARD-1 (bounded
+  recv, incl. crash-recovery respawn), HARD-2 (no false watchdog kill — daemon
+  survived 236-tool sweep), HARD-D2 (warm attach), HARD-D3 (delete eviction), and
+  the doctor's REL-9 DLL check all green. The sweep surfaced HARD-D4 (create tools
+  `appError` on cross-class path collision); fixed the smoke harness to isolate
+  per-tool paths (198c2f22) and logged the tool gap. Mock 893/0.
 
 - **2026-06-14** — **HARD-D3 ✅ Done; HARD-D1 ✅ Done (§11 hardening complete).**
   `delete_asset` same-session residue root-caused: a package-only
