@@ -2137,10 +2137,200 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 ---
 
+## 12. Brittleness & complexity hardening (BRIT-*) {#brittleness}
+
+From a grounded multi-agent **code-brittleness audit** (2026-06-15): a map of
+the places where the codebase relies on a hand-maintained invariant with **no
+compile-time guard**, near-duplicated logic that must be edited in lockstep, or
+a footgun (raw-pointer side channel, silent arg mangling, encoding drift) that
+fails quietly. The structural items (BRIT-1..7) are the bigger, still-open
+reductions in foot-room; BRIT-8..14 are small concrete bugs the audit surfaced
+that are **fixed in this same change**. The unifying theme is the same one §11
+chased: make the invariant impossible to violate (a linker/test error, a shared
+base, a generated table) rather than documented.
+
+### BRIT-1 — make the hand-synced "new tool" invariant compile-/test-enforced
+- **Status:** ☐ Open · **Effort:** L · **Cross-cuts:** "Adding a new tool" in
+  [`CLAUDE.md`](../../CLAUDE.md)
+- Adding one tool requires **~8 manual, unguarded edits**: 6 backend `override`s
+  down the `ReadOnly → Caching → Auto → (Socket|Commandlet|Mock)` chain, a
+  `kWrites` entry (`…/backends/AutoBlueprintReader.cpp:374`), a `ToolCategories`
+  entry (`…/tools/ToolCategories.cpp`), the `list_node_kinds` ↔ `KnownNodeKinds`
+  pair, a `ParseOp` string + a `kDispatchTable` entry (the editor commandlet),
+  the `add_node` extras tunnel, and the tool-count literal in **7 test files**.
+  None are enforced at compile time. `IBlueprintReader.h` carries **~204
+  throwing-default virtuals** (`…/backends/IBlueprintReader.h` — "not supported by
+  this backend"), so a **missed `override` silently 404s the production `auto`
+  backend** even though a real backend implements the op. This has already burned
+  the material / data-table / widget / actor / console batches (the retroactive
+  catch-up block at the top of `…/backends/AutoBlueprintReader.h` is the scar).
+- Hardening: (a) make the chain virtuals **pure (`= 0`)** + emit a generated
+  `NullBlueprintReader` stub so the **linker** rejects a missing override instead
+  of a silent runtime 404; (b) **generate** `kWrites` + `ToolCategories` from the
+  single registration site in `BlueprintTools.cpp` (the schema already knows
+  write-ness + category); (c) one test that asserts **every registered tool is in
+  a category** and (if a write) **in `kWrites`** — turning 4 of the 8 edits into a
+  build failure when skipped.
+- **Why:** the single highest-recurrence brittleness class in the repo — a
+  silent-404 on the default backend is invisible until a client hits it, and the
+  count-literal drift breaks CI noisily but unhelpfully. Cross-cuts every future
+  PARITY/UX/EDIT tool add.
+
+### BRIT-2 — collapse the LiveServer ↔ CmdletServer transport drift
+- **Status:** ☐ Open · **Effort:** M
+- `BlueprintReaderLiveServer` and the commandlet daemon's connection server are
+  **near-duplicate transport runnables** — shutdown handling, the per-connection
+  flush-on-exit, and the recv loop are copy-pasted, so a hardening fix (e.g. §11
+  HARD-2's shutdown-responsive wait, or BRIT-12's shutdown guards) must be ported
+  by hand into both and silently rots if only one is touched. They have **already
+  drifted**: the commandlet path uses the in-memory `__MEM__:<ptr>` output channel
+  (BlueprintReaderCommandlet.cpp `EmitJson`) while LiveServer still pays a per-op
+  **temp-file round-trip with a silent `{}` fallback** on read failure.
+- Hardening: extract a shared `FBaseConnectionRunnable` holding the common state
+  (`bShuttingDown` + the `FFlushOnExit` guard + the bounded recv) so fixes apply
+  to both, and **port the `__MEM__` in-memory output path to LiveServer** so the
+  live backend stops doing the temp-file dance (and stops the silent-`{}` data
+  loss on a transient read failure).
+- **Why:** two transports that must stay identical but are maintained separately
+  is a steady source of "fixed it but only on one path" regressions.
+
+### BRIT-3 — close the multi-engine + zero-editor-CI gap
+- **Status:** ☐ Open · **Effort:** M (provision a runner) · **Cross-cuts:**
+  "Build invariants" in [`CLAUDE.md`](../../CLAUDE.md); §1 PARITY hosting notes
+- The editor module — a **~15,300-line** `BlueprintReaderCommandlet.cpp` plus the
+  LiveServer/Introspector — is **never compiled by hosted CI** (`mcp-tests.yml`
+  builds only the engine-free server + mock suite via CMake). The plugin targets
+  **more than one UE version** (a pre-5.8 engine and 5.8) but carries only **a
+  handful of `UE_VERSION_OLDER_THAN` guards**, so a 5.8-only API slipping in (the
+  exact class of regression #223 caused / #240 fixed) **passes CI silently** and
+  only breaks a downstream build. `editor-build.yml` is a self-hosted scaffold;
+  no runner is registered.
+- Hardening: provision a **self-hosted `ue5` runner per targeted engine version**
+  (set `UE_ENGINE_DIR`/`UE_PROJECT`/`UE_EDITOR_TARGET`) so the editor module is
+  compile-smoked against each engine on every `Source/**` change. Until then, a
+  local editor build on each targeted version remains the only guard.
+- **Why:** the largest, most-edited file in the repo has zero automated compile
+  coverage; the multi-engine invariant is enforced only by memory.
+
+### BRIT-4 — key the `__MEM__` side-channel by a call-id, not a raw address
+- **Status:** ☐ Open · **Effort:** M · **Cross-cuts:** BRIT-2
+- The PERF-1 daemon fast path recovers a `FString*` from a **decimal-serialized
+  `uint64`** on the commandlet command line and writes through it
+  (`BlueprintReaderCommandlet.cpp` `EmitJson`, ~`:849-878`), guarded **only by
+  `Addr != 0`**. A serialization bug, a truncated arg, or a stale/forged value is
+  therefore a **wild heap write** into the daemon process — the worst failure
+  class (silent memory corruption, not a clean error).
+- Hardening: replace the raw address with a **session-scoped side-channel map
+  keyed by an integer call-id** — the caller registers an output slot, passes the
+  id, and the daemon writes into the map entry (or no-ops + errors on an unknown
+  id). Same zero-temp-file win, no raw pointer crossing a serialized boundary.
+- **Why:** turns a potential arbitrary-memory-write into a bounded map lookup.
+  Pairs with BRIT-2 (the in-memory channel should exist on both transports and be
+  safe on both).
+
+### BRIT-5 — an `EscapeFParseArg()` helper for every commandlet-arg value
+- **Status:** ☐ Open · **Effort:** S–M · **Cross-cuts:** UX-P3a (already fixed a
+  symptom of this)
+- The known `FParse::Value` footguns (CLAUDE.md "Common gotchas") still depend on
+  scattered hand-discipline: an **embedded double-quote silently truncates** a
+  value, and an **empty optional flag swallows the next token**. The `Params`
+  builders in `CommandletBlueprintReader` / `SocketBlueprintReader` and several
+  editor ops each open-code the quoting + the empty-skip, so a new arg that forgets
+  it mangles silently (UX-P3a was exactly this for space-bearing names).
+- Hardening: a single `EscapeFParseArg()` (wrap + escape interior quotes) applied
+  to **every** value at the join site, and extend the empty-value skip beyond the
+  current `-Query=` / `-Kind=` special-cases to **any** empty optional flag.
+- **Why:** removes a whole family of silent-wrong-arg bugs by construction rather
+  than per-arg vigilance.
+
+### BRIT-6 — harden every installer to UTF-8-no-BOM writes + a PS 5.1 CI check
+- **Status:** ☐ Open · **Effort:** S
+- `Install-ClaudeAssets.ps1` was the **only installer without `#requires -Version
+  7`**, so running it under Windows PowerShell 5.1 (vs pwsh 7) **corrupted the
+  deployed docs** via BOM/encoding differences. Its file I/O has since been
+  hardened to **.NET `File::WriteAllText` (UTF-8, no BOM)** — but the broader
+  invariant (every installer writes UTF-8-no-BOM and is verified under the *older*
+  shell) is not yet enforced.
+- Hardening: audit all installer / config-writer scripts to **.NET UTF-8-no-BOM
+  writes** and add a **CI check that runs them under PS 5.1** (the environment
+  that actually broke), so an encoding regression fails the build instead of
+  shipping mojibake. *(Note: the `Install-ClaudeAssets.ps1` I/O is already on
+  `WriteAllText` — this item is the remaining audit + the PS-5.1 CI gate.)*
+- **Why:** doc/config corruption is invisible at author time and only shows on a
+  fresh deploy from the wrong shell.
+
+### BRIT-7 — wire a gated-but-runnable codegen-compiles oracle
+- **Status:** ☐ Open · **Effort:** M · **Cross-cuts:** TRANS-P1b, REL roadmap
+- The decompile/codegen path can emit **silently wrong** C++ (or a silently empty
+  BP graph) and there is **no automated verification path**: the UHT
+  compile-roundtrip test is **permanently gated off**
+  (`BP_READER_RUN_BPIR_COMPILE`, due to the LyraGenerated duplicate-header clash),
+  so codegen correctness rests entirely on hand review + doctest string-pinning of
+  the *emitted text* (which pins shape, not compilability).
+- Hardening: note + schedule a **gated-but-runnable** codegen-compiles check — a
+  minimal isolated module (no LyraGenerated clash) that compiles the generated
+  `.h/.cpp` (or materializes + recompiles the BP) behind an opt-in env flag, so
+  CI *can* run it on a provisioned host and a local run is one flag away. Shares
+  the verify-by-recompile machinery TRANS-P1b would build.
+- **Why:** the only subsystem that can produce confidently-wrong output with no
+  guard at all; closing it converts "readable approximation" into "verified."
+
+### Fixed in this change (BRIT-8..14)
+
+Small, concrete brittleness bugs the audit surfaced, fixed in the same change.
+*(Status reflects the edit landing in this change; the PR/commit is recorded on
+merge.)*
+
+- **BRIT-8 — `kWrites` omissions** (instance of BRIT-1). `cook_content`,
+  `package_project`, `ui_invoke_menu`, and `set_camera_transform` were missing
+  from `kWrites` (`…/backends/AutoBlueprintReader.cpp`), so the read-only gate
+  mis-classified them and they could slip past the write guard. Added.
+  · **Status:** ✅ Done (in this change)
+- **BRIT-9 — live-editor GC gate in `delete_asset`.** The delete path could run
+  GC/eviction in a context where a live editor still held references, risking a
+  destabilized session. Gated the GC step appropriately (editor-state aware).
+  · **Status:** ✅ Done (in this change)
+- **BRIT-10 — `softobject`→`soft_object` codegen shorthand.** The type-shorthand
+  map mis-spelled the soft-object key, so the shorthand didn't resolve in
+  generated output. Corrected the spelling. · **Status:** ✅ Done (in this change)
+- **BRIT-11 — diamond-flow `branchVisited` in `Decompile`.** A diamond control
+  flow (two branches re-converging) re-walked an already-visited merge target;
+  added a `branchVisited` guard so the decompiler doesn't double-emit / loop on
+  the convergence (a narrow slice of the broader TRANS-P2a hardening).
+  · **Status:** ✅ Done (in this change)
+- **BRIT-12 — LiveServer shutdown guards** (instance of BRIT-2). Added the missing
+  shutdown guards on the live transport's connection path so a stop while a
+  connection is mid-op doesn't race; the durable fix is the shared base of BRIT-2.
+  · **Status:** ✅ Done (in this change)
+- **BRIT-13 — `apply_ops` `add_node` extras (6→15)** (instance of BRIT-1). The
+  `apply_ops` path only tunneled **6** of the `add_node` extras through to the
+  plugin (vs the 15 the single-call `add_node` handler maps), so batch-built nodes
+  silently lost the extra args. Brought the batch tunnel to the full 15.
+  · **Status:** ✅ Done (in this change)
+- **BRIT-14 — socket `AddFunctionInput`/`AddFunctionOutput` map value-type flags.**
+  The `SocketBlueprintReader` arg frame for these two ops dropped the map
+  value-type flags, so a map-typed function param/return lost its value type over
+  the live backend. Added the missing flags to the socket serializer.
+  · **Status:** ✅ Done (in this change)
+
+---
+
 ## Revision log
 
 Newest first. One line per change to this file.
 
+- **2026-06-15** — **§12 added: Brittleness & complexity hardening (BRIT-*).** A
+  grounded multi-agent code-brittleness audit → 7 open structural items
+  (BRIT-1 compile-/test-enforce the hand-synced "new tool" invariant family incl.
+  the ~204 throwing-default virtuals; BRIT-2 collapse the LiveServer↔CmdletServer
+  transport drift; BRIT-3 close the zero-editor-CI / multi-engine gap; BRIT-4
+  key the `__MEM__` side-channel by call-id not a raw address; BRIT-5
+  `EscapeFParseArg()`; BRIT-6 installer UTF-8-no-BOM + PS-5.1 CI check; BRIT-7
+  gated-but-runnable codegen-compiles oracle) + 7 small bugs fixed in this change
+  (BRIT-8 `kWrites` omissions; BRIT-9 delete_asset live-editor GC gate; BRIT-10
+  `soft_object` codegen shorthand; BRIT-11 Decompile diamond `branchVisited`;
+  BRIT-12 LiveServer shutdown guards; BRIT-13 apply_ops add_node extras 6→15;
+  BRIT-14 socket AddFunctionInput/Output map value-type flags).
 - **2026-06-14** — **HARD-D4 ✅ Done.** Create/duplicate ops now refuse a cross-class
   destination collision (shared `DestClassConflict` guard → op code 6 → backend
   throws a clean error) instead of letting UE's `StaticAllocateObject` fatally
