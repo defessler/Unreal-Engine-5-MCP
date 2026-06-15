@@ -2070,36 +2070,50 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 ### Deferred (confirmed-safe, fully specified)
 
-- **HARD-D1 (cleanup)** — **15 of 22 de-dups shipped** across HARD-4 and a second
-  pass (3c285eb6 `ParseAssetRegistryRows`→shared `CommandletResultParse.h`;
-  6187d5ab `env::IsTruthy` unifies the 5 truthiness sites + fixes the
-  `ParseResponseControls` `!= "0"` inconsistency + `AssetPathProperty()` for 8
-  asset_path literals; 42994084 merged the duplicate `is_object` branch in
-  `executeAndWrap` + `find_node`→`PaginatedSchema()`). **Dropped as NOT safe** (on
+- **HARD-D1 (cleanup)** — **de-dups shipped** across HARD-4 and follow-up passes
+  (3c285eb6 `ParseAssetRegistryRows`→shared `CommandletResultParse.h`; 6187d5ab
+  `env::IsTruthy` unifies the 5 truthiness sites + fixes the `ParseResponseControls`
+  `!= "0"` inconsistency + `AssetPathProperty()` for 8 asset_path literals; 42994084
+  merged the duplicate `is_object` branch in `executeAndWrap` +
+  `find_node`→`PaginatedSchema()`; 2f4cb2db shared `InFlightGuard` for the two
+  Mcp.cpp in-flight RAII structs + `Emitter::UnwrapLit` for the 3 CppEmit
+  literal-unwrap lambdas; 58d62149 extracted `ToPackagePath`→
+  `BlueprintReaderPathUtils.h` (editor cross-TU, replacing two anon-namespace copies)
+  + dropped 7 duplicate editor-TU `#include`s). **Dropped as NOT safe** (on
   inspection, not the clean de-dups the audit assumed): "move 5 result-struct
   parsers" — backends differ (Socket's CloneGraph has an `is_object()` guard the
   commandlet lacks); the `-Op=` label-strip — `std::string` vs `std::wstring` across
   backends; the `toPackage` lambda — only a subset of `NormalizeAssetPath` (no
-  trim/backslash), so swapping changes did-you-mean behavior. **Remaining (genuinely
-  marginal, deferred):** `WriteGeneratedSource` temp-marshalling RAII (~8 lines,
-  differs by string/wstring args), the two 4-line in-flight RAII structs in Mcp.cpp,
-  `EmitCallStatement` extraction (codegen surface), the editor-TU duplicate
-  `#include`s (cosmetic — header guards make them harmless), `ToPackagePath`
-  cross-TU dedup (editor-module). · **Status:** ◑ substantively done
+  trim/backslash), so swapping changes did-you-mean behavior; `WriteGeneratedSource`
+  temp-marshalling RAII — string/wstring arg divergence + RAII cleanup would change
+  the throw-path temp-leak behavior. **Remaining (single, marginal, deferred):**
+  `EmitCallStatement` extraction (codegen surface — output is doctest-pinned, low
+  value). · **Status:** ✅ Done (de-dups through 58d62149; one marginal codegen
+  extraction deferred)
 - **HARD-D2 (test, M)** — **ROOT-CAUSED + made routine.** The "daemon never
   handshakes for Lyra even at 600s" was the ONE-TIME cold shader/DDC compile on the
   first 5.8 open of 5.6 content, not a handshake bug: measured warm = handshake 15s,
   MCP-server attach <1s, full gated `[live]` doctest pass 1s. Fix is operational —
   keep one warm daemon and ATTACH instead of auto-spawning per process, via
   `Scripts/Run-LiveTests.ps1` (85217f9e). · **Status:** ✅ Done (85217f9e, 2026-06-14)
-- **HARD-D3 (editor, P2)** — `DeleteAsset` inside a live daemon session removes the
-  `.uasset` FILE but returns `deleted=false` and leaves the asset in the editor's
-  in-memory asset registry, so a later `DuplicateBlueprint`/create to that path
-  reports already-existing within the same session. Editor-side eviction gap
-  (`BlueprintReaderCommandlet.cpp` DeleteAsset op — likely needs an explicit
-  `UObjectRedirector`/registry unload after `ObjectTools::DeleteAssets`). Found via
-  the live apply_ops re-run; worked around in the test with a unique per-run name.
-  · **Status:** ☐ Open
+- **HARD-D3 (editor, P2)** — `DeleteAsset` inside a live daemon session purged the
+  `.uasset` and returned `deleted=true`, yet a same-session recreate to that path
+  still reported `already_existed=true`: the in-memory `UBlueprint` (+ its
+  `UPackage`/`FLinkerLoad`) survived, so the create/duplicate idempotency probe
+  (`LoadObject`) resurrected the corpse from the lingering linker even though the
+  file was gone from disk. Root cause: `GetAssetByObjectPath()` on a package-only
+  path returns a degenerate `FAssetData` (`GetAsset()` null, `AssetName` = the full
+  path), so `ForceDeleteObjects`/manual eviction never ran (`IsValid(Obj)` false)
+  and the re-probe built a malformed object path that never matched (a false
+  `deleted=true`). Fix (`RunDeleteAssetOp`): derive the canonical object path from
+  `PackageName` (leaf repeated); fall back to `StaticFindObject` when `GetAsset()`
+  is null so a resident corpse is still found+evicted; path-independent package
+  eviction (`ResetLoaders` + rename-aside + `MarkAsGarbage`, for both the
+  ForceDeleteObjects>0 and headless manual paths) so `LoadObject` can't
+  re-materialize the export; notify `AssetRegistry` while the object is still valid.
+  Live-verified on a warm `-nullrhi` daemon (`Saved/verify-hardd3.ps1`):
+  dup→del→dup→del = `already_existed` false×2, `deleted` true×2, file absent on disk
+  after each delete. · **Status:** ✅ Done (58d62149, 2026-06-14)
 
 ---
 
@@ -2107,6 +2121,16 @@ re-confirmed valid (EngineAssociation "5.8"; host migrated to the installed
 
 Newest first. One line per change to this file.
 
+- **2026-06-14** — **HARD-D3 ✅ Done; HARD-D1 ✅ Done (§11 hardening complete).**
+  `delete_asset` same-session residue root-caused: a package-only
+  `GetAssetByObjectPath` returns a degenerate `FAssetData` (`GetAsset()` null,
+  `AssetName` = full path), so the resident in-memory corpse was never evicted and
+  `LoadObject` resurrected it on recreate. Fixed with a canonical object path +
+  `StaticFindObject` fallback + path-independent package eviction
+  (`ResetLoaders`+rename+garbage). Live-verified dup→del×2 (already_existed false×2,
+  deleted true×2, file absent). Folded in the last HARD-D1 editor cleanup
+  (`ToPackagePath`→`BlueprintReaderPathUtils.h`, −7 dup includes); the in-flight RAII
+  + CppEmit helpers had landed in 2f4cb2db. Mock 893/0. (58d62149)
 - **2026-06-14** — **Daemon-handshake root-caused (HARD-D2 ✅ Done).** Measured: the
   "never handshakes for Lyra" was the one-time cold shader compile, not a bug (warm
   = 15s handshake / <1s attach / 1s live pass). Added `Scripts/Run-LiveTests.ps1`
